@@ -18,6 +18,8 @@ docker compose -f deploy/docker-compose.yml up -d --build
 The compose file uses **development-only** secrets. Before exposing the stack, set `VMCP_ADMIN_TOKEN` and
 `VMCP_MASTER_KEY` (see [Security](Security.md)).
 
+Internal and loopback MCP servers now require an explicit `VMCP_EGRESS_ALLOW_CIDRS` grant on both services. Before using the host fixture below, authorize the actual IP/subnet that `host.docker.internal` resolves to inside your containers and recreate both services. See [network policy and development setup](MCP_NETWORK_SECURITY.md) for instructions. Public upstreams remain available by default; an exact host allowlist can restrict them further.
+
 ## Try it with the fixture server
 
 The repository ships a tiny MCP server with four tools (`echo`, `add`, `whoami`, `fail`):

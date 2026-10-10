@@ -127,6 +127,8 @@ func TestOAuthBindings(t *testing.T) {
 
 	// Complete the manually opened session before using it for rate-limit checks.
 	initialized, _ := http.NewRequest("POST", url, strings.NewReader(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	initialized.Header.Set("Content-Type", "application/json")
+	initialized.Header.Set("Accept", "application/json, text/event-stream")
 	initialized.Header.Set("Authorization", "Bearer "+good)
 	initialized.Header.Set("Mcp-Session-Id", sid)
 	initializedResp, err := http.DefaultClient.Do(initialized)
@@ -210,6 +212,7 @@ func TestOAuthIPAllowlist(t *testing.T) {
 	time.Sleep(500 * time.Millisecond) // let the NOTIFY land
 	req, _ := http.NewRequest("POST", srv.URL+"/mcp/v1/virtual/agent", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

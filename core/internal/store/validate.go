@@ -3,8 +3,8 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"maps"
-	"net/url"
 	"reflect"
 	"regexp"
 	"slices"
@@ -50,15 +50,15 @@ func ValidateUpstreamInput(in UpstreamInput) []apierror.FieldError {
 	if len(in.Description) > 1000 {
 		errs = append(errs, vf("/description", "must be at most 1000 characters"))
 	}
-	if u, err := url.Parse(in.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		errs = append(errs, vf("/url", "must be an absolute http(s) URL"))
+	if err := netpolicy.ValidateURL(in.URL); err != nil {
+		errs = append(errs, vf("/url", "must be an absolute http(s) URL without credentials or fragments"))
 	}
 	if len(in.FallbackURLs) > 5 {
 		errs = append(errs, vf("/fallbackUrls", "at most 5 fallback URLs"))
 	}
 	for i, f := range in.FallbackURLs {
-		if u, err := url.Parse(f); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			errs = append(errs, vf(fmt.Sprintf("/fallbackUrls/%d", i), "must be an absolute http(s) URL"))
+		if err := netpolicy.ValidateURL(f); err != nil {
+			errs = append(errs, vf(fmt.Sprintf("/fallbackUrls/%d", i), "must be an absolute http(s) URL without credentials or fragments"))
 		} else if f == in.URL || slices.Index(in.FallbackURLs, f) != i {
 			errs = append(errs, vf(fmt.Sprintf("/fallbackUrls/%d", i), "duplicates another URL of this upstream"))
 		}

@@ -154,3 +154,17 @@ func TestForSharesSourcePerConfig(t *testing.T) {
 		t.Fatal("rotated secret must get a fresh source")
 	}
 }
+
+func TestTokenFetchDeniesUnapprovedDestination(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "")
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++ }))
+	defer srv.Close()
+	source := New(Config{TokenURL: srv.URL, ClientID: "client", ClientSecret: "secret"}, nil)
+	if _, err := source.Token(context.Background()); err == nil || !IsTokenError(err) {
+		t.Fatalf("blocked token endpoint: %v", err)
+	}
+	if hits != 0 {
+		t.Fatal("secret sent to blocked token endpoint")
+	}
+}

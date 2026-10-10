@@ -5,6 +5,11 @@ name: vmcp
 x-master-key: &master-key
   VMCP_MASTER_KEY: ${VMCP_MASTER_KEY:-OsOj5XCz4oi+W3+L3o0am9uZGfYkNmsXHMu5uCDEP04=}
 
+# Explicit operator grants for internal MCP upstreams/token endpoints. Empty is secure by default.
+x-network-policy: &network-policy
+  VMCP_EGRESS_ALLOW_CIDRS: ${VMCP_EGRESS_ALLOW_CIDRS:-}
+  VMCP_EGRESS_ALLOW_HOSTS: ${VMCP_EGRESS_ALLOW_HOSTS:-}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -28,7 +33,7 @@ services:
       args:
         SERVICE: control-plane
     environment:
-      <<: *master-key
+      <<: [*master-key, *network-policy]
       VMCP_CP_ADDR: ":8081"
       # DEV ONLY default; set VMCP_ADMIN_TOKEN to a strong secret in real deployments.
       VMCP_ADMIN_TOKEN: ${VMCP_ADMIN_TOKEN:-dev-admin-token}
@@ -51,8 +56,9 @@ services:
       args:
         SERVICE: data-plane
     environment:
-      <<: *master-key
+      <<: [*master-key, *network-policy]
       VMCP_DP_ADDR: ":8080"
+      VMCP_ALLOWED_ORIGINS: ${VMCP_ALLOWED_ORIGINS:-}
       VMCP_REDIS_URL: ${VMCP_REDIS_URL:-}
       VMCP_DATABASE_URL: postgres://vmcp:vmcp@postgres:5432/vmcp?sslmode=disable
     ports:

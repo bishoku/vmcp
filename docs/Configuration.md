@@ -7,6 +7,8 @@ All configuration is through environment variables. Durations use Go syntax (`30
 | Variable | Default | Used by | Meaning |
 |---|---|---|---|
 | `VMCP_DATABASE_URL` | required | both | PostgreSQL connection string |
+| `VMCP_EGRESS_ALLOW_CIDRS` | empty | both | Comma-separated private/loopback CIDRs allowed for MCP upstreams and upstream OAuth token endpoints; metadata and prohibited destinations remain denied |
+| `VMCP_EGRESS_ALLOW_HOSTS` | empty | both | Optional exact DNS names/IP literals allowed for MCP/token HTTP traffic; when empty, public unicast destinations are allowed. Host grants do not override private CIDR checks |
 | `VMCP_MASTER_KEY` | required | both | Base64 32-byte key (`openssl rand -base64 32`) encrypting upstream headers and client keys. **Losing it makes stored secrets unreadable; changing it invalidates them.** Both services must share it |
 
 ## Control plane
@@ -29,6 +31,7 @@ All configuration is through environment variables. Durations use Go syntax (`30
 | Variable | Default | Meaning |
 |---|---|---|
 | `VMCP_DP_ADDR` | `:8080` | Listen address |
+| `VMCP_ALLOWED_ORIGINS` | empty | Comma-separated exact browser origins for MCP POST/GET/DELETE, e.g. `https://agent.example`; no paths. Empty denies all supplied Origins. Native clients may omit Origin |
 | `VMCP_TRUSTED_PROXIES` | empty | CIDRs of reverse proxies whose `X-Forwarded-For` is trusted (for IP allowlists and audit client IPs) |
 | `VMCP_BREAKER_THRESHOLD` | `5` | Consecutive transport failures that open the circuit; `0` disables |
 | `VMCP_BREAKER_COOLDOWN` | `30s` | How long an open circuit refuses calls before one probe |
@@ -48,3 +51,7 @@ Both services expose `GET /healthz` (liveness) and `GET /readyz` (readiness, che
 ## Tests only
 
 `VMCP_TEST_DATABASE_URL`, `VMCP_TEST_REDIS_URL`: see [Development](Development.md).
+
+## MCP network policy
+
+Set the same egress policy on both services and restart after changes. See [MCP network security](MCP_NETWORK_SECURITY.md) for defaults, private-network examples, disabled redirects/proxies, TLS behavior and deployment compatibility. MCP POST requires `Content-Type: application/json` and `Accept: application/json, text/event-stream`; GET requires `Accept: text/event-stream` even though streams currently return 405 after authentication/validation.

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -89,5 +91,53 @@ func TestLegacySSERejectsUnsupportedVersion(t *testing.T) {
 				t.Fatalf("unsupported version: %v", err)
 			}
 		})
+	}
+}
+
+func TestSSEEndpointCannotExfiltrateCredentials(t *testing.T) {
+	var hits atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer target.Close()
+	for _, endpoint := range []string{target.URL + "/messages", "http://169.254.169.254/latest/meta-data/", "https://user:password@example.com/messages"} {
+		t.Run(endpoint, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "event: endpoint\ndata: "+endpoint+"\n\n")
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+			}))
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			c := NewSSEClient(srv.URL, map[string]string{"Authorization": "Bearer secret", "X-API-Key": "private"}, nil)
+			if _, err := c.Initialize(ctx); err == nil || !strings.Contains(err.Error(), "same origin") {
+				t.Fatalf("unsafe endpoint: %v", err)
+			}
+		})
+	}
+	if hits.Load() != 0 {
+		t.Fatal("credentials sent to cross-origin endpoint")
+	}
+}
+
+func TestMCPClientCannotDialUnapprovedLoopback(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "")
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer srv.Close()
+	for _, transport := range []string{"streamable_http", "sse"} {
+		c, err := Open(transport, srv.URL, nil, tlsconf.Settings{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		_, err = c.Initialize(ctx)
+		cancel()
+		if err == nil {
+			t.Fatalf("unapproved loopback reached through %s", transport)
+		}
+	}
+	if hits.Load() != 0 {
+		t.Fatal("blocked upstream received a request")
 	}
 }

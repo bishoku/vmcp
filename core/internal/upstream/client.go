@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 )
 
 // ErrSessionExpired means the upstream no longer knows our session (HTTP 404).
@@ -45,7 +46,7 @@ func NewClient(url string, headers map[string]string, hc *http.Client) *Client {
 	if hc == nil {
 		hc = &http.Client{Timeout: 0} // per-call deadlines come from the context
 	}
-	return &Client{url: url, headers: headers, http: hc}
+	return &Client{url: url, headers: headers, http: netpolicy.Client(hc)}
 }
 
 // SessionID returns the current upstream session id, if any.

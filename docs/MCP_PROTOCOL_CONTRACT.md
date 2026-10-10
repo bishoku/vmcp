@@ -1,6 +1,6 @@
 # MCP protocol contract — P01
 
-Status: implemented baseline, 10 October 2026. This decision narrows the advertised protocol contract to **2025-06-18**. It does not claim complete MCP conformance: Origin validation and other ingress/egress boundary work remain P02, and bidirectional client features remain P08–P10.
+Status: implemented baseline, 10 October 2026. This decision narrows the advertised protocol contract to **2025-06-18**. It does not claim complete MCP conformance: P02 adds the [ingress/egress network boundary](MCP_NETWORK_SECURITY.md); bidirectional client features remain P08–P10.
 
 ## Version and transport decisions
 
@@ -14,7 +14,7 @@ Status: implemented baseline, 10 October 2026. This decision narrows the adverti
 
 An unknown initialize version receives the supported June version, allowing the client to decide whether to continue. Upstream initialize responses with unsupported versions are rejected before sending `notifications/initialized`. Required handshake fields are protocolVersion, an object of capabilities, and implementation information containing string name/version. Unknown extension capabilities are retained.
 
-A known session supplies its negotiated version when the HTTP version header is absent. An explicit different version is rejected with HTTP 400 for session POST and DELETE. GET remains 405; broader ingress/header/Origin checks belong to P02. Without a known session, non-initialize POST returns 400 for a missing session ID or 404 for an unknown ID; it does not silently assume support for March.
+A known session supplies its negotiated version when the HTTP version header is absent. An explicit different version is rejected with HTTP 400 for session POST and DELETE. GET remains 405 after P02 ingress, authentication and optional session validation. Explicit unsupported version headers are rejected on POST/GET/DELETE, including initialize. Without a known session, non-initialize POST returns 400 for a missing session ID or 404 for an unknown ID; it does not silently assume support for March.
 
 Sources: [June lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle), [June transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports), [June base protocol](https://modelcontextprotocol.io/specification/2025-06-18/basic), [March transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports).
 

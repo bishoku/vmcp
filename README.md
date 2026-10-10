@@ -81,6 +81,8 @@ docker compose -f deploy/docker-compose.yml up -d --build
 > Generate your own (`openssl rand -base64 32` for the key) before exposing anything. See
 > [docs/Security.md](docs/Security.md).
 
+Internal and loopback MCP servers now require an explicit `VMCP_EGRESS_ALLOW_CIDRS` grant on both services. Before using the host fixture below, authorize the actual IP/subnet that `host.docker.internal` resolves to inside your containers and recreate both services. See [network policy and development setup](docs/MCP_NETWORK_SECURITY.md) for instructions. Public upstreams remain available by default; an exact host allowlist can restrict them further.
+
 ### Five-minute tour
 
 Start the bundled fixture MCP server, register it, and expose one tool under a new name:

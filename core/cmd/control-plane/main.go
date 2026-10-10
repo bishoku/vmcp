@@ -16,6 +16,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/controlplane"
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oidc"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/store"
@@ -33,6 +34,12 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
+	if _, err := netpolicy.FromEnv(); err != nil {
+		return err
+	}
+	if _, err := netpolicy.Origins(); err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

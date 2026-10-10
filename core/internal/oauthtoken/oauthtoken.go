@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -75,7 +76,7 @@ func New(c Config, hc *http.Client) *Source {
 	if c.Audience != "" {
 		cc.EndpointParams = url.Values{"audience": {c.Audience}}
 	}
-	return &Source{cfg: cc, http: hc, now: time.Now}
+	return &Source{cfg: cc, http: netpolicy.Client(hc), now: time.Now}
 }
 
 // Token returns a valid access token, fetching one if needed.
@@ -163,7 +164,7 @@ func For(c Config) *Source {
 // invalidates the token and replays the request once with a fresh one.
 func Transport(next http.RoundTripper, s *Source) http.RoundTripper {
 	if next == nil {
-		next = http.DefaultTransport
+		next = netpolicy.Client(nil).Transport
 	}
 	return &transport{next: next, src: s}
 }
@@ -248,7 +249,7 @@ type FieldError struct{ Field, Message string }
 // send the client secret in clear text, which docs warn about.
 func (c Config) Validate() []FieldError {
 	var errs []FieldError
-	if u, err := url.Parse(c.TokenURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err := netpolicy.ValidateURL(c.TokenURL); err != nil {
 		errs = append(errs, FieldError{"tokenUrl", "must be an absolute http(s) URL"})
 	}
 	if c.ClientID == "" {

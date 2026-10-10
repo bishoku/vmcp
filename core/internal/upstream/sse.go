@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
@@ -38,19 +39,26 @@ func OpenAuth(transport, url string, headers map[string]string, tl tlsconf.Setti
 	if err != nil {
 		return nil, err
 	}
+	hc = netpolicy.Client(hc)
 	if oc != nil {
 		// tl.Client() hands out a shared client: wrap its transport in a new one, never mutate it.
 		var base http.RoundTripper
 		if hc != nil {
 			base = hc.Transport
 		}
-		hc = &http.Client{Transport: oauthtoken.Transport(base, oauthtoken.For(*oc))}
+		wrapped := *hc
+		wrapped.Transport = oauthtoken.Transport(base, oauthtoken.For(*oc))
+		hc = &wrapped
 	}
 	switch transport {
 	case "streamable_http", "":
-		return NewClient(url, headers, hc), nil
+		c := NewClient(url, headers, nil)
+		c.http = hc
+		return c, nil
 	case "sse":
-		return NewSSEClient(url, headers, hc), nil
+		c := NewSSEClient(url, headers, nil)
+		c.http = hc
+		return c, nil
 	}
 	return nil, fmt.Errorf("unsupported transport %q", transport)
 }
@@ -79,7 +87,7 @@ func NewSSEClient(url string, headers map[string]string, hc *http.Client) *SSECl
 	if hc == nil {
 		hc = &http.Client{}
 	}
-	return &SSEClient{url: url, headers: headers, http: hc, pending: map[string]chan *mcp.Message{}}
+	return &SSEClient{url: url, headers: headers, http: netpolicy.Client(hc), pending: map[string]chan *mcp.Message{}}
 }
 
 // Initialize opens the event stream, then performs the MCP handshake.
@@ -218,11 +226,25 @@ func (c *SSEClient) readLoop(body io.ReadCloser, ready chan<- error, closed chan
 			base, err := url.Parse(c.url)
 			ref, err2 := url.Parse(strings.TrimSpace(payload))
 			if err != nil || err2 != nil {
-				ready <- fmt.Errorf("invalid endpoint event %q", payload)
+				select {
+				case ready <- fmt.Errorf("invalid endpoint event"):
+				default:
+				}
+				return
+			}
+			endpoint := base.ResolveReference(ref)
+			if netpolicy.ValidateURL(endpoint.String()) != nil || !sameOrigin(base, endpoint) {
+				select {
+				case ready <- fmt.Errorf("SSE endpoint must have the same origin as the stream"):
+				default:
+				}
+				return
+			}
+			if gotEndpoint {
 				return
 			}
 			c.mu.Lock()
-			c.endpoint = base.ResolveReference(ref).String()
+			c.endpoint = endpoint.String()
 			c.mu.Unlock()
 			if !gotEndpoint {
 				gotEndpoint = true
@@ -337,4 +359,17 @@ func (c *SSEClient) call(ctx context.Context, method string, params any) (json.R
 		drop()
 		return nil, ctx.Err()
 	}
+}
+
+func sameOrigin(a, b *url.URL) bool {
+	port := func(u *url.URL) string {
+		if u.Port() != "" {
+			return u.Port()
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Hostname(), b.Hostname()) && port(a) == port(b)
 }

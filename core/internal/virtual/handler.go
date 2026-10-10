@@ -61,14 +61,39 @@ type Handler struct {
 
 // Register mounts the virtual server routes on mux.
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /mcp/v1/virtual/{slug}", h.post)
-	mux.HandleFunc("DELETE /mcp/v1/virtual/{slug}", h.delete)
+	mux.HandleFunc("POST /mcp/v1/virtual/{slug}", ingress(h.post))
+	mux.HandleFunc("DELETE /mcp/v1/virtual/{slug}", ingress(h.delete))
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}", h.resourceMetadata)
 	// No server-initiated stream yet: tell clients so, as the spec allows.
-	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", ingress(func(w http.ResponseWriter, r *http.Request) {
+		snap := h.Snap.Snapshot()
+		vs, ok := snap.VirtualServers[r.PathValue("slug")]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		key, _, ok := h.authenticate(w, r, vs, snap)
+		if !ok {
+			return
+		}
+		sid := r.Header.Get("Mcp-Session-Id")
+		if sid != "" {
+			sess, err := h.Sessions.Resolve(r.Context(), sid)
+			if err != nil {
+				http.Error(w, "session store unavailable", 503)
+				return
+			}
+			if sess == nil || sess.slug != vs.Slug || sess.keySlug != key {
+				http.Error(w, "unknown session", 404)
+				return
+			}
+			if !validSessionVersion(w, r, sess) {
+				return
+			}
+		}
 		w.Header().Set("Allow", "POST, DELETE")
 		http.Error(w, "server-initiated stream not supported", http.StatusMethodNotAllowed)
-	})
+	}))
 }
 
 func (h *Handler) post(w http.ResponseWriter, r *http.Request) {

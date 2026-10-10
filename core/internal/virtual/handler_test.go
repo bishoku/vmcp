@@ -119,6 +119,7 @@ func (r *rig) rpc(t *testing.T, slug, sid, method string, params any) (*http.Res
 	b, _ := json.Marshal(req)
 	hr, _ := http.NewRequest(http.MethodPost, r.gw.URL+"/mcp/v1/virtual/"+slug, bytes.NewReader(b))
 	hr.Header.Set("Content-Type", "application/json")
+	hr.Header.Set("Accept", "application/json, text/event-stream")
 	if sid != "" {
 		hr.Header.Set("Mcp-Session-Id", sid)
 	}
@@ -143,6 +144,8 @@ func (r *rig) initialize(t *testing.T) string {
 		t.Fatalf("initialize failed: %v %+v", resp.Status, m)
 	}
 	req, _ := http.NewRequest(http.MethodPost, r.gw.URL+"/mcp/v1/virtual/support", bytes.NewBufferString(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Mcp-Session-Id", sid)
 	response, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -293,8 +296,12 @@ func TestInitializationLifecycleAndVersionMatrix(t *testing.T) {
 	post := func(sid, version, body string) (int, []byte) {
 		t.Helper()
 		req, _ := http.NewRequest("POST", r.gw.URL+"/mcp/v1/virtual/support", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
 		req.Header.Set("Mcp-Session-Id", sid)
-		req.Header.Set("MCP-Protocol-Version", version)
+		if version != "" {
+			req.Header.Set("MCP-Protocol-Version", version)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
