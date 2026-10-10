@@ -96,17 +96,18 @@ func (c *SSEClient) Initialize(ctx context.Context) (*mcp.InitializeResult, erro
 		c.shutdown()
 		return nil, err
 	}
-	var res mcp.InitializeResult
-	if err := json.Unmarshal(raw, &res); err != nil {
+	res, err := mcp.ValidateInitializeResult(raw)
+	if err != nil {
 		c.shutdown()
 		return nil, fmt.Errorf("decode initialize result: %w", err)
 	}
+
 	n, _ := mcp.NewRequest(mcp.ID{}, mcp.MethodInitialized, nil)
 	if err := c.post(ctx, n); err != nil {
 		c.shutdown()
 		return nil, fmt.Errorf("send initialized: %w", err)
 	}
-	return &res, nil
+	return res, nil
 }
 
 // ListTools returns every tool, following pagination cursors.

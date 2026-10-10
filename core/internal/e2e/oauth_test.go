@@ -125,6 +125,19 @@ func TestOAuthBindings(t *testing.T) {
 		t.Fatal("binding never took effect")
 	}
 
+	// Complete the manually opened session before using it for rate-limit checks.
+	initialized, _ := http.NewRequest("POST", url, strings.NewReader(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	initialized.Header.Set("Authorization", "Bearer "+good)
+	initialized.Header.Set("Mcp-Session-Id", sid)
+	initializedResp, err := http.DefaultClient.Do(initialized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initializedResp.Body.Close()
+	if initializedResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("initialized: %s", initializedResp.Status)
+	}
+
 	// Real MCP client with the token.
 	c := upstream.NewClient(url, map[string]string{"Authorization": "Bearer " + good}, nil)
 	if _, err := c.Initialize(e.ctx); err != nil {

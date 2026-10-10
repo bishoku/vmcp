@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 )
 
 const JSONRPCVersion = "2.0"
@@ -19,7 +20,7 @@ const (
 	CodeInternalError  = -32603
 )
 
-// ID is a JSON-RPC request id: a string, a number, or absent (notification).
+// ID is a JSON-RPC request id: a string, an integer, or absent (notification).
 // The raw JSON is kept verbatim so the id is echoed back unchanged.
 type ID struct {
 	raw json.RawMessage
@@ -35,7 +36,7 @@ func NewStringID(s string) ID {
 }
 
 // IsZero reports whether the id is absent.
-func (i ID) IsZero() bool { return len(i.raw) == 0 || string(i.raw) == "null" }
+func (i ID) IsZero() bool { return len(i.raw) == 0 }
 
 func (i ID) String() string {
 	if i.IsZero() {
@@ -53,9 +54,21 @@ func (i ID) MarshalJSON() ([]byte, error) {
 
 func (i *ID) UnmarshalJSON(b []byte) error {
 	t := bytes.TrimSpace(b)
-	if len(t) == 0 || t[0] == '{' || t[0] == '[' || t[0] == 't' || t[0] == 'f' {
-		return errors.New("id must be a string, number or null")
+	if !json.Valid(t) || len(t) == 0 {
+		return errors.New("id must be a string or integer")
 	}
+	if t[0] != '"' {
+		digits := t
+		if digits[0] == '-' {
+			digits = digits[1:]
+		}
+		for _, c := range digits {
+			if c < '0' || c > '9' {
+				return errors.New("id must be a string or integer")
+			}
+		}
+	}
+
 	i.raw = append(i.raw[:0], t...)
 	return nil
 }
@@ -89,19 +102,57 @@ func (m *Message) IsResponse() bool     { return m.Method == "" && (m.Result != 
 // Batches are rejected: MCP 2025-06-18 removed JSON-RPC batching.
 func Decode(data []byte) (*Message, error) {
 	t := bytes.TrimSpace(data)
-	if len(t) > 0 && t[0] == '[' {
-		return nil, &Error{Code: CodeInvalidRequest, Message: "batch requests are not supported"}
+	if !utf8.Valid(t) || !json.Valid(t) {
+		return nil, &Error{Code: CodeParseError, Message: "invalid JSON"}
 	}
+	invalid := func(reason string) (*Message, error) { return nil, &Error{Code: CodeInvalidRequest, Message: reason} }
+	if len(t) == 0 || t[0] != '{' {
+		return invalid("expected one JSON-RPC object; batches are not supported")
+	}
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(t, &fields)
 	var m Message
 	if err := json.Unmarshal(t, &m); err != nil {
-		return nil, &Error{Code: CodeParseError, Message: "parse error: " + err.Error()}
+		return invalid("invalid envelope: " + err.Error())
 	}
 	if m.JSONRPC != JSONRPCVersion {
-		return nil, &Error{Code: CodeInvalidRequest, Message: `jsonrpc must be "2.0"`}
+		return invalid(`jsonrpc must be "2.0"`)
 	}
-	if !m.IsRequest() && !m.IsNotification() && !m.IsResponse() {
-		return nil, &Error{Code: CodeInvalidRequest, Message: "not a valid request, notification or response"}
+	_, method := fields["method"]
+	_, id := fields["id"]
+	_, result := fields["result"]
+	_, rpcError := fields["error"]
+	object := func(raw json.RawMessage) bool { return len(bytes.TrimSpace(raw)) > 0 && bytes.TrimSpace(raw)[0] == '{' }
+	if method {
+		if m.Method == "" || result || rpcError {
+			return invalid("request/notification must have a nonempty method and no result or error")
+		}
+		if p, ok := fields["params"]; ok && !object(p) {
+			return invalid("params must be an object")
+		}
+	} else {
+		if !id || result == rpcError {
+			return invalid("response must have an id and exactly one result or error")
+		}
+		if _, ok := fields["params"]; ok {
+			return invalid("response must not have params")
+		}
+		if result && !object(m.Result) {
+			return invalid("result must be an object")
+		}
+		if rpcError {
+			var e map[string]json.RawMessage
+			if !object(fields["error"]) || json.Unmarshal(fields["error"], &e) != nil || m.Error == nil {
+				return invalid("error must be an object")
+			}
+			var code int
+			var message string
+			if json.Unmarshal(e["code"], &code) != nil || string(e["code"]) == "null" || json.Unmarshal(e["message"], &message) != nil || string(e["message"]) == "null" {
+				return invalid("error requires an integer code and string message")
+			}
+		}
 	}
+
 	return &m, nil
 }
 

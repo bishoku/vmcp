@@ -136,6 +136,8 @@ docs/              Wiki pages
 
 ## Status
 
+MCP protocol baseline: **2025-06-18**. March support is no longer advertised. See the [protocol contract and upgrade notes](docs/MCP_PROTOCOL_CONTRACT.md) for transport compatibility and session migration behavior.
+
 vMCP is young. The feature set above is implemented and covered by integration tests (PostgreSQL-backed, including
 multi-node and TLS scenarios), but expect rough edges, and APIs may still change before a 1.0 release. Known gaps are
 listed in the [FAQ](docs/FAQ.md#known-limitations). Not built (yet): Prometheus/OpenTelemetry metrics, Helm chart,

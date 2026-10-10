@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -22,9 +23,11 @@ type upstreamConn struct {
 // Session is one client session on a virtual server. It owns one upstream
 // session per upstream the client actually touches (created lazily).
 type Session struct {
-	id      string
-	slug    string
-	version string
+	id                 string
+	slug               string
+	version            string
+	initialized        bool
+	clientCapabilities json.RawMessage
 	// keySlug is the agent key that opened the session ("" on open virtual servers).
 	keySlug string
 
@@ -148,11 +151,12 @@ func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
 		return nil, err
 	}
 	s := &Session{
-		id:      hex.EncodeToString(b[:]),
-		slug:    slug,
-		version: protocolVersion,
-		conns:   map[string]*upstreamConn{},
-		last:    time.Now(),
+		id:                 hex.EncodeToString(b[:]),
+		slug:               slug,
+		version:            protocolVersion,
+		clientCapabilities: json.RawMessage(`{}`),
+		conns:              map[string]*upstreamConn{},
+		last:               time.Now(),
 	}
 	m.mu.Lock()
 	m.sessions[s.id] = s
@@ -168,7 +172,7 @@ func (m *Manager) Persist(ctx context.Context, s *Session) error {
 	s.mu.Lock()
 	s.persisted = time.Now()
 	s.mu.Unlock()
-	return m.Store.Save(ctx, Record{ID: s.id, Slug: s.slug, KeySlug: s.keySlug, Version: s.version})
+	return m.Store.Save(ctx, Record{ID: s.id, Slug: s.slug, KeySlug: s.keySlug, Version: s.version, ClientCapabilities: s.clientCapabilities})
 }
 
 // Resolve returns the session, loading it from the shared store when this node does not hold it.
@@ -187,7 +191,7 @@ func (m *Manager) Resolve(ctx context.Context, id string) (*Session, error) {
 	if err != nil || !ok {
 		return nil, err
 	}
-	s := &Session{id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
+	s := &Session{id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing := m.sessions[id]; existing != nil { // lost a race with a concurrent request
@@ -284,4 +288,36 @@ func (m *Manager) RunReaper(ctx context.Context, ttl time.Duration) {
 			}
 		}
 	}
+}
+
+// Ready checks persisted lifecycle state while a local session is still pending.
+// This permits initialized on one node and the first operation on another.
+func (m *Manager) Ready(ctx context.Context, s *Session) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.initialized {
+		return true, nil
+	}
+	if m.Store != nil {
+		rec, ok, err := m.Store.Load(ctx, s.id)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			s.initialized = rec.Initialized
+		}
+	}
+	return s.initialized, nil
+}
+
+func (m *Manager) Initialize(ctx context.Context, s *Session) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if m.Store != nil {
+		if err := m.Store.MarkInitialized(ctx, s.id); err != nil {
+			return err
+		}
+	}
+	s.initialized = true
+	return nil
 }

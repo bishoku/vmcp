@@ -225,3 +225,62 @@ func TestClientContextCancel(t *testing.T) {
 		t.Fatalf("want context.Canceled, got %v", err)
 	}
 }
+
+func TestClientRejectsUnrelatedOrMalformedResponses(t *testing.T) {
+	for _, body := range []string{
+		`{"jsonrpc":"2.0","id":2,"result":{}}`,
+		`{"jsonrpc":"2.0","id":"1","result":{}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":1,"result":{},"error":{"code":1,"message":"x"}}`,
+	} {
+		for _, streaming := range []bool{false, true} {
+			t.Run(body+map[bool]string{true: "/sse", false: "/json"}[streaming], func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					if streaming {
+						w.Header().Set("Content-Type", "text/event-stream")
+						_, _ = io.WriteString(w, "data: "+body+"\n\n")
+						return
+					}
+					_, _ = io.WriteString(w, body)
+				}))
+				defer srv.Close()
+				if _, err := NewClient(srv.URL, nil, nil).Call(context.Background(), mcp.MethodPing, nil); err == nil {
+					t.Fatal("accepted unrelated/invalid response")
+				}
+			})
+		}
+	}
+}
+
+func TestClientInitializeValidation(t *testing.T) {
+	for _, result := range []string{
+		`{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"s","version":"1"}}`,
+		`{"protocolVersion":"2099-01-01","capabilities":{},"serverInfo":{"name":"s","version":"1"}}`,
+		`{"protocolVersion":"2025-06-18","serverInfo":{"name":"s","version":"1"}}`,
+		`{"protocolVersion":"2025-06-18","capabilities":{}}`,
+	} {
+		t.Run(result, func(t *testing.T) {
+			notifications := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var m mcp.Message
+				_ = json.NewDecoder(r.Body).Decode(&m)
+				if m.IsNotification() {
+					notifications++
+					w.WriteHeader(202)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				response := &mcp.Message{JSONRPC: "2.0", ID: m.ID, Result: json.RawMessage(result)}
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			defer srv.Close()
+			if _, err := NewClient(srv.URL, nil, nil).Initialize(context.Background()); err == nil {
+				t.Fatal("invalid handshake accepted")
+			}
+			if notifications != 0 {
+				t.Fatal("sent initialized after rejected handshake")
+			}
+		})
+	}
+}

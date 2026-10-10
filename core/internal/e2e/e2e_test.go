@@ -468,6 +468,22 @@ func TestSessionResumesOnAnotherNode(t *testing.T) {
 	if sid == "" {
 		t.Fatal("no session id")
 	}
+	// Warm both node caches while the lifecycle is pending.
+	ping := `{"jsonrpc":"2.0","id":2,"method":"ping"}`
+	if r, _ := post(urlB, sid, ping); r.StatusCode != 200 {
+		t.Fatalf("pending ping: %s", r.Status)
+	}
+	if r, body := post(urlB, sid, `{"jsonrpc":"2.0","id":3,"method":"tools/list"}`); !strings.Contains(body, `"code":-32600`) {
+		t.Fatalf("pending operation: %s %s", r.Status, body)
+	}
+	if r, _ := post(urlA, sid, `{"jsonrpc":"2.0","method":"notifications/initialized"}`); r.StatusCode != 202 {
+		t.Fatalf("initialized on A: %s", r.Status)
+	}
+	var ready bool
+	var caps string
+	if err := e.pool.QueryRow(e.ctx, `SELECT initialized, client_capabilities::text FROM sessions WHERE id = $1`, sid).Scan(&ready, &caps); err != nil || !ready || caps != "{}" {
+		t.Fatalf("persisted lifecycle: %v %s %v", ready, caps, err)
+	}
 	call := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"alpha__add","arguments":{"a":2,"b":3}}}`
 	if r, body := post(urlB, sid, call); r.StatusCode != 200 || !strings.Contains(body, "5") {
 		t.Fatalf("node B could not resume the session: %d %s", r.StatusCode, body)
@@ -519,7 +535,9 @@ func TestCircuitBreakerCutsOffDeadUpstream(t *testing.T) {
 	// Upstream sessions are bound to the URL they were opened against, so use fresh client sessions.
 	open := func() string {
 		resp, _ := post("", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`)
-		return resp.Header.Get("Mcp-Session-Id")
+		sid := resp.Header.Get("Mcp-Session-Id")
+		_, _ = post(sid, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+		return sid
 	}
 	sid := open()
 	call := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"alpha__add","arguments":{"a":1,"b":1}}}`
@@ -625,6 +643,7 @@ func TestRateLimit(t *testing.T) {
 	}
 	resp, _ := post("", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`)
 	sid := resp.Header.Get("Mcp-Session-Id")
+	_, _ = post(sid, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 	call := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"alpha__add","arguments":{"a":1,"b":1}}}`
 
 	// No limit configured: everything passes.

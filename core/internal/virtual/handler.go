@@ -99,6 +99,10 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if msg.IsRequest() && msg.Method == mcp.MethodInitialize {
+		if r.Header.Get("Mcp-Session-Id") != "" {
+			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidRequest, "initialize must start a new session"))
+			return
+		}
 		h.initialize(r.Context(), w, msg, vs, keySlug)
 		return
 	}
@@ -121,8 +125,35 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	sess.touch()
 	h.Sessions.Touch(r.Context(), sess)
 
+	if !validSessionVersion(w, r, sess) {
+		return
+	}
+	if msg.IsNotification() && msg.Method == mcp.MethodInitialized {
+		if err := h.Sessions.Initialize(r.Context(), sess); err != nil {
+			http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	ready, err := h.Sessions.Ready(r.Context(), sess)
+	if err != nil {
+		http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !ready && msg.Method != mcp.MethodPing {
+		if msg.IsRequest() {
+			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidRequest, "send notifications/initialized before normal operations"))
+		} else {
+			http.Error(w, "session not initialized", http.StatusBadRequest)
+		}
+		return
+	}
 	if !msg.IsRequest() {
-		// Notifications and client responses are acknowledged and dropped for now.
+		if msg.IsResponse() {
+			http.Error(w, "no pending server request", http.StatusBadRequest)
+			return
+		}
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
@@ -144,17 +175,19 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, keySlug string) {
-	var p mcp.InitializeParams
-	if err := json.Unmarshal(msg.Params, &p); err != nil {
-		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid initialize params"))
+	p, err := mcp.ValidateInitializeParams(msg.Params)
+	if err != nil {
+		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid initialize params: "+err.Error()))
 		return
 	}
+
 	version := mcp.NegotiateVersion(p.ProtocolVersion)
 	sess, err := h.Sessions.Create(vs.Slug, version)
 	if err != nil {
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "cannot create session"))
 		return
 	}
+	sess.clientCapabilities = append(json.RawMessage(nil), p.Capabilities...)
 	sess.keySlug = keySlug
 	if err := h.Sessions.Persist(ctx, sess); err != nil {
 		h.Sessions.Delete(sess.id)
@@ -395,6 +428,9 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown session", http.StatusNotFound)
 		return
 	}
+	if !validSessionVersion(w, r, sess) {
+		return
+	}
 	h.Sessions.End(r.Context(), sess.id)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -411,4 +447,14 @@ func writeMessage(w http.ResponseWriter, status int, m *mcp.Message) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(m)
+}
+
+// A known session supplies the version when older clients omit the header.
+func validSessionVersion(w http.ResponseWriter, r *http.Request, sess *Session) bool {
+	version := r.Header.Get("MCP-Protocol-Version")
+	if !mcp.SupportsVersion(sess.version) || (version != "" && version != sess.version) {
+		http.Error(w, "unsupported or mismatched MCP-Protocol-Version", http.StatusBadRequest)
+		return false
+	}
+	return true
 }

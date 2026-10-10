@@ -55,7 +55,7 @@ func (f *fakeUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.inits++
 		f.session = fmt.Sprintf("%s-%d", f.name, f.inits)
 		w.Header().Set("Mcp-Session-Id", f.session)
-		resp, _ = mcp.NewResult(m.ID, mcp.InitializeResult{ProtocolVersion: mcp.ProtocolVersion20250618})
+		resp, _ = mcp.NewResult(m.ID, mcp.InitializeResult{ProtocolVersion: mcp.ProtocolVersion20250618, ServerInfo: mcp.Implementation{Name: "fake", Version: "1"}, Capabilities: mcp.ServerCapabilities{}})
 	case mcp.MethodToolsCall:
 		var p mcp.CallToolParams
 		_ = json.Unmarshal(m.Params, &p)
@@ -137,10 +137,20 @@ func (r *rig) rpc(t *testing.T, slug, sid, method string, params any) (*http.Res
 
 func (r *rig) initialize(t *testing.T) string {
 	t.Helper()
-	resp, m := r.rpc(t, "support", "", mcp.MethodInitialize, mcp.InitializeParams{ProtocolVersion: mcp.ProtocolVersion20250618})
+	resp, m := r.rpc(t, "support", "", mcp.MethodInitialize, mcp.InitializeParams{ProtocolVersion: mcp.ProtocolVersion20250618, Capabilities: json.RawMessage(`{}`), ClientInfo: mcp.Implementation{Name: "test", Version: "1"}})
 	sid := resp.Header.Get("Mcp-Session-Id")
 	if sid == "" || m == nil || m.Error != nil {
 		t.Fatalf("initialize failed: %v %+v", resp.Status, m)
+	}
+	req, _ := http.NewRequest(http.MethodPost, r.gw.URL+"/mcp/v1/virtual/support", bytes.NewBufferString(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
+	req.Header.Set("Mcp-Session-Id", sid)
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("initialized: %s", response.Status)
 	}
 	return sid
 }
@@ -275,5 +285,80 @@ func TestReapIdleSessions(t *testing.T) {
 	}
 	if m.Get(s.id) != nil || m.Get(fresh.id) == nil {
 		t.Fatal("wrong session reaped")
+	}
+}
+
+func TestInitializationLifecycleAndVersionMatrix(t *testing.T) {
+	r := newRig(t)
+	post := func(sid, version, body string) (int, []byte) {
+		t.Helper()
+		req, _ := http.NewRequest("POST", r.gw.URL+"/mcp/v1/virtual/support", bytes.NewBufferString(body))
+		req.Header.Set("Mcp-Session-Id", sid)
+		req.Header.Set("MCP-Protocol-Version", version)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, data
+	}
+	params := mcp.InitializeParams{ProtocolVersion: "2025-03-26", Capabilities: json.RawMessage(`{"sampling":{}}`), ClientInfo: mcp.Implementation{Name: "c", Version: "1"}}
+	resp, m := r.rpc(t, "support", "", mcp.MethodInitialize, params)
+	if m == nil || m.Error != nil {
+		t.Fatalf("initialize: %+v", m)
+	}
+	var result mcp.InitializeResult
+	_ = json.Unmarshal(m.Result, &result)
+	if result.ProtocolVersion != mcp.ProtocolVersion20250618 {
+		t.Fatalf("wrong fallback %s", result.ProtocolVersion)
+	}
+	if result.Capabilities.Tools == nil || result.Capabilities.Tools.ListChanged {
+		t.Fatal("unsupported capability advertised")
+	}
+	sid := resp.Header.Get("Mcp-Session-Id")
+	if string(r.handler.Sessions.Get(sid).clientCapabilities) != `{"sampling":{}}` {
+		t.Fatal("client capabilities discarded")
+	}
+	_, m = r.rpc(t, "support", sid, mcp.MethodToolsList, nil)
+	if m == nil || m.Error == nil || m.Error.Code != mcp.CodeInvalidRequest {
+		t.Fatal("operation allowed before initialized")
+	}
+	_, m = r.rpc(t, "support", sid, mcp.MethodPing, nil)
+	if m == nil || m.Error != nil {
+		t.Fatal("ping must work while pending")
+	}
+	for _, version := range []string{"2025-03-26", "2099-01-01"} {
+		status, _ := post(sid, version, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+		if status != 400 {
+			t.Fatalf("unsupported version %s: %d", version, status)
+		}
+	}
+	status, body := post(sid, mcp.ProtocolVersion20250618, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	if status != 202 || len(body) != 0 {
+		t.Fatalf("initialized: %d %s", status, body)
+	}
+	_, m = r.rpc(t, "support", sid, mcp.MethodToolsList, nil)
+	if m == nil || m.Error != nil {
+		t.Fatal("missing version header should use negotiated session version")
+	}
+	_, m = r.rpc(t, "support", sid, mcp.MethodInitialize, params)
+	if m == nil || m.Error == nil {
+		t.Fatal("reinitialize accepted on existing session")
+	}
+	status, _ = post(sid, "", `{"jsonrpc":"2.0","id":7,"result":{}}`)
+	if status != 400 {
+		t.Fatal("unsolicited response accepted")
+	}
+	for _, body := range []string{`{"jsonrpc":"2.0","id":null,"method":"ping"}`, `{"jsonrpc":"2.0","id":1.5,"method":"ping"}`} {
+		status, data := post(sid, "", body)
+		if status != 400 || !bytes.Contains(data, []byte(`"code":-32600`)) {
+			t.Fatalf("invalid id: %d %s", status, data)
+		}
+	}
+	before := r.handler.Sessions.Len()
+	_, m = r.rpc(t, "support", "", mcp.MethodInitialize, map[string]any{"protocolVersion": "2025-06-18"})
+	if m == nil || m.Error == nil || m.Error.Code != mcp.CodeInvalidParams || before != r.handler.Sessions.Len() {
+		t.Fatal("invalid initialize created session")
 	}
 }

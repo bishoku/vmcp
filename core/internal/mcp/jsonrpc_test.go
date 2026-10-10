@@ -41,7 +41,7 @@ func TestDecodeRejects(t *testing.T) {
 		{"wrong version", `{"jsonrpc":"1.0","id":1,"method":"x"}`, CodeInvalidRequest},
 		{"batch", `[{"jsonrpc":"2.0","id":1,"method":"x"}]`, CodeInvalidRequest},
 		{"empty envelope", `{"jsonrpc":"2.0"}`, CodeInvalidRequest},
-		{"object id", `{"jsonrpc":"2.0","id":{},"method":"x"}`, CodeParseError},
+		{"object id", `{"jsonrpc":"2.0","id":{},"method":"x"}`, CodeInvalidRequest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -82,10 +82,80 @@ func TestNotificationOmitsID(t *testing.T) {
 }
 
 func TestNegotiateVersion(t *testing.T) {
-	if got := NegotiateVersion(ProtocolVersion20250326); got != ProtocolVersion20250326 {
+	if got := NegotiateVersion(ProtocolVersion20250326); got != ProtocolVersion20250618 {
 		t.Fatalf("got %s", got)
 	}
 	if got := NegotiateVersion("1999-01-01"); got != ProtocolVersion20250618 {
 		t.Fatalf("unknown version should fall back to newest, got %s", got)
+	}
+}
+
+// Protocol matrix: syntactically valid JSON with an invalid MCP envelope is
+// InvalidRequest; only malformed JSON is ParseError.
+func TestProtocolEnvelopeMatrix(t *testing.T) {
+	for _, input := range []string{
+		`null`, `1`, `[]`,
+		`{"jsonrpc":"2.0","id":null,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":1.5,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":true,"method":"ping"}`,
+		`{"jsonrpc":"2.0","id":1,"method":""}`,
+		`{"jsonrpc":"2.0","id":1,"method":"ping","result":{}}`,
+		`{"jsonrpc":"2.0","method":"ping","error":null}`,
+		`{"jsonrpc":"2.0","id":1,"method":"ping","params":[]}`,
+		`{"jsonrpc":"2.0","id":1,"method":"ping","params":null}`,
+		`{"jsonrpc":"2.0","result":{}}`,
+		`{"jsonrpc":"2.0","id":null,"result":{}}`,
+		`{"jsonrpc":"2.0","id":1,"result":{},"error":null}`,
+		`{"jsonrpc":"2.0","id":1,"result":null}`,
+		`{"jsonrpc":"2.0","id":1,"result":{},"params":{}}`,
+		`{"jsonrpc":"2.0","id":1,"error":null}`,
+		`{"jsonrpc":"2.0","id":1,"error":{"message":"x"}}`,
+		`{"jsonrpc":"2.0","id":1,"error":{"code":null,"message":"x"}}`,
+		`{"jsonrpc":"2.0","id":1,"error":{"code":1}}`,
+		`{"jsonrpc":"2.0","id":1,"error":{"code":1,"message":null}}`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			_, err := Decode([]byte(input))
+			var rpc *Error
+			if !errors.As(err, &rpc) || rpc.Code != CodeInvalidRequest {
+				t.Fatalf("want InvalidRequest, got %v", err)
+			}
+		})
+	}
+}
+
+func TestInitializeContractMatrix(t *testing.T) {
+	for _, raw := range []string{
+		`{}`, `null`,
+		`{"protocolVersion":"2025-06-18","clientInfo":{"name":"c","version":"1"}}`,
+		`{"protocolVersion":"2025-06-18","capabilities":null,"clientInfo":{"name":"c","version":"1"}}`,
+		`{"protocolVersion":"2025-06-18","capabilities":[],"clientInfo":{"name":"c","version":"1"}}`,
+		`{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":null}`,
+		`{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c"}}`,
+		`{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":null,"version":"1"}}`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := ValidateInitializeParams(json.RawMessage(raw)); err == nil {
+				t.Fatal("accepted incomplete initialize")
+			}
+		})
+	}
+	raw := json.RawMessage(`{"protocolVersion":"unknown","capabilities":{"experimental":{"future":{}}},"clientInfo":{"name":"c","version":"1","title":"extension"}}`)
+	p, err := ValidateInitializeParams(raw)
+	if err != nil || NegotiateVersion(p.ProtocolVersion) != ProtocolVersion20250618 {
+		t.Fatalf("valid fallback: %v", err)
+	}
+	if SupportsVersion(ProtocolVersion20250326) || SupportsVersion("2024-11-05") {
+		t.Fatal("advertised unimplemented revision")
+	}
+}
+
+func TestDecodeRejectsInvalidUTF8(t *testing.T) {
+	raw := append([]byte(`{"jsonrpc":"2.0","method":"`), 0xff)
+	raw = append(raw, []byte(`"}`)...)
+	_, err := Decode(raw)
+	var rpc *Error
+	if !errors.As(err, &rpc) || rpc.Code != CodeParseError {
+		t.Fatalf("invalid UTF-8 accepted: %v", err)
 	}
 }

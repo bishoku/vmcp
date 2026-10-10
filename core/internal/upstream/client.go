@@ -66,10 +66,11 @@ func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	var res mcp.InitializeResult
-	if err := json.Unmarshal(raw, &res); err != nil {
+	res, err := mcp.ValidateInitializeResult(raw)
+	if err != nil {
 		return nil, fmt.Errorf("decode initialize result: %w", err)
 	}
+
 	c.mu.Lock()
 	c.protocolVersion = res.ProtocolVersion
 	c.mu.Unlock()
@@ -77,7 +78,7 @@ func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) 
 	if err := c.Notify(ctx, mcp.MethodInitialized, nil); err != nil {
 		return nil, fmt.Errorf("send initialized: %w", err)
 	}
-	return &res, nil
+	return res, nil
 }
 
 // ListTools returns every tool, following pagination cursors.
@@ -117,6 +118,9 @@ func (c *Client) Call(ctx context.Context, method string, params any) (json.RawM
 	resp, err := c.send(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+	if !resp.IsResponse() || resp.ID.String() != id.String() {
+		return nil, errors.New("upstream response does not match request id")
 	}
 	if resp.Error != nil {
 		return nil, resp.Error
@@ -247,7 +251,10 @@ func (c *Client) readSSE(r io.Reader, id mcp.ID) (*mcp.Message, error) {
 		if err != nil {
 			return nil, err
 		}
-		if m.IsResponse() && m.ID.String() == id.String() {
+		if m.IsResponse() {
+			if m.ID.String() != id.String() {
+				return nil, errors.New("upstream response does not match request id")
+			}
 			return m, nil
 		}
 		if c.OnServerMessage != nil {

@@ -1,15 +1,17 @@
 package upstream
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/bishoku/vmcp/core/internal/tlsconf"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	fx "github.com/bishoku/vmcp/core/internal/fixture"
+	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
 
 func TestSSEClientAgainstLegacyFixture(t *testing.T) {
@@ -55,5 +57,37 @@ func TestSSEClientAgainstLegacyFixture(t *testing.T) {
 			t.Fatalf("err=%v, want ErrSessionExpired", err)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// Rewrite only the protocol returned by the real legacy SSE fixture.
+type versionWriter struct {
+	http.ResponseWriter
+	http.Flusher
+	version string
+}
+
+func (w versionWriter) Write(b []byte) (int, error) {
+	_, err := w.ResponseWriter.Write(bytes.ReplaceAll(b, []byte("2025-06-18"), []byte(w.version)))
+	if err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+func TestLegacySSERejectsUnsupportedVersion(t *testing.T) {
+	for _, version := range []string{"2024-11-05", "2025-03-26", "2099-01-01"} {
+		t.Run(version, func(t *testing.T) {
+			fixture := fx.NewLegacySSE(fx.Options{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fixture.ServeHTTP(versionWriter{w, w.(http.Flusher), version}, r)
+			}))
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			c := NewSSEClient(srv.URL, nil, nil)
+			if _, err := c.Initialize(ctx); err == nil || !strings.Contains(err.Error(), "unsupported upstream protocol version") {
+				t.Fatalf("unsupported version: %v", err)
+			}
+		})
 	}
 }
