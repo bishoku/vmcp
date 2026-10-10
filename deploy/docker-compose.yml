@@ -1,0 +1,76 @@
+name: vmcp
+
+# DEV ONLY. The default master key below is public; set VMCP_MASTER_KEY
+# (openssl rand -base64 32) for anything beyond local development.
+x-master-key: &master-key
+  VMCP_MASTER_KEY: ${VMCP_MASTER_KEY:-OsOj5XCz4oi+W3+L3o0am9uZGfYkNmsXHMu5uCDEP04=}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: vmcp
+      POSTGRES_PASSWORD: vmcp
+      POSTGRES_DB: vmcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vmcp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  control-plane:
+    build:
+      context: ../core
+      args:
+        SERVICE: control-plane
+    environment:
+      <<: *master-key
+      VMCP_CP_ADDR: ":8081"
+      # DEV ONLY default; set VMCP_ADMIN_TOKEN to a strong secret in real deployments.
+      VMCP_ADMIN_TOKEN: ${VMCP_ADMIN_TOKEN:-dev-admin-token}
+      VMCP_DATABASE_URL: postgres://vmcp:vmcp@postgres:5432/vmcp?sslmode=disable
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Optional: only for rate limits shared between data-plane nodes.
+  # Start with `docker compose --profile redis up` and set VMCP_REDIS_URL=redis://redis:6379/0.
+  redis:
+    image: redis:7-alpine
+    profiles: [redis]
+
+  data-plane:
+    build:
+      context: ../core
+      args:
+        SERVICE: data-plane
+    environment:
+      <<: *master-key
+      VMCP_DP_ADDR: ":8080"
+      VMCP_REDIS_URL: ${VMCP_REDIS_URL:-}
+      VMCP_DATABASE_URL: postgres://vmcp:vmcp@postgres:5432/vmcp?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      control-plane:
+        # The control plane applies migrations; the data plane only reads.
+        condition: service_started
+
+  web:
+    build:
+      context: ../web
+    ports:
+      - "3000:80"
+    depends_on:
+      - control-plane
+
+volumes:
+  pgdata:

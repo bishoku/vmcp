@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* Design tokens: single source of truth for the premium light theme. */
+@theme {
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-line: #e6e8ec;
+  --color-ink: #0f172a;
+  --color-ink-muted: #5b6475;
+
+  --color-accent-50: #eef0ff;
+  --color-accent-100: #e0e4ff;
+  --color-accent-500: #5b5bd6;
+  --color-accent-600: #4a4ac2;
+  --color-accent-700: #3d3da8;
+
+  --color-success-bg: #dcfce7;
+  --color-success-fg: #166534;
+  --color-danger-bg: #fee2e2;
+  --color-danger-fg: #991b1b;
+
+  --radius-card: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.05);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+  }
+}

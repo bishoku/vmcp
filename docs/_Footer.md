@@ -1,0 +1,1 @@
+vMCP is licensed under [Apache-2.0](https://github.com/bishoku/vmcp/blob/main/LICENSE). This wiki is generated from the `docs/` folder of the repository: send documentation fixes as pull requests, not wiki edits.

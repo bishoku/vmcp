@@ -1,0 +1,1705 @@
+openapi: 3.1.0
+info:
+  title: vMCP Control Plane API
+  version: 1.0.0
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: |
+    Configuration API of the vMCP gateway. The web UI is a client of this API:
+    **everything the UI can do, an external system can do.**
+
+    ## Design principles for integrations
+
+    - **Stable identifiers.** Resources are addressed by `slug` (client-chosen, immutable),
+      never by generated IDs, so scripts and pipelines can refer to them before they exist.
+    - **Idempotent writes.** `PUT /{resource}/{slug}` creates or replaces (201 on create, 200 on
+      replace). Repeating the same call is safe.
+    - **Declarative mode.** `GET /export` and `POST /apply` move the whole configuration as one
+      document, atomically, with `dryRun` and optional `prune`. This is the intended GitOps path.
+    - **Secrets are write-only.** Upstream `headers` values are never returned. Responses expose
+      only `headerNames`. On writes, omitting `headers` keeps the stored secret, so exported
+      documents can be re-applied without ever containing secrets.
+    - **Optimistic concurrency.** Every resource carries an `ETag`. Send it back in `If-Match`
+      on `PUT`/`PATCH`/`DELETE` to avoid lost updates (`412` on mismatch). `If-Match` is optional.
+    - **Machine-readable errors.** All errors are `application/problem+json` (RFC 9457) with a
+      stable `code`.
+    - **Propagation.** Mutating responses carry `X-VMCP-Config-Revision`. The data plane serves
+      the change once it has loaded that revision (normally well under a second).
+
+    ## Naming rule
+
+    Tools are exposed to agents as `{upstreamSlug}__{tool}` unless an `alias` is given.
+    Slugs cannot contain `_`, so `__` is an unambiguous separator.
+
+    ## Tenancy
+
+    Single tenant (`default`) today. The data model is tenant-scoped, and tenant selection
+    will be added without changing these paths.
+servers:
+  - url: http://localhost:8081
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Upstreams
+    description: Physical MCP servers the gateway connects to.
+  - name: Virtual Servers
+    description: Agent-facing endpoints exposing a chosen set of upstream tools.
+  - name: Agent Keys
+    description: API keys agents use to authenticate to virtual servers.
+  - name: Admin Tokens
+    description: Named credentials for the admin API, for integrations.
+  - name: Audit
+    description: Record of tool calls and denied requests. Payloads are never stored.
+  - name: Declarative
+    description: Whole-configuration export and apply.
+  - name: System
+    description: Server information.
+
+paths:
+  /api/v1/me:
+    get:
+      tags: [System]
+      operationId: getMe
+      summary: The authenticated caller and its role
+      description: |
+        Roles: `viewer` (read only), `editor` (changes configuration, cannot manage admin tokens),
+        `admin` (everything). Admin tokens map `read` to `viewer` and `admin` to `admin`; the
+        bootstrap token is `admin`; browser sign-in (OIDC) maps IdP groups to a role.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, role, via]
+                properties:
+                  name: { type: string }
+                  role: { type: string, enum: [viewer, editor, admin] }
+                  via: { type: string, enum: [bootstrap-token, admin-token, oidc] }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/config:
+    get:
+      tags: [System]
+      operationId: getAuthConfig
+      summary: Whether browser sign-in (OIDC) is enabled
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [oidc]
+                properties:
+                  oidc: { type: boolean }
+  /auth/login:
+    get:
+      tags: [System]
+      operationId: oidcLogin
+      summary: Start OIDC sign-in (redirects to the identity provider)
+      security: []
+      responses:
+        "302": { description: Redirect to the identity provider }
+        "404": { description: OIDC is not configured }
+  /auth/callback:
+    get:
+      tags: [System]
+      operationId: oidcCallback
+      summary: OIDC redirect target; sets the session cookie and redirects to the UI
+      security: []
+      responses:
+        "302": { description: Signed in }
+        "403": { description: The account is in no group mapped to a role }
+  /auth/logout:
+    post:
+      tags: [System]
+      operationId: oidcLogout
+      summary: Clear the browser session
+      security: []
+      responses:
+        "204": { description: Signed out }
+  /api/v1/info:
+    get:
+      tags: [System]
+      operationId: getInfo
+      summary: Server version and current configuration revision
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Info"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/upstreams:
+    get:
+      tags: [Upstreams]
+      operationId: listUpstreams
+      summary: List upstreams
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: enabled
+          in: query
+          schema: { type: boolean }
+          description: Filter by enabled state.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpstreamList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Upstreams]
+      operationId: createUpstream
+      summary: Create an upstream (fails with 409 if the slug exists)
+      description: |
+        Creating an upstream does not contact it. Call `refresh-tools` afterwards (or use
+        `connection-tests` first) to fetch its tool schemas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpstreamCreate"
+      responses:
+        "201":
+          description: Created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            Location: { schema: { type: string } }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/upstreams/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [Upstreams]
+      operationId: getUpstream
+      summary: Get an upstream
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Upstreams]
+      operationId: putUpstream
+      summary: Create or replace an upstream (idempotent)
+      description: |
+        Full replacement of the writable fields. `headers` semantics: omitted keeps the stored
+        headers; `{}` clears them; an object replaces them entirely.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpstreamInput"
+      responses:
+        "200":
+          description: Replaced
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+        "201":
+          description: Created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    patch:
+      tags: [Upstreams]
+      operationId: patchUpstream
+      summary: Partially update an upstream (JSON Merge Patch, RFC 7396)
+      description: |
+        Only the given fields change. Within `headers`, a `null` value deletes that single header,
+        so one secret can be rotated without resending the others.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/UpstreamPatch"
+      responses:
+        "200":
+          description: Updated
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upstream"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [Upstreams]
+      operationId: deleteUpstream
+      summary: Delete an upstream
+      description: |
+        Fails with 409 `in_use` while virtual servers still select its tools, unless `force=true`,
+        which also removes those selections.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "204":
+          description: Deleted
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+
+  /api/v1/upstreams/{slug}/tools:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [Upstreams]
+      operationId: listUpstreamTools
+      summary: Cached tool schemas of an upstream
+      description: Returns what the last `refresh-tools` fetched. It does not contact the upstream.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tool"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/upstreams/{slug}/refresh-tools:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      tags: [Upstreams]
+      operationId: refreshUpstreamTools
+      summary: Connect to the upstream and re-fetch its tool schemas
+      description: |
+        Safe to call repeatedly. Tools that disappeared upstream but are still selected by a
+        virtual server are reported in `orphanedSelections`. They are kept in the configuration
+        but not served until the tool reappears.
+      responses:
+        "200":
+          description: Refreshed
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: The upstream could not be reached or answered with an error.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /api/v1/connection-tests:
+    post:
+      tags: [Upstreams]
+      operationId: testConnection
+      summary: Try connecting to an MCP server without saving anything
+      description: Used by the UI before registering an upstream. Nothing is persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { $ref: "#/components/schemas/UpstreamUrl" }
+                transport: { $ref: "#/components/schemas/Transport" }
+                headers: { $ref: "#/components/schemas/Headers" }
+                tls: { $ref: "#/components/schemas/UpstreamTLSInput" }
+      responses:
+        "200":
+          description: Outcome of the attempt (a failed connection is still a 200 with `ok=false`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
+                  serverInfo:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      version: { type: string }
+                  protocolVersion: { type: string }
+                  latencyMs: { type: integer }
+                  tools:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tool"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/virtual-servers:
+    get:
+      tags: [Virtual Servers]
+      operationId: listVirtualServers
+      summary: List virtual servers
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: enabled
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualServerList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Virtual Servers]
+      operationId: createVirtualServer
+      summary: Create a virtual server (fails with 409 if the slug exists)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualServerCreate"
+      responses:
+        "201":
+          description: Created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            Location: { schema: { type: string } }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualServer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/virtual-servers/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [Virtual Servers]
+      operationId: getVirtualServer
+      summary: Get a virtual server
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualServer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Virtual Servers]
+      operationId: putVirtualServer
+      summary: Create or replace a virtual server (idempotent)
+      description: |
+        The `tools` list is replaced atomically. Every selection must reference an existing upstream
+        and a tool in its cached schema (`unknown_upstream`, `unknown_tool`), and exposed names
+        must be unique (`duplicate_exposed_name`).
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VirtualServerInput"
+      responses:
+        "200":
+          description: Replaced
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualServer"
+        "201":
+          description: Created
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualServer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    patch:
+      tags: [Virtual Servers]
+      operationId: patchVirtualServer
+      summary: Partially update a virtual server (JSON Merge Patch, RFC 7396)
+      description: Merge-patch replaces arrays wholesale, so a patched `tools` list is the new list.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/VirtualServerPatch"
+      responses:
+        "200":
+          description: Updated
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VirtualServer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [Virtual Servers]
+      operationId: deleteVirtualServer
+      summary: Delete a virtual server
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204":
+          description: Deleted
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+
+  /api/v1/agent-keys:
+    get:
+      tags: [Agent Keys]
+      operationId: listAgentKeys
+      summary: List agent keys (metadata only)
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AgentKey" }
+                  nextCursor:
+                    type: [string, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Agent Keys]
+      operationId: createAgentKey
+      summary: Create an agent key
+      description: |
+        The secret (`key`) is returned **only in this response**; only its hash is stored.
+        Agents send it as `Authorization: Bearer <key>` to the data plane.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentKeyCreate"
+      responses:
+        "201":
+          description: Created
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+            Cache-Control: { schema: { type: string, examples: [no-store] } }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentKeyWithSecret"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A key with this slug already exists.
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/agent-keys/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [Agent Keys]
+      operationId: getAgentKey
+      summary: Get an agent key (never includes the secret)
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Agent Keys]
+      operationId: patchAgentKey
+      summary: Update description, virtual servers, IP allowlist or expiry (JSON Merge Patch)
+      description: '`expiresAt: null` clears the expiry. Arrays are replaced wholesale.'
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/AgentKeyPatch"
+      responses:
+        "200":
+          description: Updated
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [Agent Keys]
+      operationId: deleteAgentKey
+      summary: Delete an agent key
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+
+  /api/v1/agent-keys/{slug}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      tags: [Agent Keys]
+      operationId: rotateAgentKey
+      summary: Issue a new secret; the old one stops working immediately
+      description: Also clears a previous revocation.
+      responses:
+        "200":
+          description: Rotated (new secret in `key`)
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+            Cache-Control: { schema: { type: string, examples: [no-store] } }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentKeyWithSecret"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/agent-keys/{slug}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      tags: [Agent Keys]
+      operationId: revokeAgentKey
+      summary: Revoke a key (idempotent)
+      responses:
+        "200":
+          description: Revoked
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin-tokens:
+    get:
+      tags: [Admin Tokens]
+      operationId: listAdminTokens
+      summary: List admin API tokens (metadata only)
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminToken" }
+                  nextCursor:
+                    type: [string, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Tokens]
+      operationId: createAdminToken
+      summary: Create a named admin API token
+      description: |
+        For integrations. The secret (`token`) is returned **only in this response**.
+        Scope `read` allows GET requests only; `admin` allows everything. Requires an `admin` caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTokenCreate"
+      responses:
+        "201":
+          description: Created
+          headers:
+            Cache-Control: { schema: { type: string, examples: [no-store] } }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTokenWithSecret"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: A token with this slug already exists.
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/admin-tokens/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [Admin Tokens]
+      operationId: getAdminToken
+      summary: Get an admin token (never includes the secret)
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Admin Tokens]
+      operationId: patchAdminToken
+      summary: Update description, scope or expiry (JSON Merge Patch)
+      description: '`expiresAt: null` clears the expiry.'
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/AdminTokenPatch"
+      responses:
+        "200":
+          description: Updated
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [Admin Tokens]
+      operationId: deleteAdminToken
+      summary: Delete an admin token
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+
+  /api/v1/admin-tokens/{slug}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      tags: [Admin Tokens]
+      operationId: rotateAdminToken
+      summary: Issue a new secret; the old one stops working immediately
+      responses:
+        "200":
+          description: Rotated (new secret in `token`)
+          headers:
+            Cache-Control: { schema: { type: string, examples: [no-store] } }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTokenWithSecret"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin-tokens/{slug}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      tags: [Admin Tokens]
+      operationId: revokeAdminToken
+      summary: Revoke a token (idempotent)
+      responses:
+        "200":
+          description: Revoked
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/audit-events:
+    get:
+      tags: [Audit]
+      operationId: listAuditEvents
+      summary: List audit events, newest first
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - name: cursor
+          in: query
+          description: '`nextCursor` from the previous page.'
+          schema: { type: string }
+        - { name: virtualServer, in: query, schema: { type: string } }
+        - { name: agentKey, in: query, schema: { type: string } }
+        - { name: tool, in: query, schema: { type: string } }
+        - name: status
+          in: query
+          schema: { type: string, enum: [ok, tool_error, error, denied] }
+        - { name: from, in: query, description: Inclusive RFC 3339 lower bound., schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: Exclusive RFC 3339 upper bound., schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditEvent" }
+                  nextCursor:
+                    type: [string, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/export:
+    get:
+      tags: [Declarative]
+      operationId: exportConfig
+      summary: Export the whole configuration as a declarative document
+      description: |
+        Secrets are never included. The document can be committed to git and re-applied; stored
+        upstream headers are preserved because `headers` is absent from it.
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesiredState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/apply:
+    post:
+      tags: [Declarative]
+      operationId: applyConfig
+      summary: Make the configuration match a declarative document
+      description: |
+        Applied in a single transaction: either everything changes or nothing does.
+
+        - Resources in the document are created or updated; unchanged ones are left alone.
+        - With `prune=true`, resources **absent** from the document are deleted. Without it they
+          are left untouched.
+        - Tool schemas of new or changed upstreams are fetched before virtual servers are
+          validated, unless `refreshTools=false`.
+        - `dryRun=true` validates and reports the plan without changing anything.
+      parameters:
+        - name: prune
+          in: query
+          schema: { type: boolean, default: false }
+        - name: dryRun
+          in: query
+          schema: { type: boolean, default: false }
+        - name: refreshTools
+          in: query
+          schema: { type: boolean, default: true }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesiredState"
+      responses:
+        "200":
+          description: Applied (or planned, when `dryRun`)
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Static admin token in the MVP (`VMCP_ADMIN_TOKEN`). The same scheme will carry scoped API
+        tokens and OIDC access tokens later, so clients need no change.
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Slug"
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: ETag from a previous read. The write fails with 412 if the resource changed since.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from a previous page's `nextCursor`.
+      schema: { type: string }
+
+  headers:
+    ETag:
+      description: Strong validator of the current resource state.
+      schema: { type: string, examples: ['"7"'] }
+    ConfigRevision:
+      description: Global configuration revision after this operation.
+      schema: { type: integer, format: int64 }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: "The token is valid but its scope does not allow this request (`code: forbidden`)."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: "Resource not found (`code: not_found`)."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: Slug already exists (`already_exists`) or resource still referenced (`in_use`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionFailed:
+      description: '`If-Match` did not match the current ETag (`code: precondition_failed`).'
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unprocessable:
+      description: |
+        Well-formed but invalid. `errors` lists every problem, not just the first.
+        Codes: `validation_failed`, `unknown_upstream`, `unknown_tool`, `duplicate_exposed_name`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    Slug:
+      type: string
+      minLength: 1
+      maxLength: 63
+      pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+      description: Lowercase letters, digits and hyphens. Immutable once created.
+      examples: [github, support-agent]
+
+    Transport:
+      type: string
+      enum: [streamable_http, sse]
+      default: streamable_http
+      description: '`sse` is the legacy HTTP+SSE transport.'
+
+    UpstreamUrl:
+      type: string
+      format: uri
+      pattern: "^https?://"
+      examples: ["https://mcp.example.com/mcp"]
+
+    Headers:
+      type: object
+      additionalProperties: { type: string }
+      writeOnly: true
+      description: |
+        Headers sent to the upstream on every request (typically `Authorization`). Encrypted at
+        rest and never returned.
+      examples:
+        - Authorization: Bearer s3cret
+
+    ToolName:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.-]+$"
+
+    # ---- Upstreams ----
+    UpstreamInput:
+      type: object
+      required: [name, url]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 1000, default: "" }
+        url: { $ref: "#/components/schemas/UpstreamUrl" }
+        fallbackUrls:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/UpstreamUrl" }
+          description: |
+            Further URLs of the same upstream, tried in order when `url` does not answer. Tool
+            discovery, connection tests of stored upstreams and agent sessions all fall through them.
+        transport: { $ref: "#/components/schemas/Transport" }
+        enabled: { type: boolean, default: true }
+        headers: { $ref: "#/components/schemas/Headers" }
+        tls: { $ref: "#/components/schemas/UpstreamTLSInput" }
+
+    UpstreamCreate:
+      allOf:
+        - $ref: "#/components/schemas/UpstreamInput"
+        - type: object
+          required: [slug]
+          properties:
+            slug: { $ref: "#/components/schemas/Slug" }
+
+    UpstreamPatch:
+      type: object
+      additionalProperties: false
+      description: Any subset of the writable fields. `headers` values may be `null` to delete one header.
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        url: { $ref: "#/components/schemas/UpstreamUrl" }
+        fallbackUrls:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/UpstreamUrl" }
+          description: |
+            Further URLs of the same upstream, tried in order when `url` does not answer. Tool
+            discovery, connection tests of stored upstreams and agent sessions all fall through them.
+        transport: { $ref: "#/components/schemas/Transport" }
+        enabled: { type: boolean }
+        headers:
+          type: object
+          additionalProperties:
+            type: [string, "null"]
+        tls:
+          type: object
+          additionalProperties: false
+          description: Merge patch of the TLS settings; omitted fields stay, an empty string clears a field (clearing `clientCertPem` also clears the key).
+          properties:
+            caPem: { type: string }
+            serverName: { type: string }
+            clientCertPem: { type: string }
+            clientKeyPem: { type: string, writeOnly: true }
+
+    UpstreamTLSInput:
+      type: object
+      additionalProperties: false
+      description: |
+        Per-upstream TLS. `caPem` (a CA, or the self-signed certificate itself) becomes the **only**
+        trusted root for this upstream and is applied to tool discovery, health checks, connection
+        tests and agent sessions. There is intentionally no way to disable verification.
+        On writes the whole block replaces the stored settings; omit the block to keep them.
+        An omitted `clientKeyPem` keeps the stored key.
+      properties:
+        caPem:
+          type: string
+          maxLength: 65536
+          description: PEM bundle of up to 10 certificates.
+        serverName:
+          type: string
+          description: Host name used for SNI and certificate verification (needed when reaching the server by IP or an alias).
+        clientCertPem:
+          type: string
+          maxLength: 65536
+          description: Client certificate for mutual TLS.
+        clientKeyPem:
+          type: string
+          writeOnly: true
+          description: Private key of `clientCertPem`. Encrypted at rest, never returned or exported.
+
+    UpstreamTLS:
+      type: object
+      required: [caPem, serverName, clientCertPem, hasClientKey, caCerts]
+      properties:
+        caPem: { type: string }
+        serverName: { type: string }
+        clientCertPem: { type: string }
+        hasClientKey: { type: boolean }
+        caCerts:
+          type: array
+          items: { $ref: "#/components/schemas/CertInfo" }
+        clientCert:
+          oneOf:
+            - $ref: "#/components/schemas/CertInfo"
+            - type: "null"
+
+    CertInfo:
+      type: object
+      required: [subject, notAfter]
+      properties:
+        subject: { type: string }
+        notAfter: { type: string, format: date-time }
+
+    Upstream:
+      type: object
+      required: [slug, name, url, transport, enabled, headerNames, toolCount, createdAt, updatedAt]
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        name: { type: string }
+        description: { type: string }
+        url: { $ref: "#/components/schemas/UpstreamUrl" }
+        fallbackUrls:
+          type: array
+          items: { $ref: "#/components/schemas/UpstreamUrl" }
+        transport: { $ref: "#/components/schemas/Transport" }
+        enabled: { type: boolean }
+        health: { $ref: "#/components/schemas/UpstreamHealth" }
+        tls: { $ref: "#/components/schemas/UpstreamTLS" }
+        headerNames:
+          type: array
+          items: { type: string }
+          description: Names (never values) of the configured headers.
+        toolCount: { type: integer, description: Number of cached tools. }
+        lastRefreshAt:
+          type: [string, "null"]
+          format: date-time
+        lastRefreshError:
+          type: [string, "null"]
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    UpstreamHealth:
+      type: object
+      required: [state, nodes]
+      description: |
+        What the data-plane nodes saw when they last probed this upstream (every 30 s by default;
+        probes older than 2 minutes are ignored, so a dead node drops out).
+      properties:
+        state:
+          type: string
+          enum: [unknown, healthy, degraded, unhealthy]
+          description: "`degraded` means the nodes disagree."
+        nodes:
+          type: array
+          items:
+            type: object
+            required: [node, state, breaker, checkedAt]
+            properties:
+              node: { type: string }
+              state: { type: string, enum: [healthy, unhealthy] }
+              breaker: { type: string, enum: [closed, open, half_open], description: "Circuit breaker of this node for the upstream." }
+              url: { type: string, description: "The URL that answered, or the last one tried." }
+              latencyMs: { type: integer }
+              error: { type: [string, "null"] }
+              checkedAt: { type: string, format: date-time }
+
+    UpstreamList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Upstream" }
+        nextCursor:
+          type: [string, "null"]
+
+    Tool:
+      type: object
+      required: [name, inputSchema]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        inputSchema:
+          type: object
+          description: JSON Schema, passed through untouched.
+          additionalProperties: true
+        annotations:
+          type: object
+          additionalProperties: true
+        fetchedAt: { type: string, format: date-time }
+
+    RefreshResult:
+      type: object
+      required: [toolCount, added, removed, changed, orphanedSelections, fetchedAt]
+      properties:
+        toolCount: { type: integer }
+        added: { type: array, items: { type: string } }
+        removed: { type: array, items: { type: string } }
+        changed:
+          type: array
+          items: { type: string }
+          description: Tools whose description or schema changed.
+        orphanedSelections:
+          type: array
+          description: Virtual-server selections pointing at tools that no longer exist.
+          items:
+            type: object
+            required: [virtualServer, tool]
+            properties:
+              virtualServer: { $ref: "#/components/schemas/Slug" }
+              tool: { type: string }
+        fetchedAt: { type: string, format: date-time }
+
+    # ---- Virtual servers ----
+    ToolSelection:
+      type: object
+      required: [upstream, tool]
+      additionalProperties: false
+      properties:
+        upstream:
+          $ref: "#/components/schemas/Slug"
+        tool:
+          type: string
+          description: Tool name as exposed by the upstream.
+        alias:
+          $ref: "#/components/schemas/ToolName"
+        description:
+          type: string
+          maxLength: 2000
+          description: |
+            Replaces the upstream description in `tools/list` of this virtual server only. Empty or
+            omitted uses the upstream text. Saving an unchanged selection acknowledges drift.
+
+    ResolvedToolSelection:
+      allOf:
+        - $ref: "#/components/schemas/ToolSelection"
+        - type: object
+          required: [exposedName, upstreamDescription, descriptionDrift]
+          properties:
+            upstreamDescription:
+              type: string
+              readOnly: true
+              description: Current description of the upstream tool.
+            descriptionDrift:
+              type: boolean
+              readOnly: true
+              description: True when an override exists and the upstream description changed since it was written.
+            exposedName:
+              type: string
+              readOnly: true
+              description: Name agents see. `alias` if set, else `{upstream}__{tool}`.
+
+    VirtualServerInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 1000, default: "" }
+        enabled: { type: boolean, default: true }
+        authRequired:
+          type: boolean
+          default: true
+          description: When true, agents must present an agent key assigned to this virtual server.
+        pii: { $ref: "#/components/schemas/PiiConfig" }
+        policy: { $ref: "#/components/schemas/ToolPolicy" }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        tools:
+          type: array
+          default: []
+          items: { $ref: "#/components/schemas/ToolSelection" }
+
+    VirtualServerCreate:
+      allOf:
+        - $ref: "#/components/schemas/VirtualServerInput"
+        - type: object
+          required: [slug]
+          properties:
+            slug: { $ref: "#/components/schemas/Slug" }
+
+    VirtualServerPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 1000 }
+        enabled: { type: boolean }
+        authRequired: { type: boolean }
+        pii: { $ref: "#/components/schemas/PiiConfig" }
+        policy: { $ref: "#/components/schemas/ToolPolicy" }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/ToolSelection" }
+
+    VirtualServer:
+      type: object
+      required: [slug, name, enabled, authRequired, endpoint, tools, createdAt, updatedAt]
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        name: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        authRequired: { type: boolean }
+        pii: { $ref: "#/components/schemas/PiiConfig" }
+        policy: { $ref: "#/components/schemas/ToolPolicy" }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        endpoint:
+          type: string
+          description: Path agents connect to on the data plane.
+          examples: [/mcp/v1/virtual/support-agent]
+        tools:
+          type: array
+          items: { $ref: "#/components/schemas/ResolvedToolSelection" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    VirtualServerList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/VirtualServer" }
+        nextCursor:
+          type: [string, "null"]
+
+    AgentKey:
+      type: object
+      required: [slug, description, keyPrefix, virtualServers, ipAllowlist, status, createdAt, updatedAt]
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        description: { type: string }
+        keyPrefix:
+          type: string
+          description: First characters of the key, to identify it in UIs and logs.
+        virtualServers:
+          type: array
+          items: { $ref: "#/components/schemas/Slug" }
+        ipAllowlist:
+          type: array
+          description: Allowed client addresses as CIDRs. Empty means any address.
+          items: { type: string, examples: ["10.0.0.0/8"] }
+        expiresAt: { type: [string, "null"], format: date-time }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        revokedAt: { type: [string, "null"], format: date-time }
+        status: { type: string, enum: [active, expired, revoked] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AgentKeyWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/AgentKey"
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: The secret. Shown once; store it now.
+
+    AgentKeyCreate:
+      type: object
+      required: [slug]
+      additionalProperties: false
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        description: { type: string, maxLength: 1000 }
+        virtualServers:
+          type: array
+          items: { $ref: "#/components/schemas/Slug" }
+        ipAllowlist:
+          type: array
+          description: Addresses or CIDRs; bare addresses are normalized to /32 or /128.
+          items: { type: string }
+        expiresAt: { type: [string, "null"], format: date-time, description: Must be in the future. }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+
+    AgentKeyPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        description: { type: string, maxLength: 1000 }
+        virtualServers:
+          type: array
+          items: { $ref: "#/components/schemas/Slug" }
+        ipAllowlist:
+          type: array
+          items: { type: string }
+        expiresAt: { type: [string, "null"], format: date-time }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+
+    ToolPolicy:
+      type: object
+      additionalProperties: false
+      description: |
+        Which of the virtual server's tools agents may see and call. Blocked tools are hidden from
+        `tools/list`, calls to them are refused and audited as `denied`. `read_only` passes only tools
+        whose upstream declares `readOnlyHint: true`; tools without annotations are blocked.
+      properties:
+        default:
+          type: string
+          enum: [allow, deny, read_only]
+          default: allow
+        tools:
+          type: object
+          description: Per-tool override, keyed by exposed tool name.
+          additionalProperties:
+            type: string
+            enum: [allow, deny, read_only]
+
+    PiiConfig:
+      type: object
+      description: |
+        Masks personal data in tool results (and optionally arguments) before they leave the
+        gateway. Matches become `[REDACTED:<TYPE>]`. Built-in detectors with checksum validation:
+        `iban`, `credit_card`, `tckn`, `us_ssn`; pattern-based: `email`, `phone`.
+        Custom rules use RE2 syntax (no backtracking).
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean, default: false }
+        detectors:
+          type: array
+          description: Built-in detectors to apply. Empty means all of them.
+          items: { type: string, enum: [iban, credit_card, tckn, us_ssn, email, phone] }
+        customRules:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [name, pattern]
+            additionalProperties: false
+            properties:
+              name: { type: string, pattern: "^[A-Za-z0-9_-]{1,40}$" }
+              pattern: { type: string, maxLength: 500, description: RE2 regular expression; must not match the empty string. }
+        maskArguments:
+          type: boolean
+          default: false
+          description: Also mask tool arguments before they reach the upstream.
+
+    AdminToken:
+      type: object
+      required: [slug, description, scope, tokenPrefix, status, createdAt, updatedAt]
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        description: { type: string }
+        scope: { type: string, enum: [admin, read] }
+        tokenPrefix: { type: string }
+        expiresAt: { type: [string, "null"], format: date-time }
+        revokedAt: { type: [string, "null"], format: date-time }
+        lastUsedAt: { type: [string, "null"], format: date-time, description: Refreshed at most once a minute. }
+        status: { type: string, enum: [active, expired, revoked] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminTokenWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/AdminToken"
+        - type: object
+          required: [token]
+          properties:
+            token: { type: string, description: The secret. Shown once; store it now. }
+
+    AdminTokenCreate:
+      type: object
+      required: [slug]
+      additionalProperties: false
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        description: { type: string, maxLength: 1000 }
+        scope: { type: string, enum: [admin, read], default: read }
+        expiresAt: { type: [string, "null"], format: date-time, description: Must be in the future. }
+
+    AdminTokenPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        description: { type: string, maxLength: 1000 }
+        scope: { type: string, enum: [admin, read] }
+        expiresAt: { type: [string, "null"], format: date-time }
+
+    AuditEvent:
+      type: object
+      required: [id, time, virtualServer, method, status, durationMs]
+      properties:
+        id: { type: integer, format: int64 }
+        time: { type: string, format: date-time }
+        virtualServer: { type: string }
+        agentKey: { type: [string, "null"], description: Slug of the key used. }
+        clientIp: { type: [string, "null"] }
+        method: { type: string, examples: [tools/call] }
+        tool: { type: [string, "null"], description: Exposed tool name. }
+        upstream: { type: [string, "null"] }
+        status:
+          type: string
+          enum: [ok, tool_error, error, denied]
+          description: "`tool_error` = the tool ran and reported isError; `error` = the call failed."
+        reason: { type: [string, "null"] }
+        durationMs: { type: integer }
+        redactions: { type: integer, description: Number of PII values masked in this call. }
+
+    # ---- Declarative ----
+    DesiredState:
+      type: object
+      required: [apiVersion]
+      additionalProperties: false
+      properties:
+        apiVersion:
+          type: string
+          const: vmcp/v1
+        upstreams:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/UpstreamCreate"
+        virtualServers:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/VirtualServerCreate"
+
+    ApplyResult:
+      type: object
+      required: [dryRun, changes]
+      properties:
+        dryRun: { type: boolean }
+        revision:
+          type: [integer, "null"]
+          format: int64
+          description: Revision after applying. `null` for a dry run.
+        changes:
+          type: array
+          items:
+            type: object
+            required: [kind, slug, action]
+            properties:
+              kind: { type: string, enum: [upstream, virtualServer] }
+              slug: { $ref: "#/components/schemas/Slug" }
+              action: { type: string, enum: [create, update, delete, unchanged] }
+
+    # ---- System / errors ----
+    Info:
+      type: object
+      required: [version, configRevision]
+      properties:
+        version: { type: string }
+        configRevision: { type: integer, format: int64 }
+
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      description: RFC 9457 problem details with a stable machine-readable `code`.
+      properties:
+        type: { type: string, examples: ["about:blank"] }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code:
+          type: string
+          enum:
+            - unauthorized
+            - forbidden
+            - not_found
+            - already_exists
+            - in_use
+            - precondition_failed
+            - validation_failed
+            - unknown_upstream
+            - unknown_tool
+            - unknown_virtual_server
+            - duplicate_exposed_name
+            - upstream_unreachable
+            - internal
+        errors:
+          type: array
+          items:
+            type: object
+            required: [message]
+            properties:
+              field:
+                type: string
+                description: JSON pointer to the offending field, e.g. `/tools/2/tool`.
+              code: { type: string }
+              message: { type: string }
