@@ -23,6 +23,15 @@ type fakeIdP struct {
 	claims map[string]any
 	nonce  string
 	code   string
+	// issuer overrides the advertised issuer (split-horizon); endSession adds end_session_endpoint.
+	issuer, endSession string
+}
+
+func (f *fakeIdP) iss() string {
+	if f.issuer != "" {
+		return f.issuer
+	}
+	return f.srv.URL
 }
 
 func newFakeIdP(t *testing.T) *fakeIdP {
@@ -36,10 +45,14 @@ func newFakeIdP(t *testing.T) *fakeIdP {
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer": f.srv.URL, "authorization_endpoint": f.srv.URL + "/authorize", "token_endpoint": f.srv.URL + "/token",
+		doc := map[string]any{
+			"issuer": f.iss(), "authorization_endpoint": f.srv.URL + "/authorize", "token_endpoint": f.srv.URL + "/token",
 			"jwks_uri": f.srv.URL + "/jwks", "id_token_signing_alg_values_supported": []string{"RS256"},
-		})
+		}
+		if f.endSession != "" {
+			doc["end_session_endpoint"] = f.endSession
+		}
+		_ = json.NewEncoder(w).Encode(doc)
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "k1", Algorithm: "RS256", Use: "sig"}}})
@@ -65,7 +78,7 @@ func newFakeIdP(t *testing.T) *fakeIdP {
 			claims[k] = v
 		}
 		raw, err := jwt.Signed(signer).Claims(jwt.Claims{
-			Issuer: f.srv.URL, Subject: "user-1", Audience: jwt.Audience{"vmcp"},
+			Issuer: f.iss(), Subject: "user-1", Audience: jwt.Audience{"vmcp"},
 			Expiry: jwt.NewNumericDate(time.Now().Add(time.Hour)), IssuedAt: jwt.NewNumericDate(time.Now()),
 		}).Claims(claims).Serialize()
 		if err != nil {
@@ -202,5 +215,53 @@ func TestNewRequiresMapping(t *testing.T) {
 	_, err := New(context.Background(), Config{Issuer: f.srv.URL, ClientID: "vmcp", RedirectURL: "http://x/cb", SessionKey: make([]byte, 32)})
 	if err == nil {
 		t.Fatal("must refuse a config nobody could sign in with")
+	}
+}
+
+func TestGroupsNestedClaimPath(t *testing.T) {
+	claims := map[string]any{
+		"realm_access": map[string]any{"roles": []any{"vmcp-admin", "x"}},
+		"a.b":          []any{"exact"},
+	}
+	if g := Groups(claims, "realm_access.roles"); len(g) != 2 || g[0] != "vmcp-admin" {
+		t.Fatalf("nested path: %v", g)
+	}
+	if g := Groups(claims, "a.b"); len(g) != 1 || g[0] != "exact" {
+		t.Fatalf("exact key must win over a path: %v", g)
+	}
+	if g := Groups(claims, "realm_access.missing"); g != nil {
+		t.Fatalf("missing path: %v", g)
+	}
+}
+
+// The IdP is reached on one address (discovery URL) but tokens carry another (public issuer).
+func TestSplitHorizonDiscovery(t *testing.T) {
+	f := newFakeIdP(t)
+	f.issuer = "https://sso.public.example/realms/vmcp"
+	f.endSession = "https://sso.public.example/realms/vmcp/logout"
+	f.claims = map[string]any{"groups": []string{"admins"}}
+	cfg := Config{Issuer: f.issuer, DiscoveryURL: f.srv.URL, ClientID: "vmcp", ClientSecret: "s", RedirectURL: "http://app.test/auth/callback",
+		AdminGroups: []string{"admins"}, SessionKey: make([]byte, 32)}
+	if _, err := New(context.Background(), Config{Issuer: f.issuer, ClientID: "vmcp", RedirectURL: cfg.RedirectURL, AdminGroups: cfg.AdminGroups, SessionKey: cfg.SessionKey}); err == nil {
+		t.Fatal("an unreachable public issuer must fail without a discovery URL")
+	}
+	p, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := signIn(t, p, f)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("sign-in failed: %d %s", rec.Code, rec.Body.String())
+	}
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	for _, c := range rec.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	if s, ok := p.Session(req); !ok || s.Role != RoleAdmin {
+		t.Fatalf("session: %+v %v", s, ok)
+	}
+	u, _ := url.Parse(p.EndSessionURL())
+	if u.Host != "sso.public.example" || u.Query().Get("client_id") != "vmcp" || u.Query().Get("post_logout_redirect_uri") != "http://app.test/" {
+		t.Fatalf("end session url: %s", u)
 	}
 }

@@ -17,13 +17,15 @@ type Event struct {
 	VirtualServer string
 	AgentKey      string // key slug; empty on open servers or unknown keys
 	ClientIP      string
-	Method        string // e.g. tools/call, initialize
-	Tool          string // exposed tool name
-	Upstream      string
-	Status        string // ok | tool_error | error | denied
-	Reason        string
-	DurationMS    int
-	Redactions    int // PII values masked in this call
+	// Subject is the JWT "sub" of an OAuth-authenticated caller (AgentKey then holds "oauth:<binding>").
+	Subject    string
+	Method     string // e.g. tools/call, initialize
+	Tool       string // exposed tool name
+	Upstream   string
+	Status     string // ok | tool_error | error | denied
+	Reason     string
+	DurationMS int
+	Redactions int // PII values masked in this call
 }
 
 // Recorder accepts events without blocking the request path.
@@ -127,11 +129,11 @@ func nullable(s string) any {
 func insert(ctx context.Context, pool *pgxpool.Pool, evs []Event) error {
 	rows := make([][]any, len(evs))
 	for i, e := range evs {
-		rows[i] = []any{e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method,
+		rows[i] = []any{e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject),
 			nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions}
 	}
 	_, err := pool.CopyFrom(ctx, pgx.Identifier{"audit_events"},
-		[]string{"ts", "virtual_server", "agent_key", "client_ip", "method", "tool", "upstream", "status", "reason", "duration_ms", "redactions"},
+		[]string{"ts", "virtual_server", "agent_key", "client_ip", "method", "subject", "tool", "upstream", "status", "reason", "duration_ms", "redactions"},
 		pgx.CopyFromRows(rows))
 	return err
 }

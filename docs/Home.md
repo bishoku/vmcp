@@ -14,10 +14,10 @@ failover in between.
 
 ## Concepts and features
 
-- [Upstreams](Upstreams.md) and [Upstream TLS](Upstream-TLS.md)
+- [Upstreams](Upstreams.md), [Upstream TLS](Upstream-TLS.md), and [Upstream OAuth](Upstream-OAuth.md)
 - [Virtual servers](Virtual-Servers.md): selecting, renaming and re-describing tools
 - [Tool policies](Tool-Policies.md): allow / deny / read-only
-- [Agent keys and authentication](Agent-Keys-and-Authentication.md)
+- [Agent keys and authentication](Agent-Keys-and-Authentication.md) and [OAuth for agents](OAuth-for-Agents.md)
 - [SSO and roles](SSO-and-RBAC.md)
 - [PII masking](PII-Masking.md)
 - [Audit log](Audit-Log.md)

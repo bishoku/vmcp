@@ -17,10 +17,11 @@ All configuration is through environment variables. Durations use Go syntax (`30
 | `VMCP_CP_ADDR` | `:8081` | Listen address |
 | `VMCP_AUDIT_RETENTION_DAYS` | `90` | Audit events older than this are deleted; `0` keeps forever |
 | `VMCP_OIDC_ISSUER` | unset | Enables SSO when set |
+| `VMCP_OIDC_DISCOVERY_URL` | unset | Where to fetch the discovery document when it is not reachable at the issuer URL (containers, split-horizon). The issuer stays the public value tokens carry |
 | `VMCP_OIDC_CLIENT_ID` | required with issuer | OIDC client |
 | `VMCP_OIDC_CLIENT_SECRET` | empty | OIDC client secret |
 | `VMCP_OIDC_REDIRECT_URL` | required with issuer | Public URL of `/auth/callback` |
-| `VMCP_OIDC_GROUPS_CLAIM` | `groups` | ID-token claim carrying groups |
+| `VMCP_OIDC_GROUPS_CLAIM` | `groups` | ID-token claim carrying groups or roles. Nested paths work, e.g. `realm_access.roles` (Keycloak realm roles) |
 | `VMCP_OIDC_ADMIN_GROUPS`, `VMCP_OIDC_EDITOR_GROUPS`, `VMCP_OIDC_VIEWER_GROUPS` | empty | Comma-separated groups per role |
 
 ## Data plane
@@ -34,6 +35,11 @@ All configuration is through environment variables. Durations use Go syntax (`30
 | `VMCP_HEALTH_INTERVAL` | `30s` | Upstream health probe interval; `0` disables |
 | `VMCP_NODE_ID` | hostname | Node name shown in health reports |
 | `VMCP_REDIS_URL` | unset | Optional. Shares rate-limit counters between nodes |
+| `VMCP_AGENT_OIDC_ISSUER` | unset | Enables OAuth for agents on the data plane when set. Expected `iss` claim |
+| `VMCP_AGENT_OIDC_DISCOVERY_URL` | unset | OIDC discovery base URL if different from issuer (e.g. internal network) |
+| `VMCP_AGENT_OIDC_AUDIENCE` | required with issuer | Mandatory expected `aud` claim for incoming agent JWTs |
+| `VMCP_AGENT_OIDC_ALGS` | `RS256,ES256` | Allowed JWT signing algorithms (asymmetric only) |
+| `VMCP_PUBLIC_URL` | unset | Canonical public base URL of the data plane (e.g. `https://gateway.example.com`). Used for RFC 9728 protected resource metadata |
 
 ## Health endpoints
 

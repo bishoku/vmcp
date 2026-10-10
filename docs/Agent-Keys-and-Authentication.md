@@ -22,6 +22,12 @@ curl -X POST -H "$A" -H 'Content-Type: application/json' $B/agent-keys -d '{
 - A virtual server with `authRequired: false` accepts anonymous callers. Keep that for local use.
 - Every call is attributed to its key in the [audit log](Audit-Log.md).
 
+## OAuth 2.0 JWTs (Identity Provider tokens)
+
+When `VMCP_AGENT_OIDC_ISSUER` is configured on the data plane, agents can also present JWT access tokens issued by your corporate IdP (Keycloak, Okta, Auth0, etc.). Claims are mapped to virtual servers through **identity bindings**, supporting claim conditions, IP allowlists, and per-binding rate limits.
+
+See [OAuth for agents](OAuth-for-Agents.md) for full details.
+
 ## Admin access (control plane)
 
 | Credential | Role | Notes |

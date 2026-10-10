@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
 
@@ -27,9 +28,23 @@ type Conn interface {
 
 // Open returns an unconnected Conn for the given transport ("streamable_http" or "sse").
 func Open(transport, url string, headers map[string]string, tl tlsconf.Settings) (Conn, error) {
+	return OpenAuth(transport, url, headers, tl, nil)
+}
+
+// OpenAuth is Open with an optional OAuth client: every request then carries a cached
+// client_credentials bearer token (and is replayed once if the upstream answers 401).
+func OpenAuth(transport, url string, headers map[string]string, tl tlsconf.Settings, oc *oauthtoken.Config) (Conn, error) {
 	hc, err := tl.Client()
 	if err != nil {
 		return nil, err
+	}
+	if oc != nil {
+		// tl.Client() hands out a shared client: wrap its transport in a new one, never mutate it.
+		var base http.RoundTripper
+		if hc != nil {
+			base = hc.Transport
+		}
+		hc = &http.Client{Transport: oauthtoken.Transport(base, oauthtoken.For(*oc))}
 	}
 	switch transport {
 	case "streamable_http", "":

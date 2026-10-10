@@ -14,9 +14,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
 	"github.com/bishoku/vmcp/core/internal/resilience"
 	"github.com/bishoku/vmcp/core/internal/upstream"
@@ -49,12 +51,19 @@ type Handler struct {
 
 	// TrustedProxies are the peers whose X-Forwarded-For header is believed.
 	TrustedProxies []netip.Prefix
+
+	// JWT verifies access tokens from an external identity provider. Optional (nil = agent keys only).
+	JWT *agentauth.Verifier
+
+	// PublicURL is the externally visible base URL, used in OAuth resource metadata. Optional.
+	PublicURL string
 }
 
 // Register mounts the virtual server routes on mux.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /mcp/v1/virtual/{slug}", h.post)
 	mux.HandleFunc("DELETE /mcp/v1/virtual/{slug}", h.delete)
+	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}", h.resourceMetadata)
 	// No server-initiated stream yet: tell clients so, as the spec allows.
 	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Allow", "POST, DELETE")
@@ -70,10 +79,11 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	keySlug, ok := h.authenticate(w, r, vs, snap)
+	keySlug, subject, ok := h.authenticate(w, r, vs, snap)
 	if !ok {
 		return
 	}
+	ctx := withSubject(r.Context(), subject)
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 	if err != nil {
@@ -127,7 +137,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		}
 		h.reply(w, msg.ID, mcp.ListToolsResult{Tools: tools})
 	case mcp.MethodToolsCall:
-		h.callTool(r.Context(), w, msg, vs, sess, snap, h.ipString(r))
+		h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r))
 	default:
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeMethodNotFound, "method not found: "+msg.Method))
 	}
@@ -175,7 +185,7 @@ func (h *Handler) ipString(r *http.Request) string {
 
 func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, ip string) {
 	start := time.Now()
-	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Method: msg.Method}
+	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method}
 	finish := func(status, reason string) {
 		ev.Status, ev.Reason, ev.DurationMS = status, reason, int(time.Since(start).Milliseconds())
 		h.record(ev)
@@ -339,6 +349,8 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 			return res, err
 		case ctx.Err() != nil:
 			return res, err // the caller gave up or our deadline hit: not evidence about the upstream
+		case oauthtoken.IsTokenError(err):
+			return res, err // the identity provider failed, not the upstream: no breaker hit, no retry
 		}
 		if br != nil {
 			br.Failure()
@@ -370,7 +382,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	keySlug, ok := h.authenticate(w, r, vs, snap)
+	keySlug, _, ok := h.authenticate(w, r, vs, snap)
 	if !ok {
 		return
 	}

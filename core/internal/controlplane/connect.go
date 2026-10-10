@@ -7,6 +7,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 	"github.com/bishoku/vmcp/core/internal/upstream"
@@ -24,19 +25,19 @@ type probeResult struct {
 
 // probe connects to an MCP server, performs the handshake and lists its tools.
 // probeAny tries the URLs of an upstream in order and returns the first that answers.
-func probeAny(ctx context.Context, urls []string, transport string, headers map[string]string, tl tlsconf.Settings) (*probeResult, error) {
+func probeAny(ctx context.Context, urls []string, transport string, headers map[string]string, tl tlsconf.Settings, oc *oauthtoken.Config) (*probeResult, error) {
 	var res *probeResult
 	var err error
 	for _, u := range urls {
-		if res, err = probe(ctx, u, transport, headers, tl); err == nil {
+		if res, err = probe(ctx, u, transport, headers, tl, oc); err == nil {
 			return res, nil
 		}
 	}
 	return nil, err
 }
 
-func probe(ctx context.Context, url, transport string, headers map[string]string, tl tlsconf.Settings) (*probeResult, error) {
-	c, err := upstream.Open(transport, url, headers, tl)
+func probe(ctx context.Context, url, transport string, headers map[string]string, tl tlsconf.Settings, oc *oauthtoken.Config) (*probeResult, error) {
+	c, err := upstream.OpenAuth(transport, url, headers, tl, oc)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +75,7 @@ func (s *Server) refreshTools(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	now := time.Now().UTC()
-	res, err := probeAny(r.Context(), append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS)
+	res, err := probeAny(r.Context(), append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS, conn.OAuth)
 	if err != nil {
 		msg := err.Error()
 		_ = s.Store.Do(r.Context(), func(tx *store.Tx) error { return tx.SetRefreshStatus(r.Context(), slug, now, &msg) })
@@ -100,6 +101,7 @@ type connectionTestWire struct {
 	Transport *string           `json:"transport"`
 	Headers   map[string]string `json:"headers"`
 	TLS       *tlsWire          `json:"tls"`
+	Auth      *authWire         `json:"auth"`
 }
 
 func (s *Server) connectionTest(w http.ResponseWriter, r *http.Request) error {
@@ -123,7 +125,15 @@ func (s *Server) connectionTest(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	res, err := probe(r.Context(), in.URL, in.Transport, in.Headers, tl)
+	oc, err := store.ResolveOAuth(body.Auth.config(), oauthtoken.Config{}, in.Headers)
+	if err != nil {
+		return err
+	}
+	var ocp *oauthtoken.Config
+	if !oc.IsZero() {
+		ocp = &oc
+	}
+	res, err := probe(r.Context(), in.URL, in.Transport, in.Headers, tl, ocp)
 	if err != nil {
 		return writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
 	}

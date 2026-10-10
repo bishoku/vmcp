@@ -9,6 +9,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
 	"github.com/bishoku/vmcp/core/internal/policy"
 	"github.com/bishoku/vmcp/core/internal/store"
@@ -24,6 +25,8 @@ type desiredWire struct {
 	APIVersion     string              `json:"apiVersion"`
 	Upstreams      []upstreamWire      `json:"upstreams"`
 	VirtualServers []virtualServerWire `json:"virtualServers"`
+	// Bindings nil means "not managed by this document": nothing is applied or pruned.
+	Bindings *[]bindingWire `json:"bindings"`
 }
 
 type exportUpstream struct {
@@ -36,6 +39,8 @@ type exportUpstream struct {
 	Enabled      bool     `json:"enabled"`
 	// TLS carries public material only; the client key is never exported.
 	TLS *exportTLS `json:"tls,omitempty"`
+	// Auth carries no secret; on apply an omitted clientSecret keeps the stored one.
+	Auth *oauthtoken.Info `json:"auth,omitempty"`
 }
 
 type exportTLS struct {
@@ -72,11 +77,17 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 		APIVersion     string                `json:"apiVersion"`
 		Upstreams      []exportUpstream      `json:"upstreams"`
 		VirtualServers []exportVirtualServer `json:"virtualServers"`
-	}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}}
+		Bindings       []bindingWire         `json:"bindings"`
+	}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}, Bindings: []bindingWire{}}
 	for _, u := range ups {
 		doc.Upstreams = append(doc.Upstreams, exportUpstream{Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
 		if u.TLS.CAPEM != "" || u.TLS.ServerName != "" || u.TLS.ClientCertPEM != "" {
 			doc.Upstreams[len(doc.Upstreams)-1].TLS = &exportTLS{u.TLS.CAPEM, u.TLS.ServerName, u.TLS.ClientCertPEM}
+		}
+		if u.Auth.Type != "none" {
+			a := u.Auth
+			a.HasClientSecret = false // read-model detail, not part of the document
+			doc.Upstreams[len(doc.Upstreams)-1].Auth = &a
 		}
 	}
 	for _, v := range vss {
@@ -85,6 +96,15 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			ev.Tools = append(ev.Tools, t.ToolSelection)
 		}
 		doc.VirtualServers = append(doc.VirtualServers, ev)
+	}
+	bs, _, err := rd.ListBindings(r.Context(), "", everything)
+	if err != nil {
+		return err
+	}
+	for _, b := range bs {
+		enabled, desc := b.Enabled, b.Description
+		doc.Bindings = append(doc.Bindings, bindingWire{Slug: b.Slug, Description: &desc, Conditions: b.Conditions,
+			VirtualServers: b.VirtualServers, IPAllowlist: b.IPAllowlist, RateLimit: b.RateLimit, Enabled: &enabled})
 	}
 	s.setRevision(w, r)
 	return writeJSON(w, http.StatusOK, doc)
@@ -173,23 +193,35 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 			headers := in.Headers
 			needs := isNew
 			var curTLS tlsconf.Settings
+			var curOAuth oauthtoken.Config
 			if !isNew {
 				curTLS = cur.TLS
+				if cur.OAuth != nil {
+					curOAuth = *cur.OAuth
+				}
 			}
 			tl, err := store.ResolveTLS(in.TLS, curTLS)
 			if err != nil {
 				return apierror.PrefixFields(err, fmt.Sprintf("/upstreams/%d", i))
 			}
+			if !isNew && headers == nil {
+				headers = cur.Headers
+			}
+			oc, err := store.ResolveOAuth(in.OAuth, curOAuth, headers)
+			if err != nil {
+				return apierror.PrefixFields(err, fmt.Sprintf("/upstreams/%d", i))
+			}
+			var ocp *oauthtoken.Config
+			if !oc.IsZero() {
+				ocp = &oc
+			}
 			if !isNew {
-				if headers == nil {
-					headers = cur.Headers
-				}
-				needs = cur.URL != in.URL || cur.Transport != in.Transport || cur.ToolCount == 0 || !maps.Equal(headers, cur.Headers) || tl != cur.TLS
+				needs = !store.OAuthEqual(oc, curOAuth) || cur.URL != in.URL || cur.Transport != in.Transport || cur.ToolCount == 0 || !maps.Equal(headers, cur.Headers) || tl != cur.TLS
 			}
 			if !needs {
 				continue
 			}
-			res, err := probe(r.Context(), in.URL, in.Transport, headers, tl)
+			res, err := probe(r.Context(), in.URL, in.Transport, headers, tl, ocp)
 			if err != nil {
 				e := apierror.New(http.StatusUnprocessableEntity, apierror.CodeUpstreamUnreach, "Upstream unreachable",
 					fmt.Sprintf("cannot fetch tools of upstream %q: %v", u.Slug, err))
@@ -228,7 +260,32 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 			}
 			changes = append(changes, change{"virtualServer", v.Slug, outcome})
 		}
+		bindingSlugs := map[string]bool{}
+		if doc.Bindings != nil {
+			for k, b := range *doc.Bindings {
+				bindingSlugs[b.Slug] = true
+				_, outcome, err := tx.PutBinding(ctx, b.Slug, b.input(), nil, false)
+				if err != nil {
+					return apierror.PrefixFields(err, fmt.Sprintf("/bindings/%d", k))
+				}
+				changes = append(changes, change{"identityBinding", b.Slug, outcome})
+			}
+		}
 		if prune {
+			if doc.Bindings != nil {
+				bs, _, err := tx.ListBindings(ctx, "", everything)
+				if err != nil {
+					return err
+				}
+				for _, b := range bs {
+					if !bindingSlugs[b.Slug] {
+						if err := tx.DeleteBinding(ctx, b.Slug, nil); err != nil {
+							return err
+						}
+						changes = append(changes, change{"identityBinding", b.Slug, store.Deleted})
+					}
+				}
+			}
 			vss, _, err := tx.ListVirtualServers(ctx, "", everything, nil)
 			if err != nil {
 				return err

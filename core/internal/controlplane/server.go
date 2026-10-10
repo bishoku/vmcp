@@ -70,6 +70,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		if s.OIDC != nil {
 			s.OIDC.Logout(w)
+			if u := s.OIDC.EndSessionURL(); u != "" {
+				_ = writeJSON(w, http.StatusOK, map[string]string{"endSessionUrl": u})
+				return
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -101,6 +105,14 @@ func (s *Server) Handler() http.Handler {
 	api("DELETE /api/v1/agent-keys/{slug}", s.deleteAgentKey)
 	api("POST /api/v1/agent-keys/{slug}/rotate", s.rotateAgentKey)
 	api("POST /api/v1/agent-keys/{slug}/revoke", s.revokeAgentKey)
+
+	api("GET /api/v1/identity-bindings", s.listBindings)
+	api("POST /api/v1/identity-bindings", s.createBinding)
+	api("POST /api/v1/identity-bindings/evaluate", s.evaluateBindings)
+	api("GET /api/v1/identity-bindings/{slug}", s.getBinding)
+	api("PUT /api/v1/identity-bindings/{slug}", s.putBinding)
+	api("PATCH /api/v1/identity-bindings/{slug}", s.patchBinding)
+	api("DELETE /api/v1/identity-bindings/{slug}", s.deleteBinding)
 
 	api("GET /api/v1/admin-tokens", s.listAdminTokens)
 	api("POST /api/v1/admin-tokens", s.createAdminToken)

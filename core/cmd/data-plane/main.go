@@ -9,9 +9,11 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/health"
@@ -121,7 +123,26 @@ func run(log *slog.Logger) error {
 		log.Error("invalid VMCP_TRUSTED_PROXIES", "err", err)
 		os.Exit(1)
 	}
-	(&virtual.Handler{Snap: syncer, Sessions: sessions, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter}).Register(mux)
+	var jwt *agentauth.Verifier
+	if issuer := config.Env("VMCP_AGENT_OIDC_ISSUER", ""); issuer != "" {
+		var algs []string
+		for _, a := range strings.Split(config.Env("VMCP_AGENT_OIDC_ALGS", ""), ",") {
+			if a = strings.TrimSpace(a); a != "" {
+				algs = append(algs, a)
+			}
+		}
+		jwt, err = agentauth.NewVerifier(ctx, agentauth.Config{
+			Issuer: issuer, DiscoveryURL: config.Env("VMCP_AGENT_OIDC_DISCOVERY_URL", ""),
+			Audience: config.Env("VMCP_AGENT_OIDC_AUDIENCE", ""), Algs: algs,
+		})
+		if err != nil {
+			log.Error("agent oauth", "err", err)
+			os.Exit(1)
+		}
+		log.Info("accepting access tokens from an identity provider", "issuer", issuer)
+	}
+	(&virtual.Handler{Snap: syncer, Sessions: sessions, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
+		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}).Register(mux)
 
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_DP_ADDR", ":8080"),

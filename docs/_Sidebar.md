@@ -9,9 +9,11 @@
 **Features**
 - [Upstreams](Upstreams.md)
 - [Upstream TLS](Upstream-TLS.md)
+- [Upstream OAuth](Upstream-OAuth.md)
 - [Virtual servers](Virtual-Servers.md)
 - [Tool policies](Tool-Policies.md)
 - [Agent keys & auth](Agent-Keys-and-Authentication.md)
+- [OAuth for agents](OAuth-for-Agents.md)
 - [SSO & roles](SSO-and-RBAC.md)
 - [PII masking](PII-Masking.md)
 - [Audit log](Audit-Log.md)

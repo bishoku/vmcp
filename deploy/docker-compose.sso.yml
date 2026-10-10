@@ -1,0 +1,58 @@
+# Adds a Keycloak identity provider and turns on SSO for the control plane. DEV ONLY.
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.sso.yml up -d --build
+#
+# UI: http://localhost:3000  ("Sign in with SSO")     Keycloak admin: http://localhost:8180 (admin / admin)
+# Users (password = username): alice -> admin, bob -> editor, carol -> viewer, dave -> no group (refused).
+#
+# Keycloak is reached by the browser as http://localhost:8180 (the issuer in tokens) and by the
+# control plane as http://keycloak:8080 (VMCP_OIDC_DISCOVERY_URL), hence KC_HOSTNAME_BACKCHANNEL_DYNAMIC.
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak/vmcp-realm.json:/opt/keycloak/data/import/vmcp-realm.json:ro
+    healthcheck:
+      # The image has no curl; probe the management port with bash.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+
+  control-plane:
+    environment:
+      VMCP_OIDC_ISSUER: http://localhost:8180/realms/vmcp
+      VMCP_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/vmcp
+      VMCP_OIDC_CLIENT_ID: vmcp
+      VMCP_OIDC_CLIENT_SECRET: vmcp-dev-secret
+      VMCP_OIDC_REDIRECT_URL: http://localhost:3000/auth/callback
+      VMCP_OIDC_GROUPS_CLAIM: groups
+      VMCP_OIDC_ADMIN_GROUPS: vmcp-admins
+      VMCP_OIDC_EDITOR_GROUPS: vmcp-editors
+      VMCP_OIDC_VIEWER_GROUPS: vmcp-viewers
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  # Data plane accepts IdP-issued JWTs (OAuth for agents). Create an identity binding first:
+  #   token: curl -s localhost:8180/realms/vmcp/protocol/openid-connect/token \
+  #     -d grant_type=client_credentials -d client_id=billing-bot -d client_secret=billing-secret
+  data-plane:
+    environment:
+      VMCP_AGENT_OIDC_ISSUER: http://localhost:8180/realms/vmcp
+      VMCP_AGENT_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/vmcp
+      VMCP_AGENT_OIDC_AUDIENCE: vmcp-gateway
+      VMCP_PUBLIC_URL: http://localhost:8080
+    depends_on:
+      keycloak:
+        condition: service_healthy

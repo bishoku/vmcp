@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
@@ -19,6 +20,7 @@ type upstreamWire struct {
 	Enabled      *bool             `json:"enabled"`
 	Headers      map[string]string `json:"headers"`
 	TLS          *tlsWire          `json:"tls"`
+	Auth         *authWire         `json:"auth"`
 }
 
 // tlsWire is the writable TLS block. clientKeyPem is write-only and, when omitted
@@ -44,13 +46,50 @@ type tlsPatchWire struct {
 	ClientKeyPEM  *string `json:"clientKeyPem"`
 }
 
+// authWire is the writable auth block. clientSecret is write-only; omitting it keeps the stored one.
+// {"type":"none"} removes OAuth from the upstream.
+type authWire struct {
+	Type         string   `json:"type"`
+	TokenURL     string   `json:"tokenUrl"`
+	ClientID     string   `json:"clientId"`
+	ClientSecret string   `json:"clientSecret"`
+	Scopes       []string `json:"scopes"`
+	Audience     string   `json:"audience"`
+}
+
+func (a *authWire) config() *oauthtoken.Config {
+	if a == nil {
+		return nil
+	}
+	if a.Type == "none" {
+		return &oauthtoken.Config{}
+	}
+	return &oauthtoken.Config{TokenURL: a.TokenURL, ClientID: a.ClientID, ClientSecret: a.ClientSecret, Scopes: a.Scopes, Audience: a.Audience}
+}
+
+type authPatchWire struct {
+	Type         *string   `json:"type"`
+	TokenURL     *string   `json:"tokenUrl"`
+	ClientID     *string   `json:"clientId"`
+	ClientSecret *string   `json:"clientSecret"`
+	Scopes       *[]string `json:"scopes"`
+	Audience     *string   `json:"audience"`
+}
+
+func (a *authPatchWire) patch() *store.OAuthPatch {
+	if a == nil {
+		return nil
+	}
+	return &store.OAuthPatch{Type: a.Type, TokenURL: a.TokenURL, ClientID: a.ClientID, ClientSecret: a.ClientSecret, Scopes: a.Scopes, Audience: a.Audience}
+}
+
 func required(field string) apierror.FieldError {
 	return apierror.FieldError{Field: field, Code: apierror.CodeValidationFailed, Message: "is required"}
 }
 
 // input applies the API defaults and reports missing required fields.
 func (w *upstreamWire) input() (store.UpstreamInput, []apierror.FieldError) {
-	in := store.UpstreamInput{Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings()}
+	in := store.UpstreamInput{Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
 	var errs []apierror.FieldError
 	if w.Name == nil {
 		errs = append(errs, required("/name"))
@@ -83,6 +122,7 @@ type upstreamPatchWire struct {
 	Enabled      *bool              `json:"enabled"`
 	Headers      map[string]*string `json:"headers"`
 	TLS          *tlsPatchWire      `json:"tls"`
+	Auth         *authPatchWire     `json:"auth"`
 }
 
 func (s *Server) listUpstreams(w http.ResponseWriter, r *http.Request) error {
@@ -196,7 +236,7 @@ func (s *Server) patchUpstream(w http.ResponseWriter, r *http.Request) error {
 		var err error
 		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{
 			Name: body.Name, Description: body.Description, URL: body.URL, FallbackURLs: body.FallbackURLs, Transport: body.Transport,
-			Enabled: body.Enabled, Headers: body.Headers, TLS: body.TLS.patch(),
+			Enabled: body.Enabled, Headers: body.Headers, TLS: body.TLS.patch(), OAuth: body.Auth.patch(),
 		}, ifMatch)
 		if err != nil {
 			return err

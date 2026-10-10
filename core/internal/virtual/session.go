@@ -75,7 +75,7 @@ func Dial(ctx context.Context, up config.Upstream) (upstream.Conn, error) {
 	urls := append([]string{up.URL}, up.FallbackURLs...)
 	var lastErr error
 	for _, u := range urls {
-		c, err := upstream.Open(up.Transport, u, up.Headers, up.TLS)
+		c, err := upstream.OpenAuth(up.Transport, u, up.Headers, up.TLS, up.OAuth)
 		if err != nil {
 			return nil, err
 		}

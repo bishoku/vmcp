@@ -11,6 +11,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
 	"github.com/bishoku/vmcp/core/internal/policy"
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -48,7 +49,8 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	upstreamSlugs := map[string]string{} // id -> slug
 	rows, err := tx.Query(ctx, `
 		SELECT u.id::text, u.slug, u.url, u.fallback_urls, u.transport, u.encrypted_headers,
-		       u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key
+		       u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key,
+		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret
 		FROM upstreams u JOIN tenants t ON t.id = u.tenant_id
 		WHERE t.slug = $1 AND u.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -56,9 +58,11 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	}
 	for rows.Next() {
 		var u config.Upstream
-		var enc, encKey []byte
+		var enc, encKey, encOAuth []byte
+		var oc oauthtoken.Config
 		if err := rows.Scan(&u.ID, &u.Slug, &u.URL, &u.FallbackURLs, &u.Transport, &enc,
-			&u.TLS.CAPEM, &u.TLS.ServerName, &u.TLS.ClientCertPEM, &encKey); err != nil {
+			&u.TLS.CAPEM, &u.TLS.ServerName, &u.TLS.ClientCertPEM, &encKey,
+			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -73,6 +77,17 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 				return nil, fmt.Errorf("decrypt client key for upstream %q: %w", u.Slug, err)
 			}
 			u.TLS.ClientKeyPEM = string(k)
+		}
+		if oc.TokenURL != "" {
+			if len(encOAuth) > 0 {
+				k, err := box.Open(encOAuth)
+				if err != nil {
+					rows.Close()
+					return nil, fmt.Errorf("decrypt oauth client secret for upstream %q: %w", u.Slug, err)
+				}
+				oc.ClientSecret = string(k)
+			}
+			u.OAuth = &oc
 		}
 		snap.Upstreams[u.ID] = u
 		upstreamSlugs[u.ID] = u.Slug
@@ -178,7 +193,68 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	if err := loadAgentKeys(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}
+	if err := loadBindings(ctx, tx, snap, idToSlug); err != nil {
+		return nil, err
+	}
 	return snap, nil
+}
+
+func loadBindings(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlugs map[string]string) error {
+	rows, err := tx.Query(ctx, `
+		SELECT b.id::text, b.slug, b.conditions, b.ip_allowlist, b.rate_limit_per_minute
+		FROM identity_bindings b JOIN tenants t ON t.id = b.tenant_id
+		WHERE t.slug = $1 AND b.enabled ORDER BY b.slug`, DefaultTenantSlug)
+	if err != nil {
+		return fmt.Errorf("load identity bindings: %w", err)
+	}
+	idx := map[string]int{} // binding id -> index in snap.Bindings
+	for rows.Next() {
+		var id string
+		var raw []byte
+		var ips []string
+		var rl *int
+		b := config.Binding{Servers: map[string]bool{}}
+		if err := rows.Scan(&id, &b.Slug, &raw, &ips, &rl); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := json.Unmarshal(raw, &b.Conditions); err != nil {
+			rows.Close()
+			return fmt.Errorf("identity binding %q: %w", b.Slug, err)
+		}
+		if rl != nil {
+			b.RateLimit = *rl
+			snap.KeyLimits[b.Principal()] = *rl
+		}
+		for _, s := range ips {
+			if p, err := netip.ParsePrefix(s); err == nil {
+				b.Allowed = append(b.Allowed, p)
+			}
+		}
+		idx[id] = len(snap.Bindings)
+		snap.Bindings = append(snap.Bindings, b)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	srows, err := tx.Query(ctx, `SELECT binding_id::text, virtual_server_id::text FROM identity_binding_servers`)
+	if err != nil {
+		return fmt.Errorf("load identity binding servers: %w", err)
+	}
+	defer srows.Close()
+	for srows.Next() {
+		var bid, vsID string
+		if err := srows.Scan(&bid, &vsID); err != nil {
+			return err
+		}
+		i, ok := idx[bid]
+		slug, ok2 := vsSlugs[vsID]
+		if ok && ok2 {
+			snap.Bindings[i].Servers[slug] = true
+		}
+	}
+	return srows.Err()
 }
 
 func loadAgentKeys(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlugs map[string]string) error {

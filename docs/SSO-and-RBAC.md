@@ -17,6 +17,31 @@ Set on the **control plane**:
 Register `VMCP_OIDC_REDIRECT_URL` as an allowed redirect URI at the provider and make sure the UI's host proxies `/auth`
 to the control plane (the bundled nginx config does).
 
+## Try it with Keycloak
+
+The repository ships a ready-to-run Keycloak realm (development only):
+
+```sh
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.sso.yml up -d --build
+```
+
+Open http://localhost:3000 and choose **Sign in with SSO**. Users (password = username): `alice` → admin, `bob` → editor,
+`carol` → viewer, `dave` → no group (refused). Keycloak's own console is at http://localhost:8180 (`admin`/`admin`).
+
+The realm (`deploy/keycloak/vmcp-realm.json`) defines the `vmcp` client (confidential, PKCE S256, redirect
+`http://localhost:3000/auth/callback`), the groups `vmcp-admins|editors|viewers` and a *group membership* mapper that puts
+`groups` (without the leading slash) into the ID token. Tokens carry issuer `http://localhost:8180/realms/vmcp` while the
+control plane reaches Keycloak as `http://keycloak:8080` (`VMCP_OIDC_DISCOVERY_URL`).
+
+For another provider, check that it puts the groups in the **ID token** and that the redirect URI and post-logout redirect
+URI (the UI's origin) are registered.
+
+## Signing out
+
+Sign out clears the vMCP session and, when the provider advertises `end_session_endpoint`, sends the browser there so the
+provider session ends too (otherwise the next click on SSO would sign you straight back in). Register the UI origin as an
+allowed post-logout redirect URI.
+
 ## Roles
 
 | Role | Can |

@@ -1,50 +1,117 @@
 package virtual
 
 import (
+	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/netip"
 	"strings"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/store"
 )
 
-// authenticate checks the agent key for a request to vs. It returns the key slug
-// ("" when the virtual server is open) or writes the failure response and returns ok=false.
-// It runs on every request, so revocation and expiry take effect immediately.
-func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config.VirtualServer, snap *config.Snapshot) (string, bool) {
-	if !vs.AuthRequired {
-		return "", true
+type subjectKey struct{}
+
+// withSubject carries the JWT subject of the caller to the audit event of a tool call.
+func withSubject(ctx context.Context, subject string) context.Context {
+	if subject == "" {
+		return ctx
 	}
-	deny := func(status int, msg string) (string, bool) {
-		h.record(audit.Event{VirtualServer: vs.Slug, ClientIP: h.ipString(r), Method: r.Method, Status: "denied", Reason: msg})
+	return context.WithValue(ctx, subjectKey{}, subject)
+}
+
+func subjectFrom(ctx context.Context) string {
+	s, _ := ctx.Value(subjectKey{}).(string)
+	return s
+}
+
+// authenticate checks the credentials of a request to vs: an agent key, or, when JWT auth is
+// configured, an access token from the identity provider mapped through identity bindings. It
+// returns the principal (key slug or "oauth:<binding>"; "" when the virtual server is open) and the
+// JWT subject, or writes the failure response and returns ok=false.
+// It runs on every request, so revocation and expiry take effect immediately.
+func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config.VirtualServer, snap *config.Snapshot) (principal, subject string, ok bool) {
+	if !vs.AuthRequired {
+		return "", "", true
+	}
+	deny := func(status int, msg, subject string, invalidToken bool) (string, string, bool) {
+		h.record(audit.Event{VirtualServer: vs.Slug, ClientIP: h.ipString(r), Method: r.Method, Subject: subject, Status: "denied", Reason: msg})
 		if status == http.StatusUnauthorized {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="vmcp"`)
+			ch := `Bearer realm="vmcp"`
+			if h.JWT != nil {
+				ch += `, resource_metadata="` + h.publicBase(r) + "/.well-known/oauth-protected-resource/mcp/v1/virtual/" + vs.Slug + `"`
+				if invalidToken {
+					ch += `, error="invalid_token"`
+				}
+			}
+			w.Header().Set("WWW-Authenticate", ch)
 		}
 		http.Error(w, msg, status)
-		return "", false
+		return "", "", false
 	}
 	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || tok == "" {
-		return deny(http.StatusUnauthorized, "agent key required")
+		return deny(http.StatusUnauthorized, "agent key or access token required", "", false)
+	}
+	if h.JWT != nil && agentauth.LooksLikeJWT(tok) {
+		id, err := h.JWT.Verify(r.Context(), tok)
+		if err != nil {
+			h.Log.Debug("access token rejected", "err", err)
+			return deny(http.StatusUnauthorized, "invalid access token", "", true)
+		}
+		ip, ipKnown := h.clientIP(r)
+		b, outcome := agentauth.Resolve(snap.Bindings, id.Claims, vs.Slug, func(b config.Binding) bool {
+			return len(b.Allowed) == 0 || (ipKnown && anyContains(b.Allowed, ip))
+		})
+		switch outcome {
+		case agentauth.Allowed:
+			return b.Principal(), id.Subject, true
+		case agentauth.NoMatch:
+			return deny(http.StatusForbidden, "no identity binding matches this token", id.Subject, false)
+		case agentauth.ServerDenied:
+			return deny(http.StatusForbidden, "token is not allowed on this virtual server", id.Subject, false)
+		}
+		return deny(http.StatusForbidden, "client address not allowed", id.Subject, false)
 	}
 	key, ok := snap.AgentKeys[string(store.HashKey(tok))]
 	if !ok || (key.ExpiresAt != nil && !key.ExpiresAt.After(time.Now())) {
-		return deny(http.StatusUnauthorized, "invalid agent key")
+		return deny(http.StatusUnauthorized, "invalid agent key", "", false)
 	}
 	if !key.Servers[vs.Slug] {
-		return deny(http.StatusForbidden, "agent key is not allowed on this virtual server")
+		return deny(http.StatusForbidden, "agent key is not allowed on this virtual server", "", false)
 	}
 	if len(key.Allowed) > 0 {
 		ip, ok := h.clientIP(r)
 		if !ok || !anyContains(key.Allowed, ip) {
-			return deny(http.StatusForbidden, "client address not allowed")
+			return deny(http.StatusForbidden, "client address not allowed", "", false)
 		}
 	}
-	return key.Slug, true
+	return key.Slug, "", true
+}
+
+// publicBase is the externally visible base URL of the data plane, for resource metadata.
+func (h *Handler) publicBase(r *http.Request) string {
+	if h.PublicURL != "" {
+		return strings.TrimRight(h.PublicURL, "/")
+	}
+	scheme, host := "http", r.Host
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if peer, err := netip.ParseAddrPort(r.RemoteAddr); err == nil && anyContains(h.TrustedProxies, peer.Addr().Unmap()) {
+		if v := r.Header.Get("X-Forwarded-Proto"); v == "http" || v == "https" {
+			scheme = v
+		}
+		if v := r.Header.Get("X-Forwarded-Host"); v != "" {
+			host = v
+		}
+	}
+	return scheme + "://" + host
 }
 
 func anyContains(ps []netip.Prefix, ip netip.Addr) bool {
@@ -85,4 +152,20 @@ func (h *Handler) clientIP(r *http.Request) (netip.Addr, bool) {
 		peer = a
 	}
 	return peer, true
+}
+
+// resourceMetadata serves RFC 9728 protected-resource metadata so MCP clients can find the
+// authorization server of a virtual server that accepts access tokens.
+func (h *Handler) resourceMetadata(w http.ResponseWriter, r *http.Request) {
+	vs, ok := h.Snap.Snapshot().VirtualServers[r.PathValue("slug")]
+	if h.JWT == nil || !ok || !vs.AuthRequired {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"resource":                 h.publicBase(r) + "/mcp/v1/virtual/" + vs.Slug,
+		"authorization_servers":    []string{h.JWT.Issuer()},
+		"bearer_methods_supported": []string{"header"},
+	})
 }

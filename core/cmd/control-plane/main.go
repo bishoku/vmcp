@@ -153,6 +153,7 @@ func oidcFromEnv(ctx context.Context, masterKey string) (*oidc.Provider, error) 
 	key := sha256.Sum256([]byte("vmcp-session-v1:" + masterKey))
 	return oidc.New(ctx, oidc.Config{
 		Issuer:       issuer,
+		DiscoveryURL: config.Env("VMCP_OIDC_DISCOVERY_URL", ""),
 		ClientID:     clientID,
 		ClientSecret: config.Env("VMCP_OIDC_CLIENT_SECRET", ""),
 		RedirectURL:  redirect,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
@@ -16,7 +17,8 @@ type Snapshot struct {
 	Upstreams      map[string]Upstream      // keyed by upstream ID
 	VirtualServers map[string]VirtualServer // keyed by slug (single tenant for now)
 	AgentKeys      map[string]AgentKey      // keyed by string(SHA-256 of the key)
-	KeyLimits      map[string]int           // agent key slug -> calls per minute (only keys with a limit)
+	KeyLimits      map[string]int           // principal (agent key slug or "oauth:<binding>") -> calls per minute
+	Bindings       []Binding                // identity bindings of enabled bindings, ordered by slug
 }
 
 // AgentKey authorizes an agent to use some virtual servers. Revoked keys are not loaded.
@@ -28,6 +30,25 @@ type AgentKey struct {
 	// RateLimit is calls per minute; 0 = unlimited.
 	RateLimit int
 }
+
+// Condition is one claim test of an identity binding; all conditions of a binding must hold.
+type Condition struct {
+	Claim string `json:"claim"`
+	Op    string `json:"op"`
+	Value string `json:"value,omitempty"`
+}
+
+// Binding authorizes holders of an IdP token whose claims match to use some virtual servers.
+type Binding struct {
+	Slug       string
+	Conditions []Condition
+	Allowed    []netip.Prefix // empty = any address
+	Servers    map[string]bool
+	RateLimit  int // calls per minute; 0 = unlimited
+}
+
+// Principal is the name used in audit, sessions and rate limits for a token holder.
+func (b Binding) Principal() string { return "oauth:" + b.Slug }
 
 // Upstream is a physical MCP server. Headers are already decrypted.
 type Upstream struct {
@@ -41,6 +62,8 @@ type Upstream struct {
 	Transport string
 	// TLS carries the custom CA / SNI / mTLS settings (zero = system defaults).
 	TLS tlsconf.Settings
+	// OAuth, when set, makes the gateway fetch client_credentials tokens for this upstream (secret decrypted).
+	OAuth *oauthtoken.Config
 }
 
 // VirtualServer is an agent-facing endpoint exposing a filtered set of upstream tools.

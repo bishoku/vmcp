@@ -15,15 +15,15 @@ served); the [policy](Tool-Policies.md) does not block it (`read_only` needs `re
 name is unique.
 
 ## 401/403 from the data plane
-The virtual server requires an agent key (`authRequired`), the key does not list that virtual server, it expired or was
-revoked, or your IP is outside `ipAllowlist` (behind a proxy, set `VMCP_TRUSTED_PROXIES`).
+- For **agent keys**: the virtual server requires auth (`authRequired`), the key does not list that virtual server, it expired or was revoked, or your IP is outside `ipAllowlist` (behind a proxy, set `VMCP_TRUSTED_PROXIES`).
+- For **OAuth JWTs**: check `WWW-Authenticate` header. 401 indicates a missing or expired/invalid token (must be an asymmetric JWT with `aud` matching `VMCP_AGENT_OIDC_AUDIENCE`). 403 indicates no identity binding matched the token's claims, or the matching binding does not authorize this virtual server or client IP.
 
 ## 429 Too Many Requests
 A [rate limit](Rate-Limits.md) was hit; honour `Retry-After`. Without Redis each node counts separately.
 
 ## Upstream calls fail with "circuit open"
 The [circuit breaker](Resilience-and-HA.md) saw repeated transport failures. It probes again after the cooldown; check
-the upstream's health in the UI or `GET /api/v1/upstreams`.
+the upstream's health in the UI or `GET /api/v1/upstreams`. Note that OAuth token acquisition failures (IdP down or invalid client credentials) do not count toward circuit breaker failure thresholds.
 
 ## TLS errors
 See the table in [Upstream TLS](Upstream-TLS.md).
@@ -43,4 +43,5 @@ It reloads via PostgreSQL `LISTEN/NOTIFY`. Check data-plane logs and that it use
 - Circuit-breaker state is per node; there are no Prometheus/OpenTelemetry metrics yet.
 - Connection test in the UI only uses headers/keys typed in the current session.
 - SSO sessions cannot be revoked early.
+- Opaque tokens are not supported on the data plane (asymmetric JWTs only, verified via JWKS).
 - Single tenant; no Helm chart yet.

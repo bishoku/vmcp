@@ -42,6 +42,8 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Identity Bindings
+    description: Map IdP-issued JWT claims to virtual servers (OAuth for agents).
   - name: Upstreams
     description: Physical MCP servers the gateway connects to.
   - name: Virtual Servers
@@ -122,7 +124,16 @@ paths:
       summary: Clear the browser session
       security: []
       responses:
-        "204": { description: Signed out }
+        "200":
+          description: Signed out. The identity provider advertises RP-initiated logout; navigate the browser to `endSessionUrl` to end its session too.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [endSessionUrl]
+                properties:
+                  endSessionUrl: { type: string, format: uri }
+        "204": { description: Signed out (no provider-side logout available) }
   /api/v1/info:
     get:
       tags: [System]
@@ -384,6 +395,7 @@ paths:
                 transport: { $ref: "#/components/schemas/Transport" }
                 headers: { $ref: "#/components/schemas/Headers" }
                 tls: { $ref: "#/components/schemas/UpstreamTLSInput" }
+                auth: { $ref: "#/components/schemas/UpstreamAuthInput" }
       responses:
         "200":
           description: Outcome of the attempt (a failed connection is still a 200 with `ok=false`).
@@ -733,6 +745,190 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/identity-bindings:
+    get:
+      tags: [Identity Bindings]
+      operationId: listIdentityBindings
+      summary: List identity bindings
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/IdentityBinding" }
+                  nextCursor:
+                    type: [string, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Identity Bindings]
+      operationId: createIdentityBinding
+      summary: Create an identity binding
+      description: |
+        Maps claims of an IdP-issued JWT (see `VMCP_AGENT_OIDC_*`) to virtual servers. All
+        conditions must match (AND). Access is denied unless a matching binding lists the virtual
+        server and the client IP passes its allowlist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityBindingCreate"
+      responses:
+        "201":
+          description: Created
+          headers:
+            X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityBinding"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A binding with this slug already exists.
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/identity-bindings/evaluate:
+    post:
+      tags: [Identity Bindings]
+      operationId: evaluateIdentityBindings
+      summary: Dry-run which binding a set of claims would resolve to
+      description: Nothing is authenticated or changed; use it to debug claim conditions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claims]
+              properties:
+                claims: { type: object, additionalProperties: true }
+                virtualServer: { $ref: "#/components/schemas/Slug" }
+                clientIp: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: object
+                    properties:
+                      allowed: { type: boolean }
+                      principal: { type: string, description: "`oauth:<slug>` when allowed." }
+                      reason: { type: string }
+                  matches:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/identity-bindings/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [Identity Bindings]
+      operationId: getIdentityBinding
+      summary: Get an identity binding
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityBinding"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Identity Bindings]
+      operationId: putIdentityBinding
+      summary: Replace an identity binding
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityBindingCreate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityBinding"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    patch:
+      tags: [Identity Bindings]
+      operationId: patchIdentityBinding
+      summary: Update an identity binding (JSON Merge Patch)
+      description: '`rateLimitPerMinute: null` clears the limit. Arrays are replaced wholesale.'
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/IdentityBindingPatch"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityBinding"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [Identity Bindings]
+      operationId: deleteIdentityBinding
+      summary: Delete an identity binding
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+
   /api/v1/admin-tokens:
     get:
       tags: [Admin Tokens]
@@ -917,6 +1113,7 @@ paths:
           schema: { type: string }
         - { name: virtualServer, in: query, schema: { type: string } }
         - { name: agentKey, in: query, schema: { type: string } }
+        - { name: subject, in: query, description: JWT `sub` of an OAuth-authenticated caller., schema: { type: string } }
         - { name: tool, in: query, schema: { type: string } }
         - name: status
           in: query
@@ -1143,6 +1340,7 @@ components:
         enabled: { type: boolean, default: true }
         headers: { $ref: "#/components/schemas/Headers" }
         tls: { $ref: "#/components/schemas/UpstreamTLSInput" }
+        auth: { $ref: "#/components/schemas/UpstreamAuthInput" }
 
     UpstreamCreate:
       allOf:
@@ -1182,6 +1380,7 @@ components:
             serverName: { type: string }
             clientCertPem: { type: string }
             clientKeyPem: { type: string, writeOnly: true }
+        auth: { $ref: "#/components/schemas/UpstreamAuthPatch" }
 
     UpstreamTLSInput:
       type: object
@@ -1225,6 +1424,74 @@ components:
             - $ref: "#/components/schemas/CertInfo"
             - type: "null"
 
+    UpstreamAuthInput:
+      type: object
+      required: [type]
+      additionalProperties: false
+      description: |
+        Gateway-to-upstream authentication. Supports `oauth_client_credentials` where the gateway
+        fetches and caches tokens from an OAuth 2.0 token endpoint. Setting type to `none` removes
+        configured OAuth settings. Cannot be combined with a static `Authorization` header.
+      properties:
+        type:
+          type: string
+          enum: [none, oauth_client_credentials]
+        tokenUrl:
+          type: string
+          description: OAuth 2.0 token endpoint URL.
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          writeOnly: true
+          description: Client secret, encrypted at rest and never exported or returned.
+        scopes:
+          type: array
+          items: { type: string }
+        audience:
+          type: string
+          description: Optional audience parameter sent to the token endpoint.
+
+    UpstreamAuthPatch:
+      type: object
+      additionalProperties: false
+      description: JSON merge patch for upstream OAuth settings. Setting type to `none` removes it.
+      properties:
+        type:
+          type: string
+          enum: [none, oauth_client_credentials]
+        tokenUrl:
+          type: string
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          writeOnly: true
+        scopes:
+          type: array
+          items: { type: string }
+        audience:
+          type: string
+
+    UpstreamAuth:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [none, oauth_client_credentials]
+        tokenUrl:
+          type: string
+        clientId:
+          type: string
+        scopes:
+          type: array
+          items: { type: string }
+        audience:
+          type: string
+        hasClientSecret:
+          type: boolean
+
     CertInfo:
       type: object
       required: [subject, notAfter]
@@ -1247,6 +1514,7 @@ components:
         enabled: { type: boolean }
         health: { $ref: "#/components/schemas/UpstreamHealth" }
         tls: { $ref: "#/components/schemas/UpstreamTLS" }
+        auth: { $ref: "#/components/schemas/UpstreamAuth" }
         headerNames:
           type: array
           items: { type: string }
@@ -1510,6 +1778,61 @@ components:
         expiresAt: { type: [string, "null"], format: date-time }
         rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
 
+    Condition:
+      type: object
+      required: [claim, op]
+      additionalProperties: false
+      properties:
+        claim: { type: string, description: "Claim name or dotted path, e.g. `azp` or `realm_access.roles`." }
+        op: { type: string, enum: [equals, contains, exists] }
+        value: { type: string }
+
+    IdentityBindingCreate:
+      type: object
+      required: [slug, conditions, virtualServers]
+      additionalProperties: false
+      properties:
+        slug: { $ref: "#/components/schemas/Slug" }
+        description: { type: string, maxLength: 1000 }
+        conditions:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/Condition" }
+        virtualServers:
+          type: array
+          items: { $ref: "#/components/schemas/Slug" }
+        ipAllowlist:
+          type: array
+          items: { type: string, description: IP or CIDR. }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000 }
+        enabled: { type: boolean, default: true }
+
+    IdentityBinding:
+      allOf:
+        - $ref: "#/components/schemas/IdentityBindingCreate"
+        - type: object
+          properties:
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    IdentityBindingPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        description: { type: string, maxLength: 1000 }
+        conditions:
+          type: array
+          items: { $ref: "#/components/schemas/Condition" }
+        virtualServers:
+          type: array
+          items: { $ref: "#/components/schemas/Slug" }
+        ipAllowlist:
+          type: array
+          items: { type: string }
+        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000 }
+        enabled: { type: boolean }
+
     ToolPolicy:
       type: object
       additionalProperties: false
@@ -1608,6 +1931,7 @@ components:
         virtualServer: { type: string }
         agentKey: { type: [string, "null"], description: Slug of the key used. }
         clientIp: { type: [string, "null"] }
+        subject: { type: [string, "null"], description: "JWT `sub` when the caller used an IdP token (`agentKey` is then `oauth:<binding>`)." }
         method: { type: string, examples: [tools/call] }
         tool: { type: [string, "null"], description: Exposed tool name. }
         upstream: { type: [string, "null"] }
@@ -1638,6 +1962,11 @@ components:
           default: []
           items:
             $ref: "#/components/schemas/VirtualServerCreate"
+        bindings:
+          type: array
+          description: Identity bindings. When the key is absent they are neither applied nor pruned.
+          items:
+            $ref: "#/components/schemas/IdentityBindingCreate"
 
     ApplyResult:
       type: object
@@ -1654,7 +1983,7 @@ components:
             type: object
             required: [kind, slug, action]
             properties:
-              kind: { type: string, enum: [upstream, virtualServer] }
+              kind: { type: string, enum: [upstream, virtualServer, identityBinding] }
               slug: { $ref: "#/components/schemas/Slug" }
               action: { type: string, enum: [create, update, delete, unchanged] }
 

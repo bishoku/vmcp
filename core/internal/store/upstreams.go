@@ -14,27 +14,29 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
 
 // Upstream is the API read model of a physical MCP server. Header values are never exposed.
 type Upstream struct {
-	Slug             string       `json:"slug"`
-	Name             string       `json:"name"`
-	Description      string       `json:"description"`
-	URL              string       `json:"url"`
-	FallbackURLs     []string     `json:"fallbackUrls"`
-	Transport        string       `json:"transport"`
-	Enabled          bool         `json:"enabled"`
-	HeaderNames      []string     `json:"headerNames"`
-	ToolCount        int          `json:"toolCount"`
-	LastRefreshAt    *time.Time   `json:"lastRefreshAt"`
-	LastRefreshError *string      `json:"lastRefreshError"`
-	Health           Health       `json:"health"`
-	TLS              tlsconf.Info `json:"tls"`
-	Version          int64        `json:"-"`
-	CreatedAt        time.Time    `json:"createdAt"`
-	UpdatedAt        time.Time    `json:"updatedAt"`
+	Slug             string          `json:"slug"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description"`
+	URL              string          `json:"url"`
+	FallbackURLs     []string        `json:"fallbackUrls"`
+	Transport        string          `json:"transport"`
+	Enabled          bool            `json:"enabled"`
+	HeaderNames      []string        `json:"headerNames"`
+	ToolCount        int             `json:"toolCount"`
+	LastRefreshAt    *time.Time      `json:"lastRefreshAt"`
+	LastRefreshError *string         `json:"lastRefreshError"`
+	Health           Health          `json:"health"`
+	TLS              tlsconf.Info    `json:"tls"`
+	Auth             oauthtoken.Info `json:"auth"`
+	Version          int64           `json:"-"`
+	CreatedAt        time.Time       `json:"createdAt"`
+	UpdatedAt        time.Time       `json:"updatedAt"`
 }
 
 // UpstreamInput is the writable part of an upstream.
@@ -50,6 +52,16 @@ type UpstreamInput struct {
 	// TLS: nil keeps the stored settings; otherwise replaces them. An empty ClientKeyPEM
 	// with a client certificate keeps the stored key.
 	TLS *tlsconf.Settings
+	// OAuth: nil keeps the stored client; a zero Config removes it; otherwise replaces it. An empty
+	// ClientSecret keeps the stored secret.
+	OAuth *oauthtoken.Config
+}
+
+// OAuthPatch is a merge patch of the OAuth client. Type "none" removes it.
+type OAuthPatch struct {
+	Type                                       *string
+	TokenURL, ClientID, ClientSecret, Audience *string
+	Scopes                                     *[]string
 }
 
 // TLSPatch is a merge patch of the TLS settings; an empty string clears a field.
@@ -64,6 +76,7 @@ type UpstreamPatch struct {
 	Enabled                           *bool
 	Headers                           map[string]*string
 	TLS                               *TLSPatch
+	OAuth                             *OAuthPatch
 }
 
 // UpstreamConn is what the control plane needs to connect to an upstream.
@@ -73,6 +86,7 @@ type UpstreamConn struct {
 	Transport    string
 	Headers      map[string]string
 	TLS          tlsconf.Settings
+	OAuth        *oauthtoken.Config
 	ToolCount    int
 }
 
@@ -81,6 +95,7 @@ type upstreamRow struct {
 	id      string
 	headers map[string]string
 	tls     tlsconf.Settings
+	oauth   oauthtoken.Config
 }
 
 const upstreamSelect = `
@@ -88,6 +103,7 @@ const upstreamSelect = `
 	       u.version, u.created_at, u.updated_at,
 	       (SELECT count(*) FROM upstream_tools t WHERE t.upstream_id = u.id),
 	       s.last_refresh_at, s.last_refresh_error, u.fallback_urls, u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key,
+	       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret,
 	       (SELECT COALESCE(jsonb_agg(jsonb_build_object('node', h.node, 'state', h.state, 'breaker', h.breaker,
 	           'url', h.url, 'latencyMs', h.latency_ms, 'error', h.error, 'checkedAt', h.checked_at)), '[]'::jsonb)
 	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes')
@@ -100,10 +116,11 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 	var r upstreamRow
 	var enc []byte
 	var count int64
-	var nodes, encKey []byte
+	var nodes, encKey, encOAuth []byte
 	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.URL, &r.Transport, &r.Enabled, &enc,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &count, &r.LastRefreshAt, &r.LastRefreshError, &r.FallbackURLs,
-		&r.tls.CAPEM, &r.tls.ServerName, &r.tls.ClientCertPEM, &encKey, &nodes); err != nil {
+		&r.tls.CAPEM, &r.tls.ServerName, &r.tls.ClientCertPEM, &encKey,
+		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes); err != nil {
 		return nil, err
 	}
 	if len(encKey) > 0 {
@@ -113,6 +130,14 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 		}
 		r.tls.ClientKeyPEM = string(k)
 	}
+	if len(encOAuth) > 0 {
+		k, err := t.box.Open(encOAuth)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt oauth client secret of upstream %q: %w", r.Slug, err)
+		}
+		r.oauth.ClientSecret = string(k)
+	}
+	r.Auth = r.oauth.Info()
 	r.TLS = r.tls.Info()
 	if r.FallbackURLs == nil {
 		r.FallbackURLs = []string{}
@@ -197,7 +222,7 @@ func (t *Tx) UpstreamConnInfo(ctx context.Context, slug string) (*UpstreamConn, 
 	if err != nil {
 		return nil, err
 	}
-	return &UpstreamConn{URL: r.URL, FallbackURLs: r.FallbackURLs, Transport: r.Transport, Headers: r.headers, TLS: r.tls, ToolCount: r.ToolCount}, nil
+	return &UpstreamConn{URL: r.URL, FallbackURLs: r.FallbackURLs, Transport: r.Transport, Headers: r.headers, TLS: r.tls, OAuth: r.oauthPtr(), ToolCount: r.ToolCount}, nil
 }
 
 // PutUpstream creates or replaces an upstream. With createOnly an existing slug is a 409.
@@ -229,12 +254,22 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 		if err != nil {
 			return nil, "", err
 		}
+		oc, err := ResolveOAuth(in.OAuth, oauthtoken.Config{}, in.Headers)
+		if err != nil {
+			return nil, "", err
+		}
+		encOAuth, err := t.sealOAuthSecret(oc)
+		if err != nil {
+			return nil, "", err
+		}
 		if _, err := t.q.Exec(ctx, `
 			INSERT INTO upstreams (tenant_id, slug, name, description, url, transport, enabled, encrypted_headers, fallback_urls,
-			                       ca_pem, tls_server_name, client_cert_pem, encrypted_client_key)
-			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			                       ca_pem, tls_server_name, client_cert_pem, encrypted_client_key,
+			                       oauth_token_url, oauth_client_id, oauth_scopes, oauth_audience, encrypted_oauth_secret)
+			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 			slug, in.Name, in.Description, in.URL, in.Transport, in.Enabled, enc, in.FallbackURLs,
-			tl.CAPEM, tl.ServerName, tl.ClientCertPEM, encKey); err != nil {
+			tl.CAPEM, tl.ServerName, tl.ClientCertPEM, encKey,
+			oc.TokenURL, oc.ClientID, nonNil(oc.Scopes), oc.Audience, encOAuth); err != nil {
 			return nil, "", mapWriteErr(err, "upstream", slug)
 		}
 		u, err := t.GetUpstream(ctx, slug)
@@ -256,8 +291,17 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 		return nil, "", err
 	}
 	setTLS := tl != cur.tls
+	effHeaders := in.Headers
+	if effHeaders == nil {
+		effHeaders = cur.headers
+	}
+	oc, err := ResolveOAuth(in.OAuth, cur.oauth, effHeaders)
+	if err != nil {
+		return nil, "", err
+	}
+	setOAuth := !OAuthEqual(oc, cur.oauth)
 	if in.Name == cur.Name && in.Description == cur.Description && in.URL == cur.URL && slices.Equal(in.FallbackURLs, cur.FallbackURLs) &&
-		in.Transport == cur.Transport && in.Enabled == cur.Enabled && !setHeaders && !setTLS {
+		in.Transport == cur.Transport && in.Enabled == cur.Enabled && !setHeaders && !setTLS && !setOAuth {
 		return &cur.Upstream, Unchanged, nil
 	}
 	var enc []byte
@@ -270,13 +314,19 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 	if err != nil {
 		return nil, "", err
 	}
+	encOAuth, err := t.sealOAuthSecret(oc)
+	if err != nil {
+		return nil, "", err
+	}
 	if _, err := t.q.Exec(ctx, `
 		UPDATE upstreams SET name=$2, description=$3, url=$4, transport=$5, enabled=$6, fallback_urls=$9,
 		       encrypted_headers = CASE WHEN $7 THEN $8 ELSE encrypted_headers END,
 		       ca_pem=$10, tls_server_name=$11, client_cert_pem=$12, encrypted_client_key=$13,
+		       oauth_token_url=$14, oauth_client_id=$15, oauth_scopes=$16, oauth_audience=$17, encrypted_oauth_secret=$18,
 		       version = version + 1, updated_at = now()
 		WHERE id = $1::uuid`, cur.id, in.Name, in.Description, in.URL, in.Transport, in.Enabled, setHeaders, enc, in.FallbackURLs,
-		tl.CAPEM, tl.ServerName, tl.ClientCertPEM, encKey); err != nil {
+		tl.CAPEM, tl.ServerName, tl.ClientCertPEM, encKey,
+		oc.TokenURL, oc.ClientID, nonNil(oc.Scopes), oc.Audience, encOAuth); err != nil {
 		return nil, "", err
 	}
 	u, err := t.GetUpstream(ctx, slug)
@@ -303,6 +353,64 @@ func ResolveTLS(in *tlsconf.Settings, cur tlsconf.Settings) (tlsconf.Settings, e
 		return s, apierror.Validation(fe)
 	}
 	return s, nil
+}
+
+func (r *upstreamRow) oauthPtr() *oauthtoken.Config {
+	if r.oauth.IsZero() {
+		return nil
+	}
+	c := r.oauth
+	return &c
+}
+
+// OAuthEqual compares two clients including the secret.
+func OAuthEqual(a, b oauthtoken.Config) bool {
+	return a.TokenURL == b.TokenURL && a.ClientID == b.ClientID && a.ClientSecret == b.ClientSecret &&
+		a.Audience == b.Audience && slices.Equal(a.Scopes, b.Scopes)
+}
+
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// ResolveOAuth returns the effective OAuth client for a write: nil input keeps cur, a zero input
+// removes it, an input without a secret keeps the stored secret. It rejects an invalid client and
+// the combination with a static Authorization header (the two would fight over the same header).
+func ResolveOAuth(in *oauthtoken.Config, cur oauthtoken.Config, headers map[string]string) (oauthtoken.Config, error) {
+	c := cur
+	if in != nil {
+		c = *in
+		if !c.IsZero() && c.ClientSecret == "" {
+			c.ClientSecret = cur.ClientSecret
+		}
+	}
+	if c.IsZero() {
+		return oauthtoken.Config{}, nil
+	}
+	var errs []apierror.FieldError
+	for _, e := range c.Validate() {
+		errs = append(errs, vf("/auth/"+e.Field, e.Message))
+	}
+	for k := range headers {
+		if strings.EqualFold(k, "Authorization") {
+			errs = append(errs, vf("/auth", "cannot be combined with a static Authorization header; remove one of them"))
+			break
+		}
+	}
+	if len(errs) > 0 {
+		return c, apierror.Validation(errs)
+	}
+	return c, nil
+}
+
+func (t *Tx) sealOAuthSecret(c oauthtoken.Config) ([]byte, error) {
+	if c.ClientSecret == "" {
+		return nil, nil
+	}
+	return t.box.Seal([]byte(c.ClientSecret))
 }
 
 func (t *Tx) sealKey(s tlsconf.Settings) ([]byte, error) {
@@ -352,6 +460,32 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 			m.ClientKeyPEM = *p.TLS.ClientKeyPEM
 		}
 		in.TLS = &m
+	}
+	if p.OAuth != nil {
+		m := cur.oauth
+		if p.OAuth.Type != nil && *p.OAuth.Type == "none" {
+			m = oauthtoken.Config{}
+		} else {
+			if p.OAuth.Type != nil && *p.OAuth.Type != oauthtoken.TypeClientCredentials {
+				return nil, apierror.Validation([]apierror.FieldError{vf("/auth/type", "must be one of: none, "+oauthtoken.TypeClientCredentials)})
+			}
+			if p.OAuth.TokenURL != nil {
+				m.TokenURL = *p.OAuth.TokenURL
+			}
+			if p.OAuth.ClientID != nil {
+				m.ClientID = *p.OAuth.ClientID
+			}
+			if p.OAuth.ClientSecret != nil {
+				m.ClientSecret = *p.OAuth.ClientSecret
+			}
+			if p.OAuth.Audience != nil {
+				m.Audience = *p.OAuth.Audience
+			}
+			if p.OAuth.Scopes != nil {
+				m.Scopes = *p.OAuth.Scopes
+			}
+		}
+		in.OAuth = &m
 	}
 	if p.Headers != nil {
 		merged := maps.Clone(cur.headers)

@@ -15,6 +15,7 @@ type AuditEvent struct {
 	AgentKey      *string   `json:"agentKey"`
 	ClientIP      *string   `json:"clientIp"`
 	Method        string    `json:"method"`
+	Subject       *string   `json:"subject"`
 	Tool          *string   `json:"tool"`
 	Upstream      *string   `json:"upstream"`
 	Status        string    `json:"status"`
@@ -25,9 +26,9 @@ type AuditEvent struct {
 
 // AuditFilter narrows ListAudit. Zero values mean "any".
 type AuditFilter struct {
-	VirtualServer, AgentKey, Tool, Status string
-	From, To                              *time.Time
-	BeforeID                              int64 // cursor: return events with a smaller id
+	VirtualServer, AgentKey, Subject, Tool, Status string
+	From, To                                       *time.Time
+	BeforeID                                       int64 // cursor: return events with a smaller id
 }
 
 // ListAudit returns events newest first.
@@ -44,6 +45,9 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	if f.AgentKey != "" {
 		add("agent_key = ?", f.AgentKey)
 	}
+	if f.Subject != "" {
+		add("subject = ?", f.Subject)
+	}
 	if f.Tool != "" {
 		add("tool = ?", f.Tool)
 	}
@@ -59,7 +63,7 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	if f.BeforeID > 0 {
 		add("id < ?", f.BeforeID)
 	}
-	q := `SELECT id, ts, virtual_server, agent_key, client_ip, method, tool, upstream, status, reason, duration_ms, redactions FROM audit_events`
+	q := `SELECT id, ts, virtual_server, agent_key, client_ip, method, subject, tool, upstream, status, reason, duration_ms, redactions FROM audit_events`
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -73,7 +77,7 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	out := []AuditEvent{}
 	for rows.Next() {
 		var e AuditEvent
-		if err := rows.Scan(&e.ID, &e.Time, &e.VirtualServer, &e.AgentKey, &e.ClientIP, &e.Method, &e.Tool, &e.Upstream, &e.Status, &e.Reason, &e.DurationMS, &e.Redactions); err != nil {
+		if err := rows.Scan(&e.ID, &e.Time, &e.VirtualServer, &e.AgentKey, &e.ClientIP, &e.Method, &e.Subject, &e.Tool, &e.Upstream, &e.Status, &e.Reason, &e.DurationMS, &e.Redactions); err != nil {
 			return nil, false, err
 		}
 		out = append(out, e)

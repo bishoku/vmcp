@@ -21,7 +21,9 @@ noisy, there is no audit trail, and one flaky server can stall everything. vMCP 
 | You want to… | vMCP gives you |
 |---|---|
 | Expose only some tools to an agent | **Virtual servers**: pick tools from any upstream, reorder them, rename them, rewrite their descriptions |
-| Stop leaking upstream credentials | Upstream headers are **encrypted at rest** (AES-256-GCM) and write-only; agents only hold a revocable **agent key** |
+| Stop leaking upstream credentials | Upstream headers & OAuth secrets are **encrypted at rest** (AES-256-GCM) and write-only; agents hold revocable keys or IdP tokens |
+| Authenticate agents with your IdP | **OAuth for agents**: verify asymmetric JWTs, map claims to virtual servers with flexible **identity bindings** |
+| Connect to OAuth-secured upstreams | **Upstream OAuth**: gateway fetches and caches tokens via **OAuth 2.0 client_credentials**, retrying on 401 |
 | Keep sensitive data away from models | **PII masking** (IBAN, card, TCKN, SSN, email, phone, custom regex) on results and, optionally, arguments |
 | Know who called what | **Audit log** of every call: agent, tool, upstream, status, duration, redactions |
 | Restrict risky tools | **Tool policies**: allow / deny / read-only per tool, enforced from upstream `readOnlyHint` |
@@ -113,13 +115,14 @@ The full documentation lives in [`docs/`](docs/Home.md) (published as the GitHub
 |---|---|
 | [Getting started](docs/Getting-Started.md) | [Architecture](docs/Architecture.md) |
 | [Configuration reference](docs/Configuration.md) | [Deployment](docs/Deployment.md) |
-| [Upstreams](docs/Upstreams.md) | [Upstream TLS](docs/Upstream-TLS.md) |
+| [Upstreams](docs/Upstreams.md) | [Upstream TLS](docs/Upstream-TLS.md) & [OAuth](docs/Upstream-OAuth.md) |
 | [Virtual servers](docs/Virtual-Servers.md) | [Tool policies](docs/Tool-Policies.md) |
-| [Agent keys & authentication](docs/Agent-Keys-and-Authentication.md) | [SSO & roles](docs/SSO-and-RBAC.md) |
-| [PII masking](docs/PII-Masking.md) | [Audit log](docs/Audit-Log.md) |
-| [Resilience & high availability](docs/Resilience-and-HA.md) | [Rate limits](docs/Rate-Limits.md) |
-| [REST API & GitOps](docs/REST-API.md) | [Security](docs/Security.md) |
-| [Development](docs/Development.md) | [FAQ & troubleshooting](docs/FAQ.md) |
+| [Agent keys & auth](docs/Agent-Keys-and-Authentication.md) | [OAuth for agents](docs/OAuth-for-Agents.md) |
+| [SSO & roles](docs/SSO-and-RBAC.md) | [PII masking](docs/PII-Masking.md) |
+| [Audit log](docs/Audit-Log.md) | [Resilience & high availability](docs/Resilience-and-HA.md) |
+| [Rate limits](docs/Rate-Limits.md) | [REST API & GitOps](docs/REST-API.md) |
+| [Security](docs/Security.md) | [Development](docs/Development.md) |
+| [FAQ & troubleshooting](docs/FAQ.md) | [Getting started](docs/Getting-Started.md) |
 
 ## Repository layout
 

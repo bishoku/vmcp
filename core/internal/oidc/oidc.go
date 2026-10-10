@@ -15,11 +15,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
+
+	"github.com/bishoku/vmcp/core/internal/agentauth"
 )
 
 // Roles, from least to most privileged.
@@ -37,7 +40,10 @@ const (
 
 // Config comes from environment variables (see README).
 type Config struct {
-	Issuer       string
+	Issuer string
+	// DiscoveryURL, when set, is where the discovery document is fetched from while Issuer stays
+	// the public value tokens carry (split-horizon setups such as containers behind a public host name).
+	DiscoveryURL string
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
@@ -63,11 +69,12 @@ type Session struct {
 
 // Provider runs the sign-in flow.
 type Provider struct {
-	cfg      Config
-	oauth    oauth2.Config
-	verifier *gooidc.IDTokenVerifier
-	secure   bool
-	now      func() time.Time
+	cfg        Config
+	endSession string
+	oauth      oauth2.Config
+	verifier   *gooidc.IDTokenVerifier
+	secure     bool
+	now        func() time.Time
 }
 
 // New contacts the issuer's discovery endpoint.
@@ -90,12 +97,22 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	if cfg.HTTPClient != nil {
 		ctx = gooidc.ClientContext(ctx, cfg.HTTPClient)
 	}
-	p, err := gooidc.NewProvider(ctx, cfg.Issuer)
+	from := cfg.Issuer
+	if cfg.DiscoveryURL != "" {
+		from = cfg.DiscoveryURL
+		ctx = gooidc.InsecureIssuerURLContext(ctx, cfg.Issuer)
+	}
+	p, err := gooidc.NewProvider(ctx, from)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
 	}
+	var meta struct {
+		EndSession string `json:"end_session_endpoint"`
+	}
+	_ = p.Claims(&meta)
 	return &Provider{
-		cfg: cfg,
+		cfg:        cfg,
+		endSession: meta.EndSession,
 		oauth: oauth2.Config{
 			ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Endpoint: p.Endpoint(),
 			RedirectURL: cfg.RedirectURL, Scopes: []string{gooidc.ScopeOpenID, "profile", "email"},
@@ -174,6 +191,24 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+// EndSessionURL returns the identity provider's logout URL (RP-initiated logout) that brings the
+// browser back to the UI afterwards, or "" when the provider does not advertise one.
+func (p *Provider) EndSessionURL() string {
+	if p.endSession == "" {
+		return ""
+	}
+	u, err := url.Parse(p.cfg.RedirectURL)
+	if err != nil {
+		return ""
+	}
+	q := url.Values{"client_id": {p.cfg.ClientID}, "post_logout_redirect_uri": {u.Scheme + "://" + u.Host + "/"}}
+	sep := "?"
+	if strings.Contains(p.endSession, "?") {
+		sep = "&"
+	}
+	return p.endSession + sep + q.Encode()
+}
+
 // Logout clears the session cookie.
 func (p *Provider) Logout(w http.ResponseWriter) { p.clearCookie(w, sessionCookie) }
 
@@ -209,9 +244,10 @@ func (p *Provider) RoleFor(groups []string) string {
 	return ""
 }
 
-// Groups reads a string list (or a single string) from a claim.
+// Groups reads a string list (or a single string) from a claim. The claim may be a nested path
+// such as "realm_access.roles" (Keycloak realm roles); an exact top-level key wins.
 func Groups(claims map[string]any, claim string) []string {
-	switch v := claims[claim].(type) {
+	switch v := agentauth.Lookup(claims, claim).(type) {
 	case []any:
 		out := make([]string, 0, len(v))
 		for _, g := range v {

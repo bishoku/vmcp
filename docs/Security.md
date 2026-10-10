@@ -6,7 +6,7 @@ To report a vulnerability, follow [SECURITY.md](https://github.com/bishoku/vmcp/
 
 | Secret | Protection |
 |---|---|
-| Upstream headers, mTLS client keys | AES-256-GCM with `VMCP_MASTER_KEY`; write-only; never exported |
+| Upstream headers, mTLS client keys, OAuth client secrets | AES-256-GCM with `VMCP_MASTER_KEY`; write-only; never exported |
 | Agent keys, admin tokens | Only hashes stored; shown once |
 | `VMCP_ADMIN_TOKEN`, `VMCP_MASTER_KEY` | Environment; **replace the development defaults** |
 | SSO sessions | Signed, stateless cookies (8h), CSRF header on writes |
@@ -22,6 +22,7 @@ re-encryption yet).
 - Use per-upstream CAs rather than disabling verification (not possible anyway): [Upstream TLS](Upstream-TLS.md).
 - Set rate limits and review the [audit log](Audit-Log.md).
 - Prefer SSO + `read` scoped tokens; rotate and expire tokens.
+- When enabling OAuth for agents, set `VMCP_AGENT_OIDC_AUDIENCE` and configure restrictive identity bindings.
 
 ## Trust model and known limits
 

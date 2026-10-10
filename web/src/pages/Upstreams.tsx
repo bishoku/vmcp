@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { CheckCircle2, Plus, RefreshCw, Search, Trash2, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { api, ApiError, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput } from '../api'
+import { api, ApiError, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 const btn =
   'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50'
@@ -154,9 +154,16 @@ export default function Upstreams() {
                 </td>
                 <td className="max-w-56 truncate px-4 py-3">{u.url}</td>
                 <td className="px-4 py-3">
-                  <span className="rounded-md bg-accent-50 px-2 py-0.5 text-xs text-accent-700">
-                    {u.transport === 'sse' ? 'SSE' : 'Streamable HTTP'}
-                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    <span className="rounded-md bg-accent-50 px-2 py-0.5 text-xs text-accent-700">
+                      {u.transport === 'sse' ? 'SSE' : 'Streamable HTTP'}
+                    </span>
+                    {u.auth?.type === 'oauth_client_credentials' && (
+                      <span className="rounded-md bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                        OAuth
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">{u.toolCount}</td>
                 <td className="px-4 py-3 text-ink-muted">{ago(u.lastRefreshAt)}</td>
@@ -228,6 +235,29 @@ function Panel({
   const [serverName, setServerName] = useState(upstream?.tls?.serverName ?? '')
   const [clientCert, setClientCert] = useState(upstream?.tls?.clientCertPem ?? '')
   const [clientKey, setClientKey] = useState('')
+  const [authType, setAuthType] = useState<'none' | 'oauth_client_credentials'>(
+    upstream?.auth?.type === 'oauth_client_credentials' ? 'oauth_client_credentials' : 'none',
+  )
+  const [tokenUrl, setTokenUrl] = useState(upstream?.auth?.tokenUrl ?? '')
+  const [clientId, setClientId] = useState(upstream?.auth?.clientId ?? '')
+  const [clientSecret, setClientSecret] = useState('')
+  const [scopes, setScopes] = useState((upstream?.auth?.scopes ?? []).join(' '))
+  const [audience, setAudience] = useState(upstream?.auth?.audience ?? '')
+
+  const authInput = (): UpstreamAuthInput => {
+    if (authType === 'none') {
+      return { type: 'none' }
+    }
+    return {
+      type: 'oauth_client_credentials',
+      tokenUrl,
+      clientId,
+      ...(clientSecret && { clientSecret }),
+      scopes: scopes.split(/[\s,]+/).filter(Boolean),
+      audience: audience || undefined,
+    }
+  }
+
   const tlsInput = (): UpstreamTLSInput => ({
     caPem,
     serverName,
@@ -269,6 +299,7 @@ function Panel({
           transport,
           enabled,
           tls: tlsInput(),
+          auth: authInput(),
           ...(Object.keys(headers).length && { headers }),
         })
       } else {
@@ -280,6 +311,7 @@ function Panel({
           enabled,
           headers: replaced,
           tls: tlsInput(),
+          auth: authInput(),
         })
       }
       onSaved()
@@ -294,7 +326,7 @@ function Panel({
     setBusy(true)
     try {
       // Stored secrets are never readable, so the test uses only headers typed in this session.
-      setTest(await api.testConnection({ url, transport, headers: replaced, tls: tlsInput() }))
+      setTest(await api.testConnection({ url, transport, headers: replaced, tls: tlsInput(), auth: authInput() }))
     } catch (e) {
       setTest({ ok: false, error: errMsg(e) })
     } finally {
@@ -395,6 +427,72 @@ function Panel({
                 />
               </label>
               <p className="text-xs text-ink-muted">Certificate verification can't be disabled. Using the self-signed server certificate as the CA is fine.</p>
+            </div>
+          </details>
+
+          <details className="rounded-lg border border-line p-3" open={authType === 'oauth_client_credentials'}>
+            <summary className="cursor-pointer text-sm font-medium">OAuth 2.0 Client Credentials</summary>
+            <div className="mt-3 space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={authType === 'oauth_client_credentials'}
+                  onChange={(e) => setAuthType(e.target.checked ? 'oauth_client_credentials' : 'none')}
+                />
+                Enable OAuth client credentials
+              </label>
+              {authType === 'oauth_client_credentials' && (
+                <>
+                  <label className="block text-sm font-medium">
+                    Token URL
+                    <input
+                      className={clsx(input, 'mt-1')}
+                      value={tokenUrl}
+                      onChange={(e) => setTokenUrl(e.target.value)}
+                      placeholder="https://idp.example.com/oauth/token"
+                    />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Client ID
+                    <input
+                      className={clsx(input, 'mt-1')}
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                    />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Client Secret <span className="font-normal text-ink-muted">(write-only)</span>
+                    <input
+                      type="password"
+                      className={clsx(input, 'mt-1')}
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      placeholder={upstream?.auth?.hasClientSecret ? '•••••••• stored — type to replace' : 'Secret'}
+                    />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Scopes <span className="font-normal text-ink-muted">(optional, space-separated)</span>
+                    <input
+                      className={clsx(input, 'mt-1 font-mono text-xs')}
+                      value={scopes}
+                      onChange={(e) => setScopes(e.target.value)}
+                      placeholder="mcp.read mcp.tools"
+                    />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Audience <span className="font-normal text-ink-muted">(optional)</span>
+                    <input
+                      className={clsx(input, 'mt-1')}
+                      value={audience}
+                      onChange={(e) => setAudience(e.target.value)}
+                      placeholder="fixture"
+                    />
+                  </label>
+                  <p className="text-xs text-ink-muted">
+                    The gateway fetches and caches access tokens from the token endpoint and automatically retries once on 401. Cannot be combined with a static Authorization header.
+                  </p>
+                </>
+              )}
             </div>
           </details>
 

@@ -21,7 +21,7 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
 			limit = n
 		}
 	}
-	f := store.AuditFilter{VirtualServer: q.Get("virtualServer"), AgentKey: q.Get("agentKey"), Tool: q.Get("tool"), Status: q.Get("status")}
+	f := store.AuditFilter{VirtualServer: q.Get("virtualServer"), AgentKey: q.Get("agentKey"), Subject: q.Get("subject"), Tool: q.Get("tool"), Status: q.Get("status")}
 	if f.Status != "" && f.Status != "ok" && f.Status != "tool_error" && f.Status != "error" && f.Status != "denied" {
 		errs = append(errs, apierror.FieldError{Field: "status", Code: apierror.CodeValidationFailed, Message: "must be one of: ok, tool_error, error, denied"})
 	}

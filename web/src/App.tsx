@@ -1,11 +1,12 @@
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { FileText, KeyRound, Layers, Network, Settings, type LucideIcon } from 'lucide-react'
+import { FileText, KeyRound, UserCheck, Layers, Network, Settings, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { useEffect, useState } from 'react'
 import { api, authConfig, clearToken, setToken, signOut, type Me } from './api'
 import Upstreams from './pages/Upstreams'
 import VirtualServers from './pages/VirtualServers'
 import AgentKeys from './pages/AgentKeys'
+import Identities from './pages/Identities'
 import Audit from './pages/Audit'
 import SettingsPage from './pages/Settings'
 
@@ -13,6 +14,7 @@ const nav: { to: string; label: string; icon: LucideIcon }[] = [
   { to: '/upstreams', label: 'Upstreams', icon: Network },
   { to: '/virtual-servers', label: 'Virtual Servers', icon: Layers },
   { to: '/agent-keys', label: 'Agent Keys', icon: KeyRound },
+  { to: '/identities', label: 'Identities', icon: UserCheck },
   { to: '/audit', label: 'Audit Log', icon: FileText },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -108,7 +110,11 @@ export default function App() {
             <button
               className="mt-2 text-xs text-accent-700 hover:underline"
               onClick={async () => {
-                await signOut()
+                const idpLogout = await signOut()
+                if (idpLogout) {
+                  window.location.assign(idpLogout)
+                  return
+                }
                 setMe(null)
               }}
             >
@@ -132,6 +138,7 @@ export default function App() {
               element={<Audit />}
             />
             <Route path="/agent-keys" element={<AgentKeys />} />
+            <Route path="/identities" element={<Identities />} />
             <Route path="/settings" element={<SettingsPage role={me.role} />} />
           </Routes>
         </main>

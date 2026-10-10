@@ -33,7 +33,7 @@ export default function Audit() {
 
       <div className="mt-6 grid grid-cols-6 gap-3">
         <input className={input} placeholder="Virtual server" onChange={(e) => set('virtualServer', e.target.value.trim())} />
-        <input className={input} placeholder="Agent key" onChange={(e) => set('agentKey', e.target.value.trim())} />
+        <input className={input} placeholder="Agent key / oauth:binding" onChange={(e) => set('agentKey', e.target.value.trim())} />
         <input className={input} placeholder="Tool" onChange={(e) => set('tool', e.target.value.trim())} />
         <select className={input} onChange={(e) => set('status', e.target.value)}>
           <option value="">Any status</option>
@@ -65,7 +65,10 @@ export default function Audit() {
               <tr key={e.id} className="border-b border-line last:border-0" title={[e.clientIp, e.reason].filter(Boolean).join(' · ')}>
                 <td className="whitespace-nowrap px-4 py-2.5">{fmt(e.time)}</td>
                 <td className="px-4 py-2.5">{e.virtualServer}</td>
-                <td className="px-4 py-2.5">{e.agentKey ?? '—'}</td>
+                <td className="px-4 py-2.5">
+                  {e.agentKey ?? '—'}
+                  {e.subject && <div className="font-mono text-xs text-ink-muted">sub: {e.subject}</div>}
+                </td>
                 <td className="px-4 py-2.5">{e.tool ?? e.method}</td>
                 <td className="px-4 py-2.5"><Pill status={e.status} />{e.reason && <span className="ml-2 text-xs text-ink-muted">{e.reason}</span>}</td>
                 <td className="px-4 py-2.5">

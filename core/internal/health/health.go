@@ -100,7 +100,7 @@ func Probe(ctx context.Context, up config.Upstream) (url string, took time.Durat
 		start := time.Now()
 		pctx, cancel := context.WithTimeout(ctx, probeTimeout)
 		var conn upstream.Conn
-		if conn, err = upstream.Open(up.Transport, u, up.Headers, up.TLS); err == nil {
+		if conn, err = upstream.OpenAuth(up.Transport, u, up.Headers, up.TLS, up.OAuth); err == nil {
 			_, err = conn.Initialize(pctx)
 			_ = conn.Close(pctx)
 		}

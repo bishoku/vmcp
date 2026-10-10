@@ -37,6 +37,24 @@ export interface UpstreamTLSInput {
   clientKeyPem?: string
 }
 
+export interface UpstreamAuth {
+  type: 'none' | 'oauth_client_credentials'
+  tokenUrl?: string
+  clientId?: string
+  scopes?: string[]
+  audience?: string
+  hasClientSecret?: boolean
+}
+
+export interface UpstreamAuthInput {
+  type: 'none' | 'oauth_client_credentials'
+  tokenUrl?: string
+  clientId?: string
+  clientSecret?: string
+  scopes?: string[]
+  audience?: string
+}
+
 export interface Upstream {
   slug: string
   name: string
@@ -48,6 +66,7 @@ export interface Upstream {
   enabled: boolean
   headerNames: string[]
   tls: UpstreamTLS
+  auth?: UpstreamAuth
   toolCount: number
   lastRefreshAt: string | null
   lastRefreshError: string | null
@@ -63,6 +82,7 @@ export interface UpstreamInput {
   /** Write-only. Omit to keep stored headers; null value deletes one header (PATCH). */
   headers?: Record<string, string | null>
   tls?: UpstreamTLSInput
+  auth?: UpstreamAuthInput
 }
 
 export interface Tool {
@@ -139,12 +159,32 @@ export interface AdminToken {
   createdAt: string
 }
 
+export interface Condition {
+  claim: string
+  op: 'equals' | 'contains' | 'exists'
+  value?: string
+}
+export interface IdentityBinding {
+  slug: string
+  description: string
+  conditions: Condition[]
+  virtualServers: string[]
+  ipAllowlist: string[]
+  rateLimitPerMinute: number | null
+  enabled: boolean
+}
+export interface BindingEvaluation {
+  decision: { allowed: boolean; principal?: string; reason?: string }
+  matches?: { slug: string; virtualServers: string[] }[]
+}
+
 export interface AuditEvent {
   id: number
   time: string
   virtualServer: string
   agentKey?: string | null
   clientIp?: string | null
+  subject?: string | null
   method: string
   tool?: string | null
   upstream?: string | null
@@ -156,6 +196,7 @@ export interface AuditEvent {
 export interface AuditQuery {
   virtualServer?: string
   agentKey?: string
+  subject?: string
   tool?: string
   status?: string
   from?: string
@@ -196,9 +237,15 @@ export async function authConfig(): Promise<{ oidc: boolean }> {
   }
 }
 
-export async function signOut() {
+/** Returns the identity provider's logout URL when the session came from SSO. */
+export async function signOut(): Promise<string | null> {
   clearToken()
-  await fetch('/auth/logout', { method: 'POST' }).catch(() => undefined)
+  const res = await fetch('/auth/logout', { method: 'POST' }).catch(() => undefined)
+  if (res?.ok && res.status === 200) {
+    const body = (await res.json().catch(() => null)) as { endSessionUrl?: string } | null
+    return body?.endSessionUrl ?? null
+  }
+  return null
 }
 
 export class ApiError extends Error {
@@ -246,7 +293,7 @@ export const api = {
     (await request<{ items: Tool[] }>('GET', `/upstreams/${encodeURIComponent(slug)}/tools`)).items,
   refreshTools: (slug: string) =>
     request<RefreshResult>('POST', `/upstreams/${encodeURIComponent(slug)}/refresh-tools`),
-  testConnection: (input: { url: string; transport: string; headers?: Record<string, string>; tls?: UpstreamTLSInput }) =>
+  testConnection: (input: { url: string; transport: string; headers?: Record<string, string>; tls?: UpstreamTLSInput; auth?: UpstreamAuthInput }) =>
     request<ConnectionTestResult>('POST', '/connection-tests', input),
   listVirtualServers: async () =>
     (await request<{ items: VirtualServer[] }>('GET', '/virtual-servers?limit=200')).items,
@@ -265,6 +312,13 @@ export const api = {
     request<AgentKey & { key: string }>('POST', `/agent-keys/${encodeURIComponent(slug)}/rotate`),
   revokeAgentKey: (slug: string) => request<AgentKey>('POST', `/agent-keys/${encodeURIComponent(slug)}/revoke`),
   deleteAgentKey: (slug: string) => request<void>('DELETE', `/agent-keys/${encodeURIComponent(slug)}`),
+  listBindings: async () => (await request<{ items: IdentityBinding[] }>('GET', '/identity-bindings?limit=200')).items,
+  createBinding: (b: Partial<IdentityBinding>) => request<IdentityBinding>('POST', '/identity-bindings', b),
+  patchBinding: (slug: string, b: Partial<IdentityBinding>) =>
+    request<IdentityBinding>('PATCH', `/identity-bindings/${encodeURIComponent(slug)}`, b),
+  deleteBinding: (slug: string) => request<void>('DELETE', `/identity-bindings/${encodeURIComponent(slug)}`),
+  evaluateBindings: (body: { claims: unknown; virtualServer?: string; clientIp?: string }) =>
+    request<BindingEvaluation>('POST', '/identity-bindings/evaluate', body),
   listAdminTokens: async () => (await request<{ items: AdminToken[] }>('GET', '/admin-tokens?limit=200')).items,
   createAdminToken: (i: { slug: string; description?: string; scope: 'admin' | 'read'; expiresAt?: string | null }) =>
     request<AdminToken & { token: string }>('POST', '/admin-tokens', i),
