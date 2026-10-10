@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/health"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
+	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
 	"github.com/bishoku/vmcp/core/internal/resilience"
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -73,13 +75,28 @@ func run(log *slog.Logger) error {
 		pool.Close()
 	}()
 
-	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log}
+	maxStale, err := time.ParseDuration(config.Env("VMCP_AUTH_MAX_STALE", "30s"))
+	if err != nil || maxStale <= 0 {
+		return errors.New("VMCP_AUTH_MAX_STALE must be a positive duration")
+	}
+	sessions := virtual.NewManager()
+	sessions.Store = virtual.PGSessionStore{Pool: pool}
+	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log, MaxAuthorizationAge: maxStale,
+		OnChange: func(snap *config.Snapshot) {
+			sessions.Reconcile(snap)
+			var configs []oauthtoken.Config
+			for _, up := range snap.Upstreams {
+				if up.OAuth != nil {
+					configs = append(configs, *up.OAuth)
+				}
+			}
+			oauthtoken.Retain(configs)
+		},
+	}
 	if err := syncer.Start(ctx); err != nil {
 		return err
 	}
 
-	sessions := virtual.NewManager()
-	sessions.Store = virtual.PGSessionStore{Pool: pool}
 	go sessions.RunReaper(ctx, sessionIdleTTL)
 
 	// Consecutive failures before an upstream is cut off, and how long it stays cut off. 0 disables.
@@ -119,11 +136,12 @@ func run(log *slog.Logger) error {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		if !syncer.Ready() {
-			http.Error(w, "snapshot not loaded", http.StatusServiceUnavailable)
-			return
+		status := syncer.Status()
+		w.Header().Set("Content-Type", "application/json")
+		if !status.Ready {
+			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		_, _ = w.Write([]byte("ok"))
+		_ = json.NewEncoder(w).Encode(status)
 	})
 	trusted, err := config.ParsePrefixes(config.Env("VMCP_TRUSTED_PROXIES", ""))
 	if err != nil {

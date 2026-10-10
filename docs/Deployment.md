@@ -40,3 +40,7 @@ upgrade the control plane first. A Helm chart is not provided yet.
 
 Besides database backups, `GET /api/v1/export` produces a declarative document (upstreams and virtual servers; no secrets)
 that `POST /api/v1/apply` can load into another environment ([REST API and GitOps](REST-API.md)).
+
+## P03 session schema upgrade
+
+Drain old data-plane nodes before migration 17, replace every data-plane binary, and have clients initialize new sessions before restoring traffic. Legacy sessions lack a trustworthy subject binding and are rejected. Mixed versions and rollback need coordinated handling; see [Authorization and session consistency](AUTHORIZATION_CONSISTENCY.md#upgrade-and-rollback).

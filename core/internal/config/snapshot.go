@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"net/netip"
 	"time"
 
@@ -23,6 +25,7 @@ type Snapshot struct {
 
 // AgentKey authorizes an agent to use some virtual servers. Revoked keys are not loaded.
 type AgentKey struct {
+	ID        string
 	Slug      string
 	Allowed   []netip.Prefix // empty = any address
 	ExpiresAt *time.Time
@@ -40,6 +43,7 @@ type Condition struct {
 
 // Binding authorizes holders of an IdP token whose claims match to use some virtual servers.
 type Binding struct {
+	ID         string
 	Slug       string
 	Conditions []Condition
 	Allowed    []netip.Prefix // empty = any address
@@ -104,4 +108,11 @@ func ExposedName(upstreamSlug, tool, alias string) string {
 		return alias
 	}
 	return upstreamSlug + "__" + tool
+}
+
+// Fingerprint identifies every setting used to establish an upstream connection.
+// Canonical JSON sorts header map keys. The digest must never be logged (it covers secrets).
+func (u Upstream) Fingerprint() [32]byte {
+	b, _ := json.Marshal(u)
+	return sha256.Sum256(b)
 }

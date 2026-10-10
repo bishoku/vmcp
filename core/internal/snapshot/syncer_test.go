@@ -139,3 +139,41 @@ func TestSyncerPicksUpChangesViaNotify(t *testing.T) {
 	}
 	t.Fatal("snapshot was not refreshed after a config change (poll interval is 1h, so NOTIFY must have failed)")
 }
+
+func TestFailedDecryptionExpiresAuthorization(t *testing.T) {
+	ctx, s := setup(t)
+	seed(t, ctx, s)
+	s.MaxAuthorizationAge = 200 * time.Millisecond
+	s.PollInterval = 20 * time.Millisecond
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := s.Snapshot().Revision
+	if _, err := s.Pool.Exec(ctx, `UPDATE upstreams SET encrypted_headers = $1 WHERE slug='github'`, []byte("invalid ciphertext")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for s.Ready() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s.Ready() || s.Status().ObservedRevision <= before {
+		t.Fatalf("failed decryption kept authorization fresh: %+v", s.Status())
+	}
+	if snap, err := s.AuthorizedSnapshot(); err == nil || snap != nil {
+		t.Fatal("stale snapshot authorized")
+	}
+	enc, err := s.Box.SealHeaders(map[string]string{"Authorization": "Bearer rotated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pool.Exec(ctx, `UPDATE upstreams SET encrypted_headers = $1 WHERE slug='github'`, enc); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for !s.Ready() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !s.Ready() {
+		t.Fatal("authorization did not recover")
+	}
+}

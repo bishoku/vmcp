@@ -29,9 +29,10 @@ const (
 	callTimeout     = 60 * time.Second
 )
 
-// SnapshotProvider returns the current configuration snapshot.
+// SnapshotProvider supplies inspection and freshness-checked authorization views.
 type SnapshotProvider interface {
 	Snapshot() *config.Snapshot
+	AuthorizedSnapshot() (*config.Snapshot, error)
 }
 
 // Handler serves /mcp/v1/virtual/{slug}.
@@ -66,13 +67,16 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}", h.resourceMetadata)
 	// No server-initiated stream yet: tell clients so, as the spec allows.
 	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", ingress(func(w http.ResponseWriter, r *http.Request) {
-		snap := h.Snap.Snapshot()
+		snap, fresh := h.requestSnapshot(w, r)
+		if !fresh {
+			return
+		}
 		vs, ok := snap.VirtualServers[r.PathValue("slug")]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		key, _, ok := h.authenticate(w, r, vs, snap)
+		owner, ok := h.authenticate(w, r, vs, snap)
 		if !ok {
 			return
 		}
@@ -83,7 +87,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 				http.Error(w, "session store unavailable", 503)
 				return
 			}
-			if sess == nil || sess.slug != vs.Slug || sess.keySlug != key {
+			if sess == nil || sess.slug != vs.Slug || sess.owner != owner {
 				http.Error(w, "unknown session", 404)
 				return
 			}
@@ -98,17 +102,20 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
-	snap := h.Snap.Snapshot()
+	snap, fresh := h.requestSnapshot(w, r)
+	if !fresh {
+		return
+	}
 	vs, ok := snap.VirtualServers[slug]
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	keySlug, subject, ok := h.authenticate(w, r, vs, snap)
+	owner, ok := h.authenticate(w, r, vs, snap)
 	if !ok {
 		return
 	}
-	ctx := withSubject(r.Context(), subject)
+	ctx := withSubject(r.Context(), owner.Subject)
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 	if err != nil {
@@ -123,12 +130,62 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reading a body may outlive the freshness window or a token's lifetime.
+	snap, fresh = h.requestSnapshot(w, r)
+	if !fresh {
+		return
+	}
+	vs, ok = snap.VirtualServers[slug]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	currentOwner, ok := h.authenticate(w, r, vs, snap)
+	if !ok {
+		return
+	}
+	if currentOwner != owner {
+		http.Error(w, "authorization changed; retry", http.StatusConflict)
+		return
+	}
+	ctx = context.WithValue(ctx, authorizationGuardKey{}, func(dispatchCtx context.Context) error {
+		request := r.WithContext(dispatchCtx)
+		current, ok := h.requestSnapshot(w, request)
+		if !ok {
+			return errAuthorizationChanged
+		}
+		if current.Revision != snap.Revision {
+			http.Error(w, "configuration changed; retry", http.StatusConflict)
+			return errAuthorizationChanged
+		}
+		verified, ok := h.authenticate(w, request, vs, current)
+		if !ok {
+			return errAuthorizationChanged
+		}
+		if verified != owner {
+			http.Error(w, "authorization changed; retry", http.StatusConflict)
+			return errAuthorizationChanged
+		}
+		if sid := r.Header.Get("Mcp-Session-Id"); sid != "" {
+			live, err := h.Sessions.Resolve(dispatchCtx, sid)
+			if err != nil {
+				http.Error(w, "session store unavailable", 503)
+				return errAuthorizationChanged
+			}
+			if live == nil || live.owner != owner {
+				http.Error(w, "unknown session", 404)
+				return errAuthorizationChanged
+			}
+		}
+		return nil
+	})
+
 	if msg.IsRequest() && msg.Method == mcp.MethodInitialize {
 		if r.Header.Get("Mcp-Session-Id") != "" {
 			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidRequest, "initialize must start a new session"))
 			return
 		}
-		h.initialize(r.Context(), w, msg, vs, keySlug)
+		h.initialize(r.Context(), w, msg, vs, owner)
 		return
 	}
 
@@ -143,8 +200,11 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if sess == nil || sess.slug != slug || sess.keySlug != keySlug {
+	if sess == nil || sess.slug != slug || sess.owner != owner {
 		http.Error(w, "unknown session", http.StatusNotFound)
+		return
+	}
+	if err := checkAuthorization(ctx); err != nil {
 		return
 	}
 	sess.touch()
@@ -199,7 +259,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, keySlug string) {
+func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, owner Owner) {
 	p, err := mcp.ValidateInitializeParams(msg.Params)
 	if err != nil {
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid initialize params: "+err.Error()))
@@ -213,7 +273,8 @@ func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mc
 		return
 	}
 	sess.clientCapabilities = append(json.RawMessage(nil), p.Capabilities...)
-	sess.keySlug = keySlug
+	sess.keySlug = owner.Principal
+	sess.owner = owner
 	if err := h.Sessions.Persist(ctx, sess); err != nil {
 		h.Sessions.Delete(sess.id)
 		h.Log.Error("cannot persist session", "err", err)
@@ -297,6 +358,10 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	}
 	result, err := h.callResilient(ctx, sess, up, vt, args)
 	if err != nil {
+		if errors.Is(err, errAuthorizationChanged) {
+			finish("denied", "authorization changed before dispatch")
+			return
+		}
 		if errors.Is(err, errCircuitOpen) {
 			finish("error", "circuit open")
 			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream temporarily unavailable"))
@@ -394,6 +459,9 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 			case <-time.After(50*time.Millisecond + rand.N(200*time.Millisecond)):
 			}
 		}
+		if err := checkAuthorization(ctx); err != nil {
+			return nil, err
+		}
 		if br != nil && !br.Allow() {
 			return nil, errCircuitOpen
 		}
@@ -404,6 +472,8 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 			if br != nil {
 				br.Success()
 			}
+			return res, err
+		case errors.Is(err, errAuthorizationChanged):
 			return res, err
 		case ctx.Err() != nil:
 			return res, err // the caller gave up or our deadline hit: not evidence about the upstream
@@ -420,11 +490,20 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 // callUpstream calls the tool, re-establishing the upstream session once if it expired.
 func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Upstream, tool string, args json.RawMessage) (json.RawMessage, error) {
 	for attempt := 0; ; attempt++ {
-		c, err := sess.client(ctx, up)
+		if err := checkAuthorization(ctx); err != nil {
+			return nil, err
+		}
+		c, release, err := sess.client(ctx, up)
 		if err != nil {
 			return nil, err
 		}
+		if err := checkAuthorization(ctx); err != nil {
+			sess.reset(up.ID, c)
+			release()
+			return nil, err
+		}
 		res, err := c.CallTool(ctx, tool, args)
+		release()
 		if errors.Is(err, upstream.ErrSessionExpired) && attempt == 0 {
 			sess.reset(up.ID, c)
 			continue
@@ -434,13 +513,16 @@ func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Ups
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
-	snap := h.Snap.Snapshot()
+	snap, fresh := h.requestSnapshot(w, r)
+	if !fresh {
+		return
+	}
 	vs, ok := snap.VirtualServers[r.PathValue("slug")]
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	keySlug, _, ok := h.authenticate(w, r, vs, snap)
+	owner, ok := h.authenticate(w, r, vs, snap)
 	if !ok {
 		return
 	}
@@ -449,14 +531,17 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if sess == nil || sess.slug != r.PathValue("slug") || sess.keySlug != keySlug {
+	if sess == nil || sess.slug != r.PathValue("slug") || sess.owner != owner {
 		http.Error(w, "unknown session", http.StatusNotFound)
 		return
 	}
 	if !validSessionVersion(w, r, sess) {
 		return
 	}
-	h.Sessions.End(r.Context(), sess.id)
+	if err := h.Sessions.End(r.Context(), sess.id); err != nil {
+		http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -482,4 +567,25 @@ func validSessionVersion(w http.ResponseWriter, r *http.Request, sess *Session) 
 		return false
 	}
 	return true
+}
+
+// requestSnapshot never admits a request from an unconfirmed configuration.
+func (h *Handler) requestSnapshot(w http.ResponseWriter, r *http.Request) (*config.Snapshot, bool) {
+	snap, err := h.Snap.AuthorizedSnapshot()
+	if err != nil || snap == nil {
+		http.Error(w, "authorization configuration unavailable", 503)
+		return nil, false
+	}
+	return snap, true
+}
+
+type authorizationGuardKey struct{}
+
+var errAuthorizationChanged = errors.New("authorization changed before dispatch")
+
+func checkAuthorization(ctx context.Context) error {
+	if check, ok := ctx.Value(authorizationGuardKey{}).(func(context.Context) error); ok {
+		return check(ctx)
+	}
+	return nil
 }

@@ -231,6 +231,7 @@ func loadBindings(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlugs
 				b.Allowed = append(b.Allowed, p)
 			}
 		}
+		b.ID = id
 		idx[id] = len(snap.Bindings)
 		snap.Bindings = append(snap.Bindings, b)
 	}
@@ -285,6 +286,7 @@ func loadAgentKeys(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlug
 				k.Allowed = append(k.Allowed, p)
 			}
 		}
+		k.ID = id
 		byID[id] = string(hash)
 		snap.AgentKeys[string(hash)] = k
 	}

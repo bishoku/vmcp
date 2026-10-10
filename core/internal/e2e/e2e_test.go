@@ -501,7 +501,6 @@ func TestSessionResumesOnAnotherNode(t *testing.T) {
 	if r, err := http.DefaultClient.Do(req); err != nil || r.StatusCode != 204 {
 		t.Fatalf("delete: %v %v", err, r)
 	}
-	mgrB.Delete(sid) // node B's local copy goes away with its next idle reap; simulate it
 	if r, _ := post(urlB, sid, call); r.StatusCode != 404 {
 		t.Fatalf("deleted session resumed: %d", r.StatusCode)
 	}
@@ -532,7 +531,7 @@ func TestCircuitBreakerCutsOffDeadUpstream(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		return resp, string(b)
 	}
-	// Upstream sessions are bound to the URL they were opened against, so use fresh client sessions.
+	// Fresh sessions keep the breaker setup independent of cached connection state.
 	open := func() string {
 		resp, _ := post("", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`)
 		sid := resp.Header.Get("Mcp-Session-Id")

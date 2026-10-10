@@ -15,6 +15,16 @@ import (
 	"github.com/bishoku/vmcp/core/internal/store"
 )
 
+// Owner binds a session to an authentication mode and immutable credential identity.
+// Principal remains the human-readable audit/rate-limit label.
+type Owner struct {
+	Mode         string
+	Principal    string
+	CredentialID string
+	Issuer       string
+	Subject      string
+}
+
 type subjectKey struct{}
 
 // withSubject carries the JWT subject of the caller to the audit event of a tool call.
@@ -32,14 +42,13 @@ func subjectFrom(ctx context.Context) string {
 
 // authenticate checks the credentials of a request to vs: an agent key, or, when JWT auth is
 // configured, an access token from the identity provider mapped through identity bindings. It
-// returns the principal (key slug or "oauth:<binding>"; "" when the virtual server is open) and the
-// JWT subject, or writes the failure response and returns ok=false.
-// It runs on every request, so revocation and expiry take effect immediately.
-func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config.VirtualServer, snap *config.Snapshot) (principal, subject string, ok bool) {
+// returns the verified owner, or writes the failure response and returns ok=false.
+// It runs on every request against a freshness-checked snapshot; expiry is checked locally.
+func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config.VirtualServer, snap *config.Snapshot) (Owner, bool) {
 	if !vs.AuthRequired {
-		return "", "", true
+		return Owner{Mode: "anonymous"}, true
 	}
-	deny := func(status int, msg, subject string, invalidToken bool) (string, string, bool) {
+	deny := func(status int, msg, subject string, invalidToken bool) (Owner, bool) {
 		h.record(audit.Event{VirtualServer: vs.Slug, ClientIP: h.ipString(r), Method: r.Method, Subject: subject, Status: "denied", Reason: msg})
 		if status == http.StatusUnauthorized {
 			ch := `Bearer realm="vmcp"`
@@ -52,7 +61,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 			w.Header().Set("WWW-Authenticate", ch)
 		}
 		http.Error(w, msg, status)
-		return "", "", false
+		return Owner{}, false
 	}
 	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || tok == "" {
@@ -70,7 +79,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 		})
 		switch outcome {
 		case agentauth.Allowed:
-			return b.Principal(), id.Subject, true
+			return Owner{Mode: "oauth", Principal: b.Principal(), CredentialID: b.ID, Issuer: h.JWT.Issuer(), Subject: id.Subject}, true
 		case agentauth.NoMatch:
 			return deny(http.StatusForbidden, "no identity binding matches this token", id.Subject, false)
 		case agentauth.ServerDenied:
@@ -91,7 +100,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 			return deny(http.StatusForbidden, "client address not allowed", "", false)
 		}
 	}
-	return key.Slug, "", true
+	return Owner{Mode: "agent-key", Principal: key.Slug, CredentialID: key.ID}, true
 }
 
 // publicBase is the externally visible base URL of the data plane, for resource metadata.

@@ -168,3 +168,23 @@ func TestTokenFetchDeniesUnapprovedDestination(t *testing.T) {
 		t.Fatal("secret sent to blocked token endpoint")
 	}
 }
+
+func TestRetainRetiresSupersededSources(t *testing.T) {
+	t.Cleanup(func() { regMu.Lock(); defer regMu.Unlock(); retained = nil; registry = map[string]*Source{} })
+	a := Config{TokenURL: "https://idp.example/token", ClientID: "a", ClientSecret: "old"}
+	b := a
+	b.ClientSecret = "new"
+	old := For(a)
+	current := For(b)
+	Retain([]Config{b})
+	if For(b) != current {
+		t.Fatal("unchanged token source was discarded")
+	}
+	if For(a) == For(a) {
+		t.Fatal("obsolete source was reintroduced into registry")
+	}
+	if For(a) == old {
+		t.Fatal("superseded token source remained reusable")
+	}
+	Retain(nil)
+}

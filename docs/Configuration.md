@@ -30,6 +30,7 @@ All configuration is through environment variables. Durations use Go syntax (`30
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `VMCP_AUTH_MAX_STALE` | `30s` | Maximum age of successfully confirmed authorization configuration; positive Go duration. Stale MCP requests return 503 |
 | `VMCP_DP_ADDR` | `:8080` | Listen address |
 | `VMCP_ALLOWED_ORIGINS` | empty | Comma-separated exact browser origins for MCP POST/GET/DELETE, e.g. `https://agent.example`; no paths. Empty denies all supplied Origins. Native clients may omit Origin |
 | `VMCP_TRUSTED_PROXIES` | empty | CIDRs of reverse proxies whose `X-Forwarded-For` is trusted (for IP allowlists and audit client IPs) |
@@ -46,7 +47,7 @@ All configuration is through environment variables. Durations use Go syntax (`30
 
 ## Health endpoints
 
-Both services expose `GET /healthz` (liveness) and `GET /readyz` (readiness, checks the database).
+Both services expose `GET /healthz` (liveness) and `GET /readyz`. Control-plane readiness checks the database. Data-plane readiness returns authorization freshness JSON and becomes 503 when confirmation expires; it does not directly probe every dependency. See [Authorization consistency](AUTHORIZATION_CONSISTENCY.md).
 
 ## Tests only
 

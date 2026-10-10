@@ -7,7 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/config"
@@ -16,8 +18,35 @@ import (
 
 // upstreamConn lazily holds the downstream session to one upstream.
 type upstreamConn struct {
-	mu sync.Mutex
-	c  upstream.Conn
+	mu      sync.Mutex
+	current *cachedClient
+}
+
+type cachedClient struct {
+	conn       upstream.Conn
+	generation [32]byte
+	active     int
+	retired    bool
+	closed     bool
+}
+
+// retireLocked prevents reuse; active calls release their lease before closure.
+func (uc *upstreamConn) retireLocked() {
+	if c := uc.current; c != nil {
+		c.retired = true
+		uc.current = nil
+		uc.closeLocked(c)
+	}
+}
+func (uc *upstreamConn) closeLocked(c *cachedClient) {
+	if c.retired && c.active == 0 && !c.closed {
+		c.closed = true
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = c.conn.Close(ctx)
+		}()
+	}
 }
 
 // Session is one client session on a virtual server. It owns one upstream
@@ -30,6 +59,8 @@ type Session struct {
 	clientCapabilities json.RawMessage
 	// keySlug is the agent key that opened the session ("" on open virtual servers).
 	keySlug string
+	owner   Owner
+	ended   atomic.Bool
 
 	mu    sync.Mutex
 	conns map[string]*upstreamConn
@@ -56,19 +87,36 @@ func (s *Session) conn(upstreamID string) *upstreamConn {
 }
 
 // client returns the initialized upstream client, creating it on first use.
-func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn, error) {
+func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn, func(), error) {
 	uc := s.conn(up.ID)
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
-	if uc.c != nil {
-		return uc.c, nil
+	if s.ended.Load() {
+		return nil, nil, errors.New("session ended")
 	}
-	c, err := Dial(ctx, up)
-	if err != nil {
-		return nil, err
+	generation := up.Fingerprint()
+	if uc.current != nil && uc.current.generation != generation {
+		uc.retireLocked()
 	}
-	uc.c = c
-	return c, nil
+	if uc.current == nil {
+		c, err := Dial(ctx, up)
+		if err != nil {
+			return nil, nil, err
+		}
+		uc.current = &cachedClient{conn: c, generation: generation}
+	}
+	c := uc.current
+	c.active++
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			uc.mu.Lock()
+			defer uc.mu.Unlock()
+			c.active--
+			uc.closeLocked(c)
+		})
+	}
+	return c.conn, release, nil
 }
 
 // Dial opens and initializes a connection to the upstream, falling back through its
@@ -105,8 +153,8 @@ func (s *Session) reset(upstreamID string, old upstream.Conn) {
 	uc := s.conn(upstreamID)
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
-	if uc.c == old {
-		uc.c = nil
+	if uc.current != nil && uc.current.conn == old {
+		uc.retireLocked()
 	}
 }
 
@@ -118,13 +166,9 @@ func (s *Session) closeUpstreams() {
 	}
 	s.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	for _, uc := range conns {
 		uc.mu.Lock()
-		if uc.c != nil {
-			_ = uc.c.Close(ctx)
-		}
+		uc.retireLocked()
 		uc.mu.Unlock()
 	}
 }
@@ -166,43 +210,53 @@ func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
 
 // Persist records a freshly created session in the shared store.
 func (m *Manager) Persist(ctx context.Context, s *Session) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if m.Store == nil {
 		return nil
 	}
 	s.mu.Lock()
 	s.persisted = time.Now()
 	s.mu.Unlock()
-	return m.Store.Save(ctx, Record{ID: s.id, Slug: s.slug, KeySlug: s.keySlug, Version: s.version, ClientCapabilities: s.clientCapabilities})
+	return m.Store.Save(ctx, Record{Owner: s.owner, ID: s.id, Slug: s.slug, KeySlug: s.keySlug, Version: s.version, ClientCapabilities: s.clientCapabilities})
 }
 
-// Resolve returns the session, loading it from the shared store when this node does not hold it.
-// It returns nil for unknown sessions and an error only if the store is unreachable.
+// Resolve checks the authoritative store on every request, including warm caches.
+// There is no authorization lease: database failures never fall back to local sessions.
 func (m *Manager) Resolve(ctx context.Context, id string) (*Session, error) {
 	if id == "" {
 		return nil, nil
 	}
-	if s := m.Get(id); s != nil {
-		return s, nil
-	}
 	if m.Store == nil {
-		return nil, nil
+		return m.Get(id), nil
 	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	rec, ok, err := m.Store.Load(ctx, id)
-	if err != nil || !ok {
+	if err != nil {
 		return nil, err
 	}
-	s := &Session{id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
+	if !ok {
+		m.Delete(id)
+		return nil, nil
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if existing := m.sessions[id]; existing != nil { // lost a race with a concurrent request
+	if existing := m.sessions[id]; existing != nil {
+		existing.mu.Lock()
+		existing.initialized = rec.Initialized
+		existing.mu.Unlock()
 		return existing, nil
 	}
+	s := &Session{owner: rec.Owner, id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
 	m.sessions[id] = s
 	return s, nil
 }
 
 // Touch refreshes the shared liveness of a session at most once per touchEvery.
 func (m *Manager) Touch(ctx context.Context, s *Session) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if m.Store == nil {
 		return
 	}
@@ -218,11 +272,16 @@ func (m *Manager) Touch(ctx context.Context, s *Session) {
 }
 
 // End terminates a session everywhere: this node's connections and the shared record.
-func (m *Manager) End(ctx context.Context, id string) bool {
+func (m *Manager) End(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if m.Store != nil {
-		_ = m.Store.Delete(ctx, id)
+		if err := m.Store.Delete(ctx, id); err != nil {
+			return err
+		}
 	}
-	return m.Delete(id)
+	m.Delete(id)
+	return nil
 }
 
 func (m *Manager) Get(id string) *Session {
@@ -238,6 +297,7 @@ func (m *Manager) Delete(id string) bool {
 	delete(m.sessions, id)
 	m.mu.Unlock()
 	if ok {
+		s.ended.Store(true)
 		go s.closeUpstreams()
 	}
 	return ok
@@ -290,27 +350,16 @@ func (m *Manager) RunReaper(ctx context.Context, ttl time.Duration) {
 	}
 }
 
-// Ready checks persisted lifecycle state while a local session is still pending.
-// This permits initialized on one node and the first operation on another.
+// Ready returns the lifecycle state refreshed by the authoritative Resolve for this request.
 func (m *Manager) Ready(ctx context.Context, s *Session) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.initialized {
-		return true, nil
-	}
-	if m.Store != nil {
-		rec, ok, err := m.Store.Load(ctx, s.id)
-		if err != nil {
-			return false, err
-		}
-		if ok {
-			s.initialized = rec.Initialized
-		}
-	}
 	return s.initialized, nil
 }
 
 func (m *Manager) Initialize(ctx context.Context, s *Session) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if m.Store != nil {
@@ -320,4 +369,31 @@ func (m *Manager) Initialize(ctx context.Context, s *Session) error {
 	}
 	s.initialized = true
 	return nil
+}
+
+// Reconcile retires idle and active clients whose connection configuration changed.
+// In-flight leases may finish within the request deadline; new calls cannot reuse them.
+func (m *Manager) Reconcile(snap *config.Snapshot) {
+	m.mu.RLock()
+	sessions := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
+	m.mu.RUnlock()
+	for _, s := range sessions {
+		s.mu.Lock()
+		conns := make(map[string]*upstreamConn, len(s.conns))
+		for id, uc := range s.conns {
+			conns[id] = uc
+		}
+		s.mu.Unlock()
+		for id, uc := range conns {
+			up, ok := snap.Upstreams[id]
+			uc.mu.Lock()
+			if uc.current != nil && (!ok || uc.current.generation != up.Fingerprint()) {
+				uc.retireLocked()
+			}
+			uc.mu.Unlock()
+		}
+	}
 }

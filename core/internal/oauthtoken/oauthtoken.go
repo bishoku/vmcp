@@ -137,11 +137,12 @@ func (s *Source) fetchLocked(ctx context.Context) (string, error) {
 var (
 	regMu    sync.Mutex
 	registry = map[string]*Source{}
+	retained map[string]bool // nil until a data-plane snapshot scopes the registry
 )
 
 // For returns the process-wide Source for this config, creating it on first use. Sources are
 // keyed by a hash of the whole config, so changing the secret or scopes yields a fresh token.
-func For(c Config) *Source {
+func configKey(c Config) string {
 	h := sha256.New()
 	for _, p := range []string{c.TokenURL, c.ClientID, c.ClientSecret, c.Audience} {
 		fmt.Fprintf(h, "%d:%s|", len(p), p)
@@ -149,9 +150,18 @@ func For(c Config) *Source {
 	for _, p := range c.Scopes {
 		fmt.Fprintf(h, "s%d:%s|", len(p), p)
 	}
-	key := hex.EncodeToString(h.Sum(nil))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func For(c Config) *Source {
+	key := configKey(c)
 	regMu.Lock()
 	defer regMu.Unlock()
+	// An already-admitted request can finish with obsolete credentials without
+	// reintroducing its source into the shared registry after reconciliation.
+	if retained != nil && !retained[key] {
+		return New(c, nil)
+	}
 	if s, ok := registry[key]; ok {
 		return s
 	}
@@ -267,4 +277,21 @@ func (c Config) Validate() []FieldError {
 		errs = append(errs, FieldError{"scopes", "at most 50 scopes"})
 	}
 	return errs
+}
+
+// Retain releases registry references to superseded credentials. Transports already in
+// flight retain their Source until they retire; a new generation obtains a fresh Source.
+func Retain(configs []Config) {
+	keep := make(map[string]bool, len(configs))
+	for _, c := range configs {
+		keep[configKey(c)] = true
+	}
+	regMu.Lock()
+	defer regMu.Unlock()
+	retained = keep
+	for key := range registry {
+		if !keep[key] {
+			delete(registry, key)
+		}
+	}
 }

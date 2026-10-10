@@ -12,6 +12,7 @@ import (
 
 // Record is the part of a session that survives the node that opened it.
 type Record struct {
+	Owner              Owner
 	ID                 string
 	Slug               string
 	KeySlug            string
@@ -37,39 +38,40 @@ type PGSessionStore struct{ Pool *pgxpool.Pool }
 
 func (s PGSessionStore) Save(ctx context.Context, r Record) error {
 	_, err := s.Pool.Exec(ctx, `
-		INSERT INTO sessions (id, virtual_server, key_slug, protocol_version, client_capabilities)
-		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING`, r.ID, r.Slug, r.KeySlug, r.Version, r.ClientCapabilities)
+		INSERT INTO sessions (id, virtual_server, key_slug, protocol_version, client_capabilities, owner_mode, credential_id, owner_issuer, owner_subject)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO NOTHING`, r.ID, r.Slug, r.KeySlug, r.Version, r.ClientCapabilities, r.Owner.Mode, r.Owner.CredentialID, r.Owner.Issuer, r.Owner.Subject)
 	return err
 }
 
 func (s PGSessionStore) Load(ctx context.Context, id string) (Record, bool, error) {
 	r := Record{ID: id}
 	err := s.Pool.QueryRow(ctx, `
-		SELECT virtual_server, key_slug, protocol_version, last_seen_at, initialized, client_capabilities FROM sessions WHERE id = $1`, id).
-		Scan(&r.Slug, &r.KeySlug, &r.Version, &r.LastSeen, &r.Initialized, &r.ClientCapabilities)
+		SELECT virtual_server, key_slug, protocol_version, last_seen_at, initialized, client_capabilities, owner_mode, credential_id, owner_issuer, owner_subject FROM sessions WHERE id = $1 AND terminated_at IS NULL`, id).
+		Scan(&r.Slug, &r.KeySlug, &r.Version, &r.LastSeen, &r.Initialized, &r.ClientCapabilities, &r.Owner.Mode, &r.Owner.CredentialID, &r.Owner.Issuer, &r.Owner.Subject)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Record{}, false, nil
 	}
+	r.Owner.Principal = r.KeySlug
 	return r, err == nil, err
 }
 
 func (s PGSessionStore) Delete(ctx context.Context, id string) error {
-	_, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, id)
+	_, err := s.Pool.Exec(ctx, `UPDATE sessions SET terminated_at = COALESCE(terminated_at, now()) WHERE id = $1`, id)
 	return err
 }
 
 func (s PGSessionStore) Touch(ctx context.Context, id string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE sessions SET last_seen_at = now() WHERE id = $1`, id)
+	_, err := s.Pool.Exec(ctx, `UPDATE sessions SET last_seen_at = now() WHERE id = $1 AND terminated_at IS NULL`, id)
 	return err
 }
 
 func (s PGSessionStore) Purge(ctx context.Context, idle time.Duration) (int64, error) {
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE last_seen_at < now() - make_interval(secs => $1)`, idle.Seconds())
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE last_seen_at < now() - make_interval(secs => $1) OR terminated_at < now() - make_interval(secs => $1)`, idle.Seconds())
 	return tag.RowsAffected(), err
 }
 
 func (s PGSessionStore) MarkInitialized(ctx context.Context, id string) error {
-	tag, err := s.Pool.Exec(ctx, `UPDATE sessions SET initialized = true WHERE id = $1`, id)
+	tag, err := s.Pool.Exec(ctx, `UPDATE sessions SET initialized = true WHERE id = $1 AND terminated_at IS NULL`, id)
 	if err == nil && tag.RowsAffected() != 1 {
 		return errors.New("session no longer exists")
 	}

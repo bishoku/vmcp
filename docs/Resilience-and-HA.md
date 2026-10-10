@@ -6,7 +6,7 @@ Everything here needs only PostgreSQL. Redis is not required.
 
 Run as many nodes as you like on the same database. Session records are shared, so a session opened on one node can
 continue on another (its upstream sessions are re-established on first use). Add a load balancer; affinity on
-`Mcp-Session-Id` is an optimization.
+`Mcp-Session-Id` is an optimization. Every shared-session lookup checks PostgreSQL, including warm caches. Successful DELETE is enforced on the next lookup across nodes; database failures return 503. Authorization snapshots expire after `VMCP_AUTH_MAX_STALE` (default 30s) without successful confirmation. See [Authorization consistency](AUTHORIZATION_CONSISTENCY.md) for ownership, rotation, in-flight behavior and upgrade requirements.
 
 ## Circuit breaker
 
@@ -22,7 +22,7 @@ failure. Other tools are never retried, to avoid duplicate side effects.
 ## Failover URLs
 
 `fallbackUrls` are tried in order when the primary URL does not answer, for tool discovery, health checks and new agent
-sessions. Limitations: an *existing* upstream session stays on the URL it opened; new sessions pick the first URL that works,
+sessions. Configuration changes retire cached upstream clients, so an existing agent session uses the new connection settings on its next call. Without a configuration change, an upstream session stays on the URL it opened; newly established upstream sessions pick the first URL that works,
 and with a black-holed primary each new session may wait up to 10 seconds before falling back.
 
 ## Health checks

@@ -58,6 +58,7 @@ services:
     environment:
       <<: [*master-key, *network-policy]
       VMCP_DP_ADDR: ":8080"
+      VMCP_AUTH_MAX_STALE: ${VMCP_AUTH_MAX_STALE:-30s}
       VMCP_ALLOWED_ORIGINS: ${VMCP_ALLOWED_ORIGINS:-}
       VMCP_REDIS_URL: ${VMCP_REDIS_URL:-}
       VMCP_DATABASE_URL: postgres://vmcp:vmcp@postgres:5432/vmcp?sslmode=disable

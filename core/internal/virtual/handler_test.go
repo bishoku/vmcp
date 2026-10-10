@@ -111,7 +111,8 @@ func newRig(t *testing.T) *rig {
 
 type staticSnap struct{ s *config.Snapshot }
 
-func (s staticSnap) Snapshot() *config.Snapshot { return s.s }
+func (s staticSnap) Snapshot() *config.Snapshot                    { return s.s }
+func (s staticSnap) AuthorizedSnapshot() (*config.Snapshot, error) { return s.s, nil }
 
 func (r *rig) rpc(t *testing.T, slug, sid, method string, params any) (*http.Response, *mcp.Message) {
 	t.Helper()
