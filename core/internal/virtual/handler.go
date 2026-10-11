@@ -13,11 +13,13 @@ import (
 	"net/netip"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
@@ -40,6 +42,7 @@ type SnapshotProvider interface {
 type Handler struct {
 	Snap     SnapshotProvider
 	Sessions *Manager
+	Delivery *delivery.Store
 	Log      *slog.Logger
 
 	// Audit receives one event per tool call and per denied request. Optional.
@@ -58,9 +61,16 @@ type Handler struct {
 	JWT *agentauth.Verifier
 
 	// PublicURL is the externally visible base URL, used in OAuth resource metadata. Optional.
-	PublicURL string
-	budgetMu  sync.Mutex
-	budgets   map[string]int
+	PublicURL     string
+	activeStreams atomic.Int64
+	workerWG      sync.WaitGroup
+	workerMu      sync.Mutex
+	workerStopped bool
+	workerOnce    sync.Once
+	workerCtx     context.Context
+	workerCancel  context.CancelFunc
+	budgetMu      sync.Mutex
+	budgets       map[string]int
 }
 
 // Register mounts the virtual server routes on mux.
@@ -70,6 +80,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}", h.resourceMetadata)
 	// No server-initiated stream yet: tell clients so, as the spec allows.
 	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", ingress(func(w http.ResponseWriter, r *http.Request) {
+		if h.Delivery != nil {
+			h.getStream(w, r)
+			return
+		}
 		snap, fresh := h.requestSnapshot(w, r)
 		if !fresh {
 			return
@@ -246,6 +260,9 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if h.Delivery != nil && h.deliveryInput(w, r, sess, msg, vs) {
+		return
+	}
 	if !msg.IsRequest() {
 		if msg.IsResponse() {
 			http.Error(w, "no pending server request", http.StatusBadRequest)
@@ -265,6 +282,10 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		}
 		h.reply(w, msg.ID, mcp.ListToolsResult{Tools: tools})
 	case mcp.MethodToolsCall:
+		if h.Delivery != nil {
+			h.streamCall(ctx, w, r, msg, vs, sess, snap)
+			return
+		}
 		h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r))
 	default:
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeMethodNotFound, "method not found: "+msg.Method))
@@ -296,7 +317,7 @@ func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mc
 	w.Header().Set("Mcp-Session-Id", sess.id)
 	h.reply(w, msg.ID, mcp.InitializeResult{
 		ProtocolVersion: version,
-		Capabilities:    mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{ListChanged: false}},
+		Capabilities:    mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{ListChanged: h.Delivery != nil}},
 		ServerInfo:      mcp.Implementation{Name: "vmcp:" + vs.Slug, Version: "0.1.0"},
 	})
 }
@@ -318,6 +339,9 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	start := time.Now()
 	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
 		ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: "tools/call", Target: vs.Slug, TraceID: audit.TraceFrom(ctx)}
+	if requestID, ok := ctx.Value(deliveryRequestKey{}).(string); ok {
+		ev.RequestID = requestID
+	}
 	finish := func(status, reason string) bool {
 		ev.Status, ev.Reason, ev.DurationMS = status, reason, int(time.Since(start).Milliseconds())
 		if durable, ok := h.Audit.(audit.DurableRecorder); ok && ev.OperationID != "" {

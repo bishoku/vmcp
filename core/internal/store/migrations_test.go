@@ -9,6 +9,42 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+func TestDeliveryMigrationUpgradeAndRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 18); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO sessions(id,virtual_server,key_slug,protocol_version) VALUES('delivery-upgrade','v','','2025-06-18')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var table string
+	if err := db.QueryRowContext(ctx, `SELECT 'mcp_events'::regclass::text`).Scan(&table); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 18); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE id='delivery-upgrade'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("rollback lost session: %d %v", count, err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionLifecycleMigrationUpgradeAndRollback(t *testing.T) {
 	url := testdb.New(t)
 	ctx := context.Background()

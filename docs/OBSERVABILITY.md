@@ -47,7 +47,7 @@ Each data-plane node also opens **one dedicated direct LISTEN connection** outsi
 its pool. Set `VMCP_DB_LISTENER_URL` to direct PostgreSQL when the ordinary URL is
 PgBouncer transaction pooling. LISTEN must use a direct connection or verified
 session pooling; transaction pooling is unsupported for the listener. Budget
-`DP replicas × (max pool + 1 listener) + CP replicas × max pool`, plus migrations,
+`DP replicas × (max pool + 2 listeners) + CP replicas × max pool`, plus migrations,
 backup, monitoring and reserved administration connections. Four DP replicas and
 two CP replicas at defaults allow 100 application connections. These defaults
 are conservative initial settings, not measured production capacity guarantees.

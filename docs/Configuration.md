@@ -69,7 +69,7 @@ Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status
  requests retain live snapshot and audit services. After HTTP drain (or forced
  connection closure plus a six-second outcome-write allowance), local upstream
  sessions retire, background producers stop, audit buffers flush, and pools close.
- Compose grants 90 seconds; increase that when increasing the drain timeout
+ Compose grants 105 seconds; increase that when increasing the drain timeout
  (allow at least another 15 seconds for cancellation and audit flushing).
  A killed process can leave durable incomplete admissions; P04 recovery evidence
  remains available. Shutdown does not revoke sessions stored for other nodes.

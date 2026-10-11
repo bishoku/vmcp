@@ -89,13 +89,14 @@ func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 
 // CallTool invokes a tool and returns the raw result object untouched.
 func (c *Client) CallTool(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
-	return c.Call(ctx, mcp.MethodToolsCall, mcp.CallToolParams{Name: name, Arguments: args})
+	return c.Call(ctx, mcp.MethodToolsCall, mcp.CallToolParams{Name: name, Arguments: args, Meta: relayFrom(ctx).Meta})
 }
 
 // Call sends a request and returns the raw JSON-RPC result.
 // A JSON-RPC error from the upstream is returned as *mcp.Error.
 func (c *Client) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	id := mcp.NewIntID(c.nextID.Add(1))
+	defer cancelRequest(ctx, method, id, c.Send)
 	req, err := mcp.NewRequest(id, method, params)
 	if err != nil {
 		return nil, err
@@ -196,7 +197,7 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		return nil, fmt.Errorf("upstream %s returned %d: %s", msg.Method, resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 
-	if msg.IsNotification() {
+	if msg.IsNotification() || msg.IsResponse() {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxSSEEventBytes))
 		return nil, nil
 	}
@@ -214,7 +215,7 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		}
 		return out, nil
 	case "text/event-stream":
-		return c.readSSE(resp.Body, msg.ID)
+		return c.readSSEContext(ctx, resp.Body, msg.ID)
 	default:
 		return nil, fmt.Errorf("upstream returned unsupported content type %q", mt)
 	}
@@ -222,11 +223,16 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 
 // readSSE reads events until the response matching id arrives.
 func (c *Client) readSSE(r io.Reader, id mcp.ID) (*mcp.Message, error) {
+	return c.readSSEContext(context.Background(), r, id)
+}
+func (c *Client) readSSEContext(ctx context.Context, r io.Reader, id mcp.ID) (*mcp.Message, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64<<10), maxSSEEventBytes)
 
 	var data []string
 	frameBytes := 0
+	messageCount := 0
+	requestSlots := make(chan struct{}, 32)
 	flush := func() (*mcp.Message, error) {
 		if len(data) == 0 {
 			return nil, nil
@@ -234,6 +240,10 @@ func (c *Client) readSSE(r io.Reader, id mcp.ID) (*mcp.Message, error) {
 		payload := strings.Join(data, "\n")
 		data = data[:0]
 		frameBytes = 0
+		messageCount++
+		if messageCount > 256 {
+			return nil, errors.New("upstream stream message limit exceeded")
+		}
 		m, err := mcp.Decode([]byte(payload))
 		if err != nil {
 			return nil, err
@@ -244,8 +254,17 @@ func (c *Client) readSSE(r io.Reader, id mcp.ID) (*mcp.Message, error) {
 			}
 			return m, nil
 		}
-		if c.OnServerMessage != nil {
-			c.OnServerMessage(m)
+		if m.IsRequest() {
+			select {
+			case requestSlots <- struct{}{}:
+			default:
+				return nil, errors.New("upstream pending request limit exceeded")
+			}
+			go func() { defer func() { <-requestSlots }(); _ = handleMessage(ctx, m, c.Send, c.OnServerMessage) }()
+			return nil, nil
+		}
+		if err := handleMessage(ctx, m, c.Send, c.OnServerMessage); err != nil {
+			return nil, err
 		}
 		return nil, nil
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/health"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
@@ -213,15 +214,19 @@ func run(log *slog.Logger) error {
 		}
 		log.Info("accepting access tokens from an identity provider", "issuer", issuer)
 	}
-	(&virtual.Handler{Snap: syncer, Sessions: sessions, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
-		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}).Register(mux)
+	deliveryStore := &delivery.Store{Pool: pool, Box: box, ListenerURL: syncer.ListenerURL}
+	go deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
+	virtualHandler := &virtual.Handler{Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
+		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}
+	virtualHandler.Register(mux)
+	defer virtualHandler.StopWorkers()
 
 	metrics := telemetry.New()
 	metrics.Gauges = func(ctx context.Context) map[string]float64 {
 		status := syncer.Status()
 		stats := pool.Stat()
 		a := auditor.Stats()
-		gauges := map[string]float64{"streams_active": 0, "sessions_active": float64(sessions.Len()), "snapshot_age_seconds": status.Age.Seconds(), "snapshot_revision": float64(status.Revision), "snapshot_refresh_seconds": syncer.RefreshDuration().Seconds(), "listener_reconnects_total": float64(syncer.ListenerReconnects()), "pool_acquired": float64(stats.AcquiredConns()), "pool_max": float64(stats.MaxConns()), "pool_acquire_seconds_total": stats.AcquireDuration().Seconds(), "pool_empty_acquires_total": float64(stats.EmptyAcquireCount()), "pool_cancelled_acquires_total": float64(stats.CanceledAcquireCount()), "audit_failed_writes_total": float64(a.FailedWrites), "audit_dropped_total": float64(a.Dropped), "audit_queue_pending": float64(a.Pending)}
+		gauges := map[string]float64{"streams_active": float64(virtualHandler.ActiveStreams()), "sessions_active": float64(sessions.Len()), "snapshot_age_seconds": status.Age.Seconds(), "snapshot_revision": float64(status.Revision), "snapshot_refresh_seconds": syncer.RefreshDuration().Seconds(), "listener_reconnects_total": float64(syncer.ListenerReconnects()), "pool_acquired": float64(stats.AcquiredConns()), "pool_max": float64(stats.MaxConns()), "pool_acquire_seconds_total": stats.AcquireDuration().Seconds(), "pool_empty_acquires_total": float64(stats.EmptyAcquireCount()), "pool_cancelled_acquires_total": float64(stats.CanceledAcquireCount()), "audit_failed_writes_total": float64(a.FailedWrites), "audit_dropped_total": float64(a.Dropped), "audit_queue_pending": float64(a.Pending)}
 		if pending, err := audit.Pending(ctx, pool); err == nil {
 			gauges["audit_incomplete"] = float64(pending.Incomplete)
 			gauges["audit_oldest_incomplete_seconds"] = pending.OldestIncompleteAgeSeconds
@@ -272,13 +277,23 @@ func run(log *slog.Logger) error {
 	gate.Stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	shutdownErr := srv.Shutdown(shutdownCtx)
+	if shutdownErr != nil {
 		_ = srv.Close()
 		finishCtx, finishCancel := context.WithTimeout(context.Background(), 6*time.Second)
-		defer finishCancel()
 		_ = gate.Wait(finishCtx)
-		return err
+		finishCancel()
 	}
+	if err := virtualHandler.WaitWorkers(shutdownCtx); err != nil {
+		virtualHandler.StopWorkers()
+		finishCtx, finishCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer finishCancel()
+		_ = virtualHandler.WaitWorkers(finishCtx)
+	}
+	if shutdownErr != nil {
+		return shutdownErr
+	}
+
 	log.Info("stopped")
 	return nil
 }

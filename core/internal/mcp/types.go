@@ -71,6 +71,7 @@ type ListToolsResult struct {
 }
 
 type CallToolParams struct {
+	Meta      json.RawMessage `json:"_meta,omitempty"`
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 }

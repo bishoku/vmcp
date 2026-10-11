@@ -75,11 +75,13 @@ type SSEClient struct {
 	// OnServerMessage receives server-initiated messages. Optional.
 	OnServerMessage func(*mcp.Message)
 
-	mu       sync.Mutex
-	endpoint string
-	pending  map[string]chan *mcp.Message
-	closed   chan struct{} // closed when the event stream ends
-	cancel   context.CancelFunc
+	mu            sync.Mutex
+	endpoint      string
+	pending       map[string]chan *mcp.Message
+	relayContexts map[string]context.Context
+	requestSlots  chan struct{}
+	closed        chan struct{} // closed when the event stream ends
+	cancel        context.CancelFunc
 }
 
 // NewSSEClient creates a legacy SSE client; the stream opens on Initialize.
@@ -87,7 +89,7 @@ func NewSSEClient(url string, headers map[string]string, hc *http.Client) *SSECl
 	if hc == nil {
 		hc = &http.Client{}
 	}
-	return &SSEClient{url: url, headers: headers, http: netpolicy.Client(hc), pending: map[string]chan *mcp.Message{}}
+	return &SSEClient{url: url, headers: headers, http: netpolicy.Client(hc), pending: map[string]chan *mcp.Message{}, requestSlots: make(chan struct{}, 32)}
 }
 
 // Initialize opens the event stream, then performs the MCP handshake.
@@ -125,7 +127,7 @@ func (c *SSEClient) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 
 // CallTool invokes a tool and returns the raw result object.
 func (c *SSEClient) CallTool(ctx context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
-	return c.call(ctx, mcp.MethodToolsCall, mcp.CallToolParams{Name: name, Arguments: args})
+	return c.call(ctx, mcp.MethodToolsCall, mcp.CallToolParams{Name: name, Arguments: args, Meta: relayFrom(ctx).Meta})
 }
 
 // Close ends the event stream.
@@ -251,9 +253,21 @@ func (c *SSEClient) readLoop(body io.ReadCloser, ready chan<- error, closed chan
 			}
 			return
 		}
-		if c.OnServerMessage != nil {
-			c.OnServerMessage(m)
+		c.mu.Lock()
+		messageCtx := selectRelay(c.relayContexts, m)
+		c.mu.Unlock()
+		if m.IsRequest() {
+			select {
+			case c.requestSlots <- struct{}{}:
+				go func() {
+					defer func() { <-c.requestSlots }()
+					_ = handleMessage(messageCtx, m, c.Send, c.OnServerMessage)
+				}()
+			default:
+			}
+			return
 		}
+		_ = handleMessage(messageCtx, m, c.Send, c.OnServerMessage)
 	}
 	for sc.Scan() {
 		line := sc.Text()
@@ -307,6 +321,7 @@ func (c *SSEClient) post(ctx context.Context, msg *mcp.Message) error {
 
 func (c *SSEClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	id := mcp.NewIntID(c.nextID.Add(1))
+	defer cancelRequest(ctx, method, id, c.Send)
 	req, err := mcp.NewRequest(id, method, params)
 	if err != nil {
 		return nil, err
@@ -315,6 +330,11 @@ func (c *SSEClient) call(ctx context.Context, method string, params any) (json.R
 	c.mu.Lock()
 	closed := c.closed
 	c.pending[id.String()] = ch
+	if c.relayContexts == nil {
+		c.relayContexts = map[string]context.Context{}
+	}
+	c.relayContexts[id.String()] = ctx
+	defer func() { c.mu.Lock(); delete(c.relayContexts, id.String()); c.mu.Unlock() }()
 	c.mu.Unlock()
 	drop := func() {
 		c.mu.Lock()

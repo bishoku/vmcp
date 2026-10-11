@@ -89,6 +89,7 @@ func run(log *slog.Logger) error {
 		Version:    version,
 		Log:        log,
 	}
+	go api.RunDiscovery(ctx)
 	metrics := telemetry.New()
 	shutdownTracing, err := telemetry.InitTracing(ctx, "vmcp-control-plane")
 	if err != nil {

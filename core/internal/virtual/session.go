@@ -80,6 +80,9 @@ func (s *Session) conn(upstreamID string) *upstreamConn {
 	defer s.mu.Unlock()
 	uc, ok := s.conns[upstreamID]
 	if !ok {
+		if len(s.conns) >= 32 {
+			return nil
+		}
 		uc = &upstreamConn{}
 		s.conns[upstreamID] = uc
 	}
@@ -89,6 +92,9 @@ func (s *Session) conn(upstreamID string) *upstreamConn {
 // client returns the initialized upstream client, creating it on first use.
 func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn, func(), error) {
 	uc := s.conn(up.ID)
+	if uc == nil {
+		return nil, nil, errors.New("upstream session capacity exceeded")
+	}
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	if s.ended.Load() {
@@ -151,6 +157,9 @@ func Dial(ctx context.Context, up config.Upstream) (upstream.Conn, error) {
 // reset drops a client whose upstream session expired, if it is still current.
 func (s *Session) reset(upstreamID string, old upstream.Conn) {
 	uc := s.conn(upstreamID)
+	if uc == nil {
+		return
+	}
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	if uc.current != nil && uc.current.conn == old {
