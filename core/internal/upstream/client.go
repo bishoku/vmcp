@@ -84,23 +84,7 @@ func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) 
 
 // ListTools returns every tool, following pagination cursors.
 func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
-	var all []mcp.Tool
-	cursor := ""
-	for {
-		raw, err := c.Call(ctx, mcp.MethodToolsList, mcp.ListToolsParams{Cursor: cursor})
-		if err != nil {
-			return nil, err
-		}
-		var page mcp.ListToolsResult
-		if err := json.Unmarshal(raw, &page); err != nil {
-			return nil, fmt.Errorf("decode tools/list: %w", err)
-		}
-		all = append(all, page.Tools...)
-		if page.NextCursor == "" {
-			return all, nil
-		}
-		cursor = page.NextCursor
-	}
+	return listTools(ctx, c.Call)
 }
 
 // CallTool invokes a tool and returns the raw result object untouched.
@@ -155,7 +139,7 @@ func (c *Client) Close(ctx context.Context) error {
 		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxSSEEventBytes))
 	c.mu.Lock()
 	c.sessionID = ""
 	c.mu.Unlock()
@@ -213,14 +197,14 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 	}
 
 	if msg.IsNotification() {
-		_, _ = io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxSSEEventBytes))
 		return nil, nil
 	}
 
 	mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	switch mt {
 	case "application/json":
-		data, err := io.ReadAll(resp.Body)
+		data, err := readBounded(resp.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -242,12 +226,14 @@ func (c *Client) readSSE(r io.Reader, id mcp.ID) (*mcp.Message, error) {
 	sc.Buffer(make([]byte, 0, 64<<10), maxSSEEventBytes)
 
 	var data []string
+	frameBytes := 0
 	flush := func() (*mcp.Message, error) {
 		if len(data) == 0 {
 			return nil, nil
 		}
 		payload := strings.Join(data, "\n")
 		data = data[:0]
+		frameBytes = 0
 		m, err := mcp.Decode([]byte(payload))
 		if err != nil {
 			return nil, err
@@ -272,6 +258,10 @@ func (c *Client) readSSE(r io.Reader, id mcp.ID) (*mcp.Message, error) {
 				return m, err
 			}
 		case strings.HasPrefix(line, "data:"):
+			frameBytes += len(line)
+			if frameBytes > maxSSEEventBytes {
+				return nil, errors.New("upstream SSE frame exceeds limit")
+			}
 			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 	}

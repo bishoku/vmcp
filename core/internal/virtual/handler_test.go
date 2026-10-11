@@ -225,7 +225,7 @@ func TestRejections(t *testing.T) {
 	}
 }
 
-func TestUpstreamSessionRecovery(t *testing.T) {
+func TestNonIdempotentSessionExpiryDoesNotReplay(t *testing.T) {
 	r := newRig(t)
 	sid := r.initialize(t)
 	_, _ = r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue"})
@@ -235,12 +235,13 @@ func TestUpstreamSessionRecovery(t *testing.T) {
 	r.github.mu.Unlock()
 
 	_, m := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue"})
-	if got := callText(t, m); got != "gh:create_issue" {
-		t.Fatalf("recovery failed: %s", got)
+	if m.Error == nil {
+		t.Fatal("expired unsafe call should fail without replay")
 	}
-	if r.github.inits != 2 {
-		t.Fatalf("expected a re-initialize, inits=%d", r.github.inits)
+	if r.github.inits != 1 {
+		t.Fatalf("unsafe call reinitialized: %d", r.github.inits)
 	}
+
 }
 
 func TestUpstreamErrorRelayedAndHiddenFailure(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/agentauth"
@@ -58,6 +59,8 @@ type Handler struct {
 
 	// PublicURL is the externally visible base URL, used in OAuth resource metadata. Optional.
 	PublicURL string
+	budgetMu  sync.Mutex
+	budgets   map[string]int
 }
 
 // Register mounts the virtual server routes on mux.
@@ -117,11 +120,20 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))
 
+	release, admitted := h.acquire(owner, slug)
+	if !admitted {
+		http.Error(w, "request concurrency limit exceeded", 429)
+		return
+	}
+	defer release()
+	controller := http.NewResponseController(w)
+	_ = controller.SetReadDeadline(time.Now().Add(10 * time.Second))
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 	if err != nil {
 		http.Error(w, "request body too large or unreadable", http.StatusRequestEntityTooLarge)
 		return
 	}
+	_ = controller.SetReadDeadline(time.Time{})
 	msg, err := mcp.Decode(body)
 	if err != nil {
 		var rpcErr *mcp.Error
@@ -506,6 +518,7 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 	attempts := 1
 	if idempotent(vt.Tool.Annotations) {
 		attempts = 2
+		ctx = oauthtoken.WithReplaySafe(ctx)
 	}
 	var res json.RawMessage
 	var err error
@@ -524,20 +537,19 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 			return nil, errCircuitOpen
 		}
 		res, err = h.callUpstream(ctx, sess, up, vt.UpstreamName, args)
-		var rpcErr *mcp.Error
-		switch {
-		case err == nil || errors.As(err, &rpcErr):
+		if errors.Is(err, errAuthorizationChanged) {
+			return res, err
+		}
+		switch resilience.Classify(ctx, err) {
+		case resilience.Reached:
 			if br != nil {
 				br.Success()
 			}
 			return res, err
-		case errors.Is(err, errAuthorizationChanged):
+		case resilience.Ignore:
 			return res, err
-		case ctx.Err() != nil:
-			return res, err // the caller gave up or our deadline hit: not evidence about the upstream
-		case oauthtoken.IsTokenError(err):
-			return res, err // the identity provider failed, not the upstream: no breaker hit, no retry
 		}
+
 		if br != nil {
 			br.Failure()
 		}
@@ -562,9 +574,11 @@ func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Ups
 		}
 		res, err := c.CallTool(ctx, tool, args)
 		release()
-		if errors.Is(err, upstream.ErrSessionExpired) && attempt == 0 {
+		if errors.Is(err, upstream.ErrSessionExpired) {
 			sess.reset(up.ID, c)
-			continue
+			if attempt == 0 && oauthtoken.ReplaySafe(ctx) {
+				continue
+			}
 		}
 		return res, err
 	}
@@ -612,6 +626,7 @@ func (h *Handler) reply(w http.ResponseWriter, id mcp.ID, result any) {
 }
 
 func writeMessage(w http.ResponseWriter, status int, m *mcp.Message) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(10 * time.Second))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(m)
@@ -646,4 +661,33 @@ func checkAuthorization(ctx context.Context) error {
 		return check(ctx)
 	}
 	return nil
+}
+
+// Admission counters are removed on release, so arbitrary identities cannot grow the map.
+func (h *Handler) acquire(owner Owner, server string) (func(), bool) {
+	h.budgetMu.Lock()
+	defer h.budgetMu.Unlock()
+	if h.budgets == nil {
+		h.budgets = map[string]int{}
+	}
+	keys := []string{"all", "server:" + server, "principal:" + owner.Mode + ":" + owner.Principal + ":" + owner.Subject}
+	limits := []int{1024, 128, 16}
+	for i, key := range keys {
+		if h.budgets[key] >= limits[i] {
+			return nil, false
+		}
+	}
+	for _, key := range keys {
+		h.budgets[key]++
+	}
+	return func() {
+		h.budgetMu.Lock()
+		defer h.budgetMu.Unlock()
+		for _, key := range keys {
+			h.budgets[key]--
+			if h.budgets[key] == 0 {
+				delete(h.budgets, key)
+			}
+		}
+	}, true
 }

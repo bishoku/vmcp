@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"log/slog"
 	"net/http"
 	"os"
@@ -45,7 +46,11 @@ func run(log *slog.Logger) error {
 	if _, err := netpolicy.Origins(); err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancelBackground := context.WithCancel(context.Background())
+	defer cancelBackground()
+	auditCtx, cancelAudit := context.WithCancel(context.Background())
+	defer cancelAudit()
 	defer stop()
 
 	dbURL, err := config.MustEnv("VMCP_DATABASE_URL")
@@ -65,7 +70,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	auditor, err := audit.NewService(ctx, pool, log, config.Env("VMCP_AUDIT_MODE", "strict"))
+	auditor, err := audit.NewService(auditCtx, pool, log, config.Env("VMCP_AUDIT_MODE", "strict"))
 	if err != nil {
 		pool.Close()
 		return err
@@ -74,16 +79,22 @@ func run(log *slog.Logger) error {
 	// and let the audit writer flush before closing the pool, otherwise Close
 	// blocks on error exits and buffered events are lost.
 	defer func() {
-		stop()
+		cancelBackground()
+		cancelAudit()
 		<-auditor.Done()
 		pool.Close()
 	}()
 
+	drainTimeout, err := time.ParseDuration(config.Env("VMCP_DRAIN_TIMEOUT", "75s"))
+	if err != nil || drainTimeout < 65*time.Second || drainTimeout > 2*time.Minute {
+		return errors.New("VMCP_DRAIN_TIMEOUT must be between 65s and 2m")
+	}
 	maxStale, err := time.ParseDuration(config.Env("VMCP_AUTH_MAX_STALE", "30s"))
 	if err != nil || maxStale <= 0 {
 		return errors.New("VMCP_AUTH_MAX_STALE must be a positive duration")
 	}
 	sessions := virtual.NewManager()
+	defer sessions.Close()
 	sessions.Store = virtual.PGSessionStore{Pool: pool}
 	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log, MaxAuthorizationAge: maxStale,
 		OnChange: func(snap *config.Snapshot) {
@@ -135,14 +146,19 @@ func run(log *slog.Logger) error {
 	}
 	go (&health.Checker{Pool: pool, Snap: syncer, Breakers: breakers, Node: node, Interval: interval, Log: log}).Run(ctx)
 
+	gate := &lifecycle.Gate{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
 		status := syncer.Status()
+		if gate.Draining() {
+			status.Ready = false
+			status.Reason = "draining"
+		}
 		w.Header().Set("Content-Type", "application/json")
-		if !status.Ready {
+		if gate.Draining() || !status.Ready {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 		_ = json.NewEncoder(w).Encode(struct {
@@ -161,8 +177,7 @@ func run(log *slog.Logger) error {
 	})
 	trusted, err := config.ParsePrefixes(config.Env("VMCP_TRUSTED_PROXIES", ""))
 	if err != nil {
-		log.Error("invalid VMCP_TRUSTED_PROXIES", "err", err)
-		os.Exit(1)
+		return fmt.Errorf("invalid VMCP_TRUSTED_PROXIES: %w", err)
 	}
 	var jwt *agentauth.Verifier
 	if issuer := config.Env("VMCP_AGENT_OIDC_ISSUER", ""); issuer != "" {
@@ -177,8 +192,7 @@ func run(log *slog.Logger) error {
 			Audience: config.Env("VMCP_AGENT_OIDC_AUDIENCE", ""), Algs: algs,
 		})
 		if err != nil {
-			log.Error("agent oauth", "err", err)
-			os.Exit(1)
+			return fmt.Errorf("agent oauth: %w", err)
 		}
 		log.Info("accepting access tokens from an identity provider", "issuer", issuer)
 	}
@@ -187,7 +201,7 @@ func run(log *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_DP_ADDR", ":8080"),
-		Handler:           mux,
+		Handler:           gate.Handler(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -202,12 +216,17 @@ func run(log *slog.Logger) error {
 	select {
 	case err := <-errCh:
 		return err
-	case <-ctx.Done():
+	case <-signalCtx.Done():
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	gate.Stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
+		_ = srv.Close()
+		finishCtx, finishCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer finishCancel()
+		_ = gate.Wait(finishCtx)
 		return err
 	}
 	log.Info("stopped")

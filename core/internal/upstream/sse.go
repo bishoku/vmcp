@@ -120,23 +120,7 @@ func (c *SSEClient) Initialize(ctx context.Context) (*mcp.InitializeResult, erro
 
 // ListTools returns every tool, following pagination cursors.
 func (c *SSEClient) ListTools(ctx context.Context) ([]mcp.Tool, error) {
-	var all []mcp.Tool
-	cursor := ""
-	for {
-		raw, err := c.call(ctx, mcp.MethodToolsList, mcp.ListToolsParams{Cursor: cursor})
-		if err != nil {
-			return nil, err
-		}
-		var page mcp.ListToolsResult
-		if err := json.Unmarshal(raw, &page); err != nil {
-			return nil, fmt.Errorf("decode tools/list: %w", err)
-		}
-		all = append(all, page.Tools...)
-		if page.NextCursor == "" {
-			return all, nil
-		}
-		cursor = page.NextCursor
-	}
+	return listTools(ctx, c.call)
 }
 
 // CallTool invokes a tool and returns the raw result object.
@@ -215,9 +199,10 @@ func (c *SSEClient) readLoop(body io.ReadCloser, ready chan<- error, closed chan
 
 	var event string
 	var data []string
+	frameBytes := 0
 	gotEndpoint := false
 	dispatch := func() {
-		defer func() { event, data = "", data[:0] }()
+		defer func() { event, data, frameBytes = "", data[:0], 0 }()
 		if len(data) == 0 {
 			return
 		}
@@ -278,6 +263,10 @@ func (c *SSEClient) readLoop(body io.ReadCloser, ready chan<- error, closed chan
 		case strings.HasPrefix(line, "event:"):
 			event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		case strings.HasPrefix(line, "data:"):
+			frameBytes += len(line)
+			if frameBytes > maxSSEEventBytes {
+				return
+			}
 			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 	}

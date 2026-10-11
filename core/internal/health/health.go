@@ -52,10 +52,18 @@ func (c *Checker) Run(ctx context.Context) {
 // CheckOnce probes all upstreams concurrently and records the results.
 func (c *Checker) CheckOnce(ctx context.Context) {
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, 16)
 	for _, up := range c.Snap.Snapshot().Upstreams {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return
+		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() { <-slots }()
 			c.check(ctx, up)
 		}()
 	}
@@ -71,7 +79,7 @@ func (c *Checker) check(ctx context.Context, up config.Upstream) {
 		state = "unhealthy"
 		s := err.Error()
 		msg = &s
-		if br != nil && ctx.Err() == nil {
+		if br != nil && resilience.Classify(ctx, err) == resilience.Failed {
 			br.Failure()
 		}
 	} else if br != nil {

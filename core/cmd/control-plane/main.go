@@ -16,6 +16,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/controlplane"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oidc"
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -87,9 +88,12 @@ func run(log *slog.Logger) error {
 		Version:    version,
 		Log:        log,
 	}
+	gate := &lifecycle.Gate{}
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_CP_ADDR", ":8081"),
-		Handler:           api.Handler(),
+		Handler:           gate.Handler(api.Handler()),
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      75 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -107,9 +111,14 @@ func run(log *slog.Logger) error {
 	case <-ctx.Done():
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	gate.Stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
+		_ = srv.Close()
+		finishCtx, finishCancel := context.WithTimeout(context.Background(), 6*time.Second)
+		defer finishCancel()
+		_ = gate.Wait(finishCtx)
 		return err
 	}
 	log.Info("stopped")

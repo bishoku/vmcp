@@ -116,7 +116,8 @@ func TestTransportInjectsAndRetriesOnce(t *testing.T) {
 
 	s := New(Config{TokenURL: srv.URL, ClientID: "c", ClientSecret: "x"}, nil)
 	hc := &http.Client{Transport: Transport(nil, s)}
-	resp, err := hc.Post(up.URL, "text/plain", strings.NewReader("payload"))
+	req, _ := http.NewRequestWithContext(WithReplaySafe(context.Background()), http.MethodPost, up.URL, strings.NewReader("payload"))
+	resp, err := hc.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,4 +188,33 @@ func TestRetainRetiresSupersededSources(t *testing.T) {
 		t.Fatal("superseded token source remained reusable")
 	}
 	Retain(nil)
+}
+
+func TestUnsafePostNeverReplayedOnUnauthorized(t *testing.T) {
+	srv, _, _ := tokenServer(t, 3600, 200)
+	var calls atomic.Int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); w.WriteHeader(401) }))
+	defer up.Close()
+	hc := &http.Client{Transport: Transport(nil, New(Config{TokenURL: srv.URL, ClientID: "c", ClientSecret: "x"}, nil))}
+	resp, err := hc.Post(up.URL, "text/plain", strings.NewReader("side effect"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if calls.Load() != 1 {
+		t.Fatalf("unsafe operation replayed %d times", calls.Load())
+	}
+}
+
+func TestTokenFailuresAreBackedOff(t *testing.T) {
+	srv, _, _ := tokenServer(t, 3600, 503)
+	source := New(Config{TokenURL: srv.URL, ClientID: "c", ClientSecret: "x"}, nil)
+	for i := 0; i < 20; i++ {
+		if _, err := source.Token(context.Background()); err == nil {
+			t.Fatal("expected token failure")
+		}
+	}
+	if source.Fetches() != 1 {
+		t.Fatalf("outage retried %d times", source.Fetches())
+	}
 }

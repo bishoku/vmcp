@@ -51,6 +51,7 @@ services:
     profiles: [redis]
 
   data-plane:
+    stop_grace_period: 90s
     build:
       context: ../core
       args:

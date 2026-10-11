@@ -179,6 +179,7 @@ func (s *Session) closeUpstreams() {
 type Manager struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
+	closed   bool
 	// Store is optional; nil keeps sessions node-local.
 	Store SessionStore
 }
@@ -203,6 +204,10 @@ func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
 		last:               time.Now(),
 	}
 	m.mu.Lock()
+	if m.closed || len(m.sessions) >= 10000 {
+		m.mu.Unlock()
+		return nil, errors.New("session capacity unavailable")
+	}
 	m.sessions[s.id] = s
 	m.mu.Unlock()
 	return s, nil
@@ -247,6 +252,9 @@ func (m *Manager) Resolve(ctx context.Context, id string) (*Session, error) {
 		existing.initialized = rec.Initialized
 		existing.mu.Unlock()
 		return existing, nil
+	}
+	if m.closed || len(m.sessions) >= 10000 {
+		return nil, errors.New("session capacity unavailable")
 	}
 	s := &Session{owner: rec.Owner, id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
 	m.sessions[id] = s
@@ -395,5 +403,17 @@ func (m *Manager) Reconcile(snap *config.Snapshot) {
 			}
 			uc.mu.Unlock()
 		}
+	}
+}
+
+// Close retires local upstream connections without deleting shared sessions.
+func (m *Manager) Close() {
+	m.mu.Lock()
+	m.closed = true
+	sessions := m.sessions
+	m.sessions = map[string]*Session{}
+	m.mu.Unlock()
+	for _, s := range sessions {
+		s.closeUpstreams()
 	}
 }

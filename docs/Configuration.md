@@ -61,3 +61,33 @@ Set the same egress policy on both services and restart after changes. See [MCP 
 ## Audit durability
 
 Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status` expose failure counters and incomplete operations. Read [Audit durability](AUDIT_DURABILITY.md) before choosing best-effort mode or rolling back migration 18.
+
+### P05 resource and drain limits
+
+`VMCP_DRAIN_TIMEOUT` defaults to `75s` and accepts `65s`–`2m`. On SIGTERM the
+ data plane rejects new admissions and readiness returns 503, while admitted
+ requests retain live snapshot and audit services. After HTTP drain (or forced
+ connection closure plus a six-second outcome-write allowance), local upstream
+ sessions retire, background producers stop, audit buffers flush, and pools close.
+ Compose grants 90 seconds; increase that when increasing the drain timeout
+ (allow at least another 15 seconds for cancellation and audit flushing).
+ A killed process can leave durable incomplete admissions; P04 recovery evidence
+ remains available. Shutdown does not revoke sessions stored for other nodes.
+
+Limits are currently fixed per process: 10,000 cached sessions, 1,024 concurrent
+POST requests, 128 per virtual server, and 16 per authenticated identity (all
+anonymous requests share the anonymous identity bucket). These counters include
+initialization and body reading and return 429 when saturated; shared sessions
+and replicas do not provide cluster-wide concurrency quotas. Request bodies have
+a ten-second read deadline, and JSON response writes have a ten-second deadline.
+Upstream JSON responses and assembled SSE data frames are limited to 10 MiB;
+discovery stops at 100 pages or 10,000 tools and rejects repeated/oversized
+cursors. Health probes run at most 16 concurrently. OAuth source caching retains
+at most 1,024 entries and failed token fetches back off for one second. Cache
+turnover may refetch credentials; no secret is used as a telemetry label.
+
+Non-idempotent tool calls never automatically replay a session-expiry response
+or HTTP 401. A subsequent client request may reconnect/refresh; clients must
+resolve uncertain side effects before retrying. Read-only/idempotent annotations
+permit bounded replay and are trusted upstream declarations, not a proof of
+idempotency. Caller cancellation and IdP failures do not trip upstream breakers.

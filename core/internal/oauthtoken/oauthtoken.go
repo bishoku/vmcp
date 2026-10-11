@@ -60,10 +60,12 @@ type Source struct {
 	http *http.Client
 	now  func() time.Time
 
-	mu      sync.Mutex
-	token   string
-	renewAt time.Time
-	fetches int
+	mu          sync.Mutex
+	token       string
+	renewAt     time.Time
+	fetches     int
+	failedUntil time.Time
+	lastError   error
 }
 
 // New returns an uncached Source (tests); production code uses For.
@@ -86,7 +88,14 @@ func (s *Source) Token(ctx context.Context) (string, error) {
 	if s.token != "" && s.now().Before(s.renewAt) {
 		return s.token, nil
 	}
-	return s.fetchLocked(ctx)
+	if s.now().Before(s.failedUntil) {
+		return "", s.lastError
+	}
+	tok, err := s.fetchLocked(ctx)
+	if err != nil {
+		s.failedUntil, s.lastError = s.now().Add(time.Second), err
+	}
+	return tok, err
 }
 
 // Invalidate drops the cached token if it is still the given one (the upstream rejected it).
@@ -166,6 +175,12 @@ func For(c Config) *Source {
 		return s
 	}
 	s := New(c, nil)
+	if len(registry) >= 1024 {
+		for old := range registry {
+			delete(registry, old)
+			break
+		}
+	}
 	registry[key] = s
 	return s
 }
@@ -192,6 +207,12 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.next.RoundTrip(withBearer(req, tok))
 	if err != nil || resp.StatusCode != http.StatusUnauthorized {
 		return resp, err
+	}
+	// Unsafe methods can have side effects even when an upstream replies 401.
+	// Invalidate now, but leave retry to an explicitly idempotent caller.
+	t.src.Invalidate(tok)
+	if req.Method != http.MethodGet && req.Method != http.MethodHead && !ReplaySafe(req.Context()) {
+		return resp, nil
 	}
 	// Replay only if the body can be re-read.
 	hasBody := req.Body != nil && req.Body != http.NoBody
@@ -295,3 +316,11 @@ func Retain(configs []Config) {
 		}
 	}
 }
+
+type replayKey struct{}
+
+// WithReplaySafe authorizes authentication/session replay for a known idempotent operation.
+func WithReplaySafe(ctx context.Context) context.Context {
+	return context.WithValue(ctx, replayKey{}, true)
+}
+func ReplaySafe(ctx context.Context) bool { safe, _ := ctx.Value(replayKey{}).(bool); return safe }

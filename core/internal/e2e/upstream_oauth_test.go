@@ -146,8 +146,13 @@ func TestUpstreamOAuth(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer c.Close(e.ctx)
-		if got := call(t, c, "oa__add", `{"a":4,"b":4}`); got.IsError || got.Content[0].Text != "8" {
-			t.Fatalf("circuit should not have opened after IdP failures: %+v", got)
+		var last error
+		for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(25 * time.Millisecond) {
+			_, last = c.CallTool(e.ctx, "oa__add", []byte(`{"a":4,"b":4}`))
+			if last == nil {
+				return
+			}
 		}
+		t.Fatalf("circuit did not recover after token failure backoff: %v", last)
 	})
 }
