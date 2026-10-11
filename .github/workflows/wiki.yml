@@ -1,0 +1,65 @@
+name: publish-wiki
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Test and prepare wiki pages
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_prepare_wiki.py'
+          scripts/prepare-wiki.sh "$RUNNER_TEMP/wiki-pages"
+      - name: Publish documentation to wiki
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          export GIT_TERMINAL_PROMPT=0
+          export GIT_ASKPASS="$RUNNER_TEMP/wiki-askpass.sh"
+          cat > "$GIT_ASKPASS" <<'SH'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' 'x-access-token' ;;
+            *) printf '%s\n' "$WIKI_TOKEN" ;;
+          esac
+          SH
+          chmod 700 "$GIT_ASKPASS"
+          trap 'rm -f "$GIT_ASKPASS"' EXIT
+          wiki="$RUNNER_TEMP/wiki"
+          if ! git clone --depth=1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.wiki.git" "$wiki"; then
+            echo '::error::Cannot clone wiki. Initialize a wiki page and configure a WIKI_TOKEN repository secret with wiki write access.'
+            exit 1
+          fi
+          # Synchronize managed Markdown pages; preserve wiki assets and Git metadata.
+          rsync -av --delete --include='*.md' --exclude='*' "$RUNNER_TEMP/wiki-pages/" "$wiki/"
+          git -C "$wiki" config user.name 'github-actions[bot]'
+          git -C "$wiki" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$wiki" add --all -- '*.md'
+          if git -C "$wiki" diff --cached --quiet; then
+            echo 'Wiki already matches docs/.'
+            exit 0
+          fi
+          source_sha="$(git rev-parse --short HEAD)"
+          git -C "$wiki" commit -m "docs: sync wiki from $source_sha"
+          if ! git -C "$wiki" push origin HEAD; then
+            echo '::error::Cannot push wiki. Configure WIKI_TOKEN with wiki write access if the default token is denied; rerun after concurrent wiki edits.'
+            exit 1
+          fi
+          echo "Published docs/ from $source_sha to $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/wiki" >> "$GITHUB_STEP_SUMMARY"
