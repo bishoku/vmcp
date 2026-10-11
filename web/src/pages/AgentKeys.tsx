@@ -1,3 +1,5 @@
+import type { SelectionProps } from '../connections/ManagementRoute'
+import { useInitialSelection } from '../connections/useInitialSelection'
 import { useCapabilities } from '../interaction'
 import { useSources, source } from '../requests'
 import { StaleRecovery } from '../ui'
@@ -31,7 +33,7 @@ interface Draft {
   expiryEdited: boolean
 }
 
-export default function AgentKeys() {
+export default function AgentKeys({ initialSelection }: SelectionProps) {
   const { edit: canEdit } = useCapabilities()
   const [keys, setKeys] = useState<AgentKey[]>([])
   const [servers, setServers] = useState<VirtualServer[]>([])
@@ -95,6 +97,8 @@ export default function AgentKeys() {
       ...draft,
       virtualServers: draft.virtualServers.includes(slug) ? draft.virtualServers.filter((s) => s !== slug) : [...draft.virtualServers, slug],
     })
+
+  useInitialSelection(initialSelection, keys, open)
 
   return (
     <div className="mx-auto max-w-6xl px-10 py-10">

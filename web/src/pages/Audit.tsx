@@ -4,8 +4,8 @@ import { btn, input } from '../styles'
 import { fmt } from '../format'
 import { ErrorBox, Pill } from '../ui'
 
-export default function Audit() {
-  const [filters, setFilters] = useState<AuditQuery>({})
+export default function Audit({ initialServer }: { initialServer?: string }) {
+  const [filters, setFilters] = useState<AuditQuery>(()=>initialServer?{virtualServer:initialServer}:{})
   const [items, setItems] = useState<AuditEvent[]>([])
   const [next, setNext] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -51,7 +51,7 @@ export default function Audit() {
       <p className="mt-1 text-sm text-ink-muted">Tool calls and administrative operations. Admissions without outcomes identify in-flight or incomplete work. Payloads are never stored.</p>
 
       <div className="mt-6 grid grid-cols-6 gap-3">
-        <input className={input} placeholder="Virtual server" onChange={(e) => set('virtualServer', e.target.value.trim())} />
+        <input className={input} placeholder="Virtual server" value={filters.virtualServer ?? ''} onChange={(e) => set('virtualServer', e.target.value.trim())} />
         <input className={input} placeholder="Agent key / oauth:binding" onChange={(e) => set('agentKey', e.target.value.trim())} />
         <input className={input} placeholder="Subject" onChange={(e) => set('subject', e.target.value.trim())} />
         <input className={input} placeholder="Tool" onChange={(e) => set('tool', e.target.value.trim())} />

@@ -1,3 +1,5 @@
+import type { SelectionProps } from '../connections/ManagementRoute'
+import { useInitialSelection } from '../connections/useInitialSelection'
 import { useCapabilities } from '../interaction'
 import { ErrorBox } from '../ui'
 import { useOperation } from '../interaction'
@@ -41,7 +43,7 @@ function Status({ u }: { u: Upstream }) {
 
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : String(e))
 
-export default function Upstreams() {
+export default function Upstreams({ initialSelection }: SelectionProps) {
   const { edit: canEdit } = useCapabilities()
   const [items, setItems] = useState<Upstream[]>([])
   const [query, setQuery] = useState('')
@@ -86,6 +88,8 @@ export default function Upstreams() {
     }
     void load()
   })
+
+  useInitialSelection(initialSelection, items, setSelected)
 
   return (
     <div className="mx-auto max-w-6xl px-10 py-10">
@@ -174,7 +178,7 @@ export default function Upstreams() {
                 </td>
                 <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-1">
-                    <button disabled={!canEdit} className={btn} title="Refresh tools" onClick={() => refresh(u)}>
+                    <button disabled={!canEdit} className={btn} title="Refresh capabilities" onClick={() => refresh(u)}>
                       <RefreshCw className="size-3.5" />
                     </button>
                     <button disabled={!canEdit} className={btn} title="Delete" onClick={() => remove(u)}>

@@ -290,3 +290,28 @@ docker compose -f benchmark/compose.yaml down -v
 
 Keycloak configuration follows its [container import](https://www.keycloak.org/server/containers)
 and [hostname/backchannel](https://www.keycloak.org/server/hostname) documentation.
+
+## UI connection guide and browser verification
+
+The **Setup guide** walks through registration, stored-credential testing,
+discovery, composition, grants, connection and explicit verification. **Connections**
+shows configured identity → virtual MCP → upstream relationships. Saved servers
+have focused Capabilities, Access, Protection, Connect and Activity views; see
+[Connections and setup](../docs/Connections-and-Setup.md).
+
+The Connect verifier uses a separate agent key or access token and lists MCP
+capabilities without executing tools, reading resources or executing prompts.
+The demo gateway allows browser CORS only for `http://localhost:3300` and
+`http://localhost:8800`; these origins also appear in the data-plane allowlist.
+If you change ports/hostnames, update both allowlists and the UI build argument.
+
+After updating the checkout, rebuild the UI and reload the gateway configuration:
+
+```sh
+docker compose -f benchmark/compose.yaml up -d --build --no-deps web
+docker compose -f benchmark/compose.yaml restart gateway
+```
+
+Run the isolated proxy regression with `python3 benchmark/test_gateway_cors.py`
+(requires Docker and `nginx:1.27-alpine`). It uses a temporary loopback port and
+container, leaving running demo services unchanged.

@@ -92,3 +92,13 @@ Run `npm --prefix web run <script>` with each of `test`, `lint`, `build`,
 `validate:api` and `test:browser` for frontend verification.
 Browser tests use mocked APIs; live-stack and responsive/accessibility verification
 remain in F04 of [the frontend plan](FRONTEND_IMPLEMENTATION_PLAN.md).
+
+
+### Guided setup and connections
+
+See [Connections and setup](Connections-and-Setup.md) for the configuration flow,
+focused virtual-server views, explicit SDK verification and browser CORS setup.
+The MCP SDK is now a runtime dependency; its verification module loads only on
+request. Playwright sets an explicit loopback gateway URL and mocks MCP traffic.
+The demo proxy CORS regression runs separately with
+`python3 benchmark/test_gateway_cors.py` using an isolated Docker container.

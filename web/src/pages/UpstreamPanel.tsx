@@ -1,10 +1,11 @@
+import { source, useSources } from '../requests'
 import { useCapabilities } from '../interaction'
 import { useOperation, useUnsaved } from '../interaction'
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { CheckCircle2, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { Modal, StaleRecovery } from '../ui'
-import { api, ApiError, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
+import { api, ApiError, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 import { btn, input } from '../styles'
 
@@ -81,9 +82,12 @@ export default function UpstreamPanel({
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
 
-  useEffect(() => {
-    if (upstream) api.listTools(upstream.slug).then(setTools).catch(e => setErr(`Tool discovery unavailable: ${errMsg(e)}`))
-  }, [upstream])
+  const [catalog,setCatalog] = useState<Catalog|null>(null)
+  const {load:loadDiscovery,loading:discoveryLoading,readError:discoveryError} = useSources(()=>upstream ? [
+    source('Tools',signal=>api.listTools(upstream.slug,signal),setTools),
+    source('Catalog',signal=>api.listCatalog(upstream.slug,signal),setCatalog),
+  ] : [])
+  useEffect(()=>{const timer=setTimeout(()=>{void loadDiscovery()},0);return()=>clearTimeout(timer)},[loadDiscovery])
 
   const addHeader = () => {
     if (!newName.trim()) return
@@ -348,6 +352,10 @@ export default function UpstreamPanel({
 
           {upstream && (
             <div>
+              {discoveryLoading && <p role="status">Loading discovery snapshots…</p>}
+              {discoveryError && <p role="alert" className="text-sm text-red-700">{discoveryError}</p>}
+              <button className={btn} onClick={()=>loadDiscovery()} disabled={discoveryLoading}>Reload discovery snapshots</button>
+              <p className="my-2 text-xs text-ink-muted">Reload reads stored discovery only. Use Refresh capabilities in the upstream list to discover changes.</p>
               <div className="mb-2 text-sm font-medium">Discovered tools ({tools.length})</div>
               <ul className="max-h-60 divide-y divide-line overflow-y-auto rounded-lg border border-line">
                 {tools.map((t) => (
@@ -358,6 +366,7 @@ export default function UpstreamPanel({
                 ))}
                 {tools.length === 0 && <li className="px-3 py-4 text-center text-xs text-ink-muted">Refresh tools to discover them.</li>}
               </ul>
+              {catalog && ([['Resources',catalog.resources ?? [],'uri'],['Templates',catalog.resourceTemplates ?? [],'uriTemplate'],['Prompts',catalog.prompts ?? [],'name']] as const).map(([label,objects,key])=><section key={label} className="mt-4"><h3 className="text-sm font-medium">{label} ({objects.length})</h3><ul className="max-h-48 overflow-y-auto text-sm">{objects.map((object,index)=><li className="break-all border-b border-line py-2" key={index}>{String(object[key])}<p className="text-xs text-ink-muted">{String(object.description ?? '')}</p></li>)}</ul>{objects.length===0 && <p className="text-xs text-ink-muted">None discovered.</p>}</section>)}
             </div>
           )}
         </div>

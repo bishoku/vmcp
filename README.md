@@ -57,7 +57,7 @@ flowchart LR
 - **Data plane** (`core/cmd/data-plane`): serves `/mcp/v1/virtual/{slug}` and proxies to upstreams. Shared session, operation and replay records in
   PostgreSQL let you run several nodes; physical upstream connections and caches remain local. Configuration
   changes converge through `LISTEN/NOTIFY` and polling, with bounded authorization freshness.
-- **Web UI** (`web/`): React + Vite + Tailwind.
+- **Web UI** (`web/`): React + Vite + Tailwind, with a [guided connection journey and topology](docs/Connections-and-Setup.md), focused saved-server views and deliberate MCP discovery verification.
 - **PostgreSQL**: the single source of truth (config, sessions, audit, health).
 
 Scope today: curated **tools, resources, templates and prompts**; negotiated client

@@ -1,3 +1,7 @@
+import { useInRouterContext, Link } from 'react-router-dom'
+import { serverPath } from '../connections/model'
+import type { SelectionProps } from '../connections/ManagementRoute'
+import { useInitialSelection } from '../connections/useInitialSelection'
 import { useCapabilities } from '../interaction'
 import { useSources, source, readSources } from '../requests'
 import { StaleRecovery } from '../ui'
@@ -95,12 +99,13 @@ function cleanPolicy(d: Draft): ToolPolicy {
   })) }
 }
 
-export default function VirtualServers() {
+export default function VirtualServers({ initialSelection }: SelectionProps) {
+  const inRouter = useInRouterContext()
   const { edit: canEdit } = useCapabilities()
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [upstreams, setUpstreams] = useState<Upstream[]>([])
   const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
-  const [draft, setDraft, resetDraft, openDraft] = useDraft<Draft | null>(null, d => d ? d.isNew ? 'new' : d.slug : null)
+  const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(null, d => d ? d.isNew ? 'new' : d.slug : null)
   const [problems, setProblems] = useState<string[]>([])
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
@@ -197,6 +202,8 @@ export default function VirtualServers() {
   const endpointPath = draft && !draft.isNew ? servers.find(v => v.slug === draft.slug)?.endpoint ?? '' : ''
   const endpoint = connectionEndpoint(endpointPath)
 
+  useInitialSelection(initialSelection, servers, item => openDraft(fromServer(item)))
+
   return (
     <div className="mx-auto max-w-7xl px-10 py-10">
       <div className="flex items-start justify-between">
@@ -233,6 +240,7 @@ export default function VirtualServers() {
                 <button type="button" className="truncate text-sm font-medium hover:underline" onClick={e => { e.stopPropagation(); openDraft(fromServer(v)); setProblems([]) }}>{v.name}</button>
                 <div className="text-xs text-ink-muted">{v.tools.length} tools{v.enabled ? '' : ' · disabled'}</div>
               </div>
+              {inRouter && <Link className="text-xs text-accent-700 underline" to={serverPath(v.slug)} onClick={e=>e.stopPropagation()}>Details</Link>}
               <button disabled={!canEdit || busy} className="p-1" aria-label="Delete" onClick={(e) => { e.stopPropagation(); void remove(v) }}>
                 <Trash2 className="size-4 text-red-600" />
               </button>
@@ -242,7 +250,10 @@ export default function VirtualServers() {
         </div>
 
         {draft ? (
-          <div className="rounded-card border border-line bg-surface p-6 shadow-card"><fieldset disabled={!canEdit || busy} className="min-w-0 border-0 p-0 m-0">
+          <div className="rounded-card border border-line bg-surface p-6 shadow-card">
+            <p role="status" className="mb-4 text-sm text-ink-muted">{draft.isNew ? 'New unsaved draft' : `Editing draft of saved version ${draft.version}`}. {dirty ? 'Unsaved changes' : 'No unsaved changes'}. Changes apply only after Save.</p>
+            {inRouter && !draft.isNew && <Link className="mb-4 inline-block text-sm text-accent-700 underline" to={serverPath(draft.slug)}>View saved configuration</Link>}
+            <fieldset disabled={!canEdit || busy} className="min-w-0 border-0 p-0 m-0">
             <div className="grid grid-cols-3 gap-4">
               <label className="text-sm font-medium">
                 Name

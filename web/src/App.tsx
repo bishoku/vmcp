@@ -1,4 +1,8 @@
-import { createBrowserRouter, RouterProvider, NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import Connections from './pages/Connections'
+import ConnectionSetup from './pages/ConnectionSetup'
+import VirtualServerDetail from './pages/VirtualServerDetail'
+import ManagementRoute from './connections/ManagementRoute'
+import { createBrowserRouter, RouterProvider, NavLink, Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { FileText, KeyRound, UserCheck, Layers, Network, Settings, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
 import { useContext, useEffect, useState } from 'react'
@@ -14,6 +18,8 @@ import Audit from './pages/Audit'
 import SettingsPage from './pages/Settings'
 
 const nav: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: '/connections', label: 'Connections', icon: Network },
+  { to: '/setup', label: 'Setup guide', icon: Layers },
   { to: '/upstreams', label: 'Upstreams', icon: Network },
   { to: '/virtual-servers', label: 'Virtual Servers', icon: Layers },
   { to: '/agent-keys', label: 'Agent Keys', icon: KeyRound },
@@ -137,21 +143,24 @@ function Application() {
           {!capabilities(me.role).edit && <p role="status" className="px-10 pt-4 text-sm text-ink-muted">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
 
           <Routes>
+            <Route path="/connections" element={<Connections/>}/>
+            <Route path="/setup" element={<ConnectionSetup/>}/>
+            <Route path="/virtual-servers/:slug/:view?" element={<VirtualServerDetail/>}/>
             <Route path="/" element={<Navigate to="/virtual-servers" replace />} />
             <Route
               path="/upstreams"
-              element={<Upstreams />}
+              element={<ManagementRoute page={Upstreams} />}
             />
             <Route
               path="/virtual-servers"
-              element={<VirtualServers />}
+              element={<ManagementRoute page={VirtualServers} />}
             />
             <Route
               path="/audit"
-              element={<Audit />}
+              element={<AuditRoute />}
             />
-            <Route path="/agent-keys" element={<AgentKeys />} />
-            <Route path="/identities" element={<Identities />} />
+            <Route path="/agent-keys" element={<ManagementRoute page={AgentKeys} />} />
+            <Route path="/identities" element={<ManagementRoute page={Identities} />} />
             <Route path="/settings" element={<SettingsPage role={me.role} />} />
           </Routes>
 
@@ -163,3 +172,9 @@ function Application() {
 
 const router = createBrowserRouter([{ path: '*', element: <Application /> }])
 export default function App() { return <RouterProvider router={router} /> }
+
+function AuditRoute() {
+  const [params] = useSearchParams()
+  const server = params.get('virtualServer') ?? undefined
+  return <Audit key={server ?? 'all'} initialServer={server}/>
+}

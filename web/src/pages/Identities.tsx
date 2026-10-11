@@ -1,3 +1,5 @@
+import type { SelectionProps } from '../connections/ManagementRoute'
+import { useInitialSelection } from '../connections/useInitialSelection'
 import { useCapabilities } from '../interaction'
 import { useSources, source } from '../requests'
 import { StaleRecovery } from '../ui'
@@ -34,7 +36,7 @@ const blank: Draft = {
   enabled: true,
 }
 
-export default function Identities() {
+export default function Identities({ initialSelection }: SelectionProps) {
   const { edit: canEdit } = useCapabilities()
   const [items, setItems] = useState<IdentityBinding[]>([])
   const [servers, setServers] = useState<VirtualServer[]>([])
@@ -116,6 +118,8 @@ export default function Identities() {
       ...draft,
       virtualServers: draft.virtualServers.includes(slug) ? draft.virtualServers.filter((s) => s !== slug) : [...draft.virtualServers, slug],
     })
+
+  useInitialSelection(initialSelection, items, open)
 
   return (
     <div className="mx-auto max-w-6xl px-10 py-10">

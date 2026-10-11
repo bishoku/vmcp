@@ -44,7 +44,7 @@ certification.
 - Tests: permission matrix, dirty-form decisions, stale responses, partial failures,
   expired sessions, duplicate submissions and failed clipboard writes.
 
-## F03 — Guided connection journey and topology (planned)
+## F03 — Guided connection journey and topology (complete)
 
 - Add an onboarding path: register → test → discover → compose → grant access →
   connect → verify. Expose tools/resources/templates/prompts consistently.
@@ -127,3 +127,42 @@ F02 completed 2026-10-11:
 - Browser scenarios still use mocked APIs. The running manual-test stack was not
   rebuilt. F03 topology/guided setup and F04 responsive polish, audit grouping,
   real-stack smoke and broader accessibility checks remain planned.
+
+
+F03 completed 2026-10-11:
+
+- Added Setup guide and Connections navigation. The seven-step guide links
+  registration, explicit stored-credential testing, discovery, composition,
+  grants, connection and verification without inferring successful tests.
+- Saved virtual servers have deep-linked Overview, Capabilities, Access,
+  Protection, Connect and Activity views. Editing remains a guarded draft with
+  saved-version and unsaved-change status; node links select the relevant editor.
+- Added configuration topology and an accessible, searchable relationship table.
+  Inactive credentials, disabled servers, anonymous bypass, conditional bindings,
+  missing objects/upstreams, aliases, policies and health timestamps remain visible.
+  The focused diagram bounds each side to 8 relationships and tables expand in
+  batches of 50; model regression covers 1,000 servers and 2,000 edges.
+- Tools/resources/templates/prompts are shown in saved capability views and
+  upstream discovery snapshots. Counts are selected configuration, not runtime
+  execution grants. Partial inventory errors and data freshness are explicit.
+- Connect uses the configured public gateway and copyable credential placeholders.
+  Deliberate verification lazy-loads the pinned runtime MCP SDK, initializes,
+  pings and lists advertised families only, using a separate memory-only gateway
+  credential. No tool calls, resource reads, prompt execution or client feature
+  permissions are involved. Requests/cancellation/cleanup are bounded.
+- Added exact-origin CORS support to the demo reverse proxy, aligned with the
+  existing data-plane Origin allowlist. Other deployments still configure their
+  own proxy CORS or shared origin. Core protocol/auth behavior was unchanged.
+- Activity shows at most 50 stored events from the last 15 minutes and links to a
+  server-filtered audit log. No active-client counts or traffic aggregates exist.
+- Fixed duplicate draft navigation confirmation handling exposed by deep links.
+- 54 unit/component tests passed (19 F03 regressions), all 13 Chromium scenarios
+  passed (3 F03 scenarios), and all 3 isolated Nginx CORS regressions passed.
+  Lint (no warnings), strict TypeScript/production build, OpenAPI validation
+  (49 operations / 6 examples), Compose configuration and `git diff --check` passed.
+- Inspected a rendered desktop topology screenshot. Browser tests use mocked API
+  and MCP responses; the SDK unit test exercises actual SDK framing. Full-stack,
+  responsive and broader accessibility checks remain F04. No running demo images
+  or services were rebuilt/restarted; rebuild web and reload its proxy to try F03.
+- See [Connections and setup](Connections-and-Setup.md) for behavior, security
+  boundaries, CORS configuration, pagination and verification limitations.

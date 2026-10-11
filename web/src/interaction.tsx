@@ -35,7 +35,7 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
     if (JSON.stringify(current.current) !== baseline && !discardChanges()) return
     reset(next)
   }
-  return [value, set, reset, open] as const
+  return [value, set, reset, open, dirty] as const
 }
 
 /** A synchronous latch also catches two clicks before React renders disabled controls. */
