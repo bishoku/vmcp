@@ -177,3 +177,39 @@ func TestFailedDecryptionExpiresAuthorization(t *testing.T) {
 		t.Fatal("authorization did not recover")
 	}
 }
+
+func TestDedicatedListenerReconnectsWithoutPoolCapacity(t *testing.T) {
+	ctx, s := setup(t)
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	var listeners int
+	for time.Now().Before(deadline) {
+		if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config'`).Scan(&listeners); err != nil {
+			t.Fatal(err)
+		}
+		if listeners > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if listeners != 1 {
+		t.Fatalf("dedicated listener count %d", listeners)
+	}
+	if s.Pool.Stat().AcquiredConns() != 0 {
+		t.Fatal("listener consumed request pool capacity")
+	}
+	if _, err := s.Pool.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config' AND pid<>pg_backend_pid()`); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = s.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config'`).Scan(&listeners)
+		if s.ListenerReconnects() > 0 && listeners == 1 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("listener did not reconnect")
+}

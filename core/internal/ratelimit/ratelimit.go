@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -116,6 +117,9 @@ func (r *Redis) Allow(ctx context.Context, key string, limit int) (bool, time.Du
 type FailOpen struct {
 	Primary, Fallback Limiter
 	Log               *slog.Logger
+	Strict            bool
+	Failures          atomic.Int64
+	Degraded          atomic.Bool
 
 	mu     sync.Mutex
 	logged time.Time
@@ -124,7 +128,13 @@ type FailOpen struct {
 func (f *FailOpen) Allow(ctx context.Context, key string, limit int) (bool, time.Duration, error) {
 	ok, retry, err := f.Primary.Allow(ctx, key, limit)
 	if err == nil {
+		f.Degraded.Store(false)
 		return ok, retry, nil
+	}
+	f.Failures.Add(1)
+	f.Degraded.Store(true)
+	if f.Strict {
+		return false, time.Second, nil
 	}
 	f.mu.Lock()
 	if f.Log != nil && time.Since(f.logged) > time.Minute {
@@ -147,4 +157,17 @@ func NewRedis(url string, log *slog.Logger) (Limiter, error) {
 		Fallback: NewLocal(),
 		Log:      log,
 	}, nil
+}
+
+// Check refreshes dependency health without consuming a caller's quota.
+func (f *FailOpen) Check(ctx context.Context) error {
+	r, ok := f.Primary.(*Redis)
+	if !ok {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+	defer cancel()
+	err := r.Client.Eval(ctx, "return 1", nil).Err()
+	f.Degraded.Store(err != nil)
+	return err
 }

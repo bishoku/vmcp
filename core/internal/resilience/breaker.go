@@ -113,3 +113,17 @@ func (r *Registry) Get(upstreamID string) *Breaker {
 	}
 	return b
 }
+
+// CountStates aggregates without exposing unbounded upstream identifiers as labels.
+func (r *Registry) CountStates() map[State]int {
+	counts := map[State]int{}
+	if r == nil {
+		return counts
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, b := range r.m {
+		counts[b.State()]++
+	}
+	return counts
+}

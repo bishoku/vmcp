@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bishoku/vmcp/core/internal/config"
@@ -33,6 +34,9 @@ type Syncer struct {
 	load                func(context.Context) (*config.Snapshot, error)
 	current             atomic.Pointer[state]
 	wake                chan struct{}
+	reconnects          atomic.Int64
+	refreshNanos        atomic.Int64
+	ListenerURL         string // direct PostgreSQL URL; never transaction pooling
 }
 
 const DefaultMaxAuthorizationAge = 30 * time.Second
@@ -156,6 +160,7 @@ func (s *Syncer) refresh(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, min(s.maxAge(), 5*time.Second))
 	defer cancel()
 	started := s.clock()
+	defer func() { s.refreshNanos.Store(s.clock().Sub(started).Nanoseconds()) }()
 	revision := s.revision
 	if revision == nil {
 		revision = func(ctx context.Context) (int64, error) { return store.Revision(ctx, s.Pool) }
@@ -215,6 +220,7 @@ func (s *Syncer) refresh(ctx context.Context) {
 func (s *Syncer) listen(ctx context.Context) {
 	for ctx.Err() == nil {
 		if err := s.listenOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			s.reconnects.Add(1)
 			s.Log.Warn("config listener lost; falling back to polling", "err", err)
 		}
 		select {
@@ -226,18 +232,32 @@ func (s *Syncer) listen(ctx context.Context) {
 }
 
 func (s *Syncer) listenOnce(ctx context.Context) error {
-	conn, err := s.Pool.Acquire(ctx)
+	url := s.ListenerURL
+	if url == "" {
+		url = s.Pool.Config().ConnConfig.ConnString()
+	}
+	cfg, err := pgx.ParseConfig(url)
 	if err != nil {
 		return err
 	}
-	defer conn.Release()
+	cfg.ConnectTimeout = 5 * time.Second
+	conn, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = conn.Close(closeCtx)
+	}()
+
 	if _, err := conn.Exec(ctx, "LISTEN "+notifyChannel); err != nil {
 		return err
 	}
 	// Catch changes that happened while we were not listening.
 	s.trigger()
 	for {
-		if _, err := conn.Conn().WaitForNotification(ctx); err != nil {
+		if _, err := conn.WaitForNotification(ctx); err != nil {
 			return err
 		}
 		s.trigger()
@@ -250,3 +270,6 @@ func (s *Syncer) trigger() {
 	default:
 	}
 }
+
+func (s *Syncer) ListenerReconnects() int64      { return s.reconnects.Load() }
+func (s *Syncer) RefreshDuration() time.Duration { return time.Duration(s.refreshNanos.Load()) }

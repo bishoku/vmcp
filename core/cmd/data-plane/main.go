@@ -26,6 +26,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/snapshot"
 	"github.com/bishoku/vmcp/core/internal/store"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/bishoku/vmcp/core/internal/virtual"
 )
 
@@ -96,7 +97,7 @@ func run(log *slog.Logger) error {
 	sessions := virtual.NewManager()
 	defer sessions.Close()
 	sessions.Store = virtual.PGSessionStore{Pool: pool}
-	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log, MaxAuthorizationAge: maxStale,
+	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log, MaxAuthorizationAge: maxStale, ListenerURL: config.Env("VMCP_DB_LISTENER_URL", ""),
 		OnChange: func(snap *config.Snapshot) {
 			sessions.Reconcile(snap)
 			var configs []oauthtoken.Config
@@ -131,7 +132,12 @@ func run(log *slog.Logger) error {
 		if limiter, err = ratelimit.NewRedis(url, log); err != nil {
 			return fmt.Errorf("VMCP_REDIS_URL: %w", err)
 		}
-		log.Info("rate limits are shared through Redis")
+		policy := config.Env("VMCP_REDIS_FAILURE_POLICY", "local")
+		if policy != "local" && policy != "strict" {
+			return errors.New("VMCP_REDIS_FAILURE_POLICY must be local or strict")
+		}
+		limiter.(*ratelimit.FailOpen).Strict = policy == "strict"
+		log.Info("rate limits are shared through Redis", "failure_policy", policy)
 	} else {
 		log.Info("rate limits are counted per node (set VMCP_REDIS_URL to share them)")
 	}
@@ -151,8 +157,19 @@ func run(log *slog.Logger) error {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		status := syncer.Status()
+		readyCtx, cancel := context.WithTimeout(r.Context(), time.Second)
+		defer cancel()
+		var writable bool
+		if err := pool.QueryRow(readyCtx, "SELECT NOT pg_is_in_recovery() AND current_setting('transaction_read_only') = 'off'").Scan(&writable); err != nil || !writable {
+			status.Ready = false
+			status.Reason = "audit_database_unavailable"
+		}
+		if redis, ok := limiter.(*ratelimit.FailOpen); ok && redis.Strict && redis.Check(readyCtx) != nil {
+			status.Ready = false
+			status.Reason = "shared_quota_unavailable"
+		}
 		if gate.Draining() {
 			status.Ready = false
 			status.Reason = "draining"
@@ -199,9 +216,42 @@ func run(log *slog.Logger) error {
 	(&virtual.Handler{Snap: syncer, Sessions: sessions, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
 		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}).Register(mux)
 
+	metrics := telemetry.New()
+	metrics.Gauges = func(ctx context.Context) map[string]float64 {
+		status := syncer.Status()
+		stats := pool.Stat()
+		a := auditor.Stats()
+		gauges := map[string]float64{"streams_active": 0, "sessions_active": float64(sessions.Len()), "snapshot_age_seconds": status.Age.Seconds(), "snapshot_revision": float64(status.Revision), "snapshot_refresh_seconds": syncer.RefreshDuration().Seconds(), "listener_reconnects_total": float64(syncer.ListenerReconnects()), "pool_acquired": float64(stats.AcquiredConns()), "pool_max": float64(stats.MaxConns()), "pool_acquire_seconds_total": stats.AcquireDuration().Seconds(), "pool_empty_acquires_total": float64(stats.EmptyAcquireCount()), "pool_cancelled_acquires_total": float64(stats.CanceledAcquireCount()), "audit_failed_writes_total": float64(a.FailedWrites), "audit_dropped_total": float64(a.Dropped), "audit_queue_pending": float64(a.Pending)}
+		if pending, err := audit.Pending(ctx, pool); err == nil {
+			gauges["audit_incomplete"] = float64(pending.Incomplete)
+			gauges["audit_oldest_incomplete_seconds"] = pending.OldestIncompleteAgeSeconds
+		}
+		if redis, ok := limiter.(*ratelimit.FailOpen); ok {
+			gauges["redis_failures_total"] = float64(redis.Failures.Load())
+			if redis.Degraded.Load() {
+				gauges["redis_degraded"] = 1
+			} else {
+				gauges["redis_degraded"] = 0
+			}
+		}
+		states := breakers.CountStates()
+		gauges["breakers_open"] = float64(states[resilience.Open])
+		gauges["breakers_half_open"] = float64(states[resilience.HalfOpen])
+		gauges["breakers_closed"] = float64(states[resilience.Closed])
+		return gauges
+	}
+	shutdownTracing, err := telemetry.InitTracing(ctx, "vmcp-data-plane")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		traceCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = shutdownTracing(traceCtx)
+	}()
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_DP_ADDR", ":8080"),
-		Handler:           gate.Handler(mux),
+		Handler:           gate.Handler(metrics.Handler(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

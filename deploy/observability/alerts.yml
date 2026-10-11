@@ -1,0 +1,27 @@
+groups:
+  - name: vmcp
+    rules:
+      - alert: VMCPAuthorizationStale
+        expr: vmcp_snapshot_age_seconds > 25
+        for: 10s
+        labels: {severity: critical}
+        annotations: {summary: "Authorization confirmation approaches the default 30s limit"}
+      - alert: VMCPAuditIncomplete
+        expr: vmcp_audit_oldest_incomplete_seconds > 90
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Durable admissions lack outcomes beyond the drain budget"}
+      - alert: VMCPAuditLoss
+        expr: increase(vmcp_audit_dropped_total[5m]) > 0
+        labels: {severity: critical}
+        annotations: {summary: "Best-effort audit events were dropped"}
+      - alert: VMCPPoolSaturation
+        expr: vmcp_pool_acquired / vmcp_pool_max > 0.9
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "Database pool exceeds 90 percent utilization"}
+      - alert: VMCPRedisDegraded
+        expr: vmcp_redis_degraded == 1
+        for: 30s
+        labels: {severity: warning}
+        annotations: {summary: "Shared quotas use the configured Redis failure policy"}

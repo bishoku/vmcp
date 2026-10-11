@@ -103,3 +103,11 @@ func TestRedisSharedBetweenNodes(t *testing.T) {
 		t.Fatal("buckets are per key")
 	}
 }
+
+func TestStrictQuotaDeniesDuringRedisOutage(t *testing.T) {
+	f := &FailOpen{Primary: failing{}, Fallback: NewLocal(), Strict: true}
+	ok, retry, err := f.Allow(context.Background(), "principal", 10)
+	if ok || err != nil || retry <= 0 || !f.Degraded.Load() || f.Failures.Load() != 1 {
+		t.Fatalf("strict quota escaped: %v %v %v", ok, retry, err)
+	}
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/oidc"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/store"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -88,10 +89,20 @@ func run(log *slog.Logger) error {
 		Version:    version,
 		Log:        log,
 	}
+	metrics := telemetry.New()
+	shutdownTracing, err := telemetry.InitTracing(ctx, "vmcp-control-plane")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		traceCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = shutdownTracing(traceCtx)
+	}()
 	gate := &lifecycle.Gate{}
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_CP_ADDR", ":8081"),
-		Handler:           gate.Handler(api.Handler()),
+		Handler:           gate.Handler(metrics.Handler(api.Handler())),
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      75 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
