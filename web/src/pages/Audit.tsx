@@ -29,7 +29,7 @@ export default function Audit() {
   return (
     <div className="mx-auto max-w-7xl px-10 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Audit Log</h1>
-      <p className="mt-1 text-sm text-ink-muted">Every tool call through the data plane. Payloads are never stored.</p>
+      <p className="mt-1 text-sm text-ink-muted">Tool calls and administrative operations. Admissions without outcomes identify in-flight or incomplete work. Payloads are never stored.</p>
 
       <div className="mt-6 grid grid-cols-6 gap-3">
         <input className={input} placeholder="Virtual server" onChange={(e) => set('virtualServer', e.target.value.trim())} />
@@ -37,6 +37,7 @@ export default function Audit() {
         <input className={input} placeholder="Tool" onChange={(e) => set('tool', e.target.value.trim())} />
         <select className={input} onChange={(e) => set('status', e.target.value)}>
           <option value="">Any status</option>
+          <option value="started">started</option>
           <option value="ok">ok</option>
           <option value="tool_error">tool error</option>
           <option value="error">error</option>
@@ -45,6 +46,10 @@ export default function Audit() {
         <input type="datetime-local" className={input} aria-label="From" onChange={(e) => when('from', e.target.value)} />
         <input type="datetime-local" className={input} aria-label="To" onChange={(e) => when('to', e.target.value)} />
       </div>
+      <label className="mt-3 flex items-center gap-2 text-sm text-ink-muted">
+        <input type="checkbox" onChange={(e) => set('incomplete', e.target.checked ? 'true' : '')} />
+        Incomplete operations only
+      </label>
       {error && <ErrorBox>{error}</ErrorBox>}
 
       <div className="mt-4 overflow-hidden rounded-card border border-line bg-surface shadow-card">
@@ -62,14 +67,14 @@ export default function Audit() {
           </thead>
           <tbody>
             {items.map((e) => (
-              <tr key={e.id} className="border-b border-line last:border-0" title={[e.clientIp, e.reason].filter(Boolean).join(' · ')}>
+              <tr key={e.id} className="border-b border-line last:border-0" title={[e.clientIp, e.reason, e.operationId && `operation: ${e.operationId}`, e.requestId && `request: ${e.requestId}`, e.traceId && `trace: ${e.traceId}`].filter(Boolean).join(' · ')}>
                 <td className="whitespace-nowrap px-4 py-2.5">{fmt(e.time)}</td>
                 <td className="px-4 py-2.5">{e.virtualServer}</td>
                 <td className="px-4 py-2.5">
-                  {e.agentKey ?? '—'}
+                  {e.agentKey || e.actorId || '—'}
                   {e.subject && <div className="font-mono text-xs text-ink-muted">sub: {e.subject}</div>}
                 </td>
-                <td className="px-4 py-2.5">{e.tool ?? e.method}</td>
+                <td className="px-4 py-2.5">{e.tool || e.action || e.method}<div className="text-xs text-ink-muted">{e.stage} · {e.target}</div></td>
                 <td className="px-4 py-2.5"><Pill status={e.status} />{e.reason && <span className="ml-2 text-xs text-ink-muted">{e.reason}</span>}</td>
                 <td className="px-4 py-2.5">
                   {e.redactions ? <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700">{e.redactions}</span> : '—'}

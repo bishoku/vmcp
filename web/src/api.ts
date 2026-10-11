@@ -179,6 +179,18 @@ export interface BindingEvaluation {
 }
 
 export interface AuditEvent {
+  eventId: string
+  operationId?: string | null
+  requestId?: string | null
+  traceId: string
+  schemaVersion: number
+  actorType: string
+  actorId: string
+  issuer: string
+  action: string
+  target: string
+  configRevision: number
+  stage: 'event' | 'admission' | 'outcome' | 'mutation'
   id: number
   time: string
   virtualServer: string
@@ -188,12 +200,17 @@ export interface AuditEvent {
   method: string
   tool?: string | null
   upstream?: string | null
-  status: 'ok' | 'tool_error' | 'error' | 'denied'
+  status: 'started' | 'ok' | 'tool_error' | 'error' | 'denied'
   reason?: string | null
   durationMs: number
   redactions?: number
 }
 export interface AuditQuery {
+  incomplete?: string
+  operationId?: string
+  requestId?: string
+  actorId?: string
+  stage?: string
   virtualServer?: string
   agentKey?: string
   subject?: string

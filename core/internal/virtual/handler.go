@@ -115,7 +115,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx := withSubject(r.Context(), owner.Subject)
+	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 	if err != nil {
@@ -304,39 +304,65 @@ func (h *Handler) ipString(r *http.Request) string {
 
 func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, ip string) {
 	start := time.Now()
-	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method}
-	finish := func(status, reason string) {
+	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
+		ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: "tools/call", Target: vs.Slug, TraceID: audit.TraceFrom(ctx)}
+	finish := func(status, reason string) bool {
 		ev.Status, ev.Reason, ev.DurationMS = status, reason, int(time.Since(start).Milliseconds())
-		h.record(ev)
+		if durable, ok := h.Audit.(audit.DurableRecorder); ok && ev.OperationID != "" {
+			completion, cancel := context.WithTimeout(context.WithoutCancel(ctx), audit.WriteTimeout)
+			defer cancel()
+			if err := durable.Complete(completion, ev); err != nil {
+				h.Log.Error("audit outcome unavailable; operation incomplete", "operation_id", ev.OperationID)
+				return false
+			}
+		} else {
+			h.record(ev)
+		}
+		return true
 	}
 	var p mcp.CallToolParams
 	if err := json.Unmarshal(msg.Params, &p); err != nil || p.Name == "" {
-		finish("error", "invalid params")
+		if !finish("error", "invalid params") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid tools/call params"))
 		return
 	}
-	ev.Tool = p.Name
 	if reason, blocked := vs.Blocked[p.Name]; blocked {
-		finish("denied", reason)
+		if !finish("denied", reason) {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "tool not permitted: "+p.Name))
 		return
 	}
 	vt, ok := vs.Lookup(p.Name)
 	if !ok {
-		finish("error", "unknown tool")
+		if !finish("error", "unknown tool") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "unknown tool: "+p.Name))
 		return
 	}
+	ev.Tool = vt.Tool.Name
 	if retry, limited := h.rateLimited(ctx, vs, snap, sess.keySlug); limited {
 		secs := int(math.Ceil(retry.Seconds()))
-		finish("denied", "rate limit")
+		if !finish("denied", "rate limit") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 		w.Header().Set("Retry-After", strconv.Itoa(max(secs, 1)))
 		writeMessage(w, http.StatusTooManyRequests, mcp.NewErrorResponse(msg.ID, codeRateLimited, fmt.Sprintf("rate limit exceeded, retry in %ds", max(secs, 1))))
 		return
 	}
 	up, ok := snap.Upstreams[vt.UpstreamID]
 	if !ok {
-		finish("error", "upstream unavailable")
+		if !finish("error", "upstream unavailable") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 		h.Log.Error("tool references missing upstream", "tool", p.Name, "upstream_id", vt.UpstreamID)
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream unavailable"))
 		return
@@ -350,20 +376,37 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	if vs.PII != nil && vs.PII.MaskArguments {
 		masked, n, err := vs.PII.MaskJSON(args)
 		if err != nil {
-			finish("error", "invalid arguments")
+			if !finish("error", "invalid arguments") {
+				http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+				return
+			}
 			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "arguments are not valid JSON"))
 			return
 		}
 		args, ev.Redactions = masked, n
 	}
+	if durable, ok := h.Audit.(audit.DurableRecorder); ok {
+		var err error
+		ev, err = durable.Admit(ctx, ev)
+		if ev.RequestID != "" {
+			w.Header().Set("X-Request-Id", ev.RequestID)
+		}
+		if err != nil {
+			http.Error(w, "audit admission unavailable", 503)
+			return
+		}
+	}
 	result, err := h.callResilient(ctx, sess, up, vt, args)
 	if err != nil {
 		if errors.Is(err, errAuthorizationChanged) {
-			finish("denied", "authorization changed before dispatch")
+			_ = finish("denied", "authorization changed before dispatch")
 			return
 		}
 		if errors.Is(err, errCircuitOpen) {
-			finish("error", "circuit open")
+			if !finish("error", "circuit open") {
+				http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+				return
+			}
 			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream temporarily unavailable"))
 			return
 		}
@@ -376,11 +419,17 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 				masked.Message, n = vs.PII.MaskString(rpcErr.Message)
 				rpcErr, ev.Redactions = &masked, ev.Redactions+n
 			}
-			finish("error", "upstream rpc error")
+			if !finish("error", "upstream rpc error") {
+				http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+				return
+			}
 			writeMessage(w, http.StatusOK, &mcp.Message{JSONRPC: mcp.JSONRPCVersion, ID: msg.ID, Error: rpcErr})
 			return
 		}
-		finish("error", "upstream unavailable")
+		if !finish("error", "upstream unavailable") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 		h.Log.Error("upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName, "err", err)
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream unavailable"))
 		return
@@ -389,7 +438,10 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		masked, n, err := vs.PII.MaskJSON(result)
 		if err != nil {
 			// Never forward a result we could not inspect.
-			finish("error", "result could not be masked")
+			if !finish("error", "result could not be masked") {
+				http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+				return
+			}
 			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream result could not be processed"))
 			return
 		}
@@ -400,9 +452,15 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	}
 	_ = json.Unmarshal(result, &res)
 	if res.IsError {
-		finish("tool_error", "")
+		if !finish("tool_error", "") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 	} else {
-		finish("ok", "")
+		if !finish("ok", "") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
 	}
 	writeMessage(w, http.StatusOK, &mcp.Message{JSONRPC: mcp.JSONRPCVersion, ID: msg.ID, Result: result})
 }

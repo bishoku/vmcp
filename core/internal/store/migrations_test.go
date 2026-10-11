@@ -93,3 +93,43 @@ func TestSessionOwnershipMigrationUpgradeAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDurableAuditMigrationUpgradeAndRollback(t *testing.T) {
+	url := testdb.New(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 17); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO audit_events(virtual_server,method,status) VALUES('agent','tools/call','ok')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	var eventID, stage string
+	if err := db.QueryRowContext(ctx, `SELECT event_id::text,schema_version,stage FROM audit_events`).Scan(&eventID, &version, &stage); err != nil || eventID == "" || version != 1 || stage != "event" {
+		t.Fatalf("legacy audit upgrade: %s %d %s %v", eventID, version, stage, err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO audit_events(virtual_server,method,status,stage,operation_id,request_id) VALUES('agent','tools/call','started','admission',gen_random_uuid(),gen_random_uuid())`); err != nil {
+		t.Fatal(err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 17); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM audit_events WHERE status='ok'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("rollback lost old audit: %d %v", count, err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+}

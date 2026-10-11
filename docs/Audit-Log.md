@@ -1,26 +1,23 @@
 # Audit log
 
-Every tool call (`tools/call`) on a virtual server is recorded, including denied and failed ones:
+The data plane defaults to `VMCP_AUDIT_MODE=strict`: allowed tool calls receive a durable PostgreSQL admission before dispatch and a separate outcome. A failed admission prevents dispatch. A missing outcome identifies in-flight or incomplete work; an upstream action may have completed even when outcome persistence fails and the client receives 503.
+
+Administrative mutations and their identifier-only audit records commit in the same database transaction. Privileged export and upstream metadata reads are also admitted and audited. Arguments, results and credentials are excluded.
 
 | Field | Meaning |
 |---|---|
-| `time`, `virtualServer`, `method` | When, where, which MCP method |
-| `agentKey` | The authenticated key (null for anonymous) |
-| `clientIp` | Source IP (honours `VMCP_TRUSTED_PROXIES`) |
-| `tool`, `upstream` | Tool and the upstream that served it |
-| `status` | `ok`, `tool_error` (the tool reported an error), `error` (gateway-side failure) or `denied` |
-| `reason` | Why a call was denied or failed (policy, rate limit, auth, ...) |
-| `durationMs`, `redactions` | Latency and number of PII redactions |
+| `eventId`, `operationId`, `requestId`, `traceId` | Stable event identity and correlation; responses carry `X-Request-Id` |
+| `stage`, `schemaVersion` | `event`, `admission`, `mutation` or `outcome`, and metadata schema version |
+| `actorType`, `actorId`, `subject`, `issuer` | Credential identity and verified OAuth/SSO identity where applicable |
+| `action`, `target`, `configRevision` | Operation, identifier-only target and observed/transaction revision |
+| `time`, `virtualServer`, `method` | When, where and which method |
+| `agentKey`, `clientIp` | Principal label and caller address |
+| `tool`, `upstream` | Validated tool and upstream identifiers |
+| `status` | `started`, `ok`, `tool_error`, `error` or `denied` |
+| `reason`, `durationMs`, `redactions` | Fixed/configured reason, duration and masking count |
 
-Arguments and results are **not** stored.
+`GET /api/v1/audit-events` supports filters and cursor pagination. Use `incomplete=true` for admissions without outcomes; this includes currently running calls. The Audit UI exposes this filter. `GET /api/v1/audit-status` reports durability counters and the persisted incomplete backlog.
 
-## Querying
+`VMCP_AUDIT_RETENTION_DAYS` defaults to 90; `0` keeps everything. Incomplete operations are preserved until reconciliation; completed operation pairs are retained through the outcome cutoff. Explicit `best_effort` data-plane mode can lose queued events on overflow, prolonged shutdown failure or crash and does not provide complete coverage.
 
-`GET /api/v1/audit-events` with filters `virtualServer`, `agentKey`, `tool`, `status`, `from`/`to` (RFC 3339) and cursor
-paging (see the OpenAPI document). The UI's **Audit** page offers the same filters.
-
-## Retention
-
-Events older than `VMCP_AUDIT_RETENTION_DAYS` (default 90; `0` keeps everything) are purged. Events are written
-asynchronously in batches, so the request path never waits for the database; under extreme load the writer drops events
-rather than blocking calls. Export audit data elsewhere if you need long-term or tamper-evident retention.
+See [Audit durability](AUDIT_DURABILITY.md) for exact acknowledgement guarantees, outage and shutdown behavior, reconciliation, migration/rollback requirements and SIEM limitations.

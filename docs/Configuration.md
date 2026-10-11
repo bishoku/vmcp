@@ -30,6 +30,7 @@ All configuration is through environment variables. Durations use Go syntax (`30
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `VMCP_AUDIT_MODE` | `strict` | `strict` persists tool admission before dispatch; `best_effort` permits queue loss and does not provide complete audit coverage. Control-plane administrative audit is always strict |
 | `VMCP_AUTH_MAX_STALE` | `30s` | Maximum age of successfully confirmed authorization configuration; positive Go duration. Stale MCP requests return 503 |
 | `VMCP_DP_ADDR` | `:8080` | Listen address |
 | `VMCP_ALLOWED_ORIGINS` | empty | Comma-separated exact browser origins for MCP POST/GET/DELETE, e.g. `https://agent.example`; no paths. Empty denies all supplied Origins. Native clients may omit Origin |
@@ -56,3 +57,7 @@ Both services expose `GET /healthz` (liveness) and `GET /readyz`. Control-plane 
 ## MCP network policy
 
 Set the same egress policy on both services and restart after changes. See [MCP network security](MCP_NETWORK_SECURITY.md) for defaults, private-network examples, disabled redirects/proxies, TLS behavior and deployment compatibility. MCP POST requires `Content-Type: application/json` and `Accept: application/json, text/event-stream`; GET requires `Accept: text/event-stream` even though streams currently return 405 after authentication/validation.
+
+## Audit durability
+
+Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status` expose failure counters and incomplete operations. Read [Audit durability](AUDIT_DURABILITY.md) before choosing best-effort mode or rolling back migration 18.

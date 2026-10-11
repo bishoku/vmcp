@@ -286,6 +286,7 @@ func (t *Tx) writeKeyServers(ctx context.Context, keyID string, slugs []string) 
 
 // CreateAgentKey creates a key and returns its secret, which is shown only once.
 func (t *Tx) CreateAgentKey(ctx context.Context, slug string, in AgentKeyInput) (*AgentKey, string, error) {
+	t.auditTarget("agent-key", slug)
 	errs := append(SlugErrors("/slug", slug), validateKeyInput(&in)...)
 	if in.ExpiresAt != nil && !in.ExpiresAt.After(time.Now()) {
 		errs = append(errs, vf("/expiresAt", "must be in the future"))
@@ -319,6 +320,7 @@ func (t *Tx) CreateAgentKey(ctx context.Context, slug string, in AgentKeyInput) 
 
 // PatchAgentKey applies a merge patch (secret and revocation are untouched).
 func (t *Tx) PatchAgentKey(ctx context.Context, slug string, p AgentKeyPatch, ifMatch *int64) (*AgentKey, error) {
+	t.auditTarget("agent-key", slug)
 	cur, err := t.getKey(ctx, slug, true)
 	if err != nil {
 		return nil, err
@@ -371,6 +373,7 @@ func (t *Tx) PatchAgentKey(ctx context.Context, slug string, p AgentKeyPatch, if
 
 // RotateAgentKey issues a new secret; the old one stops working immediately.
 func (t *Tx) RotateAgentKey(ctx context.Context, slug string) (*AgentKey, string, error) {
+	t.auditTarget("agent-key", slug)
 	cur, err := t.getKey(ctx, slug, true)
 	if err != nil {
 		return nil, "", err
@@ -389,6 +392,7 @@ func (t *Tx) RotateAgentKey(ctx context.Context, slug string) (*AgentKey, string
 
 // RevokeAgentKey disables a key without deleting it (idempotent).
 func (t *Tx) RevokeAgentKey(ctx context.Context, slug string) (*AgentKey, error) {
+	t.auditTarget("agent-key", slug)
 	cur, err := t.getKey(ctx, slug, true)
 	if err != nil {
 		return nil, err
@@ -403,6 +407,7 @@ func (t *Tx) RevokeAgentKey(ctx context.Context, slug string) (*AgentKey, error)
 
 // DeleteAgentKey removes a key.
 func (t *Tx) DeleteAgentKey(ctx context.Context, slug string, ifMatch *int64) error {
+	t.auditTarget("agent-key", slug)
 	cur, err := t.getKey(ctx, slug, true)
 	if err != nil {
 		return err

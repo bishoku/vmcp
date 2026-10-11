@@ -3,16 +3,29 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Event is one audited action. Arguments and results are intentionally absent.
 type Event struct {
+	EventID       string
+	OperationID   string
+	RequestID     string
+	TraceID       string
+	SchemaVersion int
+	ActorType     string
+	ActorID       string
+	Issuer        string
+	Action        string
+	Target        string
+	Revision      int64
+	Stage         string
 	Time          time.Time
 	VirtualServer string
 	AgentKey      string // key slug; empty on open servers or unknown keys
@@ -28,7 +41,7 @@ type Event struct {
 	Redactions int // PII values masked in this call
 }
 
-// Recorder accepts events without blocking the request path.
+// Recorder records standalone facts; strict implementations acknowledge storage synchronously.
 type Recorder interface{ Record(Event) }
 
 // Nop discards events.
@@ -39,11 +52,19 @@ func (Nop) Record(Event) {}
 // Writer batches events into Postgres on a background goroutine. When the buffer is
 // full, events are dropped (and counted) rather than slowing agents down.
 type Writer struct {
-	pool    *pgxpool.Pool
-	log     *slog.Logger
-	ch      chan Event
-	dropped atomic.Int64
-	done    chan struct{}
+	pool            *pgxpool.Pool
+	log             *slog.Logger
+	ch              chan Event
+	dropped         atomic.Int64
+	done            chan struct{}
+	mu              sync.Mutex
+	stopped         bool
+	failed          atomic.Int64
+	dead            atomic.Int64
+	pending         atomic.Int64
+	oldest          atomic.Int64
+	write           func(context.Context, []Event) error
+	shutdownTimeout time.Duration
 }
 
 const (
@@ -67,16 +88,37 @@ func (w *Writer) Dropped() int64 { return w.dropped.Load() }
 
 // Record queues an event.
 func (w *Writer) Record(e Event) {
-	if e.Time.IsZero() {
-		e.Time = time.Now()
+	var err error
+	e, err = Prepare(e)
+	if err != nil {
+		w.dead.Add(1)
+		w.dropped.Add(1)
+		return
 	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		w.dropped.Add(1)
+		return
+	}
+	w.pending.Add(1)
 	select {
 	case w.ch <- e:
+		w.oldest.CompareAndSwap(0, e.Time.UnixNano())
 	default:
+		w.pending.Add(-1)
 		if n := w.dropped.Add(1); n == 1 || n%1000 == 0 {
-			w.log.Warn("audit buffer full, dropping events", "dropped_total", n)
+			w.log.Warn("best-effort audit buffer full", "dropped_total", n)
 		}
 	}
+}
+
+func (w *Writer) Stats() Counters {
+	s := Counters{Mode: "best_effort", Dropped: w.dropped.Load(), FailedWrites: w.failed.Load(), DeadLetters: w.dead.Load(), Pending: w.pending.Load()}
+	if oldest := w.oldest.Load(); oldest != 0 {
+		s.OldestPendingAgeSeconds = max(0, time.Since(time.Unix(0, oldest)).Seconds())
+	}
+	return s
 }
 
 func (w *Writer) run(ctx context.Context) {
@@ -84,37 +126,103 @@ func (w *Writer) run(ctx context.Context) {
 	t := time.NewTicker(flushEvery)
 	defer t.Stop()
 	batch := make([]Event, 0, batchSize)
-	flush := func() {
-		if len(batch) == 0 {
-			return
-		}
-		// Own context: the final flush must still run after ctx is cancelled.
-		fctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := insert(fctx, w.pool, batch); err != nil {
-			w.log.Error("audit write failed", "events", len(batch), "err", err)
-		}
-		batch = batch[:0]
+	markedPermanent := false
+	write := w.write
+	if write == nil {
+		write = func(ctx context.Context, evs []Event) error { return insert(ctx, w.pool, evs) }
 	}
-	for {
-		select {
-		case e := <-w.ch:
-			batch = append(batch, e)
-			if len(batch) >= batchSize {
-				flush()
+	flush := func(fctx context.Context) error {
+		if len(batch) == 0 {
+			return nil
+		}
+		err := write(fctx, batch)
+		if err != nil {
+			w.failed.Add(1)
+			return err
+		}
+		w.mu.Lock()
+		w.pending.Add(-int64(len(batch)))
+		batch = batch[:0]
+		markedPermanent = false
+		if w.pending.Load() == 0 {
+			w.oldest.Store(0)
+		}
+		w.mu.Unlock()
+		return nil
+	}
+	// Once a batch fails, stop draining the bounded queue and retain that exact batch.
+	retry := func(retryCtx context.Context) error {
+		delay := 25 * time.Millisecond
+		logged := false
+		for {
+			fctx, cancel := context.WithTimeout(retryCtx, WriteTimeout)
+			err := flush(fctx)
+			cancel()
+			if err == nil {
+				return nil
 			}
-		case <-t.C:
-			flush()
-		case <-ctx.Done():
-			for {
+			if !logged {
+				w.log.Error("best-effort audit write failed; retaining batch", "events", len(batch))
+				logged = true
+			}
+			if !markedPermanent && !transient(err) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				w.dead.Add(int64(len(batch)))
+				markedPermanent = true
+			}
+			select {
+			case <-retryCtx.Done():
+				return retryCtx.Err()
+			case <-time.After(delay):
+			}
+			delay = min(delay*2, 250*time.Millisecond)
+		}
+	}
+	shutdown := func() {
+		w.mu.Lock()
+		w.stopped = true
+		w.mu.Unlock()
+		budget := w.shutdownTimeout
+		if budget <= 0 {
+			budget = 10 * time.Second
+		}
+		final, cancel := context.WithTimeout(context.Background(), budget)
+		defer cancel()
+		for {
+			for len(batch) < batchSize {
 				select {
 				case e := <-w.ch:
 					batch = append(batch, e)
 				default:
-					flush()
-					return
+					goto flushFinal
 				}
 			}
+		flushFinal:
+			if len(batch) == 0 {
+				return
+			}
+			if err := retry(final); err != nil {
+				lost := w.pending.Swap(0)
+				w.dropped.Add(lost)
+				w.log.Error("best-effort audit shutdown incomplete", "unpersisted_events", lost)
+				return
+			}
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			shutdown()
+			return
+		case e := <-w.ch:
+			batch = append(batch, e)
+			if len(batch) < batchSize {
+				continue
+			}
+		case <-t.C:
+		}
+		if err := retry(ctx); err != nil {
+			shutdown()
+			return
 		}
 	}
 }
@@ -127,19 +235,27 @@ func nullable(s string) any {
 }
 
 func insert(ctx context.Context, pool *pgxpool.Pool, evs []Event) error {
-	rows := make([][]any, len(evs))
-	for i, e := range evs {
-		rows[i] = []any{e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject),
-			nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
 	}
-	_, err := pool.CopyFrom(ctx, pgx.Identifier{"audit_events"},
-		[]string{"ts", "virtual_server", "agent_key", "client_ip", "method", "subject", "tool", "upstream", "status", "reason", "duration_ms", "redactions"},
-		pgx.CopyFromRows(rows))
-	return err
+	defer tx.Rollback(context.Background())
+	if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit=on`); err != nil {
+		return err
+	}
+	for _, e := range evs {
+		if err := Insert(ctx, tx, e); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // Purge deletes events older than the retention period and returns how many.
 func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (int64, error) {
-	tag, err := pool.Exec(ctx, `DELETE FROM audit_events WHERE ts < now() - make_interval(secs => $1)`, retention.Seconds())
+	tag, err := pool.Exec(ctx, `DELETE FROM audit_events a WHERE a.ts < now() - make_interval(secs => $1)
+ AND (a.operation_id IS NULL OR NOT EXISTS(SELECT 1 FROM audit_events p WHERE p.operation_id=a.operation_id AND p.stage='admission')
+ OR (EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=a.operation_id AND o.stage='outcome')
+ AND NOT EXISTS(SELECT 1 FROM audit_events r WHERE r.operation_id=a.operation_id AND r.ts >= now() - make_interval(secs => $1))))`, retention.Seconds())
 	return tag.RowsAffected(), err
 }

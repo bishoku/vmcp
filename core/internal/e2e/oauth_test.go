@@ -29,7 +29,9 @@ func TestOAuthBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	aw := audit.NewWriter(e.ctx, e.pool, log)
+	auditCtx, auditCancel := context.WithCancel(e.ctx)
+	aw := audit.NewWriter(auditCtx, e.pool, log)
+	t.Cleanup(func() { auditCancel(); <-aw.Done() })
 	mux := http.NewServeMux()
 	(&virtual.Handler{Snap: e.syncer, Sessions: virtual.NewManager(), Log: log, JWT: ver, Limiter: ratelimit.NewLocal(),
 		Audit: aw, PublicURL: "https://gw.example.com"}).Register(mux)

@@ -226,6 +226,7 @@ func (t *Tx) writeBindingServers(ctx context.Context, bindingID string, slugs []
 
 // PutBinding creates or replaces a binding. With createOnly an existing slug is a 409.
 func (t *Tx) PutBinding(ctx context.Context, slug string, in BindingInput, ifMatch *int64, createOnly bool) (*Binding, Outcome, error) {
+	t.auditTarget("identity-binding", slug)
 	errs := append(SlugErrors("/slug", slug), validateBindingInput(&in)...)
 	if len(errs) > 0 {
 		return nil, "", apierror.Validation(errs)
@@ -286,6 +287,7 @@ func (t *Tx) PutBinding(ctx context.Context, slug string, in BindingInput, ifMat
 
 // PatchBinding applies a JSON merge patch.
 func (t *Tx) PatchBinding(ctx context.Context, slug string, p BindingPatch, ifMatch *int64) (*Binding, error) {
+	t.auditTarget("identity-binding", slug)
 	cur, err := t.getBinding(ctx, slug, true)
 	if err != nil {
 		return nil, err
@@ -316,6 +318,7 @@ func (t *Tx) PatchBinding(ctx context.Context, slug string, p BindingPatch, ifMa
 
 // DeleteBinding removes a binding.
 func (t *Tx) DeleteBinding(ctx context.Context, slug string, ifMatch *int64) error {
+	t.auditTarget("identity-binding", slug)
 	cur, err := t.getBinding(ctx, slug, true)
 	if err != nil {
 		return err

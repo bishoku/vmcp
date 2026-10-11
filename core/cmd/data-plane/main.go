@@ -65,7 +65,11 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	auditor := audit.NewWriter(ctx, pool, log)
+	auditor, err := audit.NewService(ctx, pool, log, config.Env("VMCP_AUDIT_MODE", "strict"))
+	if err != nil {
+		pool.Close()
+		return err
+	}
 	// Cancel background goroutines (the NOTIFY listener holds a pool connection)
 	// and let the audit writer flush before closing the pool, otherwise Close
 	// blocks on error exits and buffered events are lost.
@@ -141,7 +145,19 @@ func run(log *slog.Logger) error {
 		if !status.Ready {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		_ = json.NewEncoder(w).Encode(status)
+		_ = json.NewEncoder(w).Encode(struct {
+			snapshot.Status
+			Audit audit.Counters `json:"audit"`
+		}{status, auditor.Stats()})
+	})
+	mux.HandleFunc("GET /audit-status", func(w http.ResponseWriter, r *http.Request) {
+		pending, err := audit.Pending(r.Context(), pool)
+		if err != nil {
+			http.Error(w, "audit database unavailable", 503)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"process": auditor.Stats(), "durable": pending})
 	})
 	trusted, err := config.ParsePrefixes(config.Env("VMCP_TRUSTED_PROXIES", ""))
 	if err != nil {

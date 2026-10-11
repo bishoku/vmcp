@@ -316,6 +316,7 @@ func (t *Tx) writeSelections(ctx context.Context, vsID string, sels []ToolSelect
 
 // PutVirtualServer creates or replaces a virtual server and its tool list atomically.
 func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServerInput, ifMatch *int64, createOnly bool) (*VirtualServer, Outcome, error) {
+	t.auditTarget("virtual-server", slug)
 	if in.Tools == nil {
 		in.Tools = []ToolSelection{}
 	}
@@ -385,6 +386,7 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 
 // PatchVirtualServer applies a JSON merge patch.
 func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServerPatch, ifMatch *int64) (*VirtualServer, error) {
+	t.auditTarget("virtual-server", slug)
 	cur, err := t.getVS(ctx, slug, true)
 	if err != nil {
 		return nil, err
@@ -423,6 +425,7 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 
 // DeleteVirtualServer removes a virtual server and its selections.
 func (t *Tx) DeleteVirtualServer(ctx context.Context, slug string, ifMatch *int64) error {
+	t.auditTarget("virtual-server", slug)
 	cur, err := t.getVS(ctx, slug, true)
 	if err != nil {
 		return err

@@ -72,7 +72,9 @@ func setup(t *testing.T) *env {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log, PollInterval: time.Hour}
-	aw := audit.NewWriter(ctx, pool, log)
+	auditCtx, auditCancel := context.WithCancel(ctx)
+	aw := audit.NewWriter(auditCtx, pool, log)
+	t.Cleanup(func() { auditCancel(); <-aw.Done() })
 	e := &env{ctx: ctx, syncer: syncer, pool: pool}
 	e.exec(t, `DELETE FROM virtual_servers`)
 	e.exec(t, `DELETE FROM upstreams`)
@@ -309,11 +311,11 @@ func TestAuditTrail(t *testing.T) {
 	_, _ = c.CallTool(ctx, "nonexistent", json.RawMessage(`{}`))
 
 	// Events are flushed by a background writer; poll for them.
-	want := map[string]string{"alpha__add": "ok", "alpha__fail": "tool_error", "nonexistent": "error"}
+	want := map[string]string{"alpha__add": "ok", "alpha__fail": "tool_error", "": "error"}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		got := map[string]string{}
-		rows, err := e.pool.Query(ctx, `SELECT tool, status FROM audit_events WHERE method = 'tools/call'`)
+		rows, err := e.pool.Query(ctx, `SELECT COALESCE(tool,''), status FROM audit_events WHERE method = 'tools/call'`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -576,6 +578,16 @@ func TestFailoverAndHealth(t *testing.T) {
 	// The primary is dead; the fallback is the real server.
 	e.exec(t, `UPDATE upstreams SET url = 'http://127.0.0.1:1/', fallback_urls = ARRAY[$1]::text[] WHERE slug = 'alpha'`, orig)
 
+	// Health on the old URL can already be healthy; wait for configuration convergence
+	// before asserting fallback behavior or dispatching against a pinned revision.
+	awaitConsistency(t, func() bool {
+		for _, up := range e.syncer.Snapshot().Upstreams {
+			if up.Slug == "alpha" {
+				return up.URL == "http://127.0.0.1:1/" && len(up.FallbackURLs) == 1
+			}
+		}
+		return false
+	})
 	chk := &health.Checker{Pool: e.pool, Snap: e.syncer, Node: "test-node", Interval: time.Hour}
 	state := func() (st, url string) {
 		t.Helper()

@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/oidc"
 	"github.com/bishoku/vmcp/core/internal/store"
 )
@@ -34,7 +36,9 @@ type Server struct {
 	Version    string
 	Log        *slog.Logger
 	// OIDC enables browser sign-in; nil means bearer tokens only.
-	OIDC *oidc.Provider
+	OIDC      *oidc.Provider
+	auditOnce sync.Once
+	auditor   *audit.Durable
 }
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request) error
@@ -123,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	api("POST /api/v1/admin-tokens/{slug}/revoke", s.revokeAdminToken)
 
 	api("GET /api/v1/audit-events", s.listAuditEvents)
+	api("GET /api/v1/audit-status", s.auditStatus)
 
 	api("GET /api/v1/export", s.exportConfig)
 	api("POST /api/v1/apply", s.applyConfig)
@@ -131,8 +136,11 @@ func (s *Server) Handler() http.Handler {
 
 // principal is the authenticated caller.
 type principal struct {
-	Name string `json:"name"`
-	Role string `json:"role"`
+	Name    string `json:"name"`
+	ID      string `json:"id,omitempty"`
+	Subject string `json:"subject,omitempty"`
+	Issuer  string `json:"issuer,omitempty"`
+	Role    string `json:"role"`
 	// Via is "bootstrap-token", "admin-token" or "oidc".
 	Via string `json:"via"`
 }
@@ -148,7 +156,7 @@ func (s *Server) wrap(h handlerFunc) http.Handler {
 			err = permit(p.Role, r)
 		}
 		if err == nil {
-			err = h(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+			err = s.audited(h, w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)), p)
 		}
 		if err != nil {
 			apierror.Write(w, r, err, s.Log)
@@ -185,12 +193,12 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 		// Hash first so the comparison time does not depend on the token length.
 		a, b := sha256.Sum256([]byte(tok)), sha256.Sum256([]byte(s.AdminToken))
 		if s.AdminToken != "" && subtle.ConstantTimeCompare(a[:], b[:]) == 1 {
-			return &principal{Name: "bootstrap token", Role: oidc.RoleAdmin, Via: "bootstrap-token"}, nil
+			return &principal{Name: "bootstrap token", ID: "bootstrap", Role: oidc.RoleAdmin, Via: "bootstrap-token"}, nil
 		}
 		if !strings.HasPrefix(tok, "vmcpa_") {
 			return nil, nil
 		}
-		scope, ok, err := s.Store.LookupAdminToken(r.Context(), tok)
+		scope, id, slug, ok, err := s.Store.LookupAdminIdentity(r.Context(), tok)
 		if err != nil || !ok {
 			return nil, err
 		}
@@ -198,7 +206,7 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 		if scope == store.ScopeAdmin {
 			role = oidc.RoleAdmin
 		}
-		return &principal{Name: "admin token", Role: role, Via: "admin-token"}, nil
+		return &principal{Name: slug, ID: id, Role: role, Via: "admin-token"}, nil
 	}
 	if s.OIDC == nil {
 		return nil, nil
@@ -211,7 +219,7 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-VMCP-CSRF") == "" {
 		return nil, apierror.Forbidden("missing X-VMCP-CSRF header")
 	}
-	return &principal{Name: sess.Name, Role: sess.Role, Via: "oidc"}, nil
+	return &principal{Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}, nil
 }
 
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {

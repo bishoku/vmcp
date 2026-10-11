@@ -228,6 +228,7 @@ func (t *Tx) UpstreamConnInfo(ctx context.Context, slug string) (*UpstreamConn, 
 // PutUpstream creates or replaces an upstream. With createOnly an existing slug is a 409.
 // ifMatch, when set, must equal the current version.
 func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifMatch *int64, createOnly bool) (*Upstream, Outcome, error) {
+	t.auditTarget("upstream", slug)
 	if len(in.FallbackURLs) == 0 {
 		in.FallbackURLs = []string{}
 	}
@@ -422,6 +423,7 @@ func (t *Tx) sealKey(s tlsconf.Settings) ([]byte, error) {
 
 // PatchUpstream applies a JSON merge patch.
 func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, ifMatch *int64) (*Upstream, error) {
+	t.auditTarget("upstream", slug)
 	cur, err := t.getUpstream(ctx, slug, true)
 	if err != nil {
 		return nil, err
@@ -507,6 +509,7 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 
 // DeleteUpstream removes an upstream. Without force it fails while virtual servers select its tools.
 func (t *Tx) DeleteUpstream(ctx context.Context, slug string, force bool, ifMatch *int64) error {
+	t.auditTarget("upstream", slug)
 	cur, err := t.getUpstream(ctx, slug, true)
 	if err != nil {
 		return err
@@ -596,6 +599,7 @@ type RefreshResult struct {
 // ReplaceTools makes the cached tools equal to tools. It writes only when something
 // changed, so an idle refresh never bumps the config revision.
 func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at time.Time) (*RefreshResult, error) {
+	t.auditTarget("upstream", slug)
 	cur, err := t.getUpstream(ctx, slug, true)
 	if err != nil {
 		return nil, err
@@ -697,6 +701,7 @@ func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at
 // SetRefreshStatus records the outcome of the last refresh. It deliberately does
 // not touch a table with a revision trigger.
 func (t *Tx) SetRefreshStatus(ctx context.Context, slug string, at time.Time, refreshErr *string) error {
+	t.auditTarget("upstream", slug)
 	cur, err := t.getUpstream(ctx, slug, false)
 	if err != nil {
 		return err

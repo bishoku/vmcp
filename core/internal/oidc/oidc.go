@@ -304,3 +304,6 @@ func (p *Provider) readCookie(r *http.Request, name string, dst any) bool {
 	}
 	return json.Unmarshal(payload, dst) == nil
 }
+
+// Issuer identifies the verified SSO authority in metadata-only audit records.
+func (p *Provider) Issuer() string { return p.cfg.Issuer }

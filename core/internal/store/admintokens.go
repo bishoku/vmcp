@@ -129,6 +129,7 @@ func (t *Tx) ListAdminTokens(ctx context.Context, after string, limit int) ([]Ad
 
 // CreateAdminToken creates a token and returns its secret (shown once).
 func (t *Tx) CreateAdminToken(ctx context.Context, slug string, in AdminTokenInput) (*AdminToken, string, error) {
+	t.auditTarget("admin-token", slug)
 	if in.Scope == "" {
 		in.Scope = ScopeRead
 	}
@@ -151,6 +152,7 @@ func (t *Tx) CreateAdminToken(ctx context.Context, slug string, in AdminTokenInp
 
 // PatchAdminToken applies a merge patch.
 func (t *Tx) PatchAdminToken(ctx context.Context, slug string, p AdminTokenPatch, ifMatch *int64) (*AdminToken, error) {
+	t.auditTarget("admin-token", slug)
 	cur, err := scanAdmin(t.q.QueryRow(ctx, adminSelect+` AND slug = $1 FOR UPDATE`, slug))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apierror.NotFound("admin token", slug)
@@ -188,6 +190,7 @@ func (t *Tx) PatchAdminToken(ctx context.Context, slug string, p AdminTokenPatch
 
 // RotateAdminToken issues a new secret and clears any revocation.
 func (t *Tx) RotateAdminToken(ctx context.Context, slug string) (*AdminToken, string, error) {
+	t.auditTarget("admin-token", slug)
 	secret, prefix, err := newSecret("vmcpa_")
 	if err != nil {
 		return nil, "", err
@@ -206,6 +209,7 @@ func (t *Tx) RotateAdminToken(ctx context.Context, slug string) (*AdminToken, st
 
 // RevokeAdminToken disables a token (idempotent).
 func (t *Tx) RevokeAdminToken(ctx context.Context, slug string) (*AdminToken, error) {
+	t.auditTarget("admin-token", slug)
 	tag, err := t.q.Exec(ctx, `UPDATE admin_tokens SET revoked_at = COALESCE(revoked_at, now()),
 		version = CASE WHEN revoked_at IS NULL THEN version + 1 ELSE version END, updated_at = now()
 		WHERE tenant_id = `+tenantSQL+` AND slug = $1`, slug)
@@ -220,6 +224,7 @@ func (t *Tx) RevokeAdminToken(ctx context.Context, slug string) (*AdminToken, er
 
 // DeleteAdminToken removes a token.
 func (t *Tx) DeleteAdminToken(ctx context.Context, slug string, ifMatch *int64) error {
+	t.auditTarget("admin-token", slug)
 	if ifMatch != nil {
 		cur, err := t.GetAdminToken(ctx, slug)
 		if err != nil {
@@ -241,19 +246,24 @@ func (t *Tx) DeleteAdminToken(ctx context.Context, slug string, ifMatch *int64) 
 
 // LookupAdminToken resolves a presented secret to its scope. ok is false for unknown,
 // revoked or expired tokens. last_used_at is refreshed at most once a minute.
-func (s *Store) LookupAdminToken(ctx context.Context, secret string) (scope string, ok bool, err error) {
-	var id string
+func (s *Store) LookupAdminIdentity(ctx context.Context, secret string) (scope, id, slug string, ok bool, err error) {
 	err = s.Pool.QueryRow(ctx, `
-		SELECT id::text, scope FROM admin_tokens
+		SELECT id::text, scope, slug FROM admin_tokens
 		WHERE token_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`,
-		HashKey(secret)).Scan(&id, &scope)
+		HashKey(secret)).Scan(&id, &scope, &slug)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, nil
+		return "", "", "", false, nil
 	}
 	if err != nil {
-		return "", false, err
+		return "", "", "", false, err
 	}
 	_, _ = s.Pool.Exec(ctx, `UPDATE admin_tokens SET last_used_at = now()
 		WHERE id = $1::uuid AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')`, id)
-	return scope, true, nil
+	return scope, id, slug, true, nil
+}
+
+// LookupAdminToken is the compatibility scope-only view.
+func (s *Store) LookupAdminToken(ctx context.Context, secret string) (string, bool, error) {
+	scope, _, _, ok, err := s.LookupAdminIdentity(ctx, secret)
+	return scope, ok, err
 }

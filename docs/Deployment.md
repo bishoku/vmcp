@@ -44,3 +44,7 @@ that `POST /api/v1/apply` can load into another environment ([REST API and GitOp
 ## P03 session schema upgrade
 
 Drain old data-plane nodes before migration 17, replace every data-plane binary, and have clients initialize new sessions before restoring traffic. Legacy sessions lack a trustworthy subject binding and are rejected. Mixed versions and rollback need coordinated handling; see [Authorization and session consistency](AUTHORIZATION_CONSISTENCY.md#upgrade-and-rollback).
+
+## P04 audit schema upgrade
+
+Apply schema 18 before starting the new data plane. Drain and replace all legacy writers before claiming strict coverage. Strict tool admission requires durable PostgreSQL storage; failures return 503. Archive audit rows and exporter checkpoints before rollback, which removes lifecycle metadata and started rows. See [Audit durability](AUDIT_DURABILITY.md#retention-export-and-rollout).
