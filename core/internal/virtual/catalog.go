@@ -343,5 +343,10 @@ func (h *Handler) callCatalogUpstream(ctx context.Context, sess *Session, up con
 	if err := checkAuthorization(ctx); err != nil {
 		return nil, err
 	}
+	h.notifyRoots(ctx, sess)
+	if err := h.configureLogging(ctx, sess, c); err != nil {
+		return nil, err
+	}
+	ctx = upstream.WithOrigin(ctx, up.Slug)
 	return upstream.Call(ctx, c, method, params)
 }

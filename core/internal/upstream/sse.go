@@ -67,10 +67,13 @@ func OpenAuth(transport, url string, headers map[string]string, tl tlsconf.Setti
 // a long-lived GET event stream, learns the POST endpoint from an "endpoint" event,
 // then posts requests there and receives every response on the stream.
 type SSEClient struct {
-	url     string
-	headers map[string]string
-	http    *http.Client
-	nextID  atomic.Int64
+	capabilities mcp.ServerCapabilities
+	loggingMu    sync.Mutex
+	loggingLevel string
+	url          string
+	headers      map[string]string
+	http         *http.Client
+	nextID       atomic.Int64
 
 	// OnServerMessage receives server-initiated messages. Optional.
 	OnServerMessage func(*mcp.Message)
@@ -97,9 +100,10 @@ func (c *SSEClient) Initialize(ctx context.Context) (*mcp.InitializeResult, erro
 	if err := c.connect(ctx); err != nil {
 		return nil, err
 	}
-	raw, err := c.call(ctx, mcp.MethodInitialize, mcp.InitializeParams{
+	handshakeCtx := WithRelay(ctx, Relay{ClientCapabilities: ClientCapabilities(ctx)})
+	raw, err := c.call(handshakeCtx, mcp.MethodInitialize, mcp.InitializeParams{
 		ProtocolVersion: mcp.SupportedVersions[0],
-		Capabilities:    json.RawMessage(`{}`),
+		Capabilities:    ClientCapabilities(ctx),
 		ClientInfo:      mcp.Implementation{Name: "vmcp-gateway", Version: "0.1.0"},
 	})
 	if err != nil {

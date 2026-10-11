@@ -39,33 +39,35 @@ type ResolvedSelection struct {
 
 // VirtualServer is the API read model.
 type VirtualServer struct {
-	Slug         string                     `json:"slug"`
-	Name         string                     `json:"name"`
-	Description  string                     `json:"description"`
-	Enabled      bool                       `json:"enabled"`
-	AuthRequired bool                       `json:"authRequired"`
-	PII          pii.Config                 `json:"pii"`
-	Policy       policy.Config              `json:"policy"`
-	RateLimit    *int                       `json:"rateLimitPerMinute"`
-	Endpoint     string                     `json:"endpoint"`
-	Tools        []ResolvedSelection        `json:"tools"`
-	Catalog      []ResolvedCatalogSelection `json:"catalog"`
-	Version      int64                      `json:"version"`
-	CreatedAt    time.Time                  `json:"createdAt"`
-	UpdatedAt    time.Time                  `json:"updatedAt"`
+	Slug           string                     `json:"slug"`
+	Name           string                     `json:"name"`
+	Description    string                     `json:"description"`
+	Enabled        bool                       `json:"enabled"`
+	AuthRequired   bool                       `json:"authRequired"`
+	ClientFeatures config.ClientFeatures      `json:"clientFeatures"`
+	PII            pii.Config                 `json:"pii"`
+	Policy         policy.Config              `json:"policy"`
+	RateLimit      *int                       `json:"rateLimitPerMinute"`
+	Endpoint       string                     `json:"endpoint"`
+	Tools          []ResolvedSelection        `json:"tools"`
+	Catalog        []ResolvedCatalogSelection `json:"catalog"`
+	Version        int64                      `json:"version"`
+	CreatedAt      time.Time                  `json:"createdAt"`
+	UpdatedAt      time.Time                  `json:"updatedAt"`
 }
 
 // VirtualServerInput is the writable part of a virtual server.
 type VirtualServerInput struct {
-	Name         string
-	Description  string
-	Enabled      bool
-	AuthRequired bool
-	PII          pii.Config
-	Policy       policy.Config
-	RateLimit    *int
-	Tools        []ToolSelection
-	Catalog      []CatalogSelection
+	Name           string
+	Description    string
+	Enabled        bool
+	AuthRequired   bool
+	ClientFeatures config.ClientFeatures
+	PII            pii.Config
+	Policy         policy.Config
+	RateLimit      *int
+	Tools          []ToolSelection
+	Catalog        []CatalogSelection
 }
 
 // VirtualServerPatch is a JSON merge patch; a non-nil Tools replaces the list.
@@ -77,6 +79,7 @@ type VirtualServerPatch struct {
 	Policy            *policy.Config
 	RateLimitSet      bool
 	RateLimit         *int
+	ClientFeatures    *config.ClientFeatures
 	Catalog           *[]CatalogSelection
 	Tools             *[]ToolSelection
 }
@@ -87,19 +90,22 @@ type vsRow struct {
 }
 
 const vsSelect = `
-	SELECT v.id::text, v.slug, v.name, v.description, v.enabled, v.auth_required, v.pii_config, v.tool_policy, v.rate_limit_per_minute, v.version, v.created_at, v.updated_at
+	SELECT v.id::text, v.slug, v.name, v.description, v.enabled, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.version, v.created_at, v.updated_at
 	FROM virtual_servers v WHERE v.tenant_id = ` + tenantSQL
 
 func scanVS(row scanner) (*vsRow, error) {
 	var r vsRow
-	var piiRaw, polRaw []byte
-	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.Enabled, &r.AuthRequired, &piiRaw, &polRaw, &r.RateLimit, &r.Version, &r.CreatedAt, &r.UpdatedAt); err != nil {
+	var piiRaw, polRaw, features []byte
+	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.Enabled, &r.AuthRequired, &piiRaw, &polRaw, &features, &r.RateLimit, &r.Version, &r.CreatedAt, &r.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(piiRaw, &r.PII); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(polRaw, &r.Policy); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(features, &r.ClientFeatures); err != nil {
 		return nil, err
 	}
 	r.Policy = policy.Normalize(r.Policy)
@@ -340,6 +346,7 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 		return nil, "", apierror.Validation(errs)
 	}
 
+	featuresJSON, _ := json.Marshal(in.ClientFeatures)
 	piiJSON, err := json.Marshal(in.PII)
 	if err != nil {
 		return nil, "", err
@@ -356,9 +363,9 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 		}
 		var id string
 		if err := t.q.QueryRow(ctx, `
-			INSERT INTO virtual_servers (tenant_id, slug, name, description, enabled, auth_required, pii_config, tool_policy, rate_limit_per_minute)
-			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id::text`,
-			slug, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit).Scan(&id); err != nil {
+			INSERT INTO virtual_servers (tenant_id, slug, name, description, enabled, auth_required, pii_config, tool_policy, rate_limit_per_minute,client_features)
+			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8,$9) RETURNING id::text`,
+			slug, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit, featuresJSON).Scan(&id); err != nil {
 			return nil, "", mapWriteErr(err, "virtual server", slug)
 		}
 		if err := t.writeSelections(ctx, id, in.Tools); err != nil {
@@ -379,12 +386,12 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 	if ifMatch != nil && *ifMatch != cur.Version {
 		return nil, "", apierror.PreconditionFailed()
 	}
-	if in.Name == cur.Name && in.Description == cur.Description && in.Enabled == cur.Enabled && in.AuthRequired == cur.AuthRequired && reflect.DeepEqual(in.PII, cur.PII) && reflect.DeepEqual(in.Policy, cur.Policy) && equalInt(in.RateLimit, cur.RateLimit) && sameSelections(cur.Tools, in.Tools) && sameCatalogSelections(cur.Catalog, in.Catalog) {
+	if in.ClientFeatures == cur.ClientFeatures && in.Name == cur.Name && in.Description == cur.Description && in.Enabled == cur.Enabled && in.AuthRequired == cur.AuthRequired && reflect.DeepEqual(in.PII, cur.PII) && reflect.DeepEqual(in.Policy, cur.Policy) && equalInt(in.RateLimit, cur.RateLimit) && sameSelections(cur.Tools, in.Tools) && sameCatalogSelections(cur.Catalog, in.Catalog) {
 		return &cur.VirtualServer, Unchanged, nil
 	}
 	if _, err := t.q.Exec(ctx, `
-		UPDATE virtual_servers SET name=$2, description=$3, enabled=$4, auth_required=$5, pii_config=$6, tool_policy=$7, rate_limit_per_minute=$8, version = version + 1, updated_at = now()
-		WHERE id = $1::uuid`, cur.id, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit); err != nil {
+		UPDATE virtual_servers SET name=$2, description=$3, enabled=$4, auth_required=$5, pii_config=$6, tool_policy=$7, rate_limit_per_minute=$8,client_features=$9, version = version + 1, updated_at = now()
+		WHERE id = $1::uuid`, cur.id, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit, featuresJSON); err != nil {
 		return nil, "", err
 	}
 	if !sameSelections(cur.Tools, in.Tools) {
@@ -408,7 +415,7 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 	if err != nil {
 		return nil, err
 	}
-	in := VirtualServerInput{Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
+	in := VirtualServerInput{ClientFeatures: cur.ClientFeatures, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
 	if p.RateLimitSet {
 		in.RateLimit = p.RateLimit
 	}
@@ -435,6 +442,9 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 	}
 	if p.Policy != nil {
 		in.Policy = *p.Policy
+	}
+	if p.ClientFeatures != nil {
+		in.ClientFeatures = *p.ClientFeatures
 	}
 	if p.Catalog != nil {
 		in.Catalog = slices.Clone(*p.Catalog)

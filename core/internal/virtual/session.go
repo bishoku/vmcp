@@ -5,6 +5,7 @@ package virtual
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,11 +24,13 @@ type upstreamConn struct {
 }
 
 type cachedClient struct {
-	conn       upstream.Conn
-	generation [32]byte
-	active     int
-	retired    bool
-	closed     bool
+	rootsRevision      int64
+	clientCapabilities json.RawMessage
+	conn               upstream.Conn
+	generation         [32]byte
+	active             int
+	retired            bool
+	closed             bool
 }
 
 // retireLocked prevents reuse; active calls release their lease before closure.
@@ -100,7 +103,11 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 	if s.ended.Load() {
 		return nil, nil, errors.New("session ended")
 	}
-	generation := up.Fingerprint()
+	baseGeneration := up.Fingerprint()
+	generation := baseGeneration
+	if caps := upstream.ClientCapabilities(ctx); string(caps) != "{}" {
+		generation = sha256.Sum256(append(baseGeneration[:], caps...))
+	}
 	if uc.current != nil && uc.current.generation != generation {
 		uc.retireLocked()
 	}
@@ -109,7 +116,7 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 		if err != nil {
 			return nil, nil, err
 		}
-		uc.current = &cachedClient{conn: c, generation: generation}
+		uc.current = &cachedClient{conn: c, generation: generation, clientCapabilities: append(json.RawMessage(nil), upstream.ClientCapabilities(ctx)...)}
 	}
 	c := uc.current
 	c.active++

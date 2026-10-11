@@ -205,3 +205,39 @@ func TestCatalogMigrationUpgradeAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestClientFeatureMigrationUpgradeAndRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 20); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO sessions(id,virtual_server,key_slug,protocol_version) VALUES('features-upgrade','v','','2025-06-18')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var level string
+	if err := db.QueryRowContext(ctx, `SELECT logging_level FROM sessions WHERE id='features-upgrade'`).Scan(&level); err != nil || level != "warning" {
+		t.Fatalf("unsafe logging default %s %v", level, err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 20); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sessions WHERE id='features-upgrade'`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("feature rollback lost session")
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+}

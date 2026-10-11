@@ -74,6 +74,7 @@ type ServerCapabilities struct {
 	Tools       *ToolsCapability     `json:"tools,omitempty"`
 	Resources   *ResourcesCapability `json:"resources,omitempty"`
 	Prompts     *ToolsCapability     `json:"prompts,omitempty"`
+	Logging     *struct{}            `json:"logging,omitempty"`
 	Completions *struct{}            `json:"completions,omitempty"`
 }
 
@@ -87,10 +88,14 @@ type InitializeResult struct {
 // Tool describes a callable tool. InputSchema and Annotations are kept raw so
 // schemas pass through the gateway untouched.
 type Tool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"inputSchema"`
-	Annotations json.RawMessage `json:"annotations,omitempty"`
+	Title        string                     `json:"title,omitempty"`
+	OutputSchema json.RawMessage            `json:"outputSchema,omitempty"`
+	Meta         json.RawMessage            `json:"_meta,omitempty"`
+	Extra        map[string]json.RawMessage `json:"-"`
+	Name         string                     `json:"name"`
+	Description  string                     `json:"description,omitempty"`
+	InputSchema  json.RawMessage            `json:"inputSchema"`
+	Annotations  json.RawMessage            `json:"annotations,omitempty"`
 }
 
 type ListToolsParams struct {

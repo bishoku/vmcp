@@ -1,5 +1,5 @@
 import CatalogPicker from './CatalogPicker'
-import type {CatalogSelection} from '../api'
+import type {CatalogSelection,ClientFeatures} from '../api'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   DndContext,
@@ -45,6 +45,7 @@ interface Draft {
   policy: { default: PolicyMode; tools: Record<string, PolicyMode> }
   rateLimit: string // calls per minute, '' = unlimited
   tools: ToolSelection[]
+ clientFeatures:ClientFeatures
  catalog:CatalogSelection[]
 }
 
@@ -58,7 +59,7 @@ const DETECTORS = [
   ['us_ssn', 'US SSN'],
 ]
 
-const blank: Draft = { isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[] }
+const blank: Draft = { isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
 const fromServer = (v: VirtualServer): Draft => ({
   isNew: false,
   version:v.version,
@@ -70,6 +71,7 @@ const fromServer = (v: VirtualServer): Draft => ({
   pii: { ...noPii, ...v.pii },
   policy: { default: v.policy?.default ?? 'allow', tools: { ...v.policy?.tools } },
   rateLimit: v.rateLimitPerMinute?.toString() ?? '',
+ clientFeatures:v.clientFeatures??{sampling:false,roots:false,elicitation:false},
  catalog:(v.catalog??[]).map(({upstream,kind,name,alias,description})=>({upstream,kind,name,alias,description})),
   tools: v.tools.map(({ upstream, tool, alias, description }) => ({ upstream, tool, ...(alias && { alias }), ...(description && { description }) })),
 })
@@ -169,7 +171,7 @@ export default function VirtualServers() {
         policy: cleanPolicy(draft),
         rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
         tools: draft.tools,
- catalog:draft.catalog,
+ catalog:draft.catalog,clientFeatures:draft.clientFeatures,
       },draft.version)
       setDraft(null)
       await load()
@@ -266,7 +268,8 @@ export default function VirtualServers() {
               </div>
             )}
 
-            <CatalogPicker upstreams={upstreams} value={draft.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
+            <section className="mt-6 rounded border border-line p-4"><h3 className="font-semibold">Client feature permissions</h3><p className="text-xs text-ink-muted">Also requires client negotiation. The MCP client controls approval; sampling uses the client’s model access. Roots never expose gateway files.</p>{(['sampling','roots','elicitation'] as const).map(feature=><label key={feature} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>{feature}</label>)}</section>
+ <CatalogPicker upstreams={upstreams} value={draft.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
  <div className="mt-6 grid grid-cols-2 gap-6">
               <section>
                 <div className="mb-2 flex items-center justify-between">

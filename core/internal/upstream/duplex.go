@@ -5,13 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"sync"
 	"time"
 )
 
 type Relay struct {
-	Meta        json.RawMessage
-	Message     func(context.Context, *mcp.Message) (*mcp.Message, error)
-	OwnsRequest func(mcp.ID) bool
+	ClientCapabilities json.RawMessage
+	Meta               json.RawMessage
+	Message            func(context.Context, *mcp.Message) (*mcp.Message, error)
+	OwnsRequest        func(mcp.ID) bool
 }
 type relayKey struct{}
 
@@ -85,4 +87,65 @@ func selectRelay(contexts map[string]context.Context, message *mcp.Message) cont
 		return ctx
 	}
 	return context.Background()
+}
+
+func ClientCapabilities(ctx context.Context) json.RawMessage {
+	raw := relayFrom(ctx).ClientCapabilities
+	if len(raw) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return raw
+}
+
+func Notify(ctx context.Context, c Conn, method string, params any) error {
+	notification, err := mcp.NewRequest(mcp.ID{}, method, params)
+	if err != nil {
+		return err
+	}
+	sender, ok := c.(interface {
+		Send(context.Context, *mcp.Message) error
+	})
+	if !ok {
+		return nil
+	}
+	return sender.Send(ctx, notification)
+}
+
+type originKey struct{}
+
+func WithOrigin(ctx context.Context, slug string) context.Context {
+	return context.WithValue(ctx, originKey{}, slug)
+}
+func Origin(ctx context.Context) string { slug, _ := ctx.Value(originKey{}).(string); return slug }
+func SetLoggingLevel(ctx context.Context, c Conn, level string) error {
+	var mu *sync.Mutex
+	var cached *string
+	var supported bool
+	switch client := c.(type) {
+	case *Client:
+		mu, cached = &client.loggingMu, &client.loggingLevel
+		client.mu.RLock()
+		supported = client.capabilities.Logging != nil
+		client.mu.RUnlock()
+	case *SSEClient:
+		mu, cached = &client.loggingMu, &client.loggingLevel
+		client.mu.Lock()
+		supported = client.capabilities.Logging != nil
+		client.mu.Unlock()
+	default:
+		return nil
+	}
+	if !supported {
+		return nil
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if *cached == level {
+		return nil
+	}
+	_, err := Call(ctx, c, "logging/setLevel", map[string]string{"level": level})
+	if err == nil {
+		*cached = level
+	}
+	return err
 }

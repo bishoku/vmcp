@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
@@ -52,16 +53,17 @@ type exportTLS struct {
 }
 
 type exportVirtualServer struct {
-	Slug         string                   `json:"slug"`
-	Name         string                   `json:"name"`
-	Description  string                   `json:"description"`
-	Enabled      bool                     `json:"enabled"`
-	AuthRequired bool                     `json:"authRequired"`
-	PII          pii.Config               `json:"pii"`
-	Policy       policy.Config            `json:"policy"`
-	RateLimit    *int                     `json:"rateLimitPerMinute"`
-	Tools        []store.ToolSelection    `json:"tools"`
-	Catalog      []store.CatalogSelection `json:"catalog"`
+	Slug           string                   `json:"slug"`
+	Name           string                   `json:"name"`
+	Description    string                   `json:"description"`
+	Enabled        bool                     `json:"enabled"`
+	AuthRequired   bool                     `json:"authRequired"`
+	PII            pii.Config               `json:"pii"`
+	Policy         policy.Config            `json:"policy"`
+	RateLimit      *int                     `json:"rateLimitPerMinute"`
+	Tools          []store.ToolSelection    `json:"tools"`
+	Catalog        []store.CatalogSelection `json:"catalog"`
+	ClientFeatures config.ClientFeatures    `json:"clientFeatures"`
 }
 
 // exportConfig emits a document without secrets. Re-applying it keeps stored
@@ -94,7 +96,7 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 		for _, v := range vss {
-			ev := exportVirtualServer{Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
+			ev := exportVirtualServer{ClientFeatures: v.ClientFeatures, Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
 			for _, t := range v.Tools {
 				ev.Tools = append(ev.Tools, t.ToolSelection)
 			}

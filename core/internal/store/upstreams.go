@@ -558,7 +558,7 @@ func (t *Tx) ListTools(ctx context.Context, slug string) ([]StoredTool, error) {
 		return nil, err
 	}
 	rows, err := t.q.Query(ctx, `
-		SELECT name, description, input_schema, annotations, fetched_at
+		SELECT name, description, input_schema, annotations, fetched_at,definition
 		FROM upstream_tools WHERE upstream_id = $1::uuid ORDER BY name`, cur.id)
 	if err != nil {
 		return nil, err
@@ -567,14 +567,15 @@ func (t *Tx) ListTools(ctx context.Context, slug string) ([]StoredTool, error) {
 	out := []StoredTool{}
 	for rows.Next() {
 		var st StoredTool
-		var schema, ann []byte
-		if err := rows.Scan(&st.Name, &st.Description, &schema, &ann, &st.FetchedAt); err != nil {
+		var schema, ann, definition []byte
+		if err := rows.Scan(&st.Name, &st.Description, &schema, &ann, &st.FetchedAt, &definition); err != nil {
 			return nil, err
 		}
 		st.InputSchema = json.RawMessage(schema)
 		if string(ann) != "{}" && len(ann) > 0 {
 			st.Annotations = json.RawMessage(ann)
 		}
+		st.Tool = mcp.MergeToolMetadata(st.Tool, definition)
 		out = append(out, st)
 	}
 	return out, rows.Err()
@@ -605,10 +606,10 @@ func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at
 		return nil, err
 	}
 	type cached struct {
-		desc        string
-		schema, ann []byte
+		desc                    string
+		schema, ann, definition []byte
 	}
-	rows, err := t.q.Query(ctx, `SELECT name, description, input_schema, annotations FROM upstream_tools WHERE upstream_id = $1::uuid`, cur.id)
+	rows, err := t.q.Query(ctx, `SELECT name, description, input_schema, annotations,definition FROM upstream_tools WHERE upstream_id = $1::uuid`, cur.id)
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +617,7 @@ func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at
 	for rows.Next() {
 		var n string
 		var c cached
-		if err := rows.Scan(&n, &c.desc, &c.schema, &c.ann); err != nil {
+		if err := rows.Scan(&n, &c.desc, &c.schema, &c.ann, &c.definition); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -641,12 +642,13 @@ func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at
 		if len(tl.Annotations) == 0 {
 			tl.Annotations = json.RawMessage(`{}`)
 		}
+		encoded, _ := json.Marshal(tl)
 		old, ok := existing[tl.Name]
 		switch {
 		case !ok:
 			res.Added = append(res.Added, tl.Name)
 			upsert = append(upsert, tl)
-		case old.desc != tl.Description || !jsonEqual(old.schema, tl.InputSchema) || !jsonEqual(old.ann, tl.Annotations):
+		case !jsonEqual(old.definition, encoded) || old.desc != tl.Description || !jsonEqual(old.schema, tl.InputSchema) || !jsonEqual(old.ann, tl.Annotations):
 			res.Changed = append(res.Changed, tl.Name)
 			upsert = append(upsert, tl)
 		}
@@ -662,13 +664,14 @@ func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at
 	res.ToolCount = len(seen)
 
 	for _, tl := range upsert {
+		definition, _ := json.Marshal(tl)
 		if _, err := t.q.Exec(ctx, `
-			INSERT INTO upstream_tools (upstream_id, name, description, input_schema, annotations, fetched_at)
-			VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb, $6)
+			INSERT INTO upstream_tools (upstream_id, name, description, input_schema, annotations, fetched_at,definition)
+			VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb, $6,$7::jsonb)
 			ON CONFLICT (upstream_id, name) DO UPDATE
 			SET description = EXCLUDED.description, input_schema = EXCLUDED.input_schema,
-			    annotations = EXCLUDED.annotations, fetched_at = EXCLUDED.fetched_at`,
-			cur.id, tl.Name, tl.Description, string(tl.InputSchema), string(tl.Annotations), at); err != nil {
+			    definition=EXCLUDED.definition,annotations = EXCLUDED.annotations, fetched_at = EXCLUDED.fetched_at`,
+			cur.id, tl.Name, tl.Description, string(tl.InputSchema), string(tl.Annotations), at, string(definition)); err != nil {
 			return nil, err
 		}
 	}
@@ -712,4 +715,15 @@ func (t *Tx) SetRefreshStatus(ctx context.Context, slug string, at time.Time, re
 		ON CONFLICT (upstream_id) DO UPDATE SET last_refresh_at = EXCLUDED.last_refresh_at, last_refresh_error = EXCLUDED.last_refresh_error`,
 		cur.id, at, refreshErr)
 	return err
+}
+
+func (s StoredTool) MarshalJSON() ([]byte, error) {
+	raw, err := json.Marshal(s.Tool)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &fields)
+	fields["fetchedAt"], _ = json.Marshal(s.FetchedAt)
+	return json.Marshal(fields)
 }

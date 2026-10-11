@@ -273,6 +273,31 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch msg.Method {
+	case "logging/setLevel":
+		if h.Delivery == nil {
+			writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeMethodNotFound, "logging unavailable"))
+			return
+		}
+		var p struct {
+			Level string `json:"level"`
+		}
+		if json.Unmarshal(msg.Params, &p) != nil {
+			writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid logging level"))
+			return
+		}
+		if _, ok := logLevels[p.Level]; !ok {
+			writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid logging level"))
+			return
+		}
+		if h.auditDelivery(ctx, sess, "", "mcp.logging_set_level") != nil {
+			http.Error(w, "audit unavailable", 503)
+			return
+		}
+		if _, err := h.Delivery.Pool.Exec(ctx, `UPDATE sessions SET logging_level=$2 WHERE id=$1 AND terminated_at IS NULL`, sess.id, p.Level); err != nil {
+			http.Error(w, "session unavailable", 503)
+			return
+		}
+		h.reply(w, msg.ID, struct{}{})
 	case mcp.MethodPing:
 		h.reply(w, msg.ID, struct{}{})
 	case mcp.MethodToolsList:
@@ -328,6 +353,9 @@ func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mc
 	}
 	w.Header().Set("Mcp-Session-Id", sess.id)
 	caps := vs.CatalogCapabilities()
+	if h.Delivery != nil {
+		caps.Logging = &struct{}{}
+	}
 	caps.Tools = &mcp.ToolsCapability{ListChanged: h.Delivery != nil}
 	if caps.Resources != nil {
 		caps.Resources.ListChanged = h.Delivery != nil
@@ -617,6 +645,12 @@ func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Ups
 			release()
 			return nil, err
 		}
+		h.notifyRoots(ctx, sess)
+		if err := h.configureLogging(ctx, sess, c); err != nil {
+			release()
+			return nil, err
+		}
+		ctx = upstream.WithOrigin(ctx, up.Slug)
 		res, err := c.CallTool(ctx, tool, args)
 		release()
 		if errors.Is(err, upstream.ErrSessionExpired) {

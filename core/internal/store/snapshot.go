@@ -98,7 +98,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	}
 
 	rows, err = tx.Query(ctx, `
-		SELECT v.id::text, v.slug, v.name, v.auth_required, v.pii_config, v.tool_policy, v.rate_limit_per_minute
+		SELECT v.id::text, v.slug, v.name, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute
 		FROM virtual_servers v JOIN tenants t ON t.id = v.tenant_id
 		WHERE t.slug = $1 AND v.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -109,14 +109,18 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	for rows.Next() {
 		var id string
 		var v config.VirtualServer
-		var piiRaw, polRaw []byte
+		var piiRaw, polRaw, features []byte
 		var rl *int
-		if err := rows.Scan(&id, &v.Slug, &v.Name, &v.AuthRequired, &piiRaw, &polRaw, &rl); err != nil {
+		if err := rows.Scan(&id, &v.Slug, &v.Name, &v.AuthRequired, &piiRaw, &polRaw, &features, &rl); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		if rl != nil {
 			v.RateLimit = *rl
+		}
+		if err := json.Unmarshal(features, &v.ClientFeatures); err != nil {
+			rows.Close()
+			return nil, err
 		}
 		var pc pii.Config
 		if err := json.Unmarshal(piiRaw, &pc); err != nil {
@@ -144,7 +148,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	// Tools of a virtual server whose upstream is disabled are skipped.
 	rows, err = tx.Query(ctx, `
 		SELECT vt.virtual_server_id::text, vt.upstream_id::text, vt.tool_name, COALESCE(vt.alias, ''),
-		       COALESCE(NULLIF(vt.description, ''), ut.description), ut.input_schema, ut.annotations
+		       COALESCE(NULLIF(vt.description, ''), ut.description), ut.input_schema, ut.annotations,ut.definition
 		FROM virtual_server_tools vt
 		JOIN upstream_tools ut ON ut.upstream_id = vt.upstream_id AND ut.name = vt.tool_name
 		ORDER BY vt.virtual_server_id, vt.position, vt.tool_name`)
@@ -153,8 +157,8 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	}
 	for rows.Next() {
 		var vsID, upID, name, alias, desc string
-		var schema, annotations []byte
-		if err := rows.Scan(&vsID, &upID, &name, &alias, &desc, &schema, &annotations); err != nil {
+		var schema, annotations, definition []byte
+		if err := rows.Scan(&vsID, &upID, &name, &alias, &desc, &schema, &annotations, &definition); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -174,6 +178,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 		if string(annotations) != "{}" && len(annotations) > 0 {
 			tool.Annotations = json.RawMessage(annotations)
 		}
+		tool = mcp.MergeToolMetadata(tool, definition)
 		vs := snap.VirtualServers[slug]
 		if ok, reason := policies[slug].Decide(tool.Name, tool.Annotations); !ok {
 			if vs.Blocked == nil {

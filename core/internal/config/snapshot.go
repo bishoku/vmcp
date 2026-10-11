@@ -72,9 +72,10 @@ type Upstream struct {
 
 // VirtualServer is an agent-facing endpoint exposing a filtered set of upstream tools.
 type VirtualServer struct {
-	Slug         string
-	Name         string
-	AuthRequired bool
+	Slug           string
+	Name           string
+	ClientFeatures ClientFeatures
+	AuthRequired   bool
 	// RateLimit is calls per minute across all callers; 0 = unlimited.
 	RateLimit int
 	// PII is nil when masking is off.

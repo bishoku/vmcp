@@ -1859,6 +1859,13 @@ components:
           type: object
           additionalProperties: true
         fetchedAt: { type: string, format: date-time }
+        title:
+          type: string
+        outputSchema:
+          type: object
+        _meta:
+          type: object
+      additionalProperties: true
 
     RefreshResult:
       type: object
@@ -1966,6 +1973,8 @@ components:
           maxItems: 10000
           items:
             $ref: "#/components/schemas/CatalogSelection"
+        clientFeatures:
+          $ref: "#/components/schemas/ClientFeatures"
 
     VirtualServerCreate:
       type: object
@@ -2008,6 +2017,8 @@ components:
           maxItems: 10000
           items:
             $ref: "#/components/schemas/CatalogSelection"
+        clientFeatures:
+          $ref: "#/components/schemas/ClientFeatures"
       required:
         - name
         - slug
@@ -2032,6 +2043,8 @@ components:
           maxItems: 10000
           items:
             $ref: "#/components/schemas/CatalogSelection"
+        clientFeatures:
+          $ref: "#/components/schemas/ClientFeatures"
 
     VirtualServer:
       type: object
@@ -2090,6 +2103,8 @@ components:
           maxItems: 10000
           items:
             $ref: "#/components/schemas/ResolvedCatalogSelection"
+        clientFeatures:
+          $ref: "#/components/schemas/ClientFeatures"
 
     VirtualServerList:
       type: object
@@ -2100,6 +2115,8 @@ components:
           items: { $ref: "#/components/schemas/VirtualServer" }
         nextCursor:
           type: [ string, "null" ]
+        clientFeatures:
+          $ref: "#/components/schemas/ClientFeatures"
 
     AgentKey:
       type: object
@@ -2773,3 +2790,16 @@ components:
             type: object
         capabilities:
           type: object
+    ClientFeatures:
+      type: object
+      additionalProperties: false
+      properties:
+        sampling:
+          type: boolean
+          default: false
+        roots:
+          type: boolean
+          default: false
+        elicitation:
+          type: boolean
+          default: false

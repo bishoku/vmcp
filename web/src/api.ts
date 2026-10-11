@@ -225,6 +225,7 @@ export interface AuditQuery {
   cursor?: string
 }
 
+export interface ClientFeatures {sampling:boolean;roots:boolean;elicitation:boolean}
 export interface CatalogSelection {upstream:string;kind:'resource'|'template'|'prompt';name:string;alias?:string;description?:string}
 export interface Catalog {resources:Record<string,unknown>[];resourceTemplates:Record<string,unknown>[];prompts:Record<string,unknown>[];capabilities:Record<string,unknown>}
 export interface VirtualServer {
@@ -237,6 +238,7 @@ export interface VirtualServer {
   pii?: PiiConfig
   policy?: ToolPolicy
   rateLimitPerMinute?: number | null
+  clientFeatures?:ClientFeatures
   endpoint: string
  catalog?: (CatalogSelection & {exposedName:string;orphaned:boolean;descriptionDrift:boolean;upstreamDescription:string})[]
   tools: (ToolSelection & { exposedName: string; upstreamDescription: string; descriptionDrift: boolean; orphaned: boolean })[]
@@ -347,7 +349,7 @@ export const api = {
     listAll<VirtualServer>('/virtual-servers'),
   putVirtualServer: (
     slug: string,
-    v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[] },
+    v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
     version?: number,
   ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v, version),
   deleteVirtualServer: (slug: string, version?: number) =>

@@ -27,10 +27,13 @@ const maxSSEEventBytes = 10 << 20
 
 // Client is a Streamable HTTP MCP client bound to one upstream and one session.
 type Client struct {
-	url     string
-	headers map[string]string
-	http    *http.Client
-	nextID  atomic.Int64
+	capabilities mcp.ServerCapabilities
+	loggingMu    sync.Mutex
+	loggingLevel string
+	url          string
+	headers      map[string]string
+	http         *http.Client
+	nextID       atomic.Int64
 
 	// OnServerMessage receives server-initiated requests and notifications
 	// (progress, logging, list_changed) seen on a response stream. Optional.
@@ -60,10 +63,11 @@ func (c *Client) SessionID() string {
 func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) {
 	params := mcp.InitializeParams{
 		ProtocolVersion: mcp.SupportedVersions[0],
-		Capabilities:    json.RawMessage(`{}`),
+		Capabilities:    ClientCapabilities(ctx),
 		ClientInfo:      mcp.Implementation{Name: "vmcp-gateway", Version: "0.1.0"},
 	}
-	raw, err := c.Call(ctx, mcp.MethodInitialize, params)
+	handshakeCtx := WithRelay(ctx, Relay{ClientCapabilities: ClientCapabilities(ctx)})
+	raw, err := c.Call(handshakeCtx, mcp.MethodInitialize, params)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +78,7 @@ func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) 
 
 	c.mu.Lock()
 	c.protocolVersion = res.ProtocolVersion
+	c.capabilities = res.Capabilities
 	c.mu.Unlock()
 
 	if err := c.Notify(ctx, mcp.MethodInitialized, nil); err != nil {

@@ -89,6 +89,11 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 					renewCtx, renewCancel := context.WithTimeout(ctx, time.Second)
 					cancelled, err := h.Delivery.Renew(renewCtx, op)
 					renewCancel()
+					if err == nil && !cancelled {
+						rootsCtx, rootsCancel := context.WithTimeout(ctx, time.Second)
+						h.notifyRoots(rootsCtx, sess)
+						rootsCancel()
+					}
 					if err != nil || cancelled {
 						cancel()
 						return
@@ -109,7 +114,8 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 			outgoingMeta = nil
 		}
 		var serverIDs sync.Map
-		relay := upstream.Relay{Meta: outgoingMeta, OwnsRequest: func(id mcp.ID) bool { _, exists := serverIDs.Load(id.String()); return exists }}
+		budget := &featureBudget{}
+		relay := upstream.Relay{ClientCapabilities: vs.ClientFeatures.Negotiated(sess.clientCapabilities), Meta: outgoingMeta, OwnsRequest: func(id mcp.ID) bool { _, exists := serverIDs.Load(id.String()); return exists }}
 		relay.Message = func(messageCtx context.Context, message *mcp.Message) (*mcp.Message, error) {
 			switch message.Method {
 			case mcp.MethodProgress:
@@ -174,36 +180,10 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 					return nil, err
 				}
 				return nil, nil
-			case mcp.MethodPing:
-				if !message.IsRequest() {
-					return nil, nil
-				}
-				mapped := delivery.UUID()
-				serverIDs.Store(message.ID.String(), mapped)
-				defer serverIDs.Delete(message.ID.String())
-				if err := h.Delivery.Request(messageCtx, op, mapped); err != nil {
-					return nil, err
-				}
-				forwarded := *message
-				forwarded.ID = mcp.NewStringID(mapped)
-				forwarded.Params = nil
-				raw, _ := json.Marshal(forwarded)
-				if err := h.auditDelivery(messageCtx, sess, op.ID, "mcp.server_request"); err != nil {
-					return nil, err
-				}
-				if err := h.Delivery.Append(messageCtx, op, raw, false); err != nil {
-					return nil, err
-				}
-				reply, err := h.Delivery.WaitReply(messageCtx, op, mapped)
-				if err != nil {
-					return nil, err
-				}
-				response, err := mcp.Decode(reply)
-				if err != nil {
-					return nil, err
-				}
-				response.ID = message.ID
-				return response, nil
+			case "notifications/message":
+				return nil, h.relayLog(messageCtx, message, sess, op)
+			case mcp.MethodPing, "sampling/createMessage", "roots/list", "elicitation/create":
+				return h.relayClientRequest(messageCtx, message, vs, sess, op, &serverIDs, budget)
 			default:
 				if message.IsRequest() {
 					return mcp.NewErrorResponse(message.ID, mcp.CodeMethodNotFound, "client feature not negotiated or permitted"), nil
@@ -451,6 +431,28 @@ func (h *Handler) deliveryInput(w http.ResponseWriter, r *http.Request, sess *Se
 		} else {
 			w.WriteHeader(202)
 		}
+		return true
+	}
+	if msg.IsNotification() && msg.Method == "notifications/roots/list_changed" {
+		var caps struct {
+			Roots *struct {
+				ListChanged bool `json:"listChanged"`
+			} `json:"roots"`
+		}
+		_ = json.Unmarshal(vs.ClientFeatures.Negotiated(sess.clientCapabilities), &caps)
+		if caps.Roots == nil || !caps.Roots.ListChanged {
+			http.Error(w, "root notifications not negotiated or permitted", 400)
+			return true
+		}
+		if h.auditDelivery(r.Context(), sess, "", "mcp.roots_list_changed") != nil {
+			http.Error(w, "audit unavailable", 503)
+			return true
+		}
+		if _, err := h.Delivery.Pool.Exec(r.Context(), `INSERT INTO mcp_client_notifications(session_id,roots_revision) VALUES($1,1) ON CONFLICT(session_id) DO UPDATE SET roots_revision=mcp_client_notifications.roots_revision+1`, sess.id); err != nil {
+			http.Error(w, "notification unavailable", 503)
+			return true
+		}
+		w.WriteHeader(202)
 		return true
 	}
 	if msg.IsNotification() && msg.Method == mcp.MethodCancelled {

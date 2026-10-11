@@ -4,26 +4,31 @@ import (
 	"net/http"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/pii"
 	"github.com/bishoku/vmcp/core/internal/policy"
 	"github.com/bishoku/vmcp/core/internal/store"
 )
 
 type virtualServerWire struct {
-	Slug         string                   `json:"slug"`
-	Name         *string                  `json:"name"`
-	Description  *string                  `json:"description"`
-	Enabled      *bool                    `json:"enabled"`
-	AuthRequired *bool                    `json:"authRequired"`
-	PII          *pii.Config              `json:"pii"`
-	Policy       *policy.Config           `json:"policy"`
-	RateLimit    *int                     `json:"rateLimitPerMinute"`
-	Tools        []store.ToolSelection    `json:"tools"`
-	Catalog      []store.CatalogSelection `json:"catalog"`
+	Slug           string                   `json:"slug"`
+	Name           *string                  `json:"name"`
+	Description    *string                  `json:"description"`
+	Enabled        *bool                    `json:"enabled"`
+	AuthRequired   *bool                    `json:"authRequired"`
+	PII            *pii.Config              `json:"pii"`
+	Policy         *policy.Config           `json:"policy"`
+	RateLimit      *int                     `json:"rateLimitPerMinute"`
+	Tools          []store.ToolSelection    `json:"tools"`
+	Catalog        []store.CatalogSelection `json:"catalog"`
+	ClientFeatures *config.ClientFeatures   `json:"clientFeatures"`
 }
 
 func (w *virtualServerWire) input() (store.VirtualServerInput, []apierror.FieldError) {
 	in := store.VirtualServerInput{Enabled: true, AuthRequired: true, Tools: w.Tools, Catalog: w.Catalog}
+	if w.ClientFeatures != nil {
+		in.ClientFeatures = *w.ClientFeatures
+	}
 	var errs []apierror.FieldError
 	if w.Name == nil {
 		errs = append(errs, required("/name"))
@@ -50,15 +55,16 @@ func (w *virtualServerWire) input() (store.VirtualServerInput, []apierror.FieldE
 }
 
 type virtualServerPatchWire struct {
-	Name         *string                   `json:"name"`
-	Description  *string                   `json:"description"`
-	Enabled      *bool                     `json:"enabled"`
-	AuthRequired *bool                     `json:"authRequired"`
-	PII          *pii.Config               `json:"pii"`
-	Policy       *policy.Config            `json:"policy"`
-	RateLimit    optionalInt               `json:"rateLimitPerMinute"`
-	Tools        *[]store.ToolSelection    `json:"tools"`
-	Catalog      *[]store.CatalogSelection `json:"catalog"`
+	Name           *string                   `json:"name"`
+	Description    *string                   `json:"description"`
+	Enabled        *bool                     `json:"enabled"`
+	AuthRequired   *bool                     `json:"authRequired"`
+	PII            *pii.Config               `json:"pii"`
+	Policy         *policy.Config            `json:"policy"`
+	RateLimit      optionalInt               `json:"rateLimitPerMinute"`
+	Tools          *[]store.ToolSelection    `json:"tools"`
+	Catalog        *[]store.CatalogSelection `json:"catalog"`
+	ClientFeatures *config.ClientFeatures    `json:"clientFeatures"`
 }
 
 func (s *Server) listVirtualServers(w http.ResponseWriter, r *http.Request) error {
@@ -171,7 +177,7 @@ func (s *Server) patchVirtualServer(w http.ResponseWriter, r *http.Request) erro
 	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
 		v, err = tx.PatchVirtualServer(r.Context(), slug, store.VirtualServerPatch{
-			Name: body.Name, Description: body.Description, Enabled: body.Enabled, AuthRequired: body.AuthRequired, PII: body.PII, Policy: body.Policy, RateLimitSet: body.RateLimit.Set, RateLimit: body.RateLimit.Value, Tools: body.Tools, Catalog: body.Catalog,
+			Name: body.Name, Description: body.Description, Enabled: body.Enabled, AuthRequired: body.AuthRequired, PII: body.PII, Policy: body.Policy, RateLimitSet: body.RateLimit.Set, RateLimit: body.RateLimit.Value, Tools: body.Tools, Catalog: body.Catalog, ClientFeatures: body.ClientFeatures,
 		}, ifMatch)
 		if err != nil {
 			return err
