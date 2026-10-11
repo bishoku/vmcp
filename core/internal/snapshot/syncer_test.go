@@ -13,6 +13,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/snapshot"
 	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/bishoku/vmcp/core/internal/testdb"
+	"github.com/jackc/pgx/v5"
 )
 
 // Requires a real Postgres: VMCP_TEST_DATABASE_URL=postgres://.../vmcp_test
@@ -179,14 +180,26 @@ func TestFailedDecryptionExpiresAuthorization(t *testing.T) {
 }
 
 func TestDedicatedListenerReconnectsWithoutPoolCapacity(t *testing.T) {
+	t.Setenv("VMCP_DB_MAX_CONNS", "2")
 	ctx, s := setup(t)
 	if err := s.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// Observe and terminate the listener using a separate connection: the
+	// request pool will be deliberately exhausted below. Background refreshes
+	// legitimately acquire pool connections, so an instantaneous idle-count
+	// assertion cannot establish whether the listener uses the pool.
+	observerCtx, stopObserver := context.WithTimeout(ctx, 15*time.Second)
+	defer stopObserver()
+	observer, err := pgx.Connect(observerCtx, s.Pool.Config().ConnConfig.ConnString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer observer.Close(observerCtx)
 	deadline := time.Now().Add(3 * time.Second)
 	var listeners int
 	for time.Now().Before(deadline) {
-		if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config'`).Scan(&listeners); err != nil {
+		if err := observer.QueryRow(observerCtx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config'`).Scan(&listeners); err != nil {
 			t.Fatal(err)
 		}
 		if listeners > 0 {
@@ -197,15 +210,24 @@ func TestDedicatedListenerReconnectsWithoutPoolCapacity(t *testing.T) {
 	if listeners != 1 {
 		t.Fatalf("dedicated listener count %d", listeners)
 	}
-	if s.Pool.Stat().AcquiredConns() != 0 {
-		t.Fatal("listener consumed request pool capacity")
+	for i := int32(0); i < s.Pool.Config().MaxConns; i++ {
+		conn, err := s.Pool.Acquire(observerCtx)
+		if err != nil {
+			t.Fatalf("request pool capacity unavailable: %v", err)
+		}
+		defer conn.Release()
 	}
-	if _, err := s.Pool.Exec(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config' AND pid<>pg_backend_pid()`); err != nil {
+	if s.Pool.Stat().AcquiredConns() != s.Pool.Config().MaxConns {
+		t.Fatal("test did not exhaust request pool")
+	}
+	if _, err := observer.Exec(observerCtx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config' AND pid<>pg_backend_pid()`); err != nil {
 		t.Fatal(err)
 	}
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		_ = s.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config'`).Scan(&listeners)
+		if err := observer.QueryRow(observerCtx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_config'`).Scan(&listeners); err != nil {
+			t.Fatal(err)
+		}
 		if s.ListenerReconnects() > 0 && listeners == 1 {
 			return
 		}
