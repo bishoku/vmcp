@@ -218,6 +218,7 @@ func run(log *slog.Logger) error {
 	go deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
 	virtualHandler := &virtual.Handler{Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
 		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}
+	virtualHandler.RunSubscriptions(ctx)
 	virtualHandler.Register(mux)
 	defer virtualHandler.StopWorkers()
 

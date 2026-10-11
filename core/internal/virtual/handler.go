@@ -281,6 +281,18 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 			tools = append(tools, t.Tool)
 		}
 		h.reply(w, msg.ID, mcp.ListToolsResult{Tools: tools})
+	case "resources/list":
+		h.listCatalog(w, msg, vs, snap.Revision, "resource", "resources")
+	case "resources/templates/list":
+		h.listCatalog(w, msg, vs, snap.Revision, "template", "resourceTemplates")
+	case "prompts/list":
+		h.listCatalog(w, msg, vs, snap.Revision, "prompt", "prompts")
+	case "resources/read", "resources/subscribe", "resources/unsubscribe", "prompts/get", "completion/complete":
+		if h.Delivery != nil {
+			h.streamCall(ctx, w, r, msg, vs, sess, snap)
+			return
+		}
+		h.catalogCall(ctx, w, msg, vs, sess, snap, h.ipString(r))
 	case mcp.MethodToolsCall:
 		if h.Delivery != nil {
 			h.streamCall(ctx, w, r, msg, vs, sess, snap)
@@ -315,9 +327,18 @@ func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mc
 		return
 	}
 	w.Header().Set("Mcp-Session-Id", sess.id)
+	caps := vs.CatalogCapabilities()
+	caps.Tools = &mcp.ToolsCapability{ListChanged: h.Delivery != nil}
+	if caps.Resources != nil {
+		caps.Resources.ListChanged = h.Delivery != nil
+		caps.Resources.Subscribe = caps.Resources.Subscribe && h.Delivery != nil
+	}
+	if caps.Prompts != nil {
+		caps.Prompts.ListChanged = h.Delivery != nil
+	}
 	h.reply(w, msg.ID, mcp.InitializeResult{
 		ProtocolVersion: version,
-		Capabilities:    mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{ListChanged: h.Delivery != nil}},
+		Capabilities:    caps,
 		ServerInfo:      mcp.Implementation{Name: "vmcp:" + vs.Slug, Version: "0.1.0"},
 	})
 }

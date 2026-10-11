@@ -79,6 +79,9 @@ func (s *Server) discoverOne(parent context.Context) {
 				if _, err := tx.ReplaceTools(ctx, slug, result.Tools, time.Now().UTC()); err != nil {
 					return err
 				}
+				if err := tx.ReplaceCatalog(ctx, slug, result.Catalog); err != nil {
+					return err
+				}
 				return tx.SetRefreshStatus(ctx, slug, time.Now().UTC(), nil)
 			})
 		}

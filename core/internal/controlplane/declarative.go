@@ -52,15 +52,16 @@ type exportTLS struct {
 }
 
 type exportVirtualServer struct {
-	Slug         string                `json:"slug"`
-	Name         string                `json:"name"`
-	Description  string                `json:"description"`
-	Enabled      bool                  `json:"enabled"`
-	AuthRequired bool                  `json:"authRequired"`
-	PII          pii.Config            `json:"pii"`
-	Policy       policy.Config         `json:"policy"`
-	RateLimit    *int                  `json:"rateLimitPerMinute"`
-	Tools        []store.ToolSelection `json:"tools"`
+	Slug         string                   `json:"slug"`
+	Name         string                   `json:"name"`
+	Description  string                   `json:"description"`
+	Enabled      bool                     `json:"enabled"`
+	AuthRequired bool                     `json:"authRequired"`
+	PII          pii.Config               `json:"pii"`
+	Policy       policy.Config            `json:"policy"`
+	RateLimit    *int                     `json:"rateLimitPerMinute"`
+	Tools        []store.ToolSelection    `json:"tools"`
+	Catalog      []store.CatalogSelection `json:"catalog"`
 }
 
 // exportConfig emits a document without secrets. Re-applying it keeps stored
@@ -96,6 +97,10 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			ev := exportVirtualServer{Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
 			for _, t := range v.Tools {
 				ev.Tools = append(ev.Tools, t.ToolSelection)
+			}
+			ev.Catalog = []store.CatalogSelection{}
+			for _, c := range v.Catalog {
+				ev.Catalog = append(ev.Catalog, c.CatalogSelection)
 			}
 			doc.VirtualServers = append(doc.VirtualServers, ev)
 		}
@@ -188,6 +193,7 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 	// 2. Fetch tool schemas of new or changed upstreams before opening the transaction,
 	//    so no database locks are held while talking to remote servers.
 	fetched := map[string][]mcp.Tool{}
+	catalogs := map[string]mcp.Catalog{}
 	if refresh {
 		rd := s.Store.Reader()
 		for i, u := range doc.Upstreams {
@@ -240,6 +246,7 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 				return e
 			}
 			fetched[u.Slug] = res.Tools
+			catalogs[u.Slug] = res.Catalog
 		}
 	}
 
@@ -266,6 +273,9 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 			changes = append(changes, change{"upstream", u.Slug, outcome})
 			if tools, ok := fetched[u.Slug]; ok {
 				if _, err := tx.ReplaceTools(ctx, u.Slug, tools, now); err != nil {
+					return err
+				}
+				if err := tx.ReplaceCatalog(ctx, u.Slug, catalogs[u.Slug]); err != nil {
 					return err
 				}
 				if err := tx.SetRefreshStatus(ctx, u.Slug, now, nil); err != nil {

@@ -78,8 +78,9 @@ type VirtualServer struct {
 	// RateLimit is calls per minute across all callers; 0 = unlimited.
 	RateLimit int
 	// PII is nil when masking is off.
-	PII   *pii.Masker
-	Tools []VirtualTool
+	PII     *pii.Masker
+	Tools   []VirtualTool
+	Catalog []VirtualCatalogObject
 	// Blocked maps exposed names of tools hidden by policy to the reason.
 	Blocked map[string]string
 }

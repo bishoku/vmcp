@@ -518,7 +518,7 @@ func (t *Tx) DeleteUpstream(ctx context.Context, slug string, force bool, ifMatc
 		return apierror.PreconditionFailed()
 	}
 	rows, err := t.q.Query(ctx, `
-		SELECT DISTINCT vs.slug FROM virtual_server_tools vt
+		SELECT DISTINCT vs.slug FROM (SELECT virtual_server_id,upstream_id FROM virtual_server_tools UNION SELECT virtual_server_id,upstream_id FROM virtual_catalog) vt
 		JOIN virtual_servers vs ON vs.id = vt.virtual_server_id
 		WHERE vt.upstream_id = $1::uuid ORDER BY 1`, cur.id)
 	if err != nil {

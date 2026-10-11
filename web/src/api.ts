@@ -225,6 +225,8 @@ export interface AuditQuery {
   cursor?: string
 }
 
+export interface CatalogSelection {upstream:string;kind:'resource'|'template'|'prompt';name:string;alias?:string;description?:string}
+export interface Catalog {resources:Record<string,unknown>[];resourceTemplates:Record<string,unknown>[];prompts:Record<string,unknown>[];capabilities:Record<string,unknown>}
 export interface VirtualServer {
   version: number
   slug: string
@@ -236,6 +238,7 @@ export interface VirtualServer {
   policy?: ToolPolicy
   rateLimitPerMinute?: number | null
   endpoint: string
+ catalog?: (CatalogSelection & {exposedName:string;orphaned:boolean;descriptionDrift:boolean;upstreamDescription:string})[]
   tools: (ToolSelection & { exposedName: string; upstreamDescription: string; descriptionDrift: boolean; orphaned: boolean })[]
 }
 
@@ -333,6 +336,7 @@ export const api = {
     request<Upstream>('PATCH', `/upstreams/${encodeURIComponent(slug)}`, input, version),
   deleteUpstream: (slug: string, force = false, version?: number) =>
     request<void>('DELETE', `/upstreams/${encodeURIComponent(slug)}${force ? '?force=true' : ''}`, undefined, version),
+  listCatalog: (slug:string)=>request<Catalog>('GET',`/upstreams/${encodeURIComponent(slug)}/catalog`),
   listTools: async (slug: string) =>
     listAll<Tool>(`/upstreams/${encodeURIComponent(slug)}/tools`),
   refreshTools: (slug: string) =>
@@ -343,7 +347,7 @@ export const api = {
     listAll<VirtualServer>('/virtual-servers'),
   putVirtualServer: (
     slug: string,
-    v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[] },
+    v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[] },
     version?: number,
   ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v, version),
   deleteVirtualServer: (slug: string, version?: number) =>

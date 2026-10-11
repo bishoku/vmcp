@@ -39,19 +39,20 @@ type ResolvedSelection struct {
 
 // VirtualServer is the API read model.
 type VirtualServer struct {
-	Slug         string              `json:"slug"`
-	Name         string              `json:"name"`
-	Description  string              `json:"description"`
-	Enabled      bool                `json:"enabled"`
-	AuthRequired bool                `json:"authRequired"`
-	PII          pii.Config          `json:"pii"`
-	Policy       policy.Config       `json:"policy"`
-	RateLimit    *int                `json:"rateLimitPerMinute"`
-	Endpoint     string              `json:"endpoint"`
-	Tools        []ResolvedSelection `json:"tools"`
-	Version      int64               `json:"version"`
-	CreatedAt    time.Time           `json:"createdAt"`
-	UpdatedAt    time.Time           `json:"updatedAt"`
+	Slug         string                     `json:"slug"`
+	Name         string                     `json:"name"`
+	Description  string                     `json:"description"`
+	Enabled      bool                       `json:"enabled"`
+	AuthRequired bool                       `json:"authRequired"`
+	PII          pii.Config                 `json:"pii"`
+	Policy       policy.Config              `json:"policy"`
+	RateLimit    *int                       `json:"rateLimitPerMinute"`
+	Endpoint     string                     `json:"endpoint"`
+	Tools        []ResolvedSelection        `json:"tools"`
+	Catalog      []ResolvedCatalogSelection `json:"catalog"`
+	Version      int64                      `json:"version"`
+	CreatedAt    time.Time                  `json:"createdAt"`
+	UpdatedAt    time.Time                  `json:"updatedAt"`
 }
 
 // VirtualServerInput is the writable part of a virtual server.
@@ -64,6 +65,7 @@ type VirtualServerInput struct {
 	Policy       policy.Config
 	RateLimit    *int
 	Tools        []ToolSelection
+	Catalog      []CatalogSelection
 }
 
 // VirtualServerPatch is a JSON merge patch; a non-nil Tools replaces the list.
@@ -75,6 +77,7 @@ type VirtualServerPatch struct {
 	Policy            *policy.Config
 	RateLimitSet      bool
 	RateLimit         *int
+	Catalog           *[]CatalogSelection
 	Tools             *[]ToolSelection
 }
 
@@ -102,6 +105,7 @@ func scanVS(row scanner) (*vsRow, error) {
 	r.Policy = policy.Normalize(r.Policy)
 	r.Endpoint = "/mcp/v1/virtual/" + r.Slug
 	r.Tools = []ResolvedSelection{}
+	r.Catalog = []ResolvedCatalogSelection{}
 	return &r, nil
 }
 
@@ -139,7 +143,11 @@ func (t *Tx) loadSelections(ctx context.Context, vs []*vsRow) error {
 		v.Tools = append(v.Tools, ResolvedSelection{ToolSelection: s, ExposedName: config.ExposedName(s.Upstream, s.Tool, s.Alias),
 			UpstreamDescription: upDesc, DescriptionDrift: drift, Orphaned: orphan})
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	rows.Close()
+	return t.loadCatalogSelections(ctx, byID)
 }
 
 func (t *Tx) getVS(ctx context.Context, slug string, lock bool) (*vsRow, error) {
@@ -356,6 +364,9 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 		if err := t.writeSelections(ctx, id, in.Tools); err != nil {
 			return nil, "", err
 		}
+		if err := t.writeCatalogSelections(ctx, id, in.Catalog); err != nil {
+			return nil, "", err
+		}
 		v, err := t.GetVirtualServer(ctx, slug)
 		return v, Created, err
 	}
@@ -368,7 +379,7 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 	if ifMatch != nil && *ifMatch != cur.Version {
 		return nil, "", apierror.PreconditionFailed()
 	}
-	if in.Name == cur.Name && in.Description == cur.Description && in.Enabled == cur.Enabled && in.AuthRequired == cur.AuthRequired && reflect.DeepEqual(in.PII, cur.PII) && reflect.DeepEqual(in.Policy, cur.Policy) && equalInt(in.RateLimit, cur.RateLimit) && sameSelections(cur.Tools, in.Tools) {
+	if in.Name == cur.Name && in.Description == cur.Description && in.Enabled == cur.Enabled && in.AuthRequired == cur.AuthRequired && reflect.DeepEqual(in.PII, cur.PII) && reflect.DeepEqual(in.Policy, cur.Policy) && equalInt(in.RateLimit, cur.RateLimit) && sameSelections(cur.Tools, in.Tools) && sameCatalogSelections(cur.Catalog, in.Catalog) {
 		return &cur.VirtualServer, Unchanged, nil
 	}
 	if _, err := t.q.Exec(ctx, `
@@ -378,6 +389,11 @@ func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServer
 	}
 	if !sameSelections(cur.Tools, in.Tools) {
 		if err := t.writeSelections(ctx, cur.id, in.Tools); err != nil {
+			return nil, "", err
+		}
+	}
+	if !sameCatalogSelections(cur.Catalog, in.Catalog) {
+		if err := t.writeCatalogSelections(ctx, cur.id, in.Catalog); err != nil {
 			return nil, "", err
 		}
 	}
@@ -395,6 +411,9 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 	in := VirtualServerInput{Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
 	if p.RateLimitSet {
 		in.RateLimit = p.RateLimit
+	}
+	for _, c := range cur.Catalog {
+		in.Catalog = append(in.Catalog, c.CatalogSelection)
 	}
 	for _, r := range cur.Tools {
 		in.Tools = append(in.Tools, r.ToolSelection)
@@ -416,6 +435,9 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 	}
 	if p.Policy != nil {
 		in.Policy = *p.Policy
+	}
+	if p.Catalog != nil {
+		in.Catalog = slices.Clone(*p.Catalog)
 	}
 	if p.Tools != nil {
 		in.Tools = slices.Clone(*p.Tools)

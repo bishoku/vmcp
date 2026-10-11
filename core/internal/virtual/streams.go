@@ -169,8 +169,8 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 				response := mcp.NewErrorResponse(mcp.NewStringID(mapped), -32800, "request cancelled by upstream")
 				raw, _ = json.Marshal(response)
 				return nil, h.Delivery.CancelPending(messageCtx, op, mapped, raw)
-			case mcp.MethodToolsListChanged:
-				if _, err := h.Delivery.Pool.Exec(messageCtx, `INSERT INTO mcp_discovery_requests(upstream_id) SELECT DISTINCT upstream_id FROM virtual_server_tools vt JOIN virtual_servers v ON v.id=vt.virtual_server_id WHERE v.slug=$1 ON CONFLICT(upstream_id) DO UPDATE SET requested_at=now()`, vs.Slug); err != nil {
+			case mcp.MethodToolsListChanged, "notifications/resources/list_changed", "notifications/prompts/list_changed":
+				if _, err := h.Delivery.Pool.Exec(messageCtx, `INSERT INTO mcp_discovery_requests(upstream_id) SELECT DISTINCT upstream_id FROM (SELECT upstream_id,virtual_server_id FROM virtual_server_tools UNION SELECT upstream_id,virtual_server_id FROM virtual_catalog) vt JOIN virtual_servers v ON v.id=vt.virtual_server_id WHERE v.slug=$1 ON CONFLICT(upstream_id) DO UPDATE SET requested_at=now()`, vs.Slug); err != nil {
 					return nil, err
 				}
 				return nil, nil
@@ -212,7 +212,11 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 			}
 		}
 		guarded = upstream.WithRelay(guarded, relay)
-		h.callTool(guarded, recorder, msg, vs, sess, snap, h.ipString(r))
+		if msg.Method == mcp.MethodToolsCall {
+			h.callTool(guarded, recorder, msg, vs, sess, snap, h.ipString(r))
+		} else {
+			h.catalogCall(guarded, recorder, msg, vs, sess, snap, h.ipString(r))
+		}
 		response, err := mcp.Decode(recorder.Body.Bytes())
 		if err != nil {
 			response = mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "operation failed; consult correlated audit evidence")

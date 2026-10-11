@@ -41,8 +41,40 @@ type ToolsCapability struct {
 	ListChanged bool `json:"listChanged"`
 }
 
+type ResourcesCapability struct {
+	Subscribe   bool `json:"subscribe,omitempty"`
+	ListChanged bool `json:"listChanged,omitempty"`
+}
+
+// CatalogObject preserves protocol metadata and extension fields during discovery.
+type CatalogObject map[string]json.RawMessage
+
+func (o CatalogObject) String(key string) string {
+	var s string
+	_ = json.Unmarshal(o[key], &s)
+	return s
+}
+func (o CatalogObject) With(key, value string) CatalogObject {
+	c := CatalogObject{}
+	for k, v := range o {
+		c[k] = v
+	}
+	c[key], _ = json.Marshal(value)
+	return c
+}
+
+type Catalog struct {
+	Resources    []CatalogObject    `json:"resources"`
+	Templates    []CatalogObject    `json:"resourceTemplates"`
+	Prompts      []CatalogObject    `json:"prompts"`
+	Capabilities ServerCapabilities `json:"capabilities"`
+}
+
 type ServerCapabilities struct {
-	Tools *ToolsCapability `json:"tools,omitempty"`
+	Tools       *ToolsCapability     `json:"tools,omitempty"`
+	Resources   *ResourcesCapability `json:"resources,omitempty"`
+	Prompts     *ToolsCapability     `json:"prompts,omitempty"`
+	Completions *struct{}            `json:"completions,omitempty"`
 }
 
 type InitializeResult struct {

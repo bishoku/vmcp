@@ -1383,6 +1383,25 @@ paths:
           $ref: "#/components/responses/NotFound"
         "503":
           $ref: "#/components/responses/AuditUnavailable"
+  /api/v1/upstreams/{slug}/catalog:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags:
+        - Upstreams
+      operationId: listUpstreamCatalog
+      summary: Read discovered resources, templates, prompts and capabilities
+      responses:
+        "200":
+          description: Complete bounded discovery catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Catalog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
   securitySchemes:
@@ -1942,6 +1961,11 @@ components:
           type: array
           default: []
           items: { $ref: "#/components/schemas/ToolSelection" }
+        catalog:
+          type: array
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/CatalogSelection"
 
     VirtualServerCreate:
       type: object
@@ -1979,6 +2003,11 @@ components:
             $ref: "#/components/schemas/ToolSelection"
         slug:
           $ref: "#/components/schemas/Slug"
+        catalog:
+          type: array
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/CatalogSelection"
       required:
         - name
         - slug
@@ -1998,6 +2027,11 @@ components:
         tools:
           type: array
           items: { $ref: "#/components/schemas/ToolSelection" }
+        catalog:
+          type: array
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/CatalogSelection"
 
     VirtualServer:
       type: object
@@ -2051,6 +2085,11 @@ components:
           type: integer
           minimum: 1
           readOnly: true
+        catalog:
+          type: array
+          maxItems: 10000
+          items:
+            $ref: "#/components/schemas/ResolvedCatalogSelection"
 
     VirtualServerList:
       type: object
@@ -2647,3 +2686,90 @@ components:
                 description: JSON pointer to the offending field, e.g. `/tools/2/tool`.
               code: { type: string }
               message: { type: string }
+    CatalogSelection:
+      type: object
+      additionalProperties: false
+      required:
+        - upstream
+        - kind
+        - name
+      properties:
+        upstream:
+          $ref: "#/components/schemas/Slug"
+        kind:
+          type: string
+          enum:
+            - resource
+            - template
+            - prompt
+        name:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        alias:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 10000
+    ResolvedCatalogSelection:
+      type: object
+      additionalProperties: false
+      required:
+        - upstream
+        - kind
+        - name
+        - exposedName
+        - orphaned
+        - descriptionDrift
+        - upstreamDescription
+      properties:
+        upstream:
+          $ref: "#/components/schemas/Slug"
+        kind:
+          type: string
+          enum:
+            - resource
+            - template
+            - prompt
+        name:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        alias:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 10000
+        exposedName:
+          type: string
+        orphaned:
+          type: boolean
+        descriptionDrift:
+          type: boolean
+        upstreamDescription:
+          type: string
+    Catalog:
+      type: object
+      additionalProperties: false
+      required:
+        - resources
+        - resourceTemplates
+        - prompts
+        - capabilities
+      properties:
+        resources:
+          type: array
+          items:
+            type: object
+        resourceTemplates:
+          type: array
+          items:
+            type: object
+        prompts:
+          type: array
+          items:
+            type: object
+        capabilities:
+          type: object

@@ -190,6 +190,9 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if err := loadVirtualCatalog(ctx, tx, snap, idToSlug); err != nil {
+		return nil, err
+	}
 	if err := loadAgentKeys(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}

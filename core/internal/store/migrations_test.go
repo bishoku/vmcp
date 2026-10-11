@@ -169,3 +169,39 @@ func TestDurableAuditMigrationUpgradeAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCatalogMigrationUpgradeAndRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 19); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO upstreams(tenant_id,slug,name,url,transport) SELECT id,'catalog-upgrade','Catalog','https://example.com/mcp','streamable_http' FROM tenants WHERE slug='default'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var caps string
+	if err := db.QueryRowContext(ctx, `SELECT mcp_capabilities::text FROM upstreams WHERE slug='catalog-upgrade'`).Scan(&caps); err != nil || caps != "{}" {
+		t.Fatalf("upgrade defaults %s %v", caps, err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 19); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM upstreams WHERE slug='catalog-upgrade'`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("catalog rollback lost upstream")
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+}

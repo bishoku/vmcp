@@ -92,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 	api("PATCH /api/v1/upstreams/{slug}", s.patchUpstream)
 	api("DELETE /api/v1/upstreams/{slug}", s.deleteUpstream)
 	api("GET /api/v1/upstreams/{slug}/tools", s.listUpstreamTools)
+	api("GET /api/v1/upstreams/{slug}/catalog", s.listUpstreamCatalog)
 	api("POST /api/v1/upstreams/{slug}/refresh-tools", s.refreshTools)
 	api("POST /api/v1/connection-tests", s.connectionTest)
 	api("POST /api/v1/upstreams/{slug}/connection-test", s.storedConnectionTest)

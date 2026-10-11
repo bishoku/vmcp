@@ -16,6 +16,7 @@ import (
 const probeTimeout = 20 * time.Second
 
 type probeResult struct {
+	Catalog         mcp.Catalog
 	Tools           []mcp.Tool
 	ServerName      string
 	ServerVersion   string
@@ -55,11 +56,18 @@ func probe(ctx context.Context, url, transport string, headers map[string]string
 	if err != nil {
 		return nil, err
 	}
-	tools, err := c.ListTools(ctx)
+	var tools []mcp.Tool
+	if init.Capabilities.Tools != nil {
+		tools, err = c.ListTools(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
-	return &probeResult{
+	catalog, err := upstream.DiscoverCatalog(ctx, c, init.Capabilities)
+	if err != nil {
+		return nil, err
+	}
+	return &probeResult{Catalog: catalog,
 		Tools:           tools,
 		ServerName:      init.ServerInfo.Name,
 		ServerVersion:   init.ServerInfo.Version,
@@ -86,6 +94,9 @@ func (s *Server) refreshTools(w http.ResponseWriter, r *http.Request) error {
 	if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
 		if result, err = tx.ReplaceTools(r.Context(), slug, res.Tools, now); err != nil {
+			return err
+		}
+		if err := tx.ReplaceCatalog(r.Context(), slug, res.Catalog); err != nil {
 			return err
 		}
 		return tx.SetRefreshStatus(r.Context(), slug, now, nil)

@@ -1,3 +1,5 @@
+import CatalogPicker from './CatalogPicker'
+import type {CatalogSelection} from '../api'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   DndContext,
@@ -43,6 +45,7 @@ interface Draft {
   policy: { default: PolicyMode; tools: Record<string, PolicyMode> }
   rateLimit: string // calls per minute, '' = unlimited
   tools: ToolSelection[]
+ catalog:CatalogSelection[]
 }
 
 const noPii: PiiConfig = { enabled: false, detectors: [], customRules: [], maskArguments: false }
@@ -55,7 +58,7 @@ const DETECTORS = [
   ['us_ssn', 'US SSN'],
 ]
 
-const blank: Draft = { isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [] }
+const blank: Draft = { isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[] }
 const fromServer = (v: VirtualServer): Draft => ({
   isNew: false,
   version:v.version,
@@ -67,6 +70,7 @@ const fromServer = (v: VirtualServer): Draft => ({
   pii: { ...noPii, ...v.pii },
   policy: { default: v.policy?.default ?? 'allow', tools: { ...v.policy?.tools } },
   rateLimit: v.rateLimitPerMinute?.toString() ?? '',
+ catalog:(v.catalog??[]).map(({upstream,kind,name,alias,description})=>({upstream,kind,name,alias,description})),
   tools: v.tools.map(({ upstream, tool, alias, description }) => ({ upstream, tool, ...(alias && { alias }), ...(description && { description }) })),
 })
 
@@ -165,6 +169,7 @@ export default function VirtualServers() {
         policy: cleanPolicy(draft),
         rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
         tools: draft.tools,
+ catalog:draft.catalog,
       },draft.version)
       setDraft(null)
       await load()
@@ -261,7 +266,8 @@ export default function VirtualServers() {
               </div>
             )}
 
-            <div className="mt-6 grid grid-cols-2 gap-6">
+            <CatalogPicker upstreams={upstreams} value={draft.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
+ <div className="mt-6 grid grid-cols-2 gap-6">
               <section>
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="text-sm font-semibold">Available tools</h3>

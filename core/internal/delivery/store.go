@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"sync"
@@ -253,15 +254,35 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 			}
 			continue
 		}
-		if err := audit.Insert(ctx, tx, audit.Event{Time: time.Now().UTC(), ActorType: "system", Action: "mcp.tools_list_changed", Method: "notifications/tools/list_changed", Target: sessions[id], Status: "ok", Stage: "event", Revision: revision}); err != nil {
+		methods := []string{"notifications/tools/list_changed"}
+		var resource, prompt bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM virtual_catalog vc JOIN virtual_servers v ON v.id=vc.virtual_server_id JOIN sessions s ON s.virtual_server=v.slug WHERE s.id=$1 AND vc.kind IN ('resource','template')),EXISTS(SELECT 1 FROM virtual_catalog vc JOIN virtual_servers v ON v.id=vc.virtual_server_id JOIN sessions s ON s.virtual_server=v.slug WHERE s.id=$1 AND vc.kind='prompt')`, sessions[id]).Scan(&resource, &prompt); err != nil {
 			return err
 		}
-		sealed, err := s.Box.Seal([]byte(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}`))
-		if err != nil {
-			return err
+		if resource {
+			methods = append(methods, "notifications/resources/list_changed")
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, UUID(), id, sealed); err != nil {
-			return err
+		if prompt {
+			methods = append(methods, "notifications/prompts/list_changed")
+		}
+		if count+len(methods) > 256 {
+			if _, err := tx.Exec(ctx, `UPDATE mcp_streams SET closed=true WHERE id=$1`, id); err != nil {
+				return err
+			}
+			continue
+		}
+		for _, method := range methods {
+			if err := audit.Insert(ctx, tx, audit.Event{Time: time.Now().UTC(), ActorType: "system", Action: "mcp.list_changed", Method: method, Target: sessions[id], Status: "ok", Stage: "event", Revision: revision}); err != nil {
+				return err
+			}
+			raw, _ := json.Marshal(map[string]string{"jsonrpc": "2.0", "method": method})
+			sealed, err := s.Box.Seal(raw)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, UUID(), id, sealed); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec(ctx, `UPDATE mcp_streams SET last_revision=$2 WHERE id=$1`, id, revision); err != nil {
 			return err
