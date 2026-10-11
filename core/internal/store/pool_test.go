@@ -60,3 +60,33 @@ func TestSaturatedPoolFailsWithinAcquisitionBudget(t *testing.T) {
 		t.Fatal("acquisition exceeded budget")
 	}
 }
+
+func TestViewKeepsExportReadsOnOneSnapshot(t *testing.T) {
+	url := testdb.New(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	s := &Store{Pool: pool}
+	if err := s.View(ctx, func(tx *Tx) error {
+		first, err := tx.Revision(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := pool.Exec(ctx, `UPDATE config_revision SET revision=revision+1`); err != nil {
+			return err
+		}
+		second, err := tx.Revision(ctx)
+		if first != second {
+			t.Fatal("export mixed database snapshots")
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

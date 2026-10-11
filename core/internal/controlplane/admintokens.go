@@ -121,13 +121,17 @@ func (s *Server) deleteAdminToken(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (s *Server) rotateAdminToken(w http.ResponseWriter, r *http.Request) error {
+	ifMatch, err := parseIfMatch(r)
+	if err != nil {
+		return err
+	}
 	var (
 		a      *store.AdminToken
 		secret string
 	)
 	if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		a, secret, err = tx.RotateAdminToken(r.Context(), r.PathValue("slug"))
+		a, secret, err = tx.RotateAdminToken(r.Context(), r.PathValue("slug"), ifMatch)
 		return err
 	}); err != nil {
 		return err
@@ -137,10 +141,14 @@ func (s *Server) rotateAdminToken(w http.ResponseWriter, r *http.Request) error 
 }
 
 func (s *Server) revokeAdminToken(w http.ResponseWriter, r *http.Request) error {
+	ifMatch, err := parseIfMatch(r)
+	if err != nil {
+		return err
+	}
 	var a *store.AdminToken
 	if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		a, err = tx.RevokeAdminToken(r.Context(), r.PathValue("slug"))
+		a, err = tx.RevokeAdminToken(r.Context(), r.PathValue("slug"), ifMatch)
 		return err
 	}); err != nil {
 		return err

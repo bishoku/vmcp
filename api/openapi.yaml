@@ -41,6 +41,7 @@ servers:
     description: Local development
 security:
   - bearerAuth: []
+  - cookieAuth: []
 tags:
   - name: Identity Bindings
     description: Map IdP-issued JWT claims to virtual servers (OAuth for agents).
@@ -62,7 +63,7 @@ tags:
 paths:
   /api/v1/me:
     get:
-      tags: [System]
+      tags: [ System ]
       operationId: getMe
       summary: The authenticated caller and its role
       description: |
@@ -76,16 +77,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [name, role, via]
+                required: [ name, role, via ]
                 properties:
                   name: { type: string }
-                  role: { type: string, enum: [viewer, editor, admin] }
-                  via: { type: string, enum: [bootstrap-token, admin-token, oidc] }
+                  role: { type: string, enum: [ viewer, editor, admin ] }
+                  via: { type: string, enum: [ bootstrap-token, admin-token, oidc ] }
         "401":
           $ref: "#/components/responses/Unauthorized"
   /auth/config:
     get:
-      tags: [System]
+      tags: [ System ]
       operationId: getAuthConfig
       summary: Whether browser sign-in (OIDC) is enabled
       security: []
@@ -96,12 +97,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [oidc]
+                required: [ oidc ]
                 properties:
                   oidc: { type: boolean }
   /auth/login:
     get:
-      tags: [System]
+      tags: [ System ]
       operationId: oidcLogin
       summary: Start OIDC sign-in (redirects to the identity provider)
       security: []
@@ -110,7 +111,7 @@ paths:
         "404": { description: OIDC is not configured }
   /auth/callback:
     get:
-      tags: [System]
+      tags: [ System ]
       operationId: oidcCallback
       summary: OIDC redirect target; sets the session cookie and redirects to the UI
       security: []
@@ -119,7 +120,7 @@ paths:
         "403": { description: The account is in no group mapped to a role }
   /auth/logout:
     post:
-      tags: [System]
+      tags: [ System ]
       operationId: oidcLogout
       summary: Clear the browser session
       security: []
@@ -130,13 +131,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [endSessionUrl]
+                required: [ endSessionUrl ]
                 properties:
                   endSessionUrl: { type: string, format: uri }
         "204": { description: Signed out (no provider-side logout available) }
   /api/v1/info:
     get:
-      tags: [System]
+      tags: [ System ]
       operationId: getInfo
       summary: Server version and current configuration revision
       responses:
@@ -151,7 +152,7 @@ paths:
 
   /api/v1/upstreams:
     get:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: listUpstreams
       summary: List upstreams
       parameters:
@@ -173,7 +174,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: createUpstream
       summary: Create an upstream (fails with 409 if the slug exists)
       description: |
@@ -204,12 +205,14 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/upstreams/{slug}:
     parameters:
       - $ref: "#/components/parameters/Slug"
     get:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: getUpstream
       summary: Get an upstream
       responses:
@@ -228,7 +231,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     put:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: putUpstream
       summary: Create or replace an upstream (idempotent)
       description: |
@@ -236,6 +239,7 @@ paths:
         headers; `{}` clears them; an object replaces them entirely.
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -270,7 +274,7 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     patch:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: patchUpstream
       summary: Partially update an upstream (JSON Merge Patch, RFC 7396)
       description: |
@@ -278,6 +282,7 @@ paths:
         so one secret can be rotated without resending the others.
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -305,7 +310,7 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     delete:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: deleteUpstream
       summary: Delete an upstream
       description: |
@@ -315,7 +320,10 @@ paths:
         - $ref: "#/components/parameters/IfMatch"
         - name: force
           in: query
-          schema: { type: boolean, default: false }
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/CSRF"
       responses:
         "503":
           $ref: "#/components/responses/AuditUnavailable"
@@ -336,7 +344,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Slug"
     get:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: listUpstreamTools
       summary: Cached tool schemas of an upstream
       description: Returns what the last `refresh-tools` fetched. It does not contact the upstream.
@@ -349,7 +357,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [ items ]
                 properties:
                   items:
                     type: array
@@ -364,7 +372,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Slug"
     post:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: refreshUpstreamTools
       summary: Connect to the upstream and re-fetch its tool schemas
       description: |
@@ -392,10 +400,12 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/connection-tests:
     post:
-      tags: [Upstreams]
+      tags: [ Upstreams ]
       operationId: testConnection
       summary: Try connecting to an MCP server without saving anything
       description: Used by the UI before registering an upstream. Nothing is persisted.
@@ -405,7 +415,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [url]
+              required: [ url ]
               properties:
                 url: { $ref: "#/components/schemas/UpstreamUrl" }
                 transport: { $ref: "#/components/schemas/Transport" }
@@ -421,7 +431,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok]
+                required: [ ok ]
                 properties:
                   ok: { type: boolean }
                   error: { type: string }
@@ -440,10 +450,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/virtual-servers:
     get:
-      tags: [Virtual Servers]
+      tags: [ Virtual Servers ]
       operationId: listVirtualServers
       summary: List virtual servers
       parameters:
@@ -462,7 +474,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Virtual Servers]
+      tags: [ Virtual Servers ]
       operationId: createVirtualServer
       summary: Create a virtual server (fails with 409 if the slug exists)
       requestBody:
@@ -490,12 +502,14 @@ paths:
           $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/virtual-servers/{slug}:
     parameters:
       - $ref: "#/components/parameters/Slug"
     get:
-      tags: [Virtual Servers]
+      tags: [ Virtual Servers ]
       operationId: getVirtualServer
       summary: Get a virtual server
       responses:
@@ -512,7 +526,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     put:
-      tags: [Virtual Servers]
+      tags: [ Virtual Servers ]
       operationId: putVirtualServer
       summary: Create or replace a virtual server (idempotent)
       description: |
@@ -521,6 +535,7 @@ paths:
         must be unique (`duplicate_exposed_name`).
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -555,12 +570,13 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     patch:
-      tags: [Virtual Servers]
+      tags: [ Virtual Servers ]
       operationId: patchVirtualServer
       summary: Partially update a virtual server (JSON Merge Patch, RFC 7396)
       description: Merge-patch replaces arrays wholesale, so a patched `tools` list is the new list.
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -588,11 +604,12 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     delete:
-      tags: [Virtual Servers]
+      tags: [ Virtual Servers ]
       operationId: deleteVirtualServer
       summary: Delete a virtual server
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       responses:
         "503":
           $ref: "#/components/responses/AuditUnavailable"
@@ -609,7 +626,7 @@ paths:
 
   /api/v1/agent-keys:
     get:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: listAgentKeys
       summary: List agent keys (metadata only)
       parameters:
@@ -622,17 +639,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [ items ]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/AgentKey" }
                   nextCursor:
-                    type: [string, "null"]
+                    type: [ string, "null" ]
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: createAgentKey
       summary: Create an agent key
       description: |
@@ -651,7 +668,7 @@ paths:
           description: Created
           headers:
             X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
-            Cache-Control: { schema: { type: string, examples: [no-store] } }
+            Cache-Control: { schema: { type: string, examples: [ no-store ] } }
           content:
             application/json:
               schema:
@@ -662,12 +679,14 @@ paths:
           description: A key with this slug already exists.
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/agent-keys/{slug}:
     parameters:
       - $ref: "#/components/parameters/Slug"
     get:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: getAgentKey
       summary: Get an agent key (never includes the secret)
       responses:
@@ -684,12 +703,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: patchAgentKey
       summary: Update description, virtual servers, IP allowlist or expiry (JSON Merge Patch)
       description: '`expiresAt: null` clears the expiry. Arrays are replaced wholesale.'
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -716,11 +736,12 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     delete:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: deleteAgentKey
       summary: Delete an agent key
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       responses:
         "503":
           $ref: "#/components/responses/AuditUnavailable"
@@ -737,7 +758,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Slug"
     post:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: rotateAgentKey
       summary: Issue a new secret; the old one stops working immediately
       description: Also clears a previous revocation.
@@ -748,7 +769,7 @@ paths:
           description: Rotated (new secret in `key`)
           headers:
             X-VMCP-Config-Revision: { $ref: "#/components/headers/ConfigRevision" }
-            Cache-Control: { schema: { type: string, examples: [no-store] } }
+            Cache-Control: { schema: { type: string, examples: [ no-store ] } }
           content:
             application/json:
               schema:
@@ -757,12 +778,17 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+        - $ref: "#/components/parameters/IfMatch"
 
   /api/v1/agent-keys/{slug}/revoke:
     parameters:
       - $ref: "#/components/parameters/Slug"
     post:
-      tags: [Agent Keys]
+      tags: [ Agent Keys ]
       operationId: revokeAgentKey
       summary: Revoke a key (idempotent)
       responses:
@@ -780,10 +806,15 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+        - $ref: "#/components/parameters/IfMatch"
 
   /api/v1/identity-bindings:
     get:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: listIdentityBindings
       summary: List identity bindings
       parameters:
@@ -796,17 +827,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [ items ]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/IdentityBinding" }
                   nextCursor:
-                    type: [string, "null"]
+                    type: [ string, "null" ]
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: createIdentityBinding
       summary: Create an identity binding
       description: |
@@ -836,10 +867,12 @@ paths:
           description: A binding with this slug already exists.
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/identity-bindings/evaluate:
     post:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: evaluateIdentityBindings
       summary: Dry-run which binding a set of claims would resolve to
       description: Nothing is authenticated or changed; use it to debug claim conditions.
@@ -849,7 +882,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [claims]
+              required: [ claims ]
               properties:
                 claims: { type: object, additionalProperties: true }
                 virtualServer: { $ref: "#/components/schemas/Slug" }
@@ -877,12 +910,14 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/identity-bindings/{slug}:
     parameters:
       - $ref: "#/components/parameters/Slug"
     get:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: getIdentityBinding
       summary: Get an identity binding
       responses:
@@ -899,11 +934,12 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     put:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: putIdentityBinding
       summary: Replace an identity binding
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -928,12 +964,13 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     patch:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: patchIdentityBinding
       summary: Update an identity binding (JSON Merge Patch)
       description: '`rateLimitPerMinute: null` clears the limit. Arrays are replaced wholesale.'
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -958,11 +995,12 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     delete:
-      tags: [Identity Bindings]
+      tags: [ Identity Bindings ]
       operationId: deleteIdentityBinding
       summary: Delete an identity binding
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       responses:
         "503":
           $ref: "#/components/responses/AuditUnavailable"
@@ -977,7 +1015,7 @@ paths:
 
   /api/v1/admin-tokens:
     get:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: listAdminTokens
       summary: List admin API tokens (metadata only)
       parameters:
@@ -990,17 +1028,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [ items ]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/AdminToken" }
                   nextCursor:
-                    type: [string, "null"]
+                    type: [ string, "null" ]
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: createAdminToken
       summary: Create a named admin API token
       description: |
@@ -1018,7 +1056,7 @@ paths:
         "201":
           description: Created
           headers:
-            Cache-Control: { schema: { type: string, examples: [no-store] } }
+            Cache-Control: { schema: { type: string, examples: [ no-store ] } }
           content:
             application/json:
               schema:
@@ -1031,12 +1069,14 @@ paths:
           description: A token with this slug already exists.
         "422":
           $ref: "#/components/responses/Unprocessable"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
 
   /api/v1/admin-tokens/{slug}:
     parameters:
       - $ref: "#/components/parameters/Slug"
     get:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: getAdminToken
       summary: Get an admin token (never includes the secret)
       responses:
@@ -1053,12 +1093,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: patchAdminToken
       summary: Update description, scope or expiry (JSON Merge Patch)
       description: '`expiresAt: null` clears the expiry.'
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       requestBody:
         required: true
         content:
@@ -1087,11 +1128,12 @@ paths:
         "422":
           $ref: "#/components/responses/Unprocessable"
     delete:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: deleteAdminToken
       summary: Delete an admin token
       parameters:
         - $ref: "#/components/parameters/IfMatch"
+        - $ref: "#/components/parameters/CSRF"
       responses:
         "503":
           $ref: "#/components/responses/AuditUnavailable"
@@ -1110,7 +1152,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Slug"
     post:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: rotateAdminToken
       summary: Issue a new secret; the old one stops working immediately
       responses:
@@ -1119,7 +1161,7 @@ paths:
         "200":
           description: Rotated (new secret in `token`)
           headers:
-            Cache-Control: { schema: { type: string, examples: [no-store] } }
+            Cache-Control: { schema: { type: string, examples: [ no-store ] } }
           content:
             application/json:
               schema:
@@ -1130,12 +1172,17 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+        - $ref: "#/components/parameters/IfMatch"
 
   /api/v1/admin-tokens/{slug}/revoke:
     parameters:
       - $ref: "#/components/parameters/Slug"
     post:
-      tags: [Admin Tokens]
+      tags: [ Admin Tokens ]
       operationId: revokeAdminToken
       summary: Revoke a token (idempotent)
       responses:
@@ -1155,10 +1202,15 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+        - $ref: "#/components/parameters/IfMatch"
 
   /api/v1/audit-status:
     get:
-      tags: [Audit]
+      tags: [ Audit ]
       operationId: getAuditStatus
       summary: Read audit durability counters and incomplete operation backlog
       responses:
@@ -1174,7 +1226,7 @@ paths:
 
   /api/v1/audit-events:
     get:
-      tags: [Audit]
+      tags: [ Audit ]
       operationId: listAuditEvents
       summary: List audit events, newest first
       parameters:
@@ -1186,7 +1238,7 @@ paths:
         - { name: operationId, in: query, schema: { type: string, format: uuid } }
         - { name: requestId, in: query, schema: { type: string, format: uuid } }
         - { name: actorId, in: query, schema: { type: string } }
-        - { name: stage, in: query, schema: { type: string, enum: [event, admission, outcome, mutation] } }
+        - { name: stage, in: query, schema: { type: string, enum: [ event, admission, outcome, mutation ] } }
         - { name: incomplete, in: query, description: Admissions without a persisted outcome (includes in-flight calls)., schema: { type: boolean } }
         - { name: virtualServer, in: query, schema: { type: string } }
         - { name: agentKey, in: query, schema: { type: string } }
@@ -1194,7 +1246,7 @@ paths:
         - { name: tool, in: query, schema: { type: string } }
         - name: status
           in: query
-          schema: { type: string, enum: [started, ok, tool_error, error, denied] }
+          schema: { type: string, enum: [ started, ok, tool_error, error, denied ] }
         - { name: from, in: query, description: Inclusive RFC 3339 lower bound., schema: { type: string, format: date-time } }
         - { name: to, in: query, description: Exclusive RFC 3339 upper bound., schema: { type: string, format: date-time } }
       responses:
@@ -1204,13 +1256,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [ items ]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/AuditEvent" }
                   nextCursor:
-                    type: [string, "null"]
+                    type: [ string, "null" ]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -1218,7 +1270,7 @@ paths:
 
   /api/v1/export:
     get:
-      tags: [Declarative]
+      tags: [ Declarative ]
       operationId: exportConfig
       summary: Export the whole configuration as a declarative document
       description: |
@@ -1240,7 +1292,7 @@ paths:
 
   /api/v1/apply:
     post:
-      tags: [Declarative]
+      tags: [ Declarative ]
       operationId: applyConfig
       summary: Make the configuration match a declarative document
       description: |
@@ -1255,13 +1307,21 @@ paths:
       parameters:
         - name: prune
           in: query
-          schema: { type: boolean, default: false }
+          schema:
+            type: boolean
+            default: false
         - name: dryRun
           in: query
-          schema: { type: boolean, default: false }
+          schema:
+            type: boolean
+            default: false
         - name: refreshTools
           in: query
-          schema: { type: boolean, default: true }
+          schema:
+            type: boolean
+            default: true
+        - $ref: "#/components/parameters/CSRF"
+        - $ref: "#/components/parameters/IfMatch"
       requestBody:
         required: true
         content:
@@ -1283,15 +1343,58 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/Unprocessable"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+  /api/v1/upstreams/{slug}/connection-test:
+    post:
+      tags:
+        - Upstreams
+      operationId: testStoredConnection
+      summary: Test stored upstream credentials without returning them
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/CSRF"
+      responses:
+        "200":
+          description: Sanitized outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ok
+                additionalProperties: false
+                properties:
+                  ok:
+                    type: boolean
+                  error:
+                    type: string
+                  toolCount:
+                    type: integer
+                  latencyMs:
+                    type: integer
+                  protocolVersion:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/AuditUnavailable"
 
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: |
-        Static admin token in the MVP (`VMCP_ADMIN_TOKEN`). The same scheme will carry scoped API
-        tokens and OIDC access tokens later, so clients need no change.
+      description: Bootstrap or named scoped administration API token. Agent OAuth tokens do not authenticate this API.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: vmcp_session
+      description: SSO session cookie. Unsafe methods require X-VMCP-CSRF.
 
   parameters:
     Slug:
@@ -1315,11 +1418,19 @@ components:
       in: query
       description: Opaque cursor from a previous page's `nextCursor`.
       schema: { type: string }
+    CSRF:
+      name: X-VMCP-CSRF
+      in: header
+      required: false
+      description: Required with cookie authentication on unsafe methods.
+      schema:
+        type: string
+        minLength: 1
 
   headers:
     ETag:
       description: Strong validator of the current resource state.
-      schema: { type: string, examples: ['"7"'] }
+      schema: { type: string, examples: [ '"7"' ] }
     ConfigRevision:
       description: Global configuration revision after this operation.
       schema: { type: integer, format: int64 }
@@ -1376,11 +1487,11 @@ components:
       maxLength: 63
       pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
       description: Lowercase letters, digits and hyphens. Immutable once created.
-      examples: [github, support-agent]
+      examples: [ github, support-agent ]
 
     Transport:
       type: string
-      enum: [streamable_http, sse]
+      enum: [ streamable_http, sse ]
       default: streamable_http
       description: '`sse` is the legacy HTTP+SSE transport.'
 
@@ -1388,7 +1499,7 @@ components:
       type: string
       format: uri
       pattern: "^https?://"
-      examples: ["https://mcp.example.com/mcp"]
+      examples: [ "https://mcp.example.com/mcp" ]
 
     Headers:
       type: object
@@ -1409,7 +1520,7 @@ components:
     # ---- Upstreams ----
     UpstreamInput:
       type: object
-      required: [name, url]
+      required: [ name, url ]
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
@@ -1429,12 +1540,44 @@ components:
         auth: { $ref: "#/components/schemas/UpstreamAuthInput" }
 
     UpstreamCreate:
-      allOf:
-        - $ref: "#/components/schemas/UpstreamInput"
-        - type: object
-          required: [slug]
-          properties:
-            slug: { $ref: "#/components/schemas/Slug" }
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          default: ""
+        url:
+          $ref: "#/components/schemas/UpstreamUrl"
+        fallbackUrls:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/UpstreamUrl"
+          description: |
+            Further URLs of the same upstream, tried in order when `url` does not answer. Tool
+            discovery, connection tests of stored upstreams and agent sessions all fall through them.
+        transport:
+          $ref: "#/components/schemas/Transport"
+        enabled:
+          type: boolean
+          default: true
+        headers:
+          $ref: "#/components/schemas/Headers"
+        tls:
+          $ref: "#/components/schemas/UpstreamTLSInput"
+        auth:
+          $ref: "#/components/schemas/UpstreamAuthInput"
+        slug:
+          $ref: "#/components/schemas/Slug"
+      required:
+        - name
+        - url
+        - slug
+      additionalProperties: false
 
     UpstreamPatch:
       type: object
@@ -1456,7 +1599,7 @@ components:
         headers:
           type: object
           additionalProperties:
-            type: [string, "null"]
+            type: [ string, "null" ]
         tls:
           type: object
           additionalProperties: false
@@ -1496,7 +1639,7 @@ components:
 
     UpstreamTLS:
       type: object
-      required: [caPem, serverName, clientCertPem, hasClientKey, caCerts]
+      required: [ caPem, serverName, clientCertPem, hasClientKey, caCerts ]
       properties:
         caPem: { type: string }
         serverName: { type: string }
@@ -1512,7 +1655,7 @@ components:
 
     UpstreamAuthInput:
       type: object
-      required: [type]
+      required: [ type ]
       additionalProperties: false
       description: |
         Gateway-to-upstream authentication. Supports `oauth_client_credentials` where the gateway
@@ -1521,7 +1664,7 @@ components:
       properties:
         type:
           type: string
-          enum: [none, oauth_client_credentials]
+          enum: [ none, oauth_client_credentials ]
         tokenUrl:
           type: string
           description: OAuth 2.0 token endpoint URL.
@@ -1545,7 +1688,7 @@ components:
       properties:
         type:
           type: string
-          enum: [none, oauth_client_credentials]
+          enum: [ none, oauth_client_credentials ]
         tokenUrl:
           type: string
         clientId:
@@ -1561,11 +1704,11 @@ components:
 
     UpstreamAuth:
       type: object
-      required: [type]
+      required: [ type ]
       properties:
         type:
           type: string
-          enum: [none, oauth_client_credentials]
+          enum: [ none, oauth_client_credentials ]
         tokenUrl:
           type: string
         clientId:
@@ -1580,78 +1723,112 @@ components:
 
     CertInfo:
       type: object
-      required: [subject, notAfter]
+      required: [ subject, notAfter ]
       properties:
         subject: { type: string }
         notAfter: { type: string, format: date-time }
 
     Upstream:
       type: object
-      required: [slug, name, url, transport, enabled, headerNames, toolCount, createdAt, updatedAt]
+      required:
+        - slug
+        - name
+        - url
+        - transport
+        - enabled
+        - headerNames
+        - toolCount
+        - createdAt
+        - updatedAt
       properties:
-        slug: { $ref: "#/components/schemas/Slug" }
-        name: { type: string }
-        description: { type: string }
-        url: { $ref: "#/components/schemas/UpstreamUrl" }
+        slug:
+          $ref: "#/components/schemas/Slug"
+        name:
+          type: string
+        description:
+          type: string
+        url:
+          $ref: "#/components/schemas/UpstreamUrl"
         fallbackUrls:
           type: array
-          items: { $ref: "#/components/schemas/UpstreamUrl" }
-        transport: { $ref: "#/components/schemas/Transport" }
-        enabled: { type: boolean }
-        health: { $ref: "#/components/schemas/UpstreamHealth" }
-        tls: { $ref: "#/components/schemas/UpstreamTLS" }
-        auth: { $ref: "#/components/schemas/UpstreamAuth" }
+          items:
+            $ref: "#/components/schemas/UpstreamUrl"
+        transport:
+          $ref: "#/components/schemas/Transport"
+        enabled:
+          type: boolean
+        health:
+          $ref: "#/components/schemas/UpstreamHealth"
+        tls:
+          $ref: "#/components/schemas/UpstreamTLS"
+        auth:
+          $ref: "#/components/schemas/UpstreamAuth"
         headerNames:
           type: array
-          items: { type: string }
+          items:
+            type: string
           description: Names (never values) of the configured headers.
-        toolCount: { type: integer, description: Number of cached tools. }
+        toolCount:
+          type: integer
+          description: Number of cached tools.
         lastRefreshAt:
-          type: [string, "null"]
+          type:
+            - string
+            - "null"
           format: date-time
         lastRefreshError:
-          type: [string, "null"]
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
 
     UpstreamHealth:
       type: object
-      required: [state, nodes]
+      required: [ state, nodes ]
       description: |
         What the data-plane nodes saw when they last probed this upstream (every 30 s by default;
         probes older than 2 minutes are ignored, so a dead node drops out).
       properties:
         state:
           type: string
-          enum: [unknown, healthy, degraded, unhealthy]
+          enum: [ unknown, healthy, degraded, unhealthy ]
           description: "`degraded` means the nodes disagree."
         nodes:
           type: array
           items:
             type: object
-            required: [node, state, breaker, checkedAt]
+            required: [ node, state, breaker, checkedAt ]
             properties:
               node: { type: string }
-              state: { type: string, enum: [healthy, unhealthy] }
-              breaker: { type: string, enum: [closed, open, half_open], description: "Circuit breaker of this node for the upstream." }
+              state: { type: string, enum: [ healthy, unhealthy ] }
+              breaker: { type: string, enum: [ closed, open, half_open ], description: "Circuit breaker of this node for the upstream." }
               url: { type: string, description: "The URL that answered, or the last one tried." }
               latencyMs: { type: integer }
-              error: { type: [string, "null"] }
+              error: { type: [ string, "null" ] }
               checkedAt: { type: string, format: date-time }
 
     UpstreamList:
       type: object
-      required: [items]
+      required: [ items ]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/Upstream" }
         nextCursor:
-          type: [string, "null"]
+          type: [ string, "null" ]
 
     Tool:
       type: object
-      required: [name, inputSchema]
+      required: [ name, inputSchema ]
       properties:
         name: { type: string }
         description: { type: string }
@@ -1666,7 +1843,7 @@ components:
 
     RefreshResult:
       type: object
-      required: [toolCount, added, removed, changed, orphanedSelections, fetchedAt]
+      required: [ toolCount, added, removed, changed, orphanedSelections, fetchedAt ]
       properties:
         toolCount: { type: integer }
         added: { type: array, items: { type: string } }
@@ -1680,7 +1857,7 @@ components:
           description: Virtual-server selections pointing at tools that no longer exist.
           items:
             type: object
-            required: [virtualServer, tool]
+            required: [ virtualServer, tool ]
             properties:
               virtualServer: { $ref: "#/components/schemas/Slug" }
               tool: { type: string }
@@ -1689,7 +1866,7 @@ components:
     # ---- Virtual servers ----
     ToolSelection:
       type: object
-      required: [upstream, tool]
+      required: [ upstream, tool ]
       additionalProperties: false
       properties:
         upstream:
@@ -1707,27 +1884,48 @@ components:
             omitted uses the upstream text. Saving an unchanged selection acknowledges drift.
 
     ResolvedToolSelection:
-      allOf:
-        - $ref: "#/components/schemas/ToolSelection"
-        - type: object
-          required: [exposedName, upstreamDescription, descriptionDrift]
-          properties:
-            upstreamDescription:
-              type: string
-              readOnly: true
-              description: Current description of the upstream tool.
-            descriptionDrift:
-              type: boolean
-              readOnly: true
-              description: True when an override exists and the upstream description changed since it was written.
-            exposedName:
-              type: string
-              readOnly: true
-              description: Name agents see. `alias` if set, else `{upstream}__{tool}`.
+      type: object
+      properties:
+        upstream:
+          $ref: "#/components/schemas/Slug"
+        tool:
+          type: string
+          description: Tool name as exposed by the upstream.
+        alias:
+          $ref: "#/components/schemas/ToolName"
+        description:
+          type: string
+          maxLength: 2000
+          description: |
+            Replaces the upstream description in `tools/list` of this virtual server only. Empty or
+            omitted uses the upstream text. Saving an unchanged selection acknowledges drift.
+        upstreamDescription:
+          type: string
+          readOnly: true
+          description: Current description of the upstream tool.
+        descriptionDrift:
+          type: boolean
+          readOnly: true
+          description: True when an override exists and the upstream description changed since it was written.
+        exposedName:
+          type: string
+          readOnly: true
+          description: Name agents see. `alias` if set, else `{upstream}__{tool}`.
+        orphaned:
+          type: boolean
+          readOnly: true
+          description: The selection is retained but its upstream tool is no longer discovered.
+      required:
+        - upstream
+        - tool
+        - exposedName
+        - upstreamDescription
+        - descriptionDrift
+      additionalProperties: false
 
     VirtualServerInput:
       type: object
-      required: [name]
+      required: [ name ]
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
@@ -1739,19 +1937,52 @@ components:
           description: When true, agents must present an agent key assigned to this virtual server.
         pii: { $ref: "#/components/schemas/PiiConfig" }
         policy: { $ref: "#/components/schemas/ToolPolicy" }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        rateLimitPerMinute: { type: [ integer, "null" ], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
         tools:
           type: array
           default: []
           items: { $ref: "#/components/schemas/ToolSelection" }
 
     VirtualServerCreate:
-      allOf:
-        - $ref: "#/components/schemas/VirtualServerInput"
-        - type: object
-          required: [slug]
-          properties:
-            slug: { $ref: "#/components/schemas/Slug" }
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+          default: ""
+        enabled:
+          type: boolean
+          default: true
+        authRequired:
+          type: boolean
+          default: true
+          description: When true, agents must present an agent key assigned to this virtual server.
+        pii:
+          $ref: "#/components/schemas/PiiConfig"
+        policy:
+          $ref: "#/components/schemas/ToolPolicy"
+        rateLimitPerMinute:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 1000000
+          description: Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After.
+        tools:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/ToolSelection"
+        slug:
+          $ref: "#/components/schemas/Slug"
+      required:
+        - name
+        - slug
+      additionalProperties: false
 
     VirtualServerPatch:
       type: object
@@ -1763,79 +1994,210 @@ components:
         authRequired: { type: boolean }
         pii: { $ref: "#/components/schemas/PiiConfig" }
         policy: { $ref: "#/components/schemas/ToolPolicy" }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        rateLimitPerMinute: { type: [ integer, "null" ], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
         tools:
           type: array
           items: { $ref: "#/components/schemas/ToolSelection" }
 
     VirtualServer:
       type: object
-      required: [slug, name, enabled, authRequired, endpoint, tools, createdAt, updatedAt]
+      required:
+        - slug
+        - name
+        - enabled
+        - authRequired
+        - endpoint
+        - tools
+        - createdAt
+        - updatedAt
       properties:
-        slug: { $ref: "#/components/schemas/Slug" }
-        name: { type: string }
-        description: { type: string }
-        enabled: { type: boolean }
-        authRequired: { type: boolean }
-        pii: { $ref: "#/components/schemas/PiiConfig" }
-        policy: { $ref: "#/components/schemas/ToolPolicy" }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        slug:
+          $ref: "#/components/schemas/Slug"
+        name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+        authRequired:
+          type: boolean
+        pii:
+          $ref: "#/components/schemas/PiiConfig"
+        policy:
+          $ref: "#/components/schemas/ToolPolicy"
+        rateLimitPerMinute:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 1000000
+          description: Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After.
         endpoint:
           type: string
           description: Path agents connect to on the data plane.
-          examples: [/mcp/v1/virtual/support-agent]
+          examples:
+            - /mcp/v1/virtual/support-agent
         tools:
           type: array
-          items: { $ref: "#/components/schemas/ResolvedToolSelection" }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+          items:
+            $ref: "#/components/schemas/ResolvedToolSelection"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
 
     VirtualServerList:
       type: object
-      required: [items]
+      required: [ items ]
       properties:
         items:
           type: array
           items: { $ref: "#/components/schemas/VirtualServer" }
         nextCursor:
-          type: [string, "null"]
+          type: [ string, "null" ]
 
     AgentKey:
       type: object
-      required: [slug, description, keyPrefix, virtualServers, ipAllowlist, status, createdAt, updatedAt]
+      required:
+        - slug
+        - description
+        - keyPrefix
+        - virtualServers
+        - ipAllowlist
+        - status
+        - createdAt
+        - updatedAt
       properties:
-        slug: { $ref: "#/components/schemas/Slug" }
-        description: { type: string }
+        slug:
+          $ref: "#/components/schemas/Slug"
+        description:
+          type: string
         keyPrefix:
           type: string
           description: First characters of the key, to identify it in UIs and logs.
         virtualServers:
           type: array
-          items: { $ref: "#/components/schemas/Slug" }
+          items:
+            $ref: "#/components/schemas/Slug"
         ipAllowlist:
           type: array
           description: Allowed client addresses as CIDRs. Empty means any address.
-          items: { type: string, examples: ["10.0.0.0/8"] }
-        expiresAt: { type: [string, "null"], format: date-time }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
-        revokedAt: { type: [string, "null"], format: date-time }
-        status: { type: string, enum: [active, expired, revoked] }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+          items:
+            type: string
+            examples:
+              - 10.0.0.0/8
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        rateLimitPerMinute:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 1000000
+          description: Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After.
+        revokedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - revoked
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
 
     AgentKeyWithSecret:
-      allOf:
-        - $ref: "#/components/schemas/AgentKey"
-        - type: object
-          required: [key]
-          properties:
-            key:
-              type: string
-              description: The secret. Shown once; store it now.
+      type: object
+      properties:
+        slug:
+          $ref: "#/components/schemas/Slug"
+        description:
+          type: string
+        keyPrefix:
+          type: string
+          description: First characters of the key, to identify it in UIs and logs.
+        virtualServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Slug"
+        ipAllowlist:
+          type: array
+          description: Allowed client addresses as CIDRs. Empty means any address.
+          items:
+            type: string
+            examples:
+              - 10.0.0.0/8
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        rateLimitPerMinute:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 1000000
+          description: Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After.
+        revokedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - revoked
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        key:
+          type: string
+          description: The secret. Shown once; store it now.
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
+      required:
+        - slug
+        - description
+        - keyPrefix
+        - virtualServers
+        - ipAllowlist
+        - status
+        - createdAt
+        - updatedAt
+        - key
+      additionalProperties: false
 
     AgentKeyCreate:
       type: object
-      required: [slug]
+      required: [ slug ]
       additionalProperties: false
       properties:
         slug: { $ref: "#/components/schemas/Slug" }
@@ -1847,8 +2209,8 @@ components:
           type: array
           description: Addresses or CIDRs; bare addresses are normalized to /32 or /128.
           items: { type: string }
-        expiresAt: { type: [string, "null"], format: date-time, description: Must be in the future. }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        expiresAt: { type: [ string, "null" ], format: date-time, description: Must be in the future. }
+        rateLimitPerMinute: { type: [ integer, "null" ], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
 
     AgentKeyPatch:
       type: object
@@ -1861,21 +2223,21 @@ components:
         ipAllowlist:
           type: array
           items: { type: string }
-        expiresAt: { type: [string, "null"], format: date-time }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
+        expiresAt: { type: [ string, "null" ], format: date-time }
+        rateLimitPerMinute: { type: [ integer, "null" ], minimum: 1, maximum: 1000000, description: "Calls per minute allowed; null means no limit. Excess calls get HTTP 429 with Retry-After." }
 
     Condition:
       type: object
-      required: [claim, op]
+      required: [ claim, op ]
       additionalProperties: false
       properties:
         claim: { type: string, description: "Claim name or dotted path, e.g. `azp` or `realm_access.roles`." }
-        op: { type: string, enum: [equals, contains, exists] }
+        op: { type: string, enum: [ equals, contains, exists ] }
         value: { type: string }
 
     IdentityBindingCreate:
       type: object
-      required: [slug, conditions, virtualServers]
+      required: [ slug, conditions, virtualServers ]
       additionalProperties: false
       properties:
         slug: { $ref: "#/components/schemas/Slug" }
@@ -1891,16 +2253,56 @@ components:
         ipAllowlist:
           type: array
           items: { type: string, description: IP or CIDR. }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000 }
+        rateLimitPerMinute: { type: [ integer, "null" ], minimum: 1, maximum: 1000000 }
         enabled: { type: boolean, default: true }
 
     IdentityBinding:
-      allOf:
-        - $ref: "#/components/schemas/IdentityBindingCreate"
-        - type: object
-          properties:
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }
+      type: object
+      properties:
+        slug:
+          $ref: "#/components/schemas/Slug"
+        description:
+          type: string
+          maxLength: 1000
+        conditions:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/Condition"
+        virtualServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Slug"
+        ipAllowlist:
+          type: array
+          items:
+            type: string
+            description: IP or CIDR.
+        rateLimitPerMinute:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+          maximum: 1000000
+        enabled:
+          type: boolean
+          default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
+      required:
+        - slug
+        - conditions
+        - virtualServers
+      additionalProperties: false
 
     IdentityBindingPatch:
       type: object
@@ -1916,7 +2318,7 @@ components:
         ipAllowlist:
           type: array
           items: { type: string }
-        rateLimitPerMinute: { type: [integer, "null"], minimum: 1, maximum: 1000000 }
+        rateLimitPerMinute: { type: [ integer, "null" ], minimum: 1, maximum: 1000000 }
         enabled: { type: boolean }
 
     ToolPolicy:
@@ -1929,14 +2331,16 @@ components:
       properties:
         default:
           type: string
-          enum: [allow, deny, read_only]
+          enum: [ allow, deny, read_only ]
           default: allow
         tools:
-          type: object
+          type:
+            - object
+            - "null"
           description: Per-tool override, keyed by exposed tool name.
           additionalProperties:
             type: string
-            enum: [allow, deny, read_only]
+            enum: [ allow, deny, read_only ]
 
     PiiConfig:
       type: object
@@ -1951,13 +2355,13 @@ components:
         detectors:
           type: array
           description: Built-in detectors to apply. Empty means all of them.
-          items: { type: string, enum: [iban, credit_card, tckn, us_ssn, email, phone] }
+          items: { type: string, enum: [ iban, credit_card, tckn, us_ssn, email, phone ] }
         customRules:
           type: array
           maxItems: 20
           items:
             type: object
-            required: [name, pattern]
+            required: [ name, pattern ]
             additionalProperties: false
             properties:
               name: { type: string, pattern: "^[A-Za-z0-9_-]{1,40}$" }
@@ -1969,53 +2373,145 @@ components:
 
     AdminToken:
       type: object
-      required: [slug, description, scope, tokenPrefix, status, createdAt, updatedAt]
+      required:
+        - slug
+        - description
+        - scope
+        - tokenPrefix
+        - status
+        - createdAt
+        - updatedAt
       properties:
-        slug: { $ref: "#/components/schemas/Slug" }
-        description: { type: string }
-        scope: { type: string, enum: [admin, read] }
-        tokenPrefix: { type: string }
-        expiresAt: { type: [string, "null"], format: date-time }
-        revokedAt: { type: [string, "null"], format: date-time }
-        lastUsedAt: { type: [string, "null"], format: date-time, description: Refreshed at most once a minute. }
-        status: { type: string, enum: [active, expired, revoked] }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+        slug:
+          $ref: "#/components/schemas/Slug"
+        description:
+          type: string
+        scope:
+          type: string
+          enum:
+            - admin
+            - read
+        tokenPrefix:
+          type: string
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        revokedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastUsedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Refreshed at most once a minute.
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - revoked
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
 
     AdminTokenWithSecret:
-      allOf:
-        - $ref: "#/components/schemas/AdminToken"
-        - type: object
-          required: [token]
-          properties:
-            token: { type: string, description: The secret. Shown once; store it now. }
+      type: object
+      properties:
+        slug:
+          $ref: "#/components/schemas/Slug"
+        description:
+          type: string
+        scope:
+          type: string
+          enum:
+            - admin
+            - read
+        tokenPrefix:
+          type: string
+        expiresAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        revokedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastUsedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Refreshed at most once a minute.
+        status:
+          type: string
+          enum:
+            - active
+            - expired
+            - revoked
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: The secret. Shown once; store it now.
+        version:
+          type: integer
+          minimum: 1
+          readOnly: true
+      required:
+        - slug
+        - description
+        - scope
+        - tokenPrefix
+        - status
+        - createdAt
+        - updatedAt
+        - token
+      additionalProperties: false
 
     AdminTokenCreate:
       type: object
-      required: [slug]
+      required: [ slug ]
       additionalProperties: false
       properties:
         slug: { $ref: "#/components/schemas/Slug" }
         description: { type: string, maxLength: 1000 }
-        scope: { type: string, enum: [admin, read], default: read }
-        expiresAt: { type: [string, "null"], format: date-time, description: Must be in the future. }
+        scope: { type: string, enum: [ admin, read ], default: read }
+        expiresAt: { type: [ string, "null" ], format: date-time, description: Must be in the future. }
 
     AdminTokenPatch:
       type: object
       additionalProperties: false
       properties:
         description: { type: string, maxLength: 1000 }
-        scope: { type: string, enum: [admin, read] }
-        expiresAt: { type: [string, "null"], format: date-time }
+        scope: { type: string, enum: [ admin, read ] }
+        expiresAt: { type: [ string, "null" ], format: date-time }
 
     AuditStatus:
       type: object
-      required: [process, durable]
+      required: [ process, durable ]
       properties:
         process:
           type: object
           properties:
-            mode: { type: string, enum: [strict, best_effort] }
+            mode: { type: string, enum: [ strict, best_effort ] }
             blockedAdmissions: { type: integer, format: int64 }
             failedWrites: { type: integer, format: int64 }
             deadLetters: { type: integer, format: int64, description: Process-local permanent write rejections; no durable dead-letter queue is implied. }
@@ -2030,11 +2526,11 @@ components:
 
     AuditEvent:
       type: object
-      required: [id, eventId, schemaVersion, stage, time, virtualServer, method, status, durationMs]
+      required: [ id, eventId, schemaVersion, stage, time, virtualServer, method, status, durationMs ]
       properties:
         eventId: { type: string, format: uuid }
-        operationId: { type: [string, "null"], format: uuid }
-        requestId: { type: [string, "null"], format: uuid }
+        operationId: { type: [ string, "null" ], format: uuid }
+        requestId: { type: [ string, "null" ], format: uuid }
         traceId: { type: string }
         schemaVersion: { type: integer }
         actorType: { type: string }
@@ -2043,28 +2539,28 @@ components:
         action: { type: string }
         target: { type: string }
         configRevision: { type: integer, format: int64 }
-        stage: { type: string, enum: [event, admission, outcome, mutation] }
+        stage: { type: string, enum: [ event, admission, outcome, mutation ] }
         id: { type: integer, format: int64 }
         time: { type: string, format: date-time }
         virtualServer: { type: string }
-        agentKey: { type: [string, "null"], description: Slug of the key used. }
-        clientIp: { type: [string, "null"] }
-        subject: { type: [string, "null"], description: "JWT `sub` when the caller used an IdP token (`agentKey` is then `oauth:<binding>`)." }
-        method: { type: string, examples: [tools/call] }
-        tool: { type: [string, "null"], description: Exposed tool name. }
-        upstream: { type: [string, "null"] }
+        agentKey: { type: [ string, "null" ], description: Slug of the key used. }
+        clientIp: { type: [ string, "null" ] }
+        subject: { type: [ string, "null" ], description: "JWT `sub` when the caller used an IdP token (`agentKey` is then `oauth:<binding>`)." }
+        method: { type: string, examples: [ tools/call ] }
+        tool: { type: [ string, "null" ], description: Exposed tool name. }
+        upstream: { type: [ string, "null" ] }
         status:
           type: string
-          enum: [started, ok, tool_error, error, denied]
+          enum: [ started, ok, tool_error, error, denied ]
           description: "`tool_error` = the tool ran and reported isError; `error` = the call failed."
-        reason: { type: [string, "null"] }
+        reason: { type: [ string, "null" ] }
         durationMs: { type: integer }
         redactions: { type: integer, description: Number of PII values masked in this call. }
 
     # ---- Declarative ----
     DesiredState:
       type: object
-      required: [apiVersion]
+      required: [ apiVersion ]
       additionalProperties: false
       properties:
         apiVersion:
@@ -2088,37 +2584,37 @@ components:
 
     ApplyResult:
       type: object
-      required: [dryRun, changes]
+      required: [ dryRun, changes ]
       properties:
         dryRun: { type: boolean }
         revision:
-          type: [integer, "null"]
+          type: [ integer, "null" ]
           format: int64
           description: Revision after applying. `null` for a dry run.
         changes:
           type: array
           items:
             type: object
-            required: [kind, slug, action]
+            required: [ kind, slug, action ]
             properties:
-              kind: { type: string, enum: [upstream, virtualServer, identityBinding] }
+              kind: { type: string, enum: [ upstream, virtualServer, identityBinding ] }
               slug: { $ref: "#/components/schemas/Slug" }
-              action: { type: string, enum: [create, update, delete, unchanged] }
+              action: { type: string, enum: [ create, update, delete, unchanged ] }
 
     # ---- System / errors ----
     Info:
       type: object
-      required: [version, configRevision]
+      required: [ version, configRevision ]
       properties:
         version: { type: string }
         configRevision: { type: integer, format: int64 }
 
     Problem:
       type: object
-      required: [type, title, status, code]
+      required: [ type, title, status, code ]
       description: RFC 9457 problem details with a stable machine-readable `code`.
       properties:
-        type: { type: string, examples: ["about:blank"] }
+        type: { type: string, examples: [ "about:blank" ] }
         title: { type: string }
         status: { type: integer }
         detail: { type: string }
@@ -2144,7 +2640,7 @@ components:
           type: array
           items:
             type: object
-            required: [message]
+            required: [ message ]
             properties:
               field:
                 type: string

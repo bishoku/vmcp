@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import GitOps from './GitOps'
 import { Plus } from 'lucide-react'
 import { api, ApiError, type AdminToken } from '../api'
-import { btn, ErrorBox, fmt, input, Modal, Pill, primary, SecretModal } from '../ui'
+import { btn, input, primary } from '../styles'
+import { fmt } from '../format'
+import { ErrorBox, Modal, Pill, SecretModal } from '../ui'
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
@@ -11,7 +14,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
   const [tokens, setTokens] = useState<AdminToken[]>([])
   const [info, setInfo] = useState<{ version: string; configRevision: number } | null>(null)
   const [error, setError] = useState('')
-  const [form, setForm] = useState<{ slug: string; description: string; scope: 'admin' | 'read' } | null>(null)
+  const [form, setForm] = useState<{ slug: string; description: string; scope: 'admin' | 'read'; expiresAt: string } | null>(null)
   const [problem, setProblem] = useState('')
   const [secret, setSecret] = useState<{ title: string; value: string } | null>(null)
 
@@ -26,7 +29,8 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
     }
   }, [])
   useEffect(() => {
-    void load()
+    const timer = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(timer)
   }, [load])
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -41,7 +45,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
   const create = async () => {
     if (!form) return
     try {
-      const r = await api.createAdminToken(form)
+      const r = await api.createAdminToken({...form,expiresAt:form.expiresAt ? new Date(form.expiresAt).toISOString():null})
       setSecret({ title: 'Admin token created', value: r.token })
       setForm(null)
       setProblem('')
@@ -64,7 +68,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
             <p className="text-sm text-ink-muted">For integrations that manage vMCP over the API. <code>read</code> allows GET only.</p>
           </div>
           {canManage && (
-            <button className={primary} onClick={() => setForm({ slug: '', description: '', scope: 'read' })}>
+            <button className={primary} onClick={() => setForm({ slug: '', description: '', scope: 'read', expiresAt:'' })}>
               <Plus className="size-4" /> New token
             </button>
           )}
@@ -85,16 +89,16 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
                 <tr key={t.slug} className="border-b border-line last:border-0">
                   <td className="px-4 py-3">
                     <div className="font-medium">{t.slug}</div>
-                    <div className="font-mono text-xs text-ink-muted">{t.tokenPrefix}…</div>
+                    <div className="font-mono text-xs text-ink-muted">{t.tokenPrefix}…</div><div className="text-xs text-ink-muted">{t.description} · expires {fmt(t.expiresAt)}</div>
                   </td>
                   <td className="px-4 py-3">{t.scope}</td>
                   <td className="px-4 py-3">{fmt(t.lastUsedAt)}</td>
                   <td className="px-4 py-3"><Pill status={t.status} /></td>
                   <td className="space-x-2 px-4 py-3 text-right">
                     {canManage && <>
-                    <button className={btn} onClick={() => confirm(`Rotate "${t.slug}"?`) && act(async () => { const r = await api.rotateAdminToken(t.slug); setSecret({ title: 'Token rotated', value: r.token }) })}>Rotate</button>
-                    {t.status !== 'revoked' && <button className={btn} onClick={() => confirm(`Revoke "${t.slug}"?`) && act(() => api.revokeAdminToken(t.slug))}>Revoke</button>}
-                    <button className={btn} onClick={() => confirm(`Delete "${t.slug}"?`) && act(() => api.deleteAdminToken(t.slug))}>Delete</button>
+                    <button className={btn} onClick={() => confirm(`Rotate "${t.slug}"?`) && act(async () => { const r = await api.rotateAdminToken(t.slug,t.version); setSecret({ title: 'Token rotated', value: r.token }) })}>Rotate</button>
+                    {t.status !== 'revoked' && <button className={btn} onClick={() => confirm(`Revoke "${t.slug}"?`) && act(() => api.revokeAdminToken(t.slug,t.version))}>Revoke</button>}
+                    <button className={btn} onClick={() => confirm(`Delete "${t.slug}"?`) && act(() => api.deleteAdminToken(t.slug,t.version))}>Delete</button>
                     </>}
                   </td>
                 </tr>
@@ -113,6 +117,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
         </dl>
       </section>
 
+      <GitOps canManage={canManage} />
       {form && (
         <Modal title="New admin token" onClose={() => setForm(null)}>
           <div className="mt-4 space-y-4">
@@ -123,6 +128,10 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
             <label className="block text-sm font-medium">
               Description
               <input className={`${input} mt-1`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </label>
+            <label className="block text-sm font-medium">
+              Expires at (optional)
+              <input type="datetime-local" className={`${input} mt-1`} value={form.expiresAt} onChange={(e) => setForm({...form,expiresAt:e.target.value})} />
             </label>
             <label className="block text-sm font-medium">
               Scope

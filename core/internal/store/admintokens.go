@@ -26,7 +26,7 @@ type AdminToken struct {
 	RevokedAt   *time.Time `json:"revokedAt"`
 	LastUsedAt  *time.Time `json:"lastUsedAt"`
 	Status      string     `json:"status"`
-	Version     int64      `json:"-"`
+	Version     int64      `json:"version"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 }
@@ -189,8 +189,14 @@ func (t *Tx) PatchAdminToken(ctx context.Context, slug string, p AdminTokenPatch
 }
 
 // RotateAdminToken issues a new secret and clears any revocation.
-func (t *Tx) RotateAdminToken(ctx context.Context, slug string) (*AdminToken, string, error) {
+func (t *Tx) RotateAdminToken(ctx context.Context, slug string, matches ...*int64) (*AdminToken, string, error) {
 	t.auditTarget("admin-token", slug)
+	if len(matches) > 0 && matches[0] != nil {
+		if err := t.lockAdminVersion(ctx, slug, matches[0]); err != nil {
+			return nil, "", err
+		}
+	}
+
 	secret, prefix, err := newSecret("vmcpa_")
 	if err != nil {
 		return nil, "", err
@@ -208,8 +214,14 @@ func (t *Tx) RotateAdminToken(ctx context.Context, slug string) (*AdminToken, st
 }
 
 // RevokeAdminToken disables a token (idempotent).
-func (t *Tx) RevokeAdminToken(ctx context.Context, slug string) (*AdminToken, error) {
+func (t *Tx) RevokeAdminToken(ctx context.Context, slug string, matches ...*int64) (*AdminToken, error) {
 	t.auditTarget("admin-token", slug)
+	if len(matches) > 0 && matches[0] != nil {
+		if err := t.lockAdminVersion(ctx, slug, matches[0]); err != nil {
+			return nil, err
+		}
+	}
+
 	tag, err := t.q.Exec(ctx, `UPDATE admin_tokens SET revoked_at = COALESCE(revoked_at, now()),
 		version = CASE WHEN revoked_at IS NULL THEN version + 1 ELSE version END, updated_at = now()
 		WHERE tenant_id = `+tenantSQL+` AND slug = $1`, slug)
@@ -225,15 +237,10 @@ func (t *Tx) RevokeAdminToken(ctx context.Context, slug string) (*AdminToken, er
 // DeleteAdminToken removes a token.
 func (t *Tx) DeleteAdminToken(ctx context.Context, slug string, ifMatch *int64) error {
 	t.auditTarget("admin-token", slug)
-	if ifMatch != nil {
-		cur, err := t.GetAdminToken(ctx, slug)
-		if err != nil {
-			return err
-		}
-		if cur.Version != *ifMatch {
-			return apierror.PreconditionFailed()
-		}
+	if err := t.lockAdminVersion(ctx, slug, ifMatch); err != nil {
+		return err
 	}
+
 	tag, err := t.q.Exec(ctx, `DELETE FROM admin_tokens WHERE tenant_id = `+tenantSQL+` AND slug = $1`, slug)
 	if err != nil {
 		return err
@@ -266,4 +273,21 @@ func (s *Store) LookupAdminIdentity(ctx context.Context, secret string) (scope, 
 func (s *Store) LookupAdminToken(ctx context.Context, secret string) (string, bool, error) {
 	scope, _, _, ok, err := s.LookupAdminIdentity(ctx, secret)
 	return scope, ok, err
+}
+
+func (t *Tx) lockAdminVersion(ctx context.Context, slug string, match *int64) error {
+	if match == nil {
+		return nil
+	}
+	cur, err := scanAdmin(t.q.QueryRow(ctx, adminSelect+` AND slug=$1 FOR UPDATE`, slug))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apierror.NotFound("admin token", slug)
+	}
+	if err != nil {
+		return err
+	}
+	if cur.Version != *match {
+		return apierror.PreconditionFailed()
+	}
+	return nil
 }

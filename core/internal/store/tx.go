@@ -50,6 +50,10 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
 	handle := &Tx{q: tx, box: s.Box, targets: map[string]bool{}}
+	// Consistent lock order prevents apply revision checks and row mutations from deadlocking.
+	if _, err := handle.LockRevision(ctx); err != nil {
+		return err
+	}
 	if err := fn(handle); err != nil {
 		return err
 	}
@@ -104,4 +108,28 @@ func (t *Tx) auditTarget(kind, slug string) {
 	if t.targets != nil && ValidSlug(slug) {
 		t.targets[kind+":"+slug] = true
 	}
+}
+
+// View executes related reads against one repeatable, read-only snapshot.
+func (s *Store) View(ctx context.Context, fn func(*Tx) error) error {
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := fn(&Tx{q: tx, box: s.Box}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (tx *Tx) Revision(ctx context.Context) (int64, error) {
+	var revision int64
+	err := tx.q.QueryRow(ctx, "SELECT revision FROM config_revision").Scan(&revision)
+	return revision, err
+}
+
+func (tx *Tx) LockRevision(ctx context.Context) (int64, error) {
+	var revision int64
+	err := tx.q.QueryRow(ctx, "SELECT revision FROM config_revision FOR UPDATE").Scan(&revision)
+	return revision, err
 }

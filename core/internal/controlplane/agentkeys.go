@@ -171,13 +171,17 @@ func (s *Server) deleteAgentKey(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) rotateAgentKey(w http.ResponseWriter, r *http.Request) error {
+	ifMatch, err := parseIfMatch(r)
+	if err != nil {
+		return err
+	}
 	var (
 		k      *store.AgentKey
 		secret string
 	)
 	if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		k, secret, err = tx.RotateAgentKey(r.Context(), r.PathValue("slug"))
+		k, secret, err = tx.RotateAgentKey(r.Context(), r.PathValue("slug"), ifMatch)
 		return err
 	}); err != nil {
 		return err
@@ -188,10 +192,14 @@ func (s *Server) rotateAgentKey(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) revokeAgentKey(w http.ResponseWriter, r *http.Request) error {
+	ifMatch, err := parseIfMatch(r)
+	if err != nil {
+		return err
+	}
 	var k *store.AgentKey
 	if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		k, err = tx.RevokeAgentKey(r.Context(), r.PathValue("slug"))
+		k, err = tx.RevokeAgentKey(r.Context(), r.PathValue("slug"), ifMatch)
 		return err
 	}); err != nil {
 		return err

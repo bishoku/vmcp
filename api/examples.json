@@ -1,0 +1,114 @@
+{
+  "AdminTokenWithSecret": {
+    "createdAt": "2026-10-11T08:24:10.977588+03:00",
+    "description": "",
+    "expiresAt": null,
+    "lastUsedAt": null,
+    "revokedAt": null,
+    "scope": "read",
+    "slug": "automation",
+    "status": "active",
+    "token": "redacted-example",
+    "tokenPrefix": "vmcpa_JkmVo0",
+    "updatedAt": "2026-10-11T08:24:10.977588+03:00",
+    "version": 1
+  },
+  "AgentKeyWithSecret": {
+    "createdAt": "2026-10-11T08:24:10.969587+03:00",
+    "description": "",
+    "expiresAt": null,
+    "ipAllowlist": [],
+    "key": "redacted-example",
+    "keyPrefix": "vmcp_TbcGVjx",
+    "rateLimitPerMinute": null,
+    "revokedAt": null,
+    "slug": "agent-key",
+    "status": "active",
+    "updatedAt": "2026-10-11T08:24:10.969587+03:00",
+    "version": 1,
+    "virtualServers": [
+      "agent"
+    ]
+  },
+  "Upstream": {
+    "auth": {
+      "type": "none"
+    },
+    "createdAt": "2026-10-11T08:24:10.935913+03:00",
+    "description": "",
+    "enabled": true,
+    "fallbackUrls": [],
+    "headerNames": [
+      "Authorization"
+    ],
+    "health": {
+      "nodes": [],
+      "state": "unknown"
+    },
+    "lastRefreshAt": null,
+    "lastRefreshError": null,
+    "name": "Fixture",
+    "slug": "fixture",
+    "tls": {
+      "caCerts": [],
+      "caPem": "",
+      "clientCert": null,
+      "clientCertPem": "",
+      "hasClientKey": false,
+      "serverName": ""
+    },
+    "toolCount": 0,
+    "transport": "streamable_http",
+    "updatedAt": "2026-10-11T08:24:10.935913+03:00",
+    "url": "http://127.0.0.1:55455",
+    "version": 1
+  },
+  "UpstreamCreate": {
+    "headers": {
+      "Authorization": "Bearer up-secret"
+    },
+    "name": "Fixture",
+    "slug": "fixture",
+    "url": "http://127.0.0.1:55455"
+  },
+  "VirtualServer": {
+    "authRequired": false,
+    "createdAt": "2026-10-11T08:24:10.960489+03:00",
+    "description": "",
+    "enabled": true,
+    "endpoint": "/mcp/v1/virtual/agent",
+    "name": "Agent",
+    "pii": {
+      "enabled": false
+    },
+    "policy": {
+      "default": "allow",
+      "tools": null
+    },
+    "rateLimitPerMinute": null,
+    "slug": "agent",
+    "tools": [
+      {
+        "descriptionDrift": false,
+        "exposedName": "fixture__echo",
+        "orphaned": false,
+        "tool": "echo",
+        "upstream": "fixture",
+        "upstreamDescription": "Returns the given message"
+      }
+    ],
+    "updatedAt": "2026-10-11T08:24:10.960489+03:00",
+    "version": 1
+  },
+  "VirtualServerCreate": {
+    "authRequired": false,
+    "name": "Agent",
+    "slug": "agent",
+    "tools": [
+      {
+        "tool": "echo",
+        "upstream": "fixture"
+      }
+    ]
+  }
+}

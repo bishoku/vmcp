@@ -32,6 +32,7 @@ const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
 interface Draft {
+ version?: number
   isNew: boolean
   slug: string
   name: string
@@ -57,7 +58,8 @@ const DETECTORS = [
 const blank: Draft = { isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [] }
 const fromServer = (v: VirtualServer): Draft => ({
   isNew: false,
-  slug: v.slug,
+  version:v.version,
+ slug: v.slug,
   name: v.name,
   description: v.description,
   enabled: v.enabled,
@@ -105,7 +107,8 @@ export default function VirtualServers() {
     }
   }, [])
   useEffect(() => {
-    void load()
+    const timer = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(timer)
   }, [load])
 
   const selected = useMemo(() => new Set(draft?.tools.map(key)), [draft])
@@ -162,7 +165,7 @@ export default function VirtualServers() {
         policy: cleanPolicy(draft),
         rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
         tools: draft.tools,
-      })
+      },draft.version)
       setDraft(null)
       await load()
     } catch (e) {
@@ -176,7 +179,7 @@ export default function VirtualServers() {
 
   const remove = async (v: VirtualServer) => {
     if (!confirm(`Delete virtual server "${v.slug}"?`)) return
-    await api.deleteVirtualServer(v.slug).catch((e) => setError(String(e.message ?? e)))
+    await api.deleteVirtualServer(v.slug,v.version).catch((e) => setError(String(e.message ?? e)))
     if (draft?.slug === v.slug) setDraft(null)
     await load()
   }
@@ -301,7 +304,7 @@ export default function VirtualServers() {
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                     <SortableContext items={draft.tools.map(key)} strategy={verticalListSortingStrategy}>
                       {draft.tools.map((t) => (
-                        <Row key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[exposed(t)] ?? draft.policy.default} inherited={!(exposed(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(exposed(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} />
+                        <div key={key(t)}>{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[exposed(t)] ?? draft.policy.default} inherited={!(exposed(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(exposed(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
                       ))}
                     </SortableContext>
                   </DndContext>

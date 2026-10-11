@@ -55,7 +55,8 @@ export default function Upstreams() {
     }
   }, [])
   useEffect(() => {
-    void load()
+    const timer = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(timer)
   }, [load])
 
   const shown = useMemo(
@@ -79,11 +80,11 @@ export default function Upstreams() {
   const remove = async (u: Upstream) => {
     if (!confirm(`Delete upstream "${u.slug}"?`)) return
     try {
-      await api.deleteUpstream(u.slug)
+      await api.deleteUpstream(u.slug,false,u.version)
     } catch (e) {
       if (e instanceof ApiError && e.code === 'in_use') {
         if (confirm(`${e.message}\n\nDelete anyway and remove it from those virtual servers?`))
-          await api.deleteUpstream(u.slug, true).catch((x) => setError(errMsg(x)))
+          await api.deleteUpstream(u.slug, true,u.version).catch((x) => setError(errMsg(x)))
       } else setError(errMsg(e))
     }
     void load()
@@ -285,6 +286,8 @@ function Panel({
     setNewValue('')
   }
 
+  const [openedAt] = useState(() => Date.now())
+
   const save = async () => {
     setBusy(true)
     setErr('')
@@ -301,7 +304,7 @@ function Panel({
           tls: tlsInput(),
           auth: authInput(),
           ...(Object.keys(headers).length && { headers }),
-        })
+        },upstream.version)
       } else {
         await api.createUpstream(slug, {
           name: name || slug,
@@ -347,6 +350,7 @@ function Panel({
           </button>
         </div>
 
+        {upstream && <button className={btn} disabled={busy} onClick={async()=>{setBusy(true);try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}finally{setBusy(false)}}}>Test stored credentials</button>}
         <div className="space-y-4">
           {!upstream && (
             <label className="block text-sm font-medium">
@@ -402,7 +406,7 @@ function Panel({
                   {upstream.tls.caCerts.map((c, i) => (
                     <li key={i} className="truncate" title={c.subject}>
                       {c.subject} · expires {new Date(c.notAfter).toLocaleDateString()}
-                      {new Date(c.notAfter) < new Date() && <span className="ml-1 text-red-700">expired</span>}
+                      {Date.parse(c.notAfter) < openedAt && <span className="ml-1 text-red-700">expired</span>}
                     </li>
                   ))}
                 </ul>
@@ -531,7 +535,7 @@ function Panel({
           </div>
 
           <button className={clsx(btn, 'w-full')} disabled={busy || !url} onClick={runTest}>
-            Test connection
+            Test edited connection
           </button>
           {test && (
             <div className={clsx('flex items-start gap-2 text-sm', test.ok ? 'text-green-700' : 'text-red-700')}>

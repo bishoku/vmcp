@@ -94,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/v1/upstreams/{slug}/tools", s.listUpstreamTools)
 	api("POST /api/v1/upstreams/{slug}/refresh-tools", s.refreshTools)
 	api("POST /api/v1/connection-tests", s.connectionTest)
+	api("POST /api/v1/upstreams/{slug}/connection-test", s.storedConnectionTest)
 
 	api("GET /api/v1/virtual-servers", s.listVirtualServers)
 	api("POST /api/v1/virtual-servers", s.createVirtualServer)

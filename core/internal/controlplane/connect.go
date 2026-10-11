@@ -147,3 +147,16 @@ func (s *Server) connectionTest(w http.ResponseWriter, r *http.Request) error {
 		"tools":           tools,
 	})
 }
+
+// storedConnectionTest never returns upstream text, schemas or stored credentials.
+func (s *Server) storedConnectionTest(w http.ResponseWriter, r *http.Request) error {
+	conn, err := s.Store.Reader().UpstreamConnInfo(r.Context(), r.PathValue("slug"))
+	if err != nil {
+		return err
+	}
+	result, err := probeAny(r.Context(), append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS, conn.OAuth)
+	if err != nil {
+		return writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Upstream connection or authentication failed"})
+	}
+	return writeJSON(w, http.StatusOK, map[string]any{"ok": true, "toolCount": len(result.Tools), "latencyMs": result.Latency.Milliseconds(), "protocolVersion": result.ProtocolVersion})
+}

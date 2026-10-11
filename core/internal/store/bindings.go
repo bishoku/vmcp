@@ -25,7 +25,7 @@ type Binding struct {
 	IPAllowlist    []string           `json:"ipAllowlist"`
 	RateLimit      *int               `json:"rateLimitPerMinute"`
 	Enabled        bool               `json:"enabled"`
-	Version        int64              `json:"-"`
+	Version        int64              `json:"version"`
 	CreatedAt      time.Time          `json:"createdAt"`
 	UpdatedAt      time.Time          `json:"updatedAt"`
 }

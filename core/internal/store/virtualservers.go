@@ -34,6 +34,7 @@ type ResolvedSelection struct {
 	// exists and the upstream text changed since the override was written.
 	UpstreamDescription string `json:"upstreamDescription"`
 	DescriptionDrift    bool   `json:"descriptionDrift"`
+	Orphaned            bool   `json:"orphaned"`
 }
 
 // VirtualServer is the API read model.
@@ -48,7 +49,7 @@ type VirtualServer struct {
 	RateLimit    *int                `json:"rateLimitPerMinute"`
 	Endpoint     string              `json:"endpoint"`
 	Tools        []ResolvedSelection `json:"tools"`
-	Version      int64               `json:"-"`
+	Version      int64               `json:"version"`
 	CreatedAt    time.Time           `json:"createdAt"`
 	UpdatedAt    time.Time           `json:"updatedAt"`
 }
@@ -116,10 +117,10 @@ func (t *Tx) loadSelections(ctx context.Context, vs []*vsRow) error {
 		ids = append(ids, v.id)
 	}
 	rows, err := t.q.Query(ctx, `
-		SELECT vt.virtual_server_id::text, u.slug, vt.tool_name, COALESCE(vt.alias, ''), COALESCE(vt.description, ''), ut.description,
-		       vt.description IS NOT NULL AND vt.description_basis IS DISTINCT FROM ut.description
+		SELECT vt.virtual_server_id::text, u.slug, vt.tool_name, COALESCE(vt.alias, ''), COALESCE(vt.description, ''), COALESCE(ut.description,''),
+		       vt.description IS NOT NULL AND vt.description_basis IS DISTINCT FROM ut.description, ut.name IS NULL
 		FROM virtual_server_tools vt JOIN upstreams u ON u.id = vt.upstream_id
-		JOIN upstream_tools ut ON ut.upstream_id = vt.upstream_id AND ut.name = vt.tool_name
+		LEFT JOIN upstream_tools ut ON ut.upstream_id = vt.upstream_id AND ut.name = vt.tool_name
 		WHERE vt.virtual_server_id = ANY($1::uuid[])
 		ORDER BY vt.virtual_server_id, vt.position`, ids)
 	if err != nil {
@@ -130,13 +131,13 @@ func (t *Tx) loadSelections(ctx context.Context, vs []*vsRow) error {
 		var id string
 		var s ToolSelection
 		var upDesc string
-		var drift bool
-		if err := rows.Scan(&id, &s.Upstream, &s.Tool, &s.Alias, &s.Description, &upDesc, &drift); err != nil {
+		var drift, orphan bool
+		if err := rows.Scan(&id, &s.Upstream, &s.Tool, &s.Alias, &s.Description, &upDesc, &drift, &orphan); err != nil {
 			return err
 		}
 		v := byID[id]
 		v.Tools = append(v.Tools, ResolvedSelection{ToolSelection: s, ExposedName: config.ExposedName(s.Upstream, s.Tool, s.Alias),
-			UpstreamDescription: upDesc, DescriptionDrift: drift})
+			UpstreamDescription: upDesc, DescriptionDrift: drift, Orphaned: orphan})
 	}
 	return rows.Err()
 }

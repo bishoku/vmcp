@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"slices"
+	"strconv"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
@@ -64,50 +66,55 @@ type exportVirtualServer struct {
 // exportConfig emits a document without secrets. Re-applying it keeps stored
 // headers because "headers" is absent from every upstream.
 func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
-	rd := s.Store.Reader()
-	ups, _, err := rd.ListUpstreams(r.Context(), "", everything, nil)
-	if err != nil {
-		return err
-	}
-	vss, _, err := rd.ListVirtualServers(r.Context(), "", everything, nil)
-	if err != nil {
-		return err
-	}
-	doc := struct {
-		APIVersion     string                `json:"apiVersion"`
-		Upstreams      []exportUpstream      `json:"upstreams"`
-		VirtualServers []exportVirtualServer `json:"virtualServers"`
-		Bindings       []bindingWire         `json:"bindings"`
-	}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}, Bindings: []bindingWire{}}
-	for _, u := range ups {
-		doc.Upstreams = append(doc.Upstreams, exportUpstream{Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
-		if u.TLS.CAPEM != "" || u.TLS.ServerName != "" || u.TLS.ClientCertPEM != "" {
-			doc.Upstreams[len(doc.Upstreams)-1].TLS = &exportTLS{u.TLS.CAPEM, u.TLS.ServerName, u.TLS.ClientCertPEM}
+	return s.Store.View(r.Context(), func(rd *store.Tx) error {
+		ups, _, err := rd.ListUpstreams(r.Context(), "", everything, nil)
+		if err != nil {
+			return err
 		}
-		if u.Auth.Type != "none" {
-			a := u.Auth
-			a.HasClientSecret = false // read-model detail, not part of the document
-			doc.Upstreams[len(doc.Upstreams)-1].Auth = &a
+		vss, _, err := rd.ListVirtualServers(r.Context(), "", everything, nil)
+		if err != nil {
+			return err
 		}
-	}
-	for _, v := range vss {
-		ev := exportVirtualServer{Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
-		for _, t := range v.Tools {
-			ev.Tools = append(ev.Tools, t.ToolSelection)
+		doc := struct {
+			APIVersion     string                `json:"apiVersion"`
+			Upstreams      []exportUpstream      `json:"upstreams"`
+			VirtualServers []exportVirtualServer `json:"virtualServers"`
+			Bindings       []bindingWire         `json:"bindings"`
+		}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}, Bindings: []bindingWire{}}
+		for _, u := range ups {
+			doc.Upstreams = append(doc.Upstreams, exportUpstream{Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
+			if u.TLS.CAPEM != "" || u.TLS.ServerName != "" || u.TLS.ClientCertPEM != "" {
+				doc.Upstreams[len(doc.Upstreams)-1].TLS = &exportTLS{u.TLS.CAPEM, u.TLS.ServerName, u.TLS.ClientCertPEM}
+			}
+			if u.Auth.Type != "none" {
+				a := u.Auth
+				a.HasClientSecret = false // read-model detail, not part of the document
+				doc.Upstreams[len(doc.Upstreams)-1].Auth = &a
+			}
 		}
-		doc.VirtualServers = append(doc.VirtualServers, ev)
-	}
-	bs, _, err := rd.ListBindings(r.Context(), "", everything)
-	if err != nil {
-		return err
-	}
-	for _, b := range bs {
-		enabled, desc := b.Enabled, b.Description
-		doc.Bindings = append(doc.Bindings, bindingWire{Slug: b.Slug, Description: &desc, Conditions: b.Conditions,
-			VirtualServers: b.VirtualServers, IPAllowlist: b.IPAllowlist, RateLimit: b.RateLimit, Enabled: &enabled})
-	}
-	s.setRevision(w, r)
-	return writeJSON(w, http.StatusOK, doc)
+		for _, v := range vss {
+			ev := exportVirtualServer{Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
+			for _, t := range v.Tools {
+				ev.Tools = append(ev.Tools, t.ToolSelection)
+			}
+			doc.VirtualServers = append(doc.VirtualServers, ev)
+		}
+		bs, _, err := rd.ListBindings(r.Context(), "", everything)
+		if err != nil {
+			return err
+		}
+		for _, b := range bs {
+			enabled, desc := b.Enabled, b.Description
+			doc.Bindings = append(doc.Bindings, bindingWire{Slug: b.Slug, Description: &desc, Conditions: b.Conditions,
+				VirtualServers: b.VirtualServers, IPAllowlist: b.IPAllowlist, RateLimit: b.RateLimit, Enabled: &enabled})
+		}
+		revision, err := rd.Revision(r.Context())
+		if err != nil {
+			return err
+		}
+		w.Header().Set("X-Config-Revision", strconv.FormatInt(revision, 10))
+		return writeJSON(w, http.StatusOK, doc)
+	})
 }
 
 type change struct {
@@ -127,6 +134,10 @@ func prefixed(prefix string, errs []apierror.FieldError) []apierror.FieldError {
 
 // applyConfig makes the configuration match a document, atomically.
 func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
+	expected, err := parseIfMatch(r)
+	if err != nil {
+		return err
+	}
 	var doc desiredWire
 	if err := decode(r, &doc); err != nil {
 		return err
@@ -216,12 +227,12 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 				ocp = &oc
 			}
 			if !isNew {
-				needs = !store.OAuthEqual(oc, curOAuth) || cur.URL != in.URL || cur.Transport != in.Transport || cur.ToolCount == 0 || !maps.Equal(headers, cur.Headers) || tl != cur.TLS
+				needs = !store.OAuthEqual(oc, curOAuth) || cur.URL != in.URL || !slices.Equal(cur.FallbackURLs, in.FallbackURLs) || cur.Transport != in.Transport || cur.ToolCount == 0 || !maps.Equal(headers, cur.Headers) || tl != cur.TLS
 			}
 			if !needs {
 				continue
 			}
-			res, err := probe(r.Context(), in.URL, in.Transport, headers, tl, ocp)
+			res, err := probeAny(r.Context(), append([]string{in.URL}, in.FallbackURLs...), in.Transport, headers, tl, ocp)
 			if err != nil {
 				e := apierror.New(http.StatusUnprocessableEntity, apierror.CodeUpstreamUnreach, "Upstream unreachable",
 					fmt.Sprintf("cannot fetch tools of upstream %q: %v", u.Slug, err))
@@ -234,7 +245,16 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 
 	// 3. Apply everything in one transaction. A dry run rolls it back at the end.
 	var changes []change
-	err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
+	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
+		if expected != nil {
+			revision, err := tx.LockRevision(r.Context())
+			if err != nil {
+				return err
+			}
+			if revision != *expected {
+				return apierror.PreconditionFailed()
+			}
+		}
 		ctx := r.Context()
 		changes = []change{}
 		now := time.Now().UTC()

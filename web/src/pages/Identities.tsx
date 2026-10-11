@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, UserCheck } from 'lucide-react'
 import { api, ApiError, type BindingEvaluation, type Condition, type IdentityBinding, type VirtualServer } from '../api'
-import { btn, ErrorBox, input, Modal, primary } from '../ui'
+import { btn, input, primary } from '../styles'
+import { ErrorBox, Modal } from '../ui'
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
 interface Draft {
+ version?: number
   slug: string
   isNew: boolean
   description: string
@@ -51,7 +53,8 @@ export default function Identities() {
     }
   }, [])
   useEffect(() => {
-    void load()
+    const timer = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(timer)
   }, [load])
 
   const open = (b?: IdentityBinding) => {
@@ -59,7 +62,8 @@ export default function Identities() {
     setDraft(
       b
         ? {
-            slug: b.slug,
+            version:b.version,
+ slug: b.slug,
             isNew: false,
             description: b.description,
             conditions: b.conditions.map((c) => ({ ...c, value: c.value ?? '' })),
@@ -84,7 +88,7 @@ export default function Identities() {
     }
     try {
       if (draft.isNew) await api.createBinding({ slug: draft.slug, ...body })
-      else await api.patchBinding(draft.slug, body)
+      else await api.patchBinding(draft.slug, body,draft.version)
       setDraft(null)
       await load()
     } catch (e) {
@@ -194,7 +198,7 @@ export default function Identities() {
                 <td className="px-4 py-3">{b.rateLimitPerMinute ? `${b.rateLimitPerMinute}/min` : '—'}</td>
                 <td className="px-4 py-3">{b.enabled ? 'yes' : 'no'}</td>
                 <td className="px-4 py-3 text-right">
-                  <button className={btn} onClick={() => confirm(`Delete "${b.slug}"?`) && api.deleteBinding(b.slug).then(load).catch((e) => setError(String(e.message ?? e)))}>Delete</button>
+                  <button className={btn} onClick={() => confirm(`Delete "${b.slug}"?`) && api.deleteBinding(b.slug,b.version).then(load).catch((e) => setError(String(e.message ?? e)))}>Delete</button>
                 </td>
               </tr>
             ))}

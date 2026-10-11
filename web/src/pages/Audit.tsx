@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type AuditEvent, type AuditQuery } from '../api'
-import { btn, ErrorBox, fmt, input, Pill } from '../ui'
+import { btn, input } from '../styles'
+import { fmt } from '../format'
+import { ErrorBox, Pill } from '../ui'
 
 export default function Audit() {
   const [filters, setFilters] = useState<AuditQuery>({})
@@ -19,7 +21,8 @@ export default function Audit() {
     }
   }, [])
   useEffect(() => {
-    void load(filters, false)
+    const timer = setTimeout(() => { void load(filters, false) }, 0)
+ return () => clearTimeout(timer)
   }, [filters, load])
 
   const set = (k: keyof AuditQuery, v: string) => setFilters((f) => ({ ...f, [k]: v || undefined }))
@@ -34,6 +37,7 @@ export default function Audit() {
       <div className="mt-6 grid grid-cols-6 gap-3">
         <input className={input} placeholder="Virtual server" onChange={(e) => set('virtualServer', e.target.value.trim())} />
         <input className={input} placeholder="Agent key / oauth:binding" onChange={(e) => set('agentKey', e.target.value.trim())} />
+        <input className={input} placeholder="Subject" onChange={(e) => set('subject', e.target.value.trim())} />
         <input className={input} placeholder="Tool" onChange={(e) => set('tool', e.target.value.trim())} />
         <select className={input} onChange={(e) => set('status', e.target.value)}>
           <option value="">Any status</option>

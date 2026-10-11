@@ -56,6 +56,7 @@ export interface UpstreamAuthInput {
 }
 
 export interface Upstream {
+  version: number
   slug: string
   name: string
   description: string
@@ -127,6 +128,7 @@ export interface PiiConfig {
 }
 
 export interface AgentKey {
+  version: number
   slug: string
   description: string
   keyPrefix: string
@@ -148,6 +150,7 @@ export interface AgentKeyInput {
 }
 
 export interface AdminToken {
+  version: number
   slug: string
   description: string
   scope: 'admin' | 'read'
@@ -165,6 +168,7 @@ export interface Condition {
   value?: string
 }
 export interface IdentityBinding {
+  version: number
   slug: string
   description: string
   conditions: Condition[]
@@ -222,6 +226,7 @@ export interface AuditQuery {
 }
 
 export interface VirtualServer {
+  version: number
   slug: string
   name: string
   description: string
@@ -231,7 +236,7 @@ export interface VirtualServer {
   policy?: ToolPolicy
   rateLimitPerMinute?: number | null
   endpoint: string
-  tools: (ToolSelection & { exposedName: string; upstreamDescription: string; descriptionDrift: boolean })[]
+  tools: (ToolSelection & { exposedName: string; upstreamDescription: string; descriptionDrift: boolean; orphaned: boolean })[]
 }
 
 export interface ValidationProblem {
@@ -277,13 +282,14 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, version?: number): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     method,
     headers: {
       // With SSO there is no token: the session cookie authenticates and the CSRF header is required.
       ...(getToken() && { Authorization: `Bearer ${getToken()}` }),
       'X-VMCP-CSRF': '1',
+      ...(version !== undefined && { 'If-Match': `"${version}"` }),
       ...(body !== undefined && {
         'Content-Type': method === 'PATCH' ? 'application/merge-patch+json' : 'application/json',
       }),
@@ -292,58 +298,80 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   })
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, data.detail ?? data.title ?? res.statusText, data.code, data.errors)
+  if (!res.ok) throw new ApiError(res.status, res.status === 412 ? "This item changed in another session. Reload before saving again." : data.detail ?? data.title ?? res.statusText, data.code, data.errors)
   return data as T
 }
 
+async function listAll<T>(path: string): Promise<T[]> {
+ const all: T[] = []
+ const seen = new Set<string>()
+ let cursor = ''
+ do {
+  const params = new URLSearchParams({limit:'200'})
+  if (cursor) params.set('cursor',cursor)
+  const page = await request<{items:T[];nextCursor?:string|null}>('GET',`${path}?${params}`)
+  all.push(...page.items)
+  cursor=page.nextCursor ?? ''
+  if (cursor && seen.has(cursor)) throw new Error('The server repeated a pagination cursor.')
+  seen.add(cursor)
+ } while(cursor)
+ return all
+}
+
+export interface ConfigDocument { apiVersion: string; upstreams: unknown[]; virtualServers: unknown[]; bindings?: unknown[] }
+export interface ApplyResult { changes: {kind:string;slug:string;action:string}[]; configRevision?: number | null }
 export const api = {
+  exportConfig: () => request<ConfigDocument>('GET','/export'),
+  applyConfig: (document: ConfigDocument, dryRun = true, prune = false, revision?:number) => request<ApplyResult>('POST',`/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),
+  testStoredConnection: (slug:string) => request<ConnectionTestResult>('POST',`/upstreams/${encodeURIComponent(slug)}/connection-test`),
   me: () => request<Me>('GET', '/me'),
   info: () => request<{ version: string; configRevision: number }>('GET', '/info'),
-  listUpstreams: async () => (await request<{ items: Upstream[] }>('GET', '/upstreams?limit=200')).items,
+  listUpstreams: async () => listAll<Upstream>('/upstreams'),
   createUpstream: (slug: string, input: UpstreamInput) =>
     request<Upstream>('POST', '/upstreams', { slug, ...input }),
-  patchUpstream: (slug: string, input: Partial<UpstreamInput>) =>
-    request<Upstream>('PATCH', `/upstreams/${encodeURIComponent(slug)}`, input),
-  deleteUpstream: (slug: string, force = false) =>
-    request<void>('DELETE', `/upstreams/${encodeURIComponent(slug)}${force ? '?force=true' : ''}`),
+  patchUpstream: (slug: string, input: Partial<UpstreamInput>, version?: number) =>
+    request<Upstream>('PATCH', `/upstreams/${encodeURIComponent(slug)}`, input, version),
+  deleteUpstream: (slug: string, force = false, version?: number) =>
+    request<void>('DELETE', `/upstreams/${encodeURIComponent(slug)}${force ? '?force=true' : ''}`, undefined, version),
   listTools: async (slug: string) =>
-    (await request<{ items: Tool[] }>('GET', `/upstreams/${encodeURIComponent(slug)}/tools`)).items,
+    listAll<Tool>(`/upstreams/${encodeURIComponent(slug)}/tools`),
   refreshTools: (slug: string) =>
     request<RefreshResult>('POST', `/upstreams/${encodeURIComponent(slug)}/refresh-tools`),
   testConnection: (input: { url: string; transport: string; headers?: Record<string, string>; tls?: UpstreamTLSInput; auth?: UpstreamAuthInput }) =>
     request<ConnectionTestResult>('POST', '/connection-tests', input),
   listVirtualServers: async () =>
-    (await request<{ items: VirtualServer[] }>('GET', '/virtual-servers?limit=200')).items,
+    listAll<VirtualServer>('/virtual-servers'),
   putVirtualServer: (
     slug: string,
     v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[] },
-  ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v),
-  deleteVirtualServer: (slug: string) =>
-    request<void>('DELETE', `/virtual-servers/${encodeURIComponent(slug)}`),
+    version?: number,
+  ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v, version),
+  deleteVirtualServer: (slug: string, version?: number) =>
+    request<void>('DELETE', `/virtual-servers/${encodeURIComponent(slug)}`, undefined, version),
 
-  listAgentKeys: async () => (await request<{ items: AgentKey[] }>('GET', '/agent-keys?limit=200')).items,
+  listAgentKeys: async () => listAll<AgentKey>('/agent-keys'),
   createAgentKey: (i: AgentKeyInput) => request<AgentKey & { key: string }>('POST', '/agent-keys', i),
-  patchAgentKey: (slug: string, i: AgentKeyInput) =>
-    request<AgentKey>('PATCH', `/agent-keys/${encodeURIComponent(slug)}`, i),
-  rotateAgentKey: (slug: string) =>
-    request<AgentKey & { key: string }>('POST', `/agent-keys/${encodeURIComponent(slug)}/rotate`),
-  revokeAgentKey: (slug: string) => request<AgentKey>('POST', `/agent-keys/${encodeURIComponent(slug)}/revoke`),
-  deleteAgentKey: (slug: string) => request<void>('DELETE', `/agent-keys/${encodeURIComponent(slug)}`),
-  listBindings: async () => (await request<{ items: IdentityBinding[] }>('GET', '/identity-bindings?limit=200')).items,
+  patchAgentKey: (slug: string, i: AgentKeyInput, version?: number) =>
+    request<AgentKey>('PATCH', `/agent-keys/${encodeURIComponent(slug)}`, i, version),
+  rotateAgentKey: (slug: string, version?: number) =>
+    request<AgentKey & { key: string }>('POST', `/agent-keys/${encodeURIComponent(slug)}/rotate`, undefined, version),
+  revokeAgentKey: (slug: string, version?: number) => request<AgentKey>('POST', `/agent-keys/${encodeURIComponent(slug)}/revoke`, undefined, version),
+  deleteAgentKey: (slug: string, version?: number) => request<void>('DELETE', `/agent-keys/${encodeURIComponent(slug)}`, undefined, version),
+  listBindings: async () => listAll<IdentityBinding>('/identity-bindings'),
   createBinding: (b: Partial<IdentityBinding>) => request<IdentityBinding>('POST', '/identity-bindings', b),
-  patchBinding: (slug: string, b: Partial<IdentityBinding>) =>
-    request<IdentityBinding>('PATCH', `/identity-bindings/${encodeURIComponent(slug)}`, b),
-  deleteBinding: (slug: string) => request<void>('DELETE', `/identity-bindings/${encodeURIComponent(slug)}`),
+  patchBinding: (slug: string, b: Partial<IdentityBinding>, version?: number) =>
+    request<IdentityBinding>('PATCH', `/identity-bindings/${encodeURIComponent(slug)}`, b, version),
+  deleteBinding: (slug: string, version?: number) => request<void>('DELETE', `/identity-bindings/${encodeURIComponent(slug)}`, undefined, version),
   evaluateBindings: (body: { claims: unknown; virtualServer?: string; clientIp?: string }) =>
     request<BindingEvaluation>('POST', '/identity-bindings/evaluate', body),
-  listAdminTokens: async () => (await request<{ items: AdminToken[] }>('GET', '/admin-tokens?limit=200')).items,
+  listAdminTokens: async () => listAll<AdminToken>('/admin-tokens'),
   createAdminToken: (i: { slug: string; description?: string; scope: 'admin' | 'read'; expiresAt?: string | null }) =>
     request<AdminToken & { token: string }>('POST', '/admin-tokens', i),
-  rotateAdminToken: (slug: string) =>
-    request<AdminToken & { token: string }>('POST', `/admin-tokens/${encodeURIComponent(slug)}/rotate`),
-  revokeAdminToken: (slug: string) =>
-    request<AdminToken>('POST', `/admin-tokens/${encodeURIComponent(slug)}/revoke`),
-  deleteAdminToken: (slug: string) => request<void>('DELETE', `/admin-tokens/${encodeURIComponent(slug)}`),
+  rotateAdminToken: (slug: string, version?: number) =>
+    request<AdminToken & { token: string }>('POST', `/admin-tokens/${encodeURIComponent(slug)}/rotate`, undefined, version),
+  revokeAdminToken: (slug: string, version?: number) =>
+    request<AdminToken>('POST', `/admin-tokens/${encodeURIComponent(slug)}/revoke`, undefined, version),
+  deleteAdminToken: (slug: string, version?: number) => request<void>('DELETE', `/admin-tokens/${encodeURIComponent(slug)}`, undefined, version),
   listAudit: (q: AuditQuery) => {
     const p = new URLSearchParams({ limit: '50' })
     Object.entries(q).forEach(([k, v]) => v && p.set(k, v))

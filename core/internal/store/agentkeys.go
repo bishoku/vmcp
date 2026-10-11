@@ -30,7 +30,7 @@ type AgentKey struct {
 	ExpiresAt      *time.Time `json:"expiresAt"`
 	RevokedAt      *time.Time `json:"revokedAt"`
 	Status         string     `json:"status"` // active | expired | revoked
-	Version        int64      `json:"-"`
+	Version        int64      `json:"version"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
 }
@@ -372,12 +372,16 @@ func (t *Tx) PatchAgentKey(ctx context.Context, slug string, p AgentKeyPatch, if
 }
 
 // RotateAgentKey issues a new secret; the old one stops working immediately.
-func (t *Tx) RotateAgentKey(ctx context.Context, slug string) (*AgentKey, string, error) {
+func (t *Tx) RotateAgentKey(ctx context.Context, slug string, matches ...*int64) (*AgentKey, string, error) {
 	t.auditTarget("agent-key", slug)
 	cur, err := t.getKey(ctx, slug, true)
 	if err != nil {
 		return nil, "", err
 	}
+	if len(matches) > 0 && matches[0] != nil && *matches[0] != cur.Version {
+		return nil, "", apierror.PreconditionFailed()
+	}
+
 	secret, prefix, err := newSecret("vmcp_")
 	if err != nil {
 		return nil, "", err
@@ -391,12 +395,16 @@ func (t *Tx) RotateAgentKey(ctx context.Context, slug string) (*AgentKey, string
 }
 
 // RevokeAgentKey disables a key without deleting it (idempotent).
-func (t *Tx) RevokeAgentKey(ctx context.Context, slug string) (*AgentKey, error) {
+func (t *Tx) RevokeAgentKey(ctx context.Context, slug string, matches ...*int64) (*AgentKey, error) {
 	t.auditTarget("agent-key", slug)
 	cur, err := t.getKey(ctx, slug, true)
 	if err != nil {
 		return nil, err
 	}
+	if len(matches) > 0 && matches[0] != nil && *matches[0] != cur.Version {
+		return nil, apierror.PreconditionFailed()
+	}
+
 	if cur.RevokedAt == nil {
 		if _, err := t.q.Exec(ctx, `UPDATE agent_keys SET revoked_at = now(), version = version + 1, updated_at = now() WHERE id = $1::uuid`, cur.id); err != nil {
 			return nil, err

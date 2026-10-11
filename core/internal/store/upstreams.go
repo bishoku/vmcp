@@ -34,7 +34,7 @@ type Upstream struct {
 	Health           Health          `json:"health"`
 	TLS              tlsconf.Info    `json:"tls"`
 	Auth             oauthtoken.Info `json:"auth"`
-	Version          int64           `json:"-"`
+	Version          int64           `json:"version"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        time.Time       `json:"updatedAt"`
 }

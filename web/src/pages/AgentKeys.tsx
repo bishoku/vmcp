@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { KeyRound, Plus } from 'lucide-react'
 import { api, ApiError, type AgentKey, type VirtualServer } from '../api'
-import { btn, ErrorBox, fmt, input, Modal, Pill, primary, SecretModal } from '../ui'
+import { btn, input, primary } from '../styles'
+import { fmt } from '../format'
+import { ErrorBox, Modal, Pill, SecretModal } from '../ui'
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
 interface Draft {
+ version?: number
   slug: string
   isNew: boolean
   description: string
@@ -35,7 +38,8 @@ export default function AgentKeys() {
     }
   }, [])
   useEffect(() => {
-    void load()
+    const timer = setTimeout(() => { void load() }, 0)
+    return () => clearTimeout(timer)
   }, [load])
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -51,7 +55,7 @@ export default function AgentKeys() {
     setProblems([])
     setDraft(
       k
-        ? { slug: k.slug, isNew: false, description: k.description, virtualServers: k.virtualServers, ips: k.ipAllowlist.join('\n'), rateLimit: k.rateLimitPerMinute?.toString() ?? '', expiresAt: k.expiresAt?.slice(0, 10) ?? '' }
+        ? { version:k.version, slug: k.slug, isNew: false, description: k.description, virtualServers: k.virtualServers, ips: k.ipAllowlist.join('\n'), rateLimit: k.rateLimitPerMinute?.toString() ?? '', expiresAt: k.expiresAt?.slice(0, 10) ?? '' }
         : { slug: '', isNew: true, description: '', virtualServers: [], ips: '', rateLimit: '', expiresAt: '' },
     )
   }
@@ -70,7 +74,7 @@ export default function AgentKeys() {
         const created = await api.createAgentKey({ slug: draft.slug, ...body })
         setSecret({ title: 'Agent key created', value: created.key })
       } else {
-        await api.patchAgentKey(draft.slug, body)
+        await api.patchAgentKey(draft.slug, body, draft.version)
       }
       setDraft(null)
       await load()
@@ -126,9 +130,9 @@ export default function AgentKeys() {
                 <td className="px-4 py-3">{fmt(k.expiresAt)}</td>
                 <td className="px-4 py-3"><Pill status={k.status} /></td>
                 <td className="space-x-2 px-4 py-3 text-right">
-                  <button className={btn} onClick={() => confirm(`Rotate "${k.slug}"? The old secret stops working.`) && act(async () => { const r = await api.rotateAgentKey(k.slug); setSecret({ title: 'Key rotated', value: r.key }) })}>Rotate</button>
-                  {k.status !== 'revoked' && <button className={btn} onClick={() => confirm(`Revoke "${k.slug}"?`) && act(() => api.revokeAgentKey(k.slug))}>Revoke</button>}
-                  <button className={btn} onClick={() => confirm(`Delete "${k.slug}"?`) && act(() => api.deleteAgentKey(k.slug))}>Delete</button>
+                  <button className={btn} onClick={() => confirm(`Rotate "${k.slug}"? The old secret stops working.`) && act(async () => { const r = await api.rotateAgentKey(k.slug,k.version); setSecret({ title: 'Key rotated', value: r.key }) })}>Rotate</button>
+                  {k.status !== 'revoked' && <button className={btn} onClick={() => confirm(`Revoke "${k.slug}"?`) && act(() => api.revokeAgentKey(k.slug,k.version))}>Revoke</button>}
+                  <button className={btn} onClick={() => confirm(`Delete "${k.slug}"?`) && act(() => api.deleteAgentKey(k.slug,k.version))}>Delete</button>
                 </td>
               </tr>
             ))}
