@@ -101,8 +101,8 @@ export default function AgentKeys({ initialSelection }: SelectionProps) {
   useInitialSelection(initialSelection, keys, open)
 
   return (
-    <div className="mx-auto max-w-6xl px-10 py-10">
-      <div className="flex items-start justify-between">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <div className="flex flex-wrap gap-3 items-start justify-between">
         <div>
           {readError && <ErrorBox>{readError}</ErrorBox>}
       {loading && <p role="status">Loading…</p>}
@@ -116,7 +116,7 @@ export default function AgentKeys({ initialSelection }: SelectionProps) {
       </div>
       {error && <ErrorBox>{error}</ErrorBox>}
 
-      <div className="mt-6 overflow-hidden rounded-card border border-line bg-surface shadow-card">
+      <div className="mt-6 overflow-x-auto rounded-card border border-line bg-surface shadow-card">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-ink-muted">
             <tr>

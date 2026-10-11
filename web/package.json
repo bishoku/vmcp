@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "validate:api": "node scripts/validate-openapi.mjs",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:live": "python3 scripts/test-live.py"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

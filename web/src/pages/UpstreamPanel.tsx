@@ -326,8 +326,8 @@ export default function UpstreamPanel({
                   </div>
                 ))}
               <div className="flex gap-2">
-                <input className={input} placeholder="Header" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                <input className={input} type="password" placeholder="Value" value={newValue} onChange={(e) => setNewValue(e.target.value)} />
+                <input className={input} aria-label="New header name" placeholder="Header" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                <input className={input} type="password" aria-label="New header value" placeholder="Value" value={newValue} onChange={(e) => setNewValue(e.target.value)} />
                 <button className={btn} onClick={addHeader}>
                   Add
                 </button>

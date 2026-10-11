@@ -48,7 +48,7 @@ function Login({ onDone }: { onDone: (identity: Me) => void }) {
   })
   return (
     <div className="grid h-full place-items-center">
-      <div className="w-96 rounded-card border border-line bg-surface p-8 shadow-card">
+      <div className="w-full max-w-96 rounded-card border border-line bg-surface p-8 shadow-card">
         <h1 className="text-lg font-semibold">Sign in to vMCP</h1>
         {sso && (
           <>
@@ -106,22 +106,22 @@ function Application() {
   return (
     <RoleContext.Provider value={me.role}><InteractionProvider>
       {expired && <Modal title="Session expired"><p role="alert">Sign in again to continue. Token sign-in retains your draft. Copy unsaved changes before using SSO, which reloads this page.</p><Login onDone={signedIn} /></Modal>}
-      <div className="flex h-full">
-        <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5">
-          <div className="mb-6 flex items-center gap-2.5 px-3">
+      <div className="flex h-full flex-col md:flex-row">
+        <aside className="flex w-full md:w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5">
+          <div className="mb-2 md:mb-6 flex items-center gap-2.5 px-3">
             <div className="grid size-8 place-items-center rounded-lg bg-accent-500 text-sm font-bold text-white">
               v
             </div>
             <span className="text-lg font-semibold tracking-tight">vMCP</span>
           </div>
-          <nav className="flex flex-col gap-1">
+          <nav aria-label="Main navigation" className="flex overflow-x-auto md:flex-col gap-1">
             {nav.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) =>
                   clsx(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                     isActive
                       ? 'bg-accent-50 text-accent-700'
                       : 'text-ink-muted hover:bg-canvas hover:text-ink',
@@ -133,13 +133,13 @@ function Application() {
               </NavLink>
             ))}
           </nav>
-          <div className="mt-auto border-t border-line px-3 pt-4 text-sm">
+          <div className="mt-2 md:mt-auto border-t border-line px-3 pt-4 text-sm">
             <div className="truncate font-medium">{me.name}</div>
             <div className="text-xs text-ink-muted">{me.role}</div>
             <SignOut onDone={()=>setMe(null)} />
           </div>
         </aside>
-        <main className="flex-1 overflow-y-auto">
+        <main className="min-w-0 flex-1 overflow-y-auto">
           {!capabilities(me.role).edit && <p role="status" className="px-10 pt-4 text-sm text-ink-muted">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
 
           <Routes>
@@ -176,5 +176,7 @@ export default function App() { return <RouterProvider router={router} /> }
 function AuditRoute() {
   const [params] = useSearchParams()
   const server = params.get('virtualServer') ?? undefined
-  return <Audit key={server ?? 'all'} initialServer={server}/>
+  const allowed = new Set(['virtualServer','operationId','requestId','actorId','stage','agentKey','subject','tool','status','from','to','incomplete'])
+  const initialQuery = Object.fromEntries([...params].filter(([key])=>allowed.has(key)))
+  return <Audit initialQuery={initialQuery} key={params.toString()} initialServer={server} initialOperation={params.get('operationId') ?? undefined}/>
 }

@@ -98,3 +98,8 @@ test('an unavailable upstream list does not hide existing virtual servers',async
  render(<VirtualServers/>);expect(await screen.findByText('Demo server')).toBeTruthy()
  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('catalog offline'))
 })
+test('successful save announces the saved server without retaining a dirty draft',async()=>{
+ await open();await save()
+ expect(await screen.findByText('Saved Demo server. Refreshing the saved configuration.')).toBeTruthy()
+ expect(screen.queryByText(/Unsaved changes/)).toBeNull()
+})

@@ -116,3 +116,64 @@ navigation and deliberate discovery using a separate gateway credential.
 `python3 benchmark/test_gateway_cors.py` runs an isolated Nginx CORS regression
 with Docker and removes its temporary container. It does not modify the demo stack.
 These checks do not replace live-stack, responsive or accessibility testing.
+
+
+## Audit investigation and responsive management
+
+Audit Log initially groups **loaded events** by operation ID. Open Details to
+inspect the raw admission/outcome metadata and copy operation, request or trace
+IDs. Raw events retains a separate row per stored event. Shared request/trace IDs
+alone do not establish an operation relationship. An admission without a loaded
+outcome is labelled “outcome not loaded”: it can be pending, outside the selected
+page/time/status filter, or missing from storage. It is not proof of failure.
+Use the operation link to remove unrelated filters and load its stored events.
+Confirmed outcome errors retain their recorded status and reason.
+
+Filter by server, identity/key/subject, actor, operation, status and time. Copy
+audit filter link preserves the supported filters for another authorized operator;
+links do not grant access. Date/time inputs use the displayed browser timezone,
+while copied links carry ISO timestamps. Refresh is manual. The last-loaded time
+records the successful read, not a guarantee that all producers have flushed
+buffered events. Retention and audit-mode behavior still apply on the backend.
+
+On narrow screens the navigation scrolls horizontally and editor fields stack.
+Wide audit and management tables scroll within their cards. Focus rings and native
+dialog keyboard behavior support keyboard operation. Catalog search narrows
+available resources/templates/prompts; it never removes saved selections. Test
+and refresh an upstream after correcting URL/credentials or connectivity failures.
+
+## Frontend verification
+
+From the repository root:
+
+```sh
+npm --prefix web run test
+npm --prefix web run lint
+npm --prefix web run build
+npm --prefix web run validate:api
+npm --prefix web run test:browser
+npm --prefix web run test:live
+```
+
+Install dependencies with `npm --prefix web ci` and install Chromium with
+`cd web && npx playwright install chromium` before browser checks. Standard browser
+tests mock API responses to exercise draft recovery, permissions, keyboard flows,
+audit investigation and layouts at 375/768/1440px. They capture screenshots in
+`web/test-results/` and check selected theme contrast pairs; they are not a complete
+accessibility audit or pixel-diff suite.
+
+`test:live` requires Python 3, Docker with Compose supporting `--wait` and JSON
+configuration, and enough capacity to build/run the full demo. It resolves
+`benchmark/compose.yaml` into a uniquely named project with new volumes, loopback
+ports, network and build image tags. It uses development-only synthetic credentials.
+The default isolated subnet is `172.30.73.0/24`; set `VMCP_UI_TEST_SUBNET` to another
+unused private CIDR if needed. Do not run concurrent live tests on the same subnet.
+The test seeds a real upstream, resource/prompt selection and key through the API,
+then verifies login and MCP discovery from the built UI in Chromium. It exercises
+both configured data planes behind the gateway, but does not assert every request
+reaches a different replica or test SSO. Screenshots are in `web/test-results-live/`.
+A finally block removes its containers, network, volumes and image tags, including
+on failure; existing demo data and images are not used as test state. An externally
+terminated Python process may require cleaning up the printed `vmcp-ui-*` project.
+Rebuild your manual demo's web image to see the new UI; running it was not changed
+by these tests.

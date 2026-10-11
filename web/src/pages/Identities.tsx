@@ -122,8 +122,8 @@ export default function Identities({ initialSelection }: SelectionProps) {
   useInitialSelection(initialSelection, items, open)
 
   return (
-    <div className="mx-auto max-w-6xl px-10 py-10">
-      <div className="flex items-start justify-between">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <div className="flex flex-wrap gap-3 items-start justify-between">
         <div>
           {readError && <ErrorBox>{readError}</ErrorBox>}
       {loading && <p role="status">Loading…</p>}
@@ -144,7 +144,7 @@ export default function Identities({ initialSelection }: SelectionProps) {
 
       {showEval && (
         <div className="mt-6 rounded-card border border-line bg-surface p-4 shadow-card">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block text-sm font-medium">
               Token claims (JSON)
               <textarea className={`${input} mt-1 font-mono`} rows={6} value={claims} onChange={(e) => setClaims(e.target.value)} />
@@ -173,7 +173,7 @@ export default function Identities({ initialSelection }: SelectionProps) {
         </div>
       )}
 
-      <div className="mt-6 overflow-hidden rounded-card border border-line bg-surface shadow-card">
+      <div className="mt-6 overflow-x-auto rounded-card border border-line bg-surface shadow-card">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-ink-muted">
             <tr>
@@ -238,15 +238,15 @@ export default function Identities({ initialSelection }: SelectionProps) {
               <legend className="text-sm font-medium">Conditions <span className="font-normal text-ink-muted">(all must match)</span></legend>
               <div className="mt-1 space-y-2">
                 {draft.conditions.map((c, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input className={`${input} flex-1 font-mono`} placeholder="claim, e.g. azp or realm_access.roles" value={c.claim} onChange={(e) => setCond(i, { claim: e.target.value })} />
-                    <select className={`${input} w-32`} value={c.op} onChange={(e) => setCond(i, { op: e.target.value as Condition['op'] })}>
+                  <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input className={`${input} flex-1 font-mono`} aria-label={`Claim ${i+1}`} placeholder="claim, e.g. azp or realm_access.roles" value={c.claim} onChange={(e) => setCond(i, { claim: e.target.value })} />
+                    <select aria-label={`Operator ${i+1}`} className={input} value={c.op} onChange={(e) => setCond(i, { op: e.target.value as Condition['op'] })}>
                       <option value="equals">equals</option>
                       <option value="contains">contains</option>
                       <option value="exists">exists</option>
                     </select>
-                    <input className={`${input} flex-1`} placeholder="value" disabled={c.op === 'exists'} value={c.value ?? ''} onChange={(e) => setCond(i, { value: e.target.value })} />
-                    <button className={btn} disabled={draft.conditions.length === 1} onClick={() => setDraft({ ...draft, conditions: draft.conditions.filter((_, j) => j !== i) })}>×</button>
+                    <input className={`${input} flex-1`} aria-label={`Value ${i+1}`} placeholder="value" disabled={c.op === 'exists'} value={c.value ?? ''} onChange={(e) => setCond(i, { value: e.target.value })} />
+                    <button aria-label={`Remove condition ${i+1}`} className={btn} disabled={draft.conditions.length === 1} onClick={() => setDraft({ ...draft, conditions: draft.conditions.filter((_, j) => j !== i) })}>×</button>
                   </div>
                 ))}
                 <button className={btn} onClick={() => setDraft({ ...draft, conditions: [...draft.conditions, { claim: '', op: 'equals', value: '' }] })}>+ Condition</button>

@@ -25,7 +25,7 @@ export default function ConnectionSetup() {
     {title:'Connect your client',description:'Use the saved gateway endpoint and replace credential placeholders in your client settings.',href:server?serverPath(slug,'connect'):'/virtual-servers',status:'Client setup is a manual step'},
     {title:'Verify the path',description:'Explicitly initialize, ping and list capabilities from Connect. Inspect bounded recent activity separately. No tool is automatically invoked.',href:server?serverPath(slug,'connect'):'/virtual-servers',status:'Explicit client verification required'},
   ]
-  return <div className="mx-auto max-w-5xl space-y-6 px-10 py-10"><h1 className="text-2xl font-semibold">Connection setup guide</h1><p>Register → test → discover → compose → grant access → connect → verify.</p>
+  return <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10"><h1 className="text-2xl font-semibold">Connection setup guide</h1><p>Register → test → discover → compose → grant access → connect → verify.</p>
     {!edit && <p role="status">Read-only access: inspect configuration and verify with a separate gateway credential. An editor must perform configuration changes.</p>}
     {inventory.loading && <p role="status">Loading setup context…</p>}{inventory.readError && <ErrorBox>{inventory.readError}. Step status may be incomplete.</ErrorBox>}
     <label className="block text-sm">Guide for virtual server<select className={input} value={slug} onChange={e=>setSlug(e.target.value)}><option value="">Choose a saved server</option>{inventory.servers.map(s=><option key={s.slug} value={s.slug}>{s.name}</option>)}</select></label>

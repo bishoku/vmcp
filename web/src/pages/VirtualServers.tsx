@@ -166,6 +166,7 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
       ...draft.policy, tools: Object.fromEntries(Object.entries(draft.policy.tools).filter(([id]) => id !== k)),
     } })
 
+  const [saved,setSaved] = useState('')
   const save = () => run(async () => {
     if (!draft) return
     setProblems([])
@@ -181,6 +182,7 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
         tools: draft.tools,
  catalog:draft.catalog,clientFeatures:draft.clientFeatures,
       },draft.version)
+      setSaved(`Saved ${draft.name}. Refreshing the saved configuration.`)
       resetDraft(null)
       await load()
     } catch (e) {
@@ -205,8 +207,8 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
   useInitialSelection(initialSelection, servers, item => openDraft(fromServer(item)))
 
   return (
-    <div className="mx-auto max-w-7xl px-10 py-10">
-      <div className="flex items-start justify-between">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <div className="flex flex-wrap gap-3 items-start justify-between">
         <div>
           {draft && <StaleRecovery message={problems.join('; ')} reload={async () => {
         const latest = (await api.listVirtualServers()).find(item => item.slug === draft.slug)
@@ -225,7 +227,8 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
       </div>
       {error && <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      <div className="mt-6 grid grid-cols-[260px_1fr] gap-6">
+      {saved && <p role="status" className="mt-3 text-green-700">{saved}</p>}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
         <div className="rounded-card border border-line bg-surface shadow-card">
           {servers.map((v) => (
             <div
@@ -246,7 +249,7 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
               </button>
             </div>
           ))}
-          {!loading && !readError && servers.length === 0 && <div className="p-6 text-center text-sm text-ink-muted">No virtual servers yet.</div>}
+          {!loading && !readError && servers.length === 0 && <div className="p-6 text-center text-sm text-ink-muted">No virtual servers yet. Register and refresh an upstream, then create a server to select its capabilities.</div>}
         </div>
 
         {draft ? (
@@ -254,7 +257,7 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
             <p role="status" className="mb-4 text-sm text-ink-muted">{draft.isNew ? 'New unsaved draft' : `Editing draft of saved version ${draft.version}`}. {dirty ? 'Unsaved changes' : 'No unsaved changes'}. Changes apply only after Save.</p>
             {inRouter && !draft.isNew && <Link className="mb-4 inline-block text-sm text-accent-700 underline" to={serverPath(draft.slug)}>View saved configuration</Link>}
             <fieldset disabled={!canEdit || busy} className="min-w-0 border-0 p-0 m-0">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label className="text-sm font-medium">
                 Name
                 <input
@@ -272,7 +275,7 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
               <label className="flex items-end gap-2 pb-2 text-sm">
                 <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} /> Enabled
               </label>
-              <label className="col-span-3 flex items-center gap-2 text-sm">
+              <label className="sm:col-span-3 flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={draft.authRequired} onChange={(e) => setDraft({ ...draft, authRequired: e.target.checked })} />
                 Require an agent key
                 {!draft.authRequired && <span className="text-xs text-amber-700">Anyone who can reach the data plane can call these tools.</span>}
@@ -292,11 +295,11 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
             {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to set VITE_PUBLIC_GATEWAY_URL; the path above is not a complete connection URL.</p>}
             <section className="mt-6 rounded border border-line p-4"><h3 className="font-semibold">Client feature permissions</h3><p className="text-xs text-ink-muted">Also requires client negotiation. The MCP client controls approval; sampling uses the client’s model access. Roots never expose gateway files.</p>{(['sampling','roots','elicitation'] as const).map(feature=><label key={feature} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>{feature}</label>)}</section>
  <CatalogPicker upstreams={upstreams} value={draft.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
- <div className="mt-6 grid grid-cols-2 gap-6">
+ <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
               <section>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex flex-wrap gap-2 items-center justify-between">
                   <h3 className="text-sm font-semibold">Available tools</h3>
-                  <input className="w-40 rounded-lg border border-line px-2 py-1 text-xs" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
+                  <input className="w-40 rounded-lg border border-line px-2 py-1 text-xs" aria-label="Filter tools" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
                 </div>
                 <div className="max-h-[420px] space-y-4 overflow-y-auto rounded-lg border border-line p-3">
                   {upstreams.map((u) => {
@@ -372,7 +375,7 @@ export default function VirtualServers({ initialSelection }: SelectionProps) {
               </label>
               {draft.pii.enabled && (
                 <div className="mt-3 space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {DETECTORS.map(([id, label]) => (
                       <label key={id} className="flex items-center gap-2 text-sm">
                         <input
@@ -432,7 +435,7 @@ function Row({ id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, drift, o
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={clsx('flex items-center gap-2 rounded-lg border bg-surface px-2 py-2', dup ? 'border-red-300' : 'border-line')}
     >
-      <button className="cursor-grab touch-none text-ink-muted" aria-label="Drag" {...attributes} {...listeners}>
+      <button className="cursor-grab touch-none text-ink-muted" aria-label={`Reorder ${t.upstream}/${t.tool}`} {...attributes} {...listeners}>
         <GripVertical className="size-4" />
       </button>
       <div className="min-w-0 flex-1">
@@ -446,6 +449,7 @@ function Row({ id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, drift, o
         />
         <input
           className="w-full bg-transparent text-xs text-ink-muted outline-none placeholder:text-ink-muted/70"
+          aria-label={`Description for ${t.upstream}/${t.tool}`}
           placeholder={upstreamDesc ? `Description: ${upstreamDesc}` : 'Description (upstream text)'}
           title={t.description ? `Override. Upstream: ${upstreamDesc}` : 'Type to override the description agents see'}
           value={t.description ?? ''}

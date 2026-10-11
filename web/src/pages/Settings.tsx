@@ -50,7 +50,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
   })
 
   return (
-    <div className="mx-auto max-w-6xl px-10 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
       {readError && <ErrorBox>{readError}</ErrorBox>}
       {loading && <p role="status">Loading…</p>}
       <button className={btn} disabled={loading} onClick={()=>{setError('');void load()}}>Refresh list</button>
@@ -70,7 +70,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
             </button>
           )}
         </div>
-        <div className="mt-4 overflow-hidden rounded-card border border-line bg-surface shadow-card">
+        <div className="mt-4 overflow-x-auto rounded-card border border-line bg-surface shadow-card">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-ink-muted">
               <tr>
@@ -108,7 +108,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">About</h2>
-        <dl className="mt-3 grid max-w-sm grid-cols-2 gap-y-2 rounded-card border border-line bg-surface p-5 text-sm shadow-card">
+        <dl className="mt-3 grid max-w-sm grid-cols-1 sm:grid-cols-2 gap-y-2 rounded-card border border-line bg-surface p-5 text-sm shadow-card">
           <dt className="text-ink-muted">Version</dt><dd>{info?.version ?? '—'}</dd>
           <dt className="text-ink-muted">Tenant</dt><dd>{info?.tenantId ?? 'default'}</dd>
           <dt className="text-ink-muted">Config revision</dt><dd>{info?.configRevision ?? '—'}</dd>

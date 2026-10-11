@@ -26,3 +26,5 @@ dist-ssr
 # Browser test artifacts
 test-results/
 playwright-report/
+
+test-results-live/

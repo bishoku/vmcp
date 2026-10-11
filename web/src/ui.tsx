@@ -4,6 +4,12 @@ import clsx from 'clsx'
 
 import { btn, primary } from './styles'
 const tones: Record<string, string> = {
+  healthy: 'bg-green-50 text-green-700',
+  enabled: 'bg-green-50 text-green-700',
+  started: 'bg-blue-50 text-blue-700',
+  degraded: 'bg-amber-50 text-amber-700',
+  unhealthy: 'bg-red-50 text-red-700',
+  disabled: 'bg-canvas text-ink-muted',
   active: 'bg-green-50 text-green-700',
   ok: 'bg-green-50 text-green-700',
   expired: 'bg-amber-50 text-amber-700',
@@ -87,12 +93,13 @@ export function SecretModal({ title, secret, onClose }: { title: string; secret:
 }
 
 export function CopyButton({ value, label = 'Copy' }: { value: string | null; label?: string }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
   const [error, setError] = useState('')
   return <span><button type="button" className={btn} aria-label={label} disabled={!value} onClick={async () => {
-    try { await navigator.clipboard.writeText(value!); setCopied(true); setError('') }
-    catch { setCopied(false); setError('Copy failed. Select the text and copy it manually.') }
-  }}>{copied ? <Check className="size-4" /> : <Copy className="size-4" />}{copied ? 'Copied' : 'Copy'}</button>
+    try { await navigator.clipboard.writeText(value!); setCopied(value); setError('') }
+    catch { setCopied(null); setError('Copy failed. Select the text and copy it manually.') }
+  }}>{copied === value && value ? <Check className="size-4" /> : <Copy className="size-4" />}{copied === value && value ? 'Copied' : 'Copy'}</button>
+    <span role="status" className="sr-only">{copied === value && value ? `${label} succeeded` : ''}</span>
     {error && <span role="alert" className="block text-sm text-red-700">{error}</span>}
   </span>
 }

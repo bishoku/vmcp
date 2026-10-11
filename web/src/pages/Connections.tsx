@@ -22,7 +22,7 @@ export default function Connections() {
   const edgeButton = (edge:Relationship) => <button key={edge.id} className={`${btn} w-full justify-start text-left`} onClick={()=>setSelected(edge)}>
     <span><span className="block font-semibold">{edge.kind==='upstream'?edge.to:edge.from}</span><span className="block text-xs">{edge.kind} · {edge.state}</span>{edge.capabilities.length>0 && <span className="block text-xs">{edge.capabilities.length} selected capabilities · {edge.capabilities.filter(c=>c.missing).length} missing</span>}</span>
   </button>
-  return <div className="mx-auto max-w-7xl space-y-6 px-10 py-10">
+  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
     <div><h1 className="text-2xl font-semibold">Connections</h1><p className="mt-2 text-sm text-ink-muted">Configured access → virtual MCP → upstream MCP. These relationships are permissions, not active clients or live traffic.</p></div>
     <div className="flex flex-wrap items-center gap-3"><Link className={btn} to="/setup">Connection setup guide</Link><button className={btn} disabled={inventory.loading} onClick={()=>{setSelected(null);void inventory.load()}}>Refresh connections</button><span className="text-sm text-ink-muted">Last received configuration: {fmt(inventory.checkedAt)}. Refresh to update.</span></div>
     {inventory.loading && <p role="status">Loading connections…</p>}
@@ -30,7 +30,7 @@ export default function Connections() {
     <div className="flex gap-3"><label className="flex-1 text-sm">Filter relationships<input className={input} value={query} onChange={e=>{setQuery(e.target.value);setLimit(50)}} placeholder="Name, capability, alias, policy or status"/></label>
       <label className="text-sm">Virtual server<select className={input} value={server} onChange={e=>{setServer(e.target.value);setLimit(50)}}><option value="">All servers</option>{inventory.servers.map(s=><option key={s.slug} value={s.slug}>{s.name}</option>)}</select></label></div>
     {focus && <section aria-label="Connection flow" className="rounded-card border border-line bg-surface p-6">
-      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-4">
         <div className="space-y-2"><h2 className="font-semibold">Configured identities</h2>{incoming.slice(0,8).map(edgeButton)}{incoming.length===0 && <p className="text-sm">No matching grants. Catalogs may still be loading.</p>}</div>
         <span aria-hidden="true" className="text-2xl text-accent-700">→</span>
         <Link className="rounded-xl border-2 border-accent-500 bg-accent-50 p-5" to={serverPath(focus.slug)}><h2 className="font-semibold">{focus.name}</h2><p className="text-sm">Virtual MCP · {focus.enabled?'enabled':'disabled'}</p><p className="mt-2 text-xs">{capabilityCounts(focus)}</p></Link>

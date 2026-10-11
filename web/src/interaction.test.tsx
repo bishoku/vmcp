@@ -47,3 +47,11 @@ test('stale recovery requires explicit draft discard and never retries a write',
  confirm.mockReturnValue(true);fireEvent.click(screen.getByRole('button'))
  await act(async()=>{});expect(reload).toHaveBeenCalledTimes(1)
 })
+test('copy success is announced and does not apply to a changed value',async()=>{
+ vi.stubGlobal('navigator',{clipboard:{writeText:vi.fn().mockResolvedValue(undefined)}})
+ const view=render(<CopyButton value="one" label="Copy identifier"/>);fireEvent.click(screen.getByRole('button',{name:'Copy identifier'}))
+ expect(await screen.findByText('Copied')).toBeTruthy()
+ expect(screen.getByRole('status').textContent).toBe('Copy identifier succeeded')
+ view.rerender(<CopyButton value="two" label="Copy identifier"/>);expect(screen.queryByText('Copied')).toBeNull()
+ expect(screen.getByRole('status').textContent).toBe('');vi.unstubAllGlobals()
+})

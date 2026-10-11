@@ -63,7 +63,7 @@ certification.
 - Tests: connection relationships, anonymous access, revoked/expired credentials,
   orphaned capabilities, permissions, large graphs and keyboard navigation.
 
-## F04 — Operations and product polish (planned)
+## F04 — Operations and product polish (complete)
 
 - Group audit admissions/outcomes by operation; provide detail drawers, copyable
   correlation IDs, server/identity/time filters, timezone labels and deep links.
@@ -166,3 +166,50 @@ F03 completed 2026-10-11:
   or services were rebuilt/restarted; rebuild web and reload its proxy to try F03.
 - See [Connections and setup](Connections-and-Setup.md) for behavior, security
   boundaries, CORS configuration, pagination and verification limitations.
+
+
+F04 completed 2026-10-11:
+
+- Audit defaults to operation grouping by operation ID, with separate raw events,
+  keyboard-accessible detail drawers and copyable operation/request/trace IDs.
+  Uncorrelated events remain separate even when their request ID matches. Missing
+  outcomes mean “outcome not loaded”, never an inferred error. Filtering and
+  pagination may split a pair; the drawer preserves every loaded raw field.
+- Server, key, subject, actor, status, operation and browser-local time filters
+  have accessible names. Filter links retain supported query parameters and the
+  drawer deep-links to an operation. Times identify the browser timezone; manual
+  refresh and the last successful read timestamp make freshness explicit. Filter
+  changes clear old results immediately and retain cancellation/sequence guards.
+- Mobile navigation scrolls horizontally, editors stack at narrow widths, grid
+  spans respond correctly and wide management tables scroll inside their cards.
+  Populated primary views/editors and audit were checked at 375/768/1440px, with
+  screenshots inspected for mobile editing and tablet topology.
+- Catalog search matches upstream/kind/name/description without altering selected
+  objects or falsely reporting filtered objects missing. First-use states explain
+  the next step; upstream/server saves and copy actions provide success feedback.
+  Copy success is tied to the copied value and announced to assistive technology.
+  Shared status colors, actionable health guidance, vMCP title/favicon, named
+  navigation/form controls and visible keyboard focus complete the polish.
+- 58 unit/component tests passed (4 F04 additions), including operation grouping,
+  missing-outcome semantics, catalog search, copy feedback and save feedback.
+  All 21 mocked Chromium scenarios passed (8 F04 additions), covering responsive
+  layouts, audit drawer/raw access/deep links, keyboard behavior and targeted
+  theme contrast thresholds. Existing draft retention, permissions, session
+  expiry and obsolete-response regressions continue to pass.
+- A separate real Chromium smoke test passed against a fresh full Docker sandbox:
+  PostgreSQL, Redis, Keycloak, both data planes, gateway, control plane, built UI
+  and three synthetic upstreams. API setup registers/discovers a real upstream,
+  composes a resource/prompt server and issues a key; the browser signs in and
+  initializes, pings and lists its resource/prompt through the real gateway.
+  The test never invokes a tool. Temporary containers, network, database volumes
+  and test image tags are removed; the running manual demo was untouched.
+- Lint, strict TypeScript/production build, OpenAPI validation (49 operations /
+  6 examples), Compose configuration and whitespace checks passed. Vite reports
+  a non-failing approximately 501 kB main-chunk advisory; further route splitting
+  remains a performance follow-up rather than a raised warning threshold.
+- Limits: targeted contrast/focus checks and screenshot inspection are not a full
+  accessibility certification or automated pixel baseline. Live smoke uses token
+  login and API fixture creation; SSO, UI-only provisioning and adverse-network
+  journeys still need broader end-to-end coverage. Configuration/health remains
+  snapshot data, not live traffic. See [Connections and setup](Connections-and-Setup.md)
+  for operational semantics and repeatable test commands.

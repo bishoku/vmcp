@@ -23,3 +23,17 @@ test('load more prevents duplicate requests and duplicate event rows',async()=>{
  await act(async()=>finish({items:[event(1,'first'),event(2,'second')]}))
  expect(screen.getAllByText('first')).toHaveLength(1);expect(screen.getByText('second')).toBeTruthy()
 })
+test('groups only operation IDs, keeps raw access and never infers failure from a missing outcome',async()=>{
+ vi.spyOn(api,'listAudit').mockResolvedValue({items:[
+ {...event(1,'paired'),operationId:'pair',stage:'admission',status:'started'},
+ {...event(2,'paired'),operationId:'pair',stage:'outcome'},
+ {...event(3,'pending'),operationId:'pending',stage:'admission',status:'started'},
+ {...event(4,'uncorrelated'),requestId:'same'}, {...event(5,'uncorrelated'),requestId:'same'},
+ ]})
+ render(<Audit initialOperation="pair"/>);await screen.findByText('paired')
+ expect(screen.getAllByText('paired')).toHaveLength(1)
+ expect(screen.getByText('outcome not loaded')).toBeTruthy()
+ expect(screen.getAllByText('uncorrelated')).toHaveLength(2)
+ fireEvent.click(screen.getByText('Raw events'));expect(screen.getAllByText('paired')).toHaveLength(2)
+ expect(screen.getByLabelText('Operation ID').getAttribute('value')).toBe('pair')
+})

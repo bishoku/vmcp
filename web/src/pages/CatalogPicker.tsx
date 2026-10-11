@@ -3,6 +3,7 @@ import { api, type Catalog, type CatalogSelection, type Upstream } from '../api'
 import { input, btn } from '../styles'
 
 export default function CatalogPicker({upstreams, value, onChange}: {upstreams:Upstream[];value:CatalogSelection[];onChange:(value:CatalogSelection[])=>void}) {
+ const [search,setSearch]=useState('')
  const [catalogs,setCatalogs]=useState<Record<string,Catalog>>({})
  const [error,setError]=useState('')
  const [loading,setLoading]=useState(false)
@@ -32,10 +33,12 @@ export default function CatalogPicker({upstreams, value, onChange}: {upstreams:U
   {loading && <p role="status">Loading catalogs…</p>}
   {error && <div role="alert" className="text-red-700">{error} <button className={btn} onClick={()=>setAttempt(a=>a+1)}>Retry catalogs</button></div>}
   {!loading && !error && choices.length===0 && <p className="text-sm text-ink-muted">No resources or prompts discovered.</p>}
+  <input aria-label="Search catalog" placeholder="Search by upstream, kind, name or description" className={input+' mt-3'} value={search} onChange={e=>setSearch(e.target.value)}/>
+  {search && !choices.some(c=>Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())) && <p role="status">No catalog matches. Try another search or refresh upstream discovery.</p>}
   <label className="mt-3 block text-sm">Add a resource, template or prompt
    <select aria-label="Add catalog object" className={input} value="" onChange={e=>{const choice=choices.find(c=>identity(c)===e.target.value);if(choice)onChange([...value,{upstream:choice.upstream,kind:choice.kind,name:choice.name}])}}>
     <option value="">Choose a discovered object</option>
-    {choices.filter(c=>!value.some(v=>identity(v)===identity(c))).map(c=><option key={identity(c)} value={identity(c)}>{c.upstream} · {c.kind} · {c.name}</option>)}
+    {choices.filter(c=>Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())).filter(c=>!value.some(v=>identity(v)===identity(c))).map(c=><option key={identity(c)} value={identity(c)}>{c.upstream} · {c.kind} · {c.name}</option>)}
    </select>
   </label>
   <div className="mt-3 space-y-3">{value.map((selection,index)=>{

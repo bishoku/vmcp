@@ -49,6 +49,7 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [saved,setSaved] = useState(false)
   const [selected, setSelected] = useState<Upstream | 'new' | null>(null)
 
   const { load, loading, readError } = useSources(() => [source('Upstreams', api.listUpstreams, setItems)])
@@ -92,8 +93,8 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
   useInitialSelection(initialSelection, items, setSelected)
 
   return (
-    <div className="mx-auto max-w-6xl px-10 py-10">
-      <div className="flex items-start justify-between">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <div className="flex flex-wrap gap-3 items-start justify-between">
         <div>
           {readError && <ErrorBox>{readError}</ErrorBox>}
       {loading && <p role="status">Loading…</p>}
@@ -112,6 +113,7 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
         </button>
       </div>
 
+      {saved && <p role="status" className="mt-3 text-green-700">Upstream saved. Test its connection and refresh discovery to load current capabilities.</p>}
       {error && (
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -119,17 +121,17 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
       )}
 
       <div className="mt-6 rounded-card border border-line bg-surface shadow-card">
-        <div className="flex items-center justify-between gap-3 border-b border-line p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4">
           <div className="relative w-full max-w-xs">
             <Search className="absolute left-3 top-2.5 size-4 text-ink-muted" />
             <input
               className={clsx(input, 'pl-9')}
-              placeholder="Search"
+              aria-label="Search upstreams" placeholder="Search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <select className={clsx(input, 'w-44')} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select aria-label="Upstream status" className={clsx(input, 'w-44')} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All statuses</option>
             <option value="healthy">Healthy</option>
             <option value="failed">Refresh failed</option>
@@ -137,7 +139,7 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
             <option value="disabled">Disabled</option>
           </select>
         </div>
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto"><table className="min-w-[760px] w-full text-left text-sm">
           <thead className="bg-canvas text-xs font-medium text-ink-muted">
             <tr>
               {['Name', 'URL', 'Transport', 'Tools', 'Last refresh', 'Status', ''].map((h) => (
@@ -191,12 +193,12 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
             {!loading && !readError && shown.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-ink-muted">
-                  No upstreams yet.
+                  No upstreams yet. Add an MCP endpoint, test its stored credentials, then refresh discovery.
                 </td>
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {selected && (
@@ -206,6 +208,7 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
           onReload={setSelected}
           onClose={() => setSelected(null)}
           onSaved={() => {
+            setSaved(true)
             setSelected(null)
             void load()
           }}
