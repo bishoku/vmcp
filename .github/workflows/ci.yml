@@ -21,7 +21,7 @@ jobs:
           POSTGRES_DB: vmcp_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U vmcp" --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U vmcp -d vmcp_test" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       VMCP_REQUIRE_INTEGRATION: "1"
       VMCP_REQUIRE_SDK_INTEROP: "1"
@@ -40,8 +40,18 @@ jobs:
           node-version: 22
       - run: npm ci --prefix ../web
       - run: go vet ./...
-      - run: go test -race -count=1 -json ./... > ../verification.jsonl
-      - run: python3 ../scripts/check-test-results.py ../verification.jsonl
+      - name: Run Go race and integration tests
+        run: go test -race -count=1 -json ./... | tee ../verification.jsonl
+      - name: Check test results (including failures and skips)
+        if: ${{ !cancelled() && hashFiles('verification.jsonl') != '' }}
+        run: python3 ../scripts/check-test-results.py ../verification.jsonl
+      - name: Upload Go test results
+        if: ${{ !cancelled() && hashFiles('verification.jsonl') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-results
+          path: verification.jsonl
+          retention-days: 7
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
 
   web:
@@ -63,7 +73,8 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:browser
 
-  deployment:
+  deployment-validation:
+    name: Deployment validation (no deploy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +85,7 @@ jobs:
           helm lint deploy/helm/vmcp --set controlPlane.image=vmcp/cp:test,dataPlane.image=vmcp/dp:test,migration.image=vmcp/migrate:test,controlPlane.secretName=cp,dataPlane.secretName=dp,migration.secretName=migration
           helm template test deploy/helm/vmcp --set controlPlane.image=vmcp/cp:test,dataPlane.image=vmcp/dp:test,migration.image=vmcp/migrate:test,controlPlane.secretName=cp,dataPlane.secretName=dp,migration.secretName=migration > /tmp/vmcp-rendered.yaml
       - run: docker build --build-arg SERVICE=data-plane -t vmcp-dp:ci core
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: vmcp-dp:ci
           severity: CRITICAL,HIGH

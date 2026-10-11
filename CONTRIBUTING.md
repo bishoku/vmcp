@@ -58,3 +58,13 @@ scripts/prepare-wiki.sh /tmp/vmcp-wiki-preview
 
 Links between documentation pages become wiki links; links to repository files
 point to `main` on GitHub. Fenced code examples remain unchanged.
+
+## CI checks
+
+The `ci` workflow runs Go race/integration tests and frontend checks. Its
+**Deployment validation (no deploy)** job lints and renders the Helm chart,
+builds and scans the data-plane image, and runs the real Docker stdio sandbox
+regression test. These are validation checks on the runner: no cluster is
+modified, image pushed, release created, or application deployed.
+Go test JSON output is streamed into the job log and retained for seven days
+as the `core-test-results` artifact, including failed test runs.

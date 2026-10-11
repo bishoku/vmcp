@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,10 +34,16 @@ func TestOperationalLoad(t *testing.T) {
 	ctx, cancel := context.WithCancel(e.ctx)
 	defer cancel()
 	var churn, queries, conflicts atomic.Int64
+	// Start churn and calls together after all sessions complete their handshake.
+	// This baseline measures call conflicts, not handshake retry behavior.
+	begin := make(chan struct{})
+	var initialized sync.WaitGroup
+	initialized.Add(8)
 	var background sync.WaitGroup
 	background.Add(1)
 	go func() {
 		defer background.Done()
+		<-begin
 		tick := time.NewTicker(20 * time.Millisecond)
 		defer tick.Stop()
 		for {
@@ -64,26 +71,35 @@ func TestOperationalLoad(t *testing.T) {
 			defer wg.Done()
 			client := upstream.NewClient(server.URL+"/mcp/v1/virtual/agent", nil, nil)
 			initStart := time.Now()
-			if _, err := client.Initialize(e.ctx); err != nil {
+			_, initErr := client.Initialize(e.ctx)
+			initialized.Done()
+			defer client.Close(e.ctx)
+			if err := initErr; err != nil {
 				failures.Add(1)
+				t.Logf("initialize failed: %v", err)
 				return
 			}
 			mu.Lock()
 			initializations = append(initializations, time.Since(initStart).Seconds())
 			mu.Unlock()
-			defer client.Close(e.ctx)
+			<-begin
 			for i := 0; i < 20; i++ {
 				callStart := time.Now()
 				var err error
-				for attempt := 0; attempt < 5; attempt++ {
+				// A revision change before dispatch intentionally returns 409.
+				// Under race instrumentation five fixed 10ms retries can all
+				// overlap the 20ms churn. Bound retries by time and back off.
+				deadline := time.Now().Add(5 * time.Second)
+				for attempt := 0; ; attempt++ {
 					_, err = client.CallTool(e.ctx, "alpha__add", json.RawMessage(`{"a":1,"b":2}`))
-					if err == nil {
+					if err == nil || !strings.Contains(err.Error(), "returned 409: configuration changed; retry") || time.Now().After(deadline) {
 						break
 					}
 					conflicts.Add(1)
-					time.Sleep(10 * time.Millisecond)
+					time.Sleep(time.Duration(min(attempt+1, 10)) * 10 * time.Millisecond)
 				}
 				if err != nil {
+					t.Logf("tool call failed after retries: %v", err)
 					failures.Add(1)
 				}
 				mu.Lock()
@@ -92,6 +108,8 @@ func TestOperationalLoad(t *testing.T) {
 			}
 		}()
 	}
+	initialized.Wait()
+	close(begin)
 	wg.Wait()
 	cancel()
 	background.Wait()
