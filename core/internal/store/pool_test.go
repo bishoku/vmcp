@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"github.com/bishoku/vmcp/core/internal/testdb"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"testing"
@@ -36,7 +37,7 @@ func TestPoolConfigurationAndAcquisitionDeadline(t *testing.T) {
 func TestSaturatedPoolFailsWithinAcquisitionBudget(t *testing.T) {
 	t.Setenv("VMCP_DB_MAX_CONNS", "2")
 	t.Setenv("VMCP_DB_MIN_CONNS", "0")
-	t.Setenv("VMCP_DB_ACQUIRE_TIMEOUT", "25ms")
+	t.Setenv("VMCP_DB_ACQUIRE_TIMEOUT", "5s")
 	pool, err := Connect(context.Background(), testdb.New(t))
 	if err != nil {
 		t.Fatal(err)
@@ -52,9 +53,14 @@ func TestSaturatedPoolFailsWithinAcquisitionBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Release()
+	// Allow connection setup to finish before testing the saturated pool's budget.
+	pool.Config().ConnConfig.Tracer.(*acquireDeadline).timeout = 25 * time.Millisecond
 	start := time.Now()
-	if _, err := pool.Acquire(context.Background()); err == nil {
-		t.Fatal("saturated pool admitted another connection")
+	if conn, err := pool.Acquire(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
+		if conn != nil {
+			conn.Release()
+		}
+		t.Fatalf("saturated pool: expected acquisition deadline, got %v", err)
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("acquisition exceeded budget")
