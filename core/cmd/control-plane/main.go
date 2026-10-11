@@ -141,10 +141,11 @@ func purgeLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, retent
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
+		start := time.Now()
 		if n, err := audit.Purge(ctx, pool, retention); err != nil && ctx.Err() == nil {
 			log.Error("audit purge failed", "err", err)
 		} else if n > 0 {
-			log.Info("audit events purged", "count", n)
+			log.Info("audit events purged", "count", n, "duration_ms", time.Since(start).Milliseconds())
 		}
 		select {
 		case <-ctx.Done():

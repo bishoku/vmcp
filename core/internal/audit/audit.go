@@ -253,9 +253,22 @@ func insert(ctx context.Context, pool *pgxpool.Pool, evs []Event) error {
 
 // Purge deletes events older than the retention period and returns how many.
 func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (int64, error) {
-	tag, err := pool.Exec(ctx, `DELETE FROM audit_events a WHERE a.ts < now() - make_interval(secs => $1)
+	if retention <= 0 {
+		return 0, nil
+	}
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tag, err := pool.Exec(bounded, `WITH candidates AS (
+ SELECT a.id FROM audit_events a WHERE a.ts < now() - make_interval(secs => $1)
+ AND NOT EXISTS(SELECT 1 FROM audit_legal_holds h JOIN audit_events held ON held.event_id=h.event_id WHERE held.event_id=a.event_id OR (a.operation_id IS NOT NULL AND held.operation_id=a.operation_id))
+ AND NOT EXISTS(SELECT 1 FROM audit_export_state consumer WHERE consumer.active AND EXISTS(
+  SELECT 1 FROM audit_events sibling WHERE (sibling.event_id=a.event_id OR (a.operation_id IS NOT NULL AND sibling.operation_id=a.operation_id))
+  AND NOT EXISTS(SELECT 1 FROM audit_deliveries d WHERE d.consumer=consumer.consumer AND d.event_id=sibling.event_id AND d.state='delivered')))
  AND (a.operation_id IS NULL OR NOT EXISTS(SELECT 1 FROM audit_events p WHERE p.operation_id=a.operation_id AND p.stage='admission')
  OR (EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=a.operation_id AND o.stage='outcome')
- AND NOT EXISTS(SELECT 1 FROM audit_events r WHERE r.operation_id=a.operation_id AND r.ts >= now() - make_interval(secs => $1))))`, retention.Seconds())
+ AND NOT EXISTS(SELECT 1 FROM audit_events r WHERE r.operation_id=a.operation_id AND r.ts >= now() - make_interval(secs => $1))))
+ ORDER BY a.ts,a.id LIMIT 500 FOR UPDATE OF a SKIP LOCKED)
+ DELETE FROM audit_events a USING candidates c WHERE a.id=c.id
+ AND NOT EXISTS(SELECT 1 FROM audit_events sibling WHERE a.operation_id IS NOT NULL AND sibling.operation_id=a.operation_id AND NOT EXISTS(SELECT 1 FROM candidates selected WHERE selected.id=sibling.id))`, retention.Seconds())
 	return tag.RowsAffected(), err
 }
