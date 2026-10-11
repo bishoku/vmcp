@@ -22,12 +22,12 @@ export function Pill({ status }: { status: string }) {
 }
 
 export function ErrorBox({ children }: { children: ReactNode }) {
-  return <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{children}</div>
+  return <div role="alert" className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{children}</div>
 }
 
 
 
-export function Modal({ title, children, onClose, variant = 'modal' }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer' }) {
+export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
   useLayoutEffect(() => {
@@ -43,7 +43,7 @@ export function Modal({ title, children, onClose, variant = 'modal' }: { title: 
   return (
     <dialog ref={ref} aria-labelledby={titleId} aria-modal="true"
       className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none border-0 bg-transparent p-0 text-ink backdrop:bg-black/30"
-      onCancel={e => { e.preventDefault(); onClose?.() }}
+      onCancel={e => { e.preventDefault(); if (!busy) onClose?.() }}
       onKeyDown={e => {
         if (e.key !== 'Tab') return
         const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
@@ -54,14 +54,14 @@ export function Modal({ title, children, onClose, variant = 'modal' }: { title: 
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
       }}>
       <div className={clsx('flex h-full w-full', variant === 'drawer' ? 'justify-end' : 'items-center justify-center p-4')}
-        onClick={e => { if (e.target === e.currentTarget) onClose?.() }}>
+        onClick={e => { if (e.target === e.currentTarget) if (!busy) onClose?.() }}>
         <section className={clsx('overflow-y-auto border border-line bg-surface p-6 shadow-card',
           variant === 'drawer' ? 'h-full w-full max-w-[420px]' : 'max-h-full w-full max-w-lg rounded-card')}>
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 id={titleId} className="text-lg font-semibold">{title}</h2>
-            {onClose && <button type="button" className={btn} aria-label="Close" onClick={onClose}><X className="size-4" /></button>}
+            {onClose && <button type="button" className={btn} aria-label="Close" disabled={busy} onClick={onClose}><X className="size-4" /></button>}
           </div>
-          {children}
+          <fieldset disabled={busy || readOnly} className="min-w-0 border-0 m-0 p-0">{children}</fieldset>
         </section>
       </div>
     </dialog>
@@ -70,21 +70,12 @@ export function Modal({ title, children, onClose, variant = 'modal' }: { title: 
 
 /** Shows a freshly issued secret exactly once. */
 export function SecretModal({ title, secret, onClose }: { title: string; secret: string; onClose: () => void }) {
-  const [copied, setCopied] = useState(false)
   return (
     <Modal title={title}>
       <p className="mt-1 text-sm text-ink-muted">Copy it now. It won't be shown again.</p>
       <div className="mt-4 flex items-center gap-2 rounded-lg bg-canvas px-3 py-2">
         <code className="flex-1 break-all text-xs">{secret}</code>
-        <button
-          className={btn}
-          onClick={async () => {
-            await navigator.clipboard.writeText(secret)
-            setCopied(true)
-          }}
-        >
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />} {copied ? 'Copied' : 'Copy'}
-        </button>
+        <CopyButton value={secret} />
       </div>
       <div className="mt-6 flex justify-end">
         <button className={primary} onClick={onClose}>
@@ -93,4 +84,30 @@ export function SecretModal({ title, secret, onClose }: { title: string; secret:
       </div>
     </Modal>
   )
+}
+
+export function CopyButton({ value, label = 'Copy' }: { value: string | null; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
+  return <span><button type="button" className={btn} aria-label={label} disabled={!value} onClick={async () => {
+    try { await navigator.clipboard.writeText(value!); setCopied(true); setError('') }
+    catch { setCopied(false); setError('Copy failed. Select the text and copy it manually.') }
+  }}>{copied ? <Check className="size-4" /> : <Copy className="size-4" />}{copied ? 'Copied' : 'Copy'}</button>
+    {error && <span role="alert" className="block text-sm text-red-700">{error}</span>}
+  </span>
+}
+
+export function StaleRecovery({ message, reload }: { message: string; reload: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  if (!message.includes('another session')) return null
+  return <div className="mt-3 text-sm"><p>Your draft is retained. Copy any changes you want to keep before loading the latest version.</p>
+    <button className={btn} disabled={busy} onClick={async () => {
+      if (!confirm('Discard this draft and load the latest version?')) return
+      setBusy(true)
+      try { await reload(); setError('') } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+      finally { setBusy(false) }
+    }}>Reload latest and discard draft</button>
+    {error && <p role="alert">{error}</p>}
+  </div>
 }

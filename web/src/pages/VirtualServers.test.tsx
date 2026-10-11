@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render } from '../test-utils'
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { api, type Upstream, type VirtualServer } from '../api'
 import VirtualServers from './VirtualServers'
@@ -74,4 +75,26 @@ test('without public gateway configuration only a path is shown and endpoint cop
   expect(screen.getByText('/mcp/v1/virtual/demo')).toBeTruthy()
   expect(screen.getByText(/Public gateway URL is not configured/).textContent).toContain('not configured')
   expect((screen.getByRole('button', { name: 'Copy endpoint' }) as HTMLButtonElement).disabled).toBe(true)
+})
+test('failed stale save retains edits until explicit reload, then uses the latest version',async()=>{
+ const {ApiError}=await import('../api')
+ vi.mocked(api.putVirtualServer).mockRejectedValueOnce(new ApiError(412,'This item changed in another session.'))
+ const confirm=vi.spyOn(window,'confirm').mockReturnValue(true)
+ await open()
+ fireEvent.change(screen.getByLabelText('Alias for alpha/one'),{target:{value:'unsaved-alias'}})
+ fireEvent.click(screen.getByRole('button',{name:'Save'}))
+ const reload=await screen.findByText('Reload latest and discard draft')
+ expect((screen.getByLabelText('Alias for alpha/one') as HTMLInputElement).value).toBe('unsaved-alias')
+ vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,version:8}])
+ fireEvent.click(reload)
+ await waitFor(()=>expect((screen.getByLabelText('Alias for alpha/one') as HTMLInputElement).value).toBe('first'))
+ expect(confirm).toHaveBeenCalledTimes(1)
+ fireEvent.click(screen.getByRole('button',{name:'Save'}))
+ await waitFor(()=>expect(api.putVirtualServer).toHaveBeenCalledTimes(2))
+ expect(vi.mocked(api.putVirtualServer).mock.calls[1][2]).toBe(8)
+})
+test('an unavailable upstream list does not hide existing virtual servers',async()=>{
+ vi.mocked(api.listUpstreams).mockRejectedValue(new Error('catalog offline'))
+ render(<VirtualServers/>);expect(await screen.findByText('Demo server')).toBeTruthy()
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('catalog offline'))
 })

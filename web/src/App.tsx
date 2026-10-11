@@ -1,8 +1,11 @@
-import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { FileText, KeyRound, UserCheck, Layers, Network, Settings, type LucideIcon } from 'lucide-react'
 import clsx from 'clsx'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { api, authConfig, clearToken, setToken, signOut, type Me } from './api'
+import { Modal } from './ui'
+import InteractionProvider from './InteractionProvider'
+import { RoleContext, Drafts, discardChanges, capabilities, useOperation } from './interaction'
 import Upstreams from './pages/Upstreams'
 import VirtualServers from './pages/VirtualServers'
 import AgentKeys from './pages/AgentKeys'
@@ -19,23 +22,24 @@ const nav: { to: string; label: string; icon: LucideIcon }[] = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
-function Login({ onDone }: { onDone: () => void }) {
+function Login({ onDone }: { onDone: (identity: Me) => void }) {
   const [t, setT] = useState('')
   const [err, setErr] = useState('')
   const [sso, setSso] = useState(false)
   useEffect(() => {
     void authConfig().then((c) => setSso(c.oidc))
   }, [])
-  const submit = async () => {
+  const { busy, run } = useOperation()
+  const submit = () => run(async () => {
     setToken(t)
     try {
-      await api.me()
-      onDone()
+      const identity = await api.me()
+      onDone(identity)
     } catch {
       clearToken()
       setErr('Token rejected or control plane unreachable.')
     }
-  }
+  })
   return (
     <div className="grid h-full place-items-center">
       <div className="w-96 rounded-card border border-line bg-surface p-8 shadow-card">
@@ -50,6 +54,8 @@ function Login({ onDone }: { onDone: () => void }) {
         )}
         {!sso && <p className="mt-1 text-sm text-ink-muted">Enter the admin token.</p>}
         <input
+          aria-label="Admin token"
+          disabled={busy}
           type="password"
           autoFocus={!sso}
           className="mt-3 w-full rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent-500"
@@ -57,8 +63,9 @@ function Login({ onDone }: { onDone: () => void }) {
           onChange={(e) => setT(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
+        <p className="mt-2 text-xs text-ink-muted">Token sign-in lasts until this tab reloads. Prefer SSO for regular use.</p>
         {err && <p className="mt-2 text-sm text-red-700">{err}</p>}
-        <button onClick={submit} className={sso ? 'mt-3 w-full rounded-lg border border-line py-2 text-sm font-medium hover:bg-canvas' : 'mt-4 w-full rounded-lg bg-accent-500 py-2 text-sm font-medium text-white hover:bg-accent-700'}>
+        <button disabled={busy || !t.trim()} onClick={submit} className={sso ? 'mt-3 w-full rounded-lg border border-line py-2 text-sm font-medium hover:bg-canvas' : 'mt-4 w-full rounded-lg bg-accent-500 py-2 text-sm font-medium text-white hover:bg-accent-700'}>
           Continue
         </button>
       </div>
@@ -66,17 +73,33 @@ function Login({ onDone }: { onDone: () => void }) {
   )
 }
 
-export default function App() {
+function SignOut({onDone}:{onDone:()=>void}) {
+  const drafts=useContext(Drafts)
+  const {busy,run}=useOperation()
+  return <button className="mt-2 text-xs text-accent-700 hover:underline" disabled={busy} onClick={()=>{
+    if(drafts && [...drafts.values()].includes('busy'))return
+    if(drafts && [...drafts.values()].includes('dirty') && !discardChanges())return
+    void run(async()=>{const url=await signOut();if(url)window.location.assign(url);else onDone()})
+  }}>Sign out</button>
+}
+
+function Application() {
   // undefined = still checking; null = signed out.
   const [me, setMe] = useState<Me | null | undefined>(undefined)
-  const refresh = () => api.me().then(setMe, () => setMe(null))
+  const [expired, setExpired] = useState(false)
+  const refresh = () => api.me().then(value => { setMe(value); setExpired(false) }, () => setMe(null))
   useEffect(() => {
     void refresh()
+    const expired = () => setExpired(true)
+    window.addEventListener('vmcp:session-expired', expired)
+    return () => window.removeEventListener('vmcp:session-expired', expired)
   }, [])
-  if (me === undefined) return null
-  if (me === null) return <Login onDone={refresh} />
+  const signedIn = (identity: Me) => { setMe(identity); setExpired(false) }
+  if (me === undefined) return <p role="status" className="p-10">Checking session…</p>
+  if (me === null) return <Login onDone={signedIn} />
   return (
-    <BrowserRouter>
+    <RoleContext.Provider value={me.role}><InteractionProvider>
+      {expired && <Modal title="Session expired"><p role="alert">Sign in again to continue. Token sign-in retains your draft. Copy unsaved changes before using SSO, which reloads this page.</p><Login onDone={signedIn} /></Modal>}
       <div className="flex h-full">
         <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface px-3 py-5">
           <div className="mb-6 flex items-center gap-2.5 px-3">
@@ -107,22 +130,12 @@ export default function App() {
           <div className="mt-auto border-t border-line px-3 pt-4 text-sm">
             <div className="truncate font-medium">{me.name}</div>
             <div className="text-xs text-ink-muted">{me.role}</div>
-            <button
-              className="mt-2 text-xs text-accent-700 hover:underline"
-              onClick={async () => {
-                const idpLogout = await signOut()
-                if (idpLogout) {
-                  window.location.assign(idpLogout)
-                  return
-                }
-                setMe(null)
-              }}
-            >
-              Sign out
-            </button>
+            <SignOut onDone={()=>setMe(null)} />
           </div>
         </aside>
         <main className="flex-1 overflow-y-auto">
+          {!capabilities(me.role).edit && <p role="status" className="px-10 pt-4 text-sm text-ink-muted">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
+
           <Routes>
             <Route path="/" element={<Navigate to="/virtual-servers" replace />} />
             <Route
@@ -141,8 +154,12 @@ export default function App() {
             <Route path="/identities" element={<Identities />} />
             <Route path="/settings" element={<SettingsPage role={me.role} />} />
           </Routes>
+
         </main>
       </div>
-    </BrowserRouter>
+    </InteractionProvider></RoleContext.Provider>
   )
 }
+
+const router = createBrowserRouter([{ path: '*', element: <Application /> }])
+export default function App() { return <RouterProvider router={router} /> }

@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCapabilities } from '../interaction'
+import { useSources, source } from '../requests'
+import { StaleRecovery } from '../ui'
+import { useDraft, useOperation } from '../interaction'
+import { useEffect, useState } from 'react'
 import { Plus, UserCheck } from 'lucide-react'
 import { api, ApiError, type BindingEvaluation, type Condition, type IdentityBinding, type VirtualServer } from '../api'
 import { btn, input, primary } from '../styles'
@@ -31,10 +35,11 @@ const blank: Draft = {
 }
 
 export default function Identities() {
+  const { edit: canEdit } = useCapabilities()
   const [items, setItems] = useState<IdentityBinding[]>([])
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [error, setError] = useState('')
-  const [draft, setDraft] = useState<Draft | null>(null)
+  const [draft, setDraft, resetDraft] = useDraft<Draft | null>(null, d => d ? d.isNew ? 'new' : d.slug : null)
   const [problems, setProblems] = useState<string[]>([])
   const [showEval, setShowEval] = useState(false)
   const [claims, setClaims] = useState('{\n  "azp": "billing-bot"\n}')
@@ -42,16 +47,7 @@ export default function Identities() {
   const [evalIP, setEvalIP] = useState('')
   const [result, setResult] = useState<BindingEvaluation | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const [b, v] = await Promise.all([api.listBindings(), api.listVirtualServers()])
-      setItems(b)
-      setServers(v)
-      setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
+  const { load, loading, readError } = useSources(() => [source('Identity bindings', api.listBindings, setItems), source('Virtual servers', api.listVirtualServers, setServers)])
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(timer)
@@ -76,7 +72,8 @@ export default function Identities() {
     )
   }
 
-  const save = async () => {
+  const { busy, run } = useOperation()
+  const save = () => run(async () => {
     if (!draft) return
     const body = {
       description: draft.description,
@@ -89,15 +86,15 @@ export default function Identities() {
     try {
       if (draft.isNew) await api.createBinding({ slug: draft.slug, ...body })
       else await api.patchBinding(draft.slug, body,draft.version)
-      setDraft(null)
+      resetDraft(null)
       await load()
     } catch (e) {
       if (e instanceof ApiError) setProblems(e.errors.length ? e.errors.map((x) => `${x.field ?? ''} ${x.message}`.trim()) : [e.message])
       else setProblems([String(e)])
     }
-  }
+  })
 
-  const evaluate = async () => {
+  const evaluate = () => run(async () => {
     try {
       const r = await api.evaluateBindings({
         claims: JSON.parse(claims),
@@ -105,12 +102,11 @@ export default function Identities() {
         clientIp: evalIP || undefined,
       })
       setResult(r)
-      setError('')
     } catch (e) {
       setResult(null)
       setError(e instanceof SyntaxError ? `Claims is not valid JSON: ${e.message}` : e instanceof Error ? e.message : String(e))
     }
-  }
+  })
 
   const setCond = (i: number, c: Partial<Condition>) =>
     draft && setDraft({ ...draft, conditions: draft.conditions.map((x, j) => (j === i ? { ...x, ...c } : x)) })
@@ -125,14 +121,17 @@ export default function Identities() {
     <div className="mx-auto max-w-6xl px-10 py-10">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Identities</h1>
+          {readError && <ErrorBox>{readError}</ErrorBox>}
+      {loading && <p role="status">Loading…</p>}
+      <button className={btn} disabled={loading} onClick={()=>{setError('');void load()}}>Refresh list</button>
+      <h1 className="text-2xl font-semibold tracking-tight">Identities</h1>
           <p className="mt-1 text-sm text-ink-muted">
             Map claims of IdP-issued access tokens to virtual servers. Requires <code>VMCP_AGENT_OIDC_ISSUER</code> on the data plane; access is denied unless a binding matches.
           </p>
         </div>
         <div className="flex gap-2">
-          <button className={btn} onClick={() => setShowEval((v) => !v)}>Evaluate claims</button>
-          <button className={primary} onClick={() => open()}>
+          <button disabled={!canEdit || busy} className={btn} onClick={() => setShowEval((v) => !v)}>Evaluate claims</button>
+          <button disabled={!canEdit || busy} className={primary} onClick={() => open()}>
             <Plus className="size-4" /> New binding
           </button>
         </div>
@@ -158,7 +157,7 @@ export default function Identities() {
                 Client IP <span className="font-normal text-ink-muted">(optional)</span>
                 <input className={`${input} mt-1`} value={evalIP} onChange={(e) => setEvalIP(e.target.value)} />
               </label>
-              <button className={primary} onClick={evaluate}>Evaluate</button>
+              <button disabled={!canEdit || busy} className={primary} onClick={evaluate}>Evaluate</button>
             </div>
           </div>
           {result && (
@@ -198,11 +197,11 @@ export default function Identities() {
                 <td className="px-4 py-3">{b.rateLimitPerMinute ? `${b.rateLimitPerMinute}/min` : '—'}</td>
                 <td className="px-4 py-3">{b.enabled ? 'yes' : 'no'}</td>
                 <td className="px-4 py-3 text-right">
-                  <button className={btn} onClick={() => confirm(`Delete "${b.slug}"?`) && api.deleteBinding(b.slug,b.version).then(load).catch((e) => setError(String(e.message ?? e)))}>Delete</button>
+                  <button disabled={!canEdit || busy} className={btn} onClick={() => confirm(`Delete "${b.slug}"?`) && run(async()=>{try{await api.deleteBinding(b.slug,b.version);await load()}catch(e){setError(e instanceof Error?e.message:String(e))}})}>Delete</button>
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
+            {!loading && !readError && items.length === 0 && (
               <tr>
                 <td colSpan={7} className="p-10 text-center text-ink-muted">
                   <UserCheck className="mx-auto mb-2 size-5" /> No identity bindings yet.
@@ -214,7 +213,12 @@ export default function Identities() {
       </div>
 
       {draft && (
-        <Modal title={draft.isNew ? 'New identity binding' : `Edit ${draft.slug}`} onClose={() => setDraft(null)}>
+        <Modal readOnly={!canEdit} busy={busy} title={draft.isNew ? 'New identity binding' : `Edit ${draft.slug}`} onClose={() => setDraft(null)}>
+      <StaleRecovery message={problems.join('; ')} reload={async () => {
+        const latest = (await api.listBindings()).find(item => item.slug === draft.slug)
+        if (!latest) throw new Error('This item was deleted. Cancel the draft and refresh the list.')
+        resetDraft(null); open(latest); setProblems([])
+      }} />
           <div className="mt-4 space-y-4">
             {draft.isNew && (
               <label className="block text-sm font-medium">
@@ -274,7 +278,7 @@ export default function Identities() {
           )}
           <div className="mt-6 flex justify-end gap-2">
             <button className={btn} onClick={() => setDraft(null)}>Cancel</button>
-            <button className={primary} disabled={!draft.slug} onClick={save}>{draft.isNew ? 'Create' : 'Save'}</button>
+            <button className={primary} disabled={busy || !draft.slug} onClick={save}>{draft.isNew ? 'Create' : 'Save'}</button>
           </div>
         </Modal>
       )}

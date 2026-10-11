@@ -19,3 +19,16 @@ test('discovery errors are visible and preserve the draft',async()=>{
  render(<CatalogPicker upstreams={[{slug:'alpha'}] as Upstream[]} value={[{upstream:'alpha',kind:'resource',name:'doc://saved'}]} onChange={onChange}/>)
  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('unavailable'));expect(onChange).not.toHaveBeenCalled();expect(screen.getByText('alpha · resource · doc://saved')).toBeTruthy()
 })
+test('one unavailable upstream does not hide another catalog and retry recovers',async()=>{
+ const discovery=vi.spyOn(api,'listCatalog').mockImplementation(async slug=>{
+  if(slug==='broken')throw new Error('offline')
+  return {resources:[],resourceTemplates:[],prompts:[{name:'review'}],capabilities:{}}
+ })
+ render(<CatalogPicker upstreams={[{slug:'good'},{slug:'broken'}] as Upstream[]} value={[]} onChange={()=>{}}/>)
+ expect(await screen.findByText('good · prompt · review')).toBeTruthy()
+ expect((await screen.findByRole('alert')).textContent).toContain('broken')
+ discovery.mockResolvedValue({resources:[],resourceTemplates:[],prompts:[{name:'recovered'}],capabilities:{}})
+ fireEvent.click(screen.getByText('Retry catalogs'))
+ expect(await screen.findByText('broken · prompt · recovered')).toBeTruthy()
+ expect(screen.queryByRole('alert')).toBeNull()
+})

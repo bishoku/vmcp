@@ -1,9 +1,10 @@
 // Thin typed client for the vMCP control plane (api/openapi.yaml).
-const TOKEN_KEY = 'vmcp.adminToken'
-
-export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? ''
-export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t)
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
+// Token login is deliberately memory-only. SSO uses the server's session cookie.
+let token = ''
+try { localStorage.removeItem('vmcp.adminToken') } catch { /* Storage may be disabled; token login still works. */ }
+export const getToken = () => token
+export const setToken = (value: string) => { token = value }
+export const clearToken = () => { token = '' }
 
 export interface NodeHealth {
   node: string
@@ -287,9 +288,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown, version?: number): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, version?: number, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     method,
+    signal,
     headers: {
       // With SSO there is no token: the session cookie authenticates and the CSRF header is required.
       ...(getToken() && { Authorization: `Bearer ${getToken()}` }),
@@ -301,20 +303,24 @@ async function request<T>(method: string, path: string, body?: unknown, version?
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (res.status === 401) {
+    clearToken()
+    window.dispatchEvent(new Event('vmcp:session-expired'))
+  }
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, res.status === 412 ? "This item changed in another session. Reload before saving again." : data.detail ?? data.title ?? res.statusText, data.code, data.errors)
+  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "Your session expired. Sign in again to continue." : res.status === 412 ? "This item changed in another session. Reload before saving again." : data.detail ?? data.title ?? res.statusText, data.code, data.errors)
   return data as T
 }
 
-async function listAll<T>(path: string): Promise<T[]> {
+async function listAll<T>(path: string, signal?: AbortSignal): Promise<T[]> {
  const all: T[] = []
  const seen = new Set<string>()
  let cursor = ''
  do {
   const params = new URLSearchParams({limit:'200'})
   if (cursor) params.set('cursor',cursor)
-  const page = await request<{items:T[];nextCursor?:string|null}>('GET',`${path}?${params}`)
+  const page = await request<{items:T[];nextCursor?:string|null}>('GET',`${path}?${params}`, undefined, undefined, signal)
   all.push(...page.items)
   cursor=page.nextCursor ?? ''
   if (cursor && seen.has(cursor)) throw new Error('The server repeated a pagination cursor.')
@@ -330,23 +336,23 @@ export const api = {
   applyConfig: (document: ConfigDocument, dryRun = true, prune = false, revision?:number) => request<ApplyResult>('POST',`/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),
   testStoredConnection: (slug:string) => request<ConnectionTestResult>('POST',`/upstreams/${encodeURIComponent(slug)}/connection-test`),
   me: () => request<Me>('GET', '/me'),
-  info: () => request<{ version: string; configRevision: number; tenantId?: string }>('GET', '/info'),
-  listUpstreams: async () => listAll<Upstream>('/upstreams'),
+  info: (signal?: AbortSignal) => request<{ version: string; configRevision: number; tenantId?: string }>('GET', '/info', undefined, undefined, signal),
+  listUpstreams: async (signal?: AbortSignal) => listAll<Upstream>('/upstreams', signal),
   createUpstream: (slug: string, input: UpstreamInput) =>
     request<Upstream>('POST', '/upstreams', { slug, ...input }),
   patchUpstream: (slug: string, input: Partial<UpstreamInput>, version?: number) =>
     request<Upstream>('PATCH', `/upstreams/${encodeURIComponent(slug)}`, input, version),
   deleteUpstream: (slug: string, force = false, version?: number) =>
     request<void>('DELETE', `/upstreams/${encodeURIComponent(slug)}${force ? '?force=true' : ''}`, undefined, version),
-  listCatalog: (slug:string)=>request<Catalog>('GET',`/upstreams/${encodeURIComponent(slug)}/catalog`),
-  listTools: async (slug: string) =>
-    listAll<Tool>(`/upstreams/${encodeURIComponent(slug)}/tools`),
+  listCatalog: (slug:string, signal?: AbortSignal)=>request<Catalog>('GET',`/upstreams/${encodeURIComponent(slug)}/catalog`, undefined, undefined, signal),
+  listTools: async (slug: string, signal?: AbortSignal) =>
+    listAll<Tool>(`/upstreams/${encodeURIComponent(slug)}/tools`, signal),
   refreshTools: (slug: string) =>
     request<RefreshResult>('POST', `/upstreams/${encodeURIComponent(slug)}/refresh-tools`),
   testConnection: (input: { url: string; transport: string; headers?: Record<string, string>; tls?: UpstreamTLSInput; auth?: UpstreamAuthInput }) =>
     request<ConnectionTestResult>('POST', '/connection-tests', input),
-  listVirtualServers: async () =>
-    listAll<VirtualServer>('/virtual-servers'),
+  listVirtualServers: async (signal?: AbortSignal) =>
+    listAll<VirtualServer>('/virtual-servers', signal),
   putVirtualServer: (
     slug: string,
     v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
@@ -355,7 +361,7 @@ export const api = {
   deleteVirtualServer: (slug: string, version?: number) =>
     request<void>('DELETE', `/virtual-servers/${encodeURIComponent(slug)}`, undefined, version),
 
-  listAgentKeys: async () => listAll<AgentKey>('/agent-keys'),
+  listAgentKeys: async (signal?: AbortSignal) => listAll<AgentKey>('/agent-keys', signal),
   createAgentKey: (i: AgentKeyInput) => request<AgentKey & { key: string }>('POST', '/agent-keys', i),
   patchAgentKey: (slug: string, i: AgentKeyInput, version?: number) =>
     request<AgentKey>('PATCH', `/agent-keys/${encodeURIComponent(slug)}`, i, version),
@@ -363,14 +369,14 @@ export const api = {
     request<AgentKey & { key: string }>('POST', `/agent-keys/${encodeURIComponent(slug)}/rotate`, undefined, version),
   revokeAgentKey: (slug: string, version?: number) => request<AgentKey>('POST', `/agent-keys/${encodeURIComponent(slug)}/revoke`, undefined, version),
   deleteAgentKey: (slug: string, version?: number) => request<void>('DELETE', `/agent-keys/${encodeURIComponent(slug)}`, undefined, version),
-  listBindings: async () => listAll<IdentityBinding>('/identity-bindings'),
+  listBindings: async (signal?: AbortSignal) => listAll<IdentityBinding>('/identity-bindings', signal),
   createBinding: (b: Partial<IdentityBinding>) => request<IdentityBinding>('POST', '/identity-bindings', b),
   patchBinding: (slug: string, b: Partial<IdentityBinding>, version?: number) =>
     request<IdentityBinding>('PATCH', `/identity-bindings/${encodeURIComponent(slug)}`, b, version),
   deleteBinding: (slug: string, version?: number) => request<void>('DELETE', `/identity-bindings/${encodeURIComponent(slug)}`, undefined, version),
   evaluateBindings: (body: { claims: unknown; virtualServer?: string; clientIp?: string }) =>
     request<BindingEvaluation>('POST', '/identity-bindings/evaluate', body),
-  listAdminTokens: async () => listAll<AdminToken>('/admin-tokens'),
+  listAdminTokens: async (signal?: AbortSignal) => listAll<AdminToken>('/admin-tokens', signal),
   createAdminToken: (i: { slug: string; description?: string; scope: 'admin' | 'read'; expiresAt?: string | null }) =>
     request<AdminToken & { token: string }>('POST', '/admin-tokens', i),
   rotateAdminToken: (slug: string, version?: number) =>
@@ -378,9 +384,9 @@ export const api = {
   revokeAdminToken: (slug: string, version?: number) =>
     request<AdminToken>('POST', `/admin-tokens/${encodeURIComponent(slug)}/revoke`, undefined, version),
   deleteAdminToken: (slug: string, version?: number) => request<void>('DELETE', `/admin-tokens/${encodeURIComponent(slug)}`, undefined, version),
-  listAudit: (q: AuditQuery) => {
+  listAudit: (q: AuditQuery, signal?: AbortSignal) => {
     const p = new URLSearchParams({ limit: '50' })
     Object.entries(q).forEach(([k, v]) => v && p.set(k, v))
-    return request<{ items: AuditEvent[]; nextCursor?: string | null }>('GET', `/audit-events?${p}`)
+    return request<{ items: AuditEvent[]; nextCursor?: string | null }>('GET', `/audit-events?${p}`, undefined, undefined, signal)
   },
 }

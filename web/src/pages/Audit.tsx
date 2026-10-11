@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AuditEvent, type AuditQuery } from '../api'
 import { btn, input } from '../styles'
 import { fmt } from '../format'
@@ -10,20 +10,36 @@ export default function Audit() {
   const [next, setNext] = useState<string | null>(null)
   const [error, setError] = useState('')
 
+  const [loading, setLoading] = useState(false)
+  const sequence = useRef(0)
+  const controller = useRef<AbortController | null>(null)
+  const pending = useRef(false)
   const load = useCallback(async (q: AuditQuery, append: boolean) => {
+    if (append && pending.current) return
+    controller.current?.abort()
+    const abort = new AbortController()
+    controller.current = abort
+    const request = ++sequence.current
+    pending.current = true
+    setLoading(true)
+    if (!append) setNext(null)
     try {
-      const r = await api.listAudit(q)
-      setItems((prev) => (append ? [...prev, ...r.items] : r.items))
+      const r = await api.listAudit(q, abort.signal)
+      if (request !== sequence.current || abort.signal.aborted) return
+      setItems(prev => append ? [...prev, ...r.items.filter(item => !prev.some(old => old.id === item.id))] : r.items)
       setNext(r.nextCursor ?? null)
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      if (request === sequence.current && !abort.signal.aborted) setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      if (request === sequence.current) { pending.current = false; setLoading(false) }
     }
   }, [])
+  const cancel = useCallback(() => { controller.current?.abort(); sequence.current++ }, [])
   useEffect(() => {
-    const timer = setTimeout(() => { void load(filters, false) }, 0)
- return () => clearTimeout(timer)
-  }, [filters, load])
+    const timer = setTimeout(() => { void load(filters, false) }, 150)
+    return () => { clearTimeout(timer); cancel() }
+  }, [filters, load, cancel])
 
   const set = (k: keyof AuditQuery, v: string) => setFilters((f) => ({ ...f, [k]: v || undefined }))
   // datetime-local has no zone; interpret it in the browser's zone.
@@ -54,6 +70,7 @@ export default function Audit() {
         <input type="checkbox" onChange={(e) => set('incomplete', e.target.checked ? 'true' : '')} />
         Incomplete operations only
       </label>
+      {loading && <p role="status">Loading audit events…</p>}
       {error && <ErrorBox>{error}</ErrorBox>}
 
       <div className="mt-4 overflow-hidden rounded-card border border-line bg-surface shadow-card">
@@ -86,7 +103,7 @@ export default function Audit() {
                 <td className="px-4 py-2.5 text-right tabular-nums">{e.durationMs} ms</td>
               </tr>
             ))}
-            {items.length === 0 && (
+            {!loading && items.length === 0 && (
               <tr><td colSpan={7} className="p-10 text-center text-ink-muted">No events match.</td></tr>
             )}
           </tbody>
@@ -94,7 +111,7 @@ export default function Audit() {
       </div>
       {next && (
         <div className="mt-4 text-center">
-          <button className={btn} onClick={() => load({ ...filters, cursor: next }, true)}>Load more</button>
+          <button className={btn} disabled={loading} onClick={() => load({ ...filters, cursor: next }, true)}>Load more</button>
         </div>
       )}
     </div>

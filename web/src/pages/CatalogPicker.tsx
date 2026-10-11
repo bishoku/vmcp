@@ -5,7 +5,22 @@ import { input, btn } from '../styles'
 export default function CatalogPicker({upstreams, value, onChange}: {upstreams:Upstream[];value:CatalogSelection[];onChange:(value:CatalogSelection[])=>void}) {
  const [catalogs,setCatalogs]=useState<Record<string,Catalog>>({})
  const [error,setError]=useState('')
- useEffect(()=>{let active=true;void Promise.all(upstreams.map(async u=>[u.slug,await api.listCatalog(u.slug)] as const)).then(entries=>{if(active){setCatalogs(Object.fromEntries(entries));setError('')}}).catch(e=>{if(active)setError(String(e.message??e))});return()=>{active=false}},[upstreams])
+ const [loading,setLoading]=useState(false)
+ const [attempt,setAttempt]=useState(0)
+ useEffect(()=>{
+  const controller=new AbortController()
+  const timer=setTimeout(()=>{setLoading(true);setError('');setCatalogs({})},0)
+  void Promise.allSettled(upstreams.map(async u=>[u.slug,await api.listCatalog(u.slug,controller.signal)] as const)).then(results=>{
+   clearTimeout(timer)
+   if(controller.signal.aborted)return
+   const entries=results.flatMap(result=>result.status==='fulfilled'?[result.value]:[])
+   setCatalogs(Object.fromEntries(entries))
+   const failed=results.flatMap((result,i)=>result.status==='rejected'?[upstreams[i].slug]:[])
+   setError(failed.length?`Catalogs unavailable for upstreams: ${failed.join(', ')}. Other catalogs remain available.`:'')
+   setLoading(false)
+  })
+  return()=>{clearTimeout(timer);controller.abort()}
+ },[upstreams,attempt])
  const identity=(s:CatalogSelection)=>`${s.upstream}\0${s.kind}\0${s.name}`
  const choices=upstreams.flatMap(u=>{
   const catalog=catalogs[u.slug];if(!catalog)return []
@@ -14,7 +29,9 @@ export default function CatalogPicker({upstreams, value, onChange}: {upstreams:U
  return <section className="mt-6 rounded-lg border border-line p-4">
   <h3 className="font-semibold">Resources and prompts</h3>
   <p className="mt-1 text-xs text-ink-muted">Select objects explicitly. Selecting tools does not grant resource or prompt access. Refresh the upstream to discover changes.</p>
-  {error && <p role="alert" className="text-red-700">Catalog discovery could not be loaded: {error}</p>}
+  {loading && <p role="status">Loading catalogs…</p>}
+  {error && <div role="alert" className="text-red-700">{error} <button className={btn} onClick={()=>setAttempt(a=>a+1)}>Retry catalogs</button></div>}
+  {!loading && !error && choices.length===0 && <p className="text-sm text-ink-muted">No resources or prompts discovered.</p>}
   <label className="mt-3 block text-sm">Add a resource, template or prompt
    <select aria-label="Add catalog object" className={input} value="" onChange={e=>{const choice=choices.find(c=>identity(c)===e.target.value);if(choice)onChange([...value,{upstream:choice.upstream,kind:choice.kind,name:choice.name}])}}>
     <option value="">Choose a discovered object</option>

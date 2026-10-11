@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCapabilities } from '../interaction'
+import { useSources, source } from '../requests'
+import { StaleRecovery } from '../ui'
+import { useDraft, useOperation } from '../interaction'
+import { useEffect, useState } from 'react'
 import { KeyRound, Plus } from 'lucide-react'
 import { api, ApiError, type AgentKey, type VirtualServer } from '../api'
 import { btn, input, primary } from '../styles'
@@ -28,36 +32,28 @@ interface Draft {
 }
 
 export default function AgentKeys() {
+  const { edit: canEdit } = useCapabilities()
   const [keys, setKeys] = useState<AgentKey[]>([])
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [error, setError] = useState('')
-  const [draft, setDraft] = useState<Draft | null>(null)
+  const [draft, setDraft, resetDraft] = useDraft<Draft | null>(null, d => d ? d.isNew ? 'new' : d.slug : null)
   const [problems, setProblems] = useState<string[]>([])
   const [secret, setSecret] = useState<{ title: string; value: string } | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const [k, v] = await Promise.all([api.listAgentKeys(), api.listVirtualServers()])
-      setKeys(k)
-      setServers(v)
-      setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
+  const { load, loading, readError } = useSources(() => [source('Agent keys', api.listAgentKeys, setKeys), source('Virtual servers', api.listVirtualServers, setServers)])
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(timer)
   }, [load])
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = (fn: () => Promise<unknown>) => run(async () => {
     try {
       await fn()
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }
+  })
 
   const open = (k?: AgentKey) => {
     setProblems([])
@@ -68,7 +64,8 @@ export default function AgentKeys() {
     )
   }
 
-  const save = async () => {
+  const { busy, run } = useOperation()
+  const save = () => run(async () => {
     if (!draft) return
     const body = {
       description: draft.description,
@@ -84,13 +81,13 @@ export default function AgentKeys() {
       } else {
         await api.patchAgentKey(draft.slug, body, draft.version)
       }
-      setDraft(null)
+      resetDraft(null)
       await load()
     } catch (e) {
       if (e instanceof ApiError) setProblems(e.errors.length ? e.errors.map((x) => `${x.field ?? ''} ${x.message}`.trim()) : [e.message])
       else setProblems([String(e)])
     }
-  }
+  })
 
   const toggle = (slug: string) =>
     draft &&
@@ -103,10 +100,13 @@ export default function AgentKeys() {
     <div className="mx-auto max-w-6xl px-10 py-10">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Agent Keys</h1>
+          {readError && <ErrorBox>{readError}</ErrorBox>}
+      {loading && <p role="status">Loading…</p>}
+      <button className={btn} disabled={loading} onClick={()=>{setError('');void load()}}>Refresh list</button>
+      <h1 className="text-2xl font-semibold tracking-tight">Agent Keys</h1>
           <p className="mt-1 text-sm text-ink-muted">Credentials agents use to call virtual servers.</p>
         </div>
-        <button className={primary} onClick={() => open()}>
+        <button disabled={!canEdit || busy} className={primary} onClick={() => open()}>
           <Plus className="size-4" /> New key
         </button>
       </div>
@@ -138,13 +138,13 @@ export default function AgentKeys() {
                 <td className="px-4 py-3">{fmt(k.expiresAt)}</td>
                 <td className="px-4 py-3"><Pill status={k.status} /></td>
                 <td className="space-x-2 px-4 py-3 text-right">
-                  <button className={btn} onClick={() => confirm(`Rotate "${k.slug}"? The old secret stops working.`) && act(async () => { const r = await api.rotateAgentKey(k.slug,k.version); setSecret({ title: 'Key rotated', value: r.key }) })}>Rotate</button>
-                  {k.status !== 'revoked' && <button className={btn} onClick={() => confirm(`Revoke "${k.slug}"?`) && act(() => api.revokeAgentKey(k.slug,k.version))}>Revoke</button>}
-                  <button className={btn} onClick={() => confirm(`Delete "${k.slug}"?`) && act(() => api.deleteAgentKey(k.slug,k.version))}>Delete</button>
+                  <button disabled={!canEdit || busy} className={btn} onClick={() => confirm(`Rotate "${k.slug}"? The old secret stops working.`) && act(async () => { const r = await api.rotateAgentKey(k.slug,k.version); setSecret({ title: 'Key rotated', value: r.key }) })}>Rotate</button>
+                  {k.status !== 'revoked' && <button disabled={!canEdit || busy} className={btn} onClick={() => confirm(`Revoke "${k.slug}"?`) && act(() => api.revokeAgentKey(k.slug,k.version))}>Revoke</button>}
+                  <button disabled={!canEdit || busy} className={btn} onClick={() => confirm(`Delete "${k.slug}"?`) && act(() => api.deleteAgentKey(k.slug,k.version))}>Delete</button>
                 </td>
               </tr>
             ))}
-            {keys.length === 0 && (
+            {!loading && !readError && keys.length === 0 && (
               <tr>
                 <td colSpan={7} className="p-10 text-center text-ink-muted">
                   <KeyRound className="mx-auto mb-2 size-5" /> No agent keys yet.
@@ -156,7 +156,12 @@ export default function AgentKeys() {
       </div>
 
       {draft && (
-        <Modal title={draft.isNew ? 'New agent key' : `Edit ${draft.slug}`} onClose={() => setDraft(null)}>
+        <Modal readOnly={!canEdit} busy={busy} title={draft.isNew ? 'New agent key' : `Edit ${draft.slug}`} onClose={() => setDraft(null)}>
+      <StaleRecovery message={problems.join('; ')} reload={async () => {
+        const latest = (await api.listAgentKeys()).find(item => item.slug === draft.slug)
+        if (!latest) throw new Error('This item was deleted. Cancel the draft and refresh the list.')
+        resetDraft(null); open(latest); setProblems([])
+      }} />
           <div className="mt-4 space-y-4">
             {draft.isNew && (
               <label className="block text-sm font-medium">
@@ -199,7 +204,7 @@ export default function AgentKeys() {
           )}
           <div className="mt-6 flex justify-end gap-2">
             <button className={btn} onClick={() => setDraft(null)}>Cancel</button>
-            <button className={primary} disabled={!draft.slug} onClick={save}>{draft.isNew ? 'Create' : 'Save'}</button>
+            <button className={primary} disabled={busy || !draft.slug} onClick={save}>{draft.isNew ? 'Create' : 'Save'}</button>
           </div>
         </Modal>
       )}

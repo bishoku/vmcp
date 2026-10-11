@@ -1,7 +1,12 @@
+import { useCapabilities } from '../interaction'
+import { useSources, source, readSources } from '../requests'
+import { StaleRecovery } from '../ui'
+import { CopyButton, ErrorBox } from '../ui'
+import { useDraft, useOperation } from '../interaction'
 import CatalogPicker from './CatalogPicker'
 import { connectionEndpoint } from '../endpoint'
 import type {CatalogSelection,ClientFeatures} from '../api'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -19,16 +24,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Copy, GripVertical, Plus, Trash2, X } from 'lucide-react'
+import { GripVertical, Plus, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { api, ApiError, type PiiConfig, type PolicyMode, type ToolPolicy, type Tool, type ToolSelection, type Upstream, type VirtualServer } from '../api'
 
-const btn =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-canvas disabled:opacity-50'
-const input =
-  'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20'
-const primary =
-  'rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50'
+import { btn, input, primary } from '../styles'
 
 const key = (s: ToolSelection) => `${s.upstream}\u0000${s.tool}`
 const slugify = (s: string) =>
@@ -96,29 +96,24 @@ function cleanPolicy(d: Draft): ToolPolicy {
 }
 
 export default function VirtualServers() {
+  const { edit: canEdit } = useCapabilities()
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [upstreams, setUpstreams] = useState<Upstream[]>([])
   const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
-  const [draft, setDraft] = useState<Draft | null>(null)
+  const [draft, setDraft, resetDraft, openDraft] = useDraft<Draft | null>(null, d => d ? d.isNew ? 'new' : d.slug : null)
   const [problems, setProblems] = useState<string[]>([])
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('')
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useOperation()
 
-  const load = useCallback(async () => {
-    try {
-      const [vs, us] = await Promise.all([api.listVirtualServers(), api.listUpstreams()])
-      setServers(vs)
+  const { load, loading, readError } = useSources(() => [source('Virtual servers', api.listVirtualServers, setServers),
+    {name:'Upstreams',load:async signal=>{
+      const us=await api.listUpstreams(signal)
+      if(signal.aborted)return
       setUpstreams(us)
-      const entries = await Promise.all(
-        us.map(async (u) => [u.slug, await api.listTools(u.slug).catch(() => [])] as const),
-      )
-      setCatalog(Object.fromEntries(entries))
-      setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
+      const failures=await readSources(us.map(u=>source(u.slug,s=>api.listTools(u.slug,s),tools=>setCatalog(previous=>({...previous,[u.slug]:tools})))),signal)
+      if(failures)throw new Error(failures)
+    }}])
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(timer)
@@ -166,9 +161,8 @@ export default function VirtualServers() {
       ...draft.policy, tools: Object.fromEntries(Object.entries(draft.policy.tools).filter(([id]) => id !== k)),
     } })
 
-  const save = async () => {
+  const save = () => run(async () => {
     if (!draft) return
-    setBusy(true)
     setProblems([])
     try {
       await api.putVirtualServer(draft.slug, {
@@ -182,23 +176,23 @@ export default function VirtualServers() {
         tools: draft.tools,
  catalog:draft.catalog,clientFeatures:draft.clientFeatures,
       },draft.version)
-      setDraft(null)
+      resetDraft(null)
       await load()
     } catch (e) {
       if (e instanceof ApiError) {
         setProblems(e.errors.length ? e.errors.map((x) => `${x.field ?? ''} ${x.message}`.trim()) : [e.message])
       } else setProblems([String(e)])
-    } finally {
-      setBusy(false)
     }
-  }
+  })
 
-  const remove = async (v: VirtualServer) => {
+  const remove = (v: VirtualServer) => run(async () => {
     if (!confirm(`Delete virtual server "${v.slug}"?`)) return
-    await api.deleteVirtualServer(v.slug,v.version).catch((e) => setError(String(e.message ?? e)))
-    if (draft?.slug === v.slug) setDraft(null)
-    await load()
-  }
+    try {
+      await api.deleteVirtualServer(v.slug,v.version)
+      if (draft?.slug === v.slug) resetDraft(null)
+      await load()
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+  })
 
   const endpointPath = draft && !draft.isNew ? servers.find(v => v.slug === draft.slug)?.endpoint ?? '' : ''
   const endpoint = connectionEndpoint(endpointPath)
@@ -207,10 +201,18 @@ export default function VirtualServers() {
     <div className="mx-auto max-w-7xl px-10 py-10">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Virtual Servers</h1>
+          {draft && <StaleRecovery message={problems.join('; ')} reload={async () => {
+        const latest = (await api.listVirtualServers()).find(item => item.slug === draft.slug)
+        if (!latest) throw new Error('This item was deleted. Cancel the draft and refresh the list.')
+        resetDraft(fromServer(latest)); setProblems([])
+      }} />}
+      {readError && <ErrorBox>{readError}</ErrorBox>}
+      {loading && <p role="status">Loading…</p>}
+      <button className={btn} disabled={loading} onClick={()=>{setError('');void load()}}>Refresh list</button>
+      <h1 className="text-2xl font-semibold tracking-tight">Virtual Servers</h1>
           <p className="mt-1 text-sm text-ink-muted">Compose tools into agent-specific endpoints.</p>
         </div>
-        <button className={clsx(primary, 'inline-flex items-center gap-1.5')} onClick={() => { setDraft(blank); setProblems([]) }}>
+        <button disabled={!canEdit || busy} className={clsx(primary, 'inline-flex items-center gap-1.5')} onClick={() => { openDraft(blank); setProblems([]) }}>
           <Plus className="size-4" /> New virtual server
         </button>
       </div>
@@ -221,26 +223,26 @@ export default function VirtualServers() {
           {servers.map((v) => (
             <div
               key={v.slug}
-              onClick={() => { setDraft(fromServer(v)); setProblems([]) }}
+              onClick={() => { openDraft(fromServer(v)); setProblems([]) }}
               className={clsx(
                 'flex cursor-pointer items-center justify-between border-b border-line px-4 py-3 last:border-0 hover:bg-canvas',
                 draft?.slug === v.slug && !draft.isNew && 'bg-accent-50',
               )}
             >
               <div className="min-w-0">
-                <button type="button" className="truncate text-sm font-medium hover:underline" onClick={() => { setDraft(fromServer(v)); setProblems([]) }}>{v.name}</button>
+                <button type="button" className="truncate text-sm font-medium hover:underline" onClick={e => { e.stopPropagation(); openDraft(fromServer(v)); setProblems([]) }}>{v.name}</button>
                 <div className="text-xs text-ink-muted">{v.tools.length} tools{v.enabled ? '' : ' · disabled'}</div>
               </div>
-              <button className="p-1" aria-label="Delete" onClick={(e) => { e.stopPropagation(); void remove(v) }}>
+              <button disabled={!canEdit || busy} className="p-1" aria-label="Delete" onClick={(e) => { e.stopPropagation(); void remove(v) }}>
                 <Trash2 className="size-4 text-red-600" />
               </button>
             </div>
           ))}
-          {servers.length === 0 && <div className="p-6 text-center text-sm text-ink-muted">No virtual servers yet.</div>}
+          {!loading && !readError && servers.length === 0 && <div className="p-6 text-center text-sm text-ink-muted">No virtual servers yet.</div>}
         </div>
 
         {draft ? (
-          <div className="rounded-card border border-line bg-surface p-6 shadow-card">
+          <div className="rounded-card border border-line bg-surface p-6 shadow-card"><fieldset disabled={!canEdit || busy} className="min-w-0 border-0 p-0 m-0">
             <div className="grid grid-cols-3 gap-4">
               <label className="text-sm font-medium">
                 Name
@@ -272,9 +274,7 @@ export default function VirtualServers() {
             {endpointPath && (
               <div className="mt-4 flex items-center gap-2 rounded-lg bg-canvas px-3 py-2 text-xs">
                 <code className="flex-1 truncate">{endpoint ?? endpointPath}</code>
-                <button aria-label="Copy endpoint" disabled={!endpoint} onClick={() => endpoint && navigator.clipboard.writeText(endpoint)}>
-                  <Copy className="size-3.5" />
-                </button>
+                <CopyButton label="Copy endpoint" value={endpoint} />
               </div>
             )}
 
@@ -398,9 +398,9 @@ export default function VirtualServers() {
                 {problems.map((p, i) => <li key={i}>{p}</li>)}
               </ul>
             )}
-            <div className="mt-6 flex justify-end gap-2">
-              <button className={btn} onClick={() => setDraft(null)}>Cancel</button>
-              <button className={primary} disabled={busy || !draft.name || !draft.slug || dupes.size > 0} onClick={save}>Save</button>
+            </fieldset><div className="mt-6 flex justify-end gap-2">
+              <button disabled={busy} className={btn} onClick={() => setDraft(null)}>Cancel</button>
+              <button className={primary} disabled={!canEdit || busy || !draft.name || !draft.slug || dupes.size > 0} onClick={save}>Save</button>
             </div>
           </div>
         ) : (

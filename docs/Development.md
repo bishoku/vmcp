@@ -66,3 +66,29 @@ changing it. The manual-test Compose stack sets `http://localhost:8800`. The
 `deploy/docker-compose.yml` web build uses `VMCP_PUBLIC_URL`, defaulting to
 `http://localhost:8080`. Use the browser-reachable gateway address, not an internal
 container hostname. HTTP is for local development; production should use HTTPS.
+
+### Frontend interaction and authentication
+
+The UI prefers SSO when configured. Token login keeps the credential only in
+memory: reloading or closing the tab requires signing in again, and legacy
+`vmcp.adminToken` local storage is removed on startup. Nothing persists form drafts
+or write-only credentials to browser storage.
+
+Dirty editors guard dismissal, entity switching, route navigation, browser Back,
+sign-out and page unload. Failed writes retain their draft; a stale-version error
+offers an explicit discard-and-reload action rather than overwriting newer data.
+An expired session allows token reauthentication while retaining the open draft;
+SSO redirects reload the page, so copy changes before taking that route. Mutations
+are never automatically replayed after authentication or conflicts.
+
+Viewers can inspect configuration and filter/refresh lists, but cannot mutate it.
+Editors can change configuration (including configuration import); only admins
+can manage admin API tokens. These controls supplement server authorization.
+Independent page catalogs report partial failures and offer refresh; obsolete
+reads are cancelled and ignored even if a source completes after cancellation.
+Audit filters debounce reads and protect against out-of-order responses.
+
+Run `npm --prefix web run <script>` with each of `test`, `lint`, `build`,
+`validate:api` and `test:browser` for frontend verification.
+Browser tests use mocked APIs; live-stack and responsive/accessibility verification
+remain in F04 of [the frontend plan](FRONTEND_IMPLEMENTATION_PLAN.md).

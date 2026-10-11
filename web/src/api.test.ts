@@ -23,3 +23,16 @@ test('token authentication is explicit and stored credential test never submits 
  expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer admin-token')
  expect(fetch.mock.calls[0][1].body).toBeUndefined()
 })
+test('expired sessions clear memory credentials and notify the application without retry',async()=>{
+ const {clearToken,getToken}=await import('./api')
+ clearToken();setToken('secret');expect(localStorage.getItem('vmcp.adminToken')).toBeNull()
+ const expired=vi.fn();window.addEventListener('vmcp:session-expired',expired)
+ const fetch=vi.fn().mockResolvedValue(new Response('{}',{status:401}));vi.stubGlobal('fetch',fetch)
+ try{await expect(api.me()).rejects.toMatchObject({status:401});expect(expired).toHaveBeenCalledTimes(1);expect(getToken()).toBe('');expect(fetch).toHaveBeenCalledTimes(1)}finally{window.removeEventListener('vmcp:session-expired',expired)}
+})
+test('audit requests propagate abort signals',async()=>{
+ const controller=new AbortController()
+ const fetch=vi.fn().mockResolvedValue(new Response('{"items":[]}'));vi.stubGlobal('fetch',fetch)
+ await api.listAudit({tool:'test'},controller.signal)
+ expect(fetch.mock.calls[0][1].signal).toBe(controller.signal)
+})

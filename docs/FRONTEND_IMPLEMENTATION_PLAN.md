@@ -26,7 +26,7 @@ certification.
   exact expiry preservation and explicit edits; real browser tests for dialog
   focus, keyboard dismissal, focus restoration and secret acknowledgement.
 
-## F02 — Reliable interaction and frontend foundations (planned)
+## F02 — Reliable interaction and frontend foundations (complete)
 
 - Add dirty-draft guards for switching entities, navigation and dismissal; retain
   drafts after failed writes and provide actionable stale-version recovery.
@@ -94,3 +94,36 @@ F01 completed 2026-10-11:
 - F02–F04 remain planned; dirty-draft protection, role-aware controls, the topology
   view, audit grouping and broader responsive/accessibility coverage are not
   implemented by F01.
+
+
+F02 completed 2026-10-11:
+
+- Shared draft baselines guard entity switching, dismissal, routing/Back, sign-out
+  and unload. Failed writes retain their inputs; stale edits offer an explicit
+  reload of the latest version. Pending operations block route departure.
+- Role context and capabilities match backend permissions. Viewers retain list
+  filtering, refresh and inspection; editors can import configuration, while
+  admin token mutations remain admin-only.
+- Shared cancellable read sources expose loading and partial errors without
+  erasing mutation errors. Audit reads debounce filters, ignore stale responses,
+  and protect paginated loading against duplicate requests/events. Catalog
+  discovery preserves selections and offers retry for unavailable upstreams.
+- Save/credential actions use synchronous operation latches; pending GitOps
+  previews lock their document so an obsolete preview cannot authorize edits.
+  No automatic mutation retries were introduced.
+- TypeScript strict mode is enabled. Common styles, draft/request/operation hooks,
+  clipboard feedback and stale recovery are shared; the upstream editor is split
+  from its list and capability selection remains in CatalogPicker.
+- Login tokens are memory-only, legacy persisted tokens are removed, and expired
+  requests clear credentials. Token reauthentication preserves the mounted draft.
+  SSO redirects necessarily reload the page; the UI warns users to copy changes.
+- 35 unit/component tests passed (17 added regressions), covering role permissions,
+  dirty decisions, duplicate saves, partial reads, cancellation, stale audit
+  results, stale-version reload, session expiry, preview locking and clipboard
+  failures. All 10 Chromium scenarios passed (6 added), including browser Back,
+  viewer/editor/admin controls and draft retention after an expired write.
+- Lint (no warnings), strict TypeScript/production build, OpenAPI validation
+  (49 operations and 6 examples), and `git diff --check` passed.
+- Browser scenarios still use mocked APIs. The running manual-test stack was not
+  rebuilt. F03 topology/guided setup and F04 responsive polish, audit grouping,
+  real-stack smoke and broader accessibility checks remain planned.

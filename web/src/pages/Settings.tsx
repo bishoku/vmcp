@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useSources, source } from '../requests'
+import { useDraft, useOperation } from '../interaction'
+import { useEffect, useState } from 'react'
 import GitOps from './GitOps'
 import { Plus } from 'lucide-react'
 import { api, ApiError, type AdminToken } from '../api'
@@ -14,49 +16,44 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
   const [tokens, setTokens] = useState<AdminToken[]>([])
   const [info, setInfo] = useState<{ version: string; configRevision: number; tenantId?: string } | null>(null)
   const [error, setError] = useState('')
-  const [form, setForm] = useState<{ slug: string; description: string; scope: 'admin' | 'read'; expiresAt: string } | null>(null)
+  const [form, setForm, resetForm] = useDraft<{ slug: string; description: string; scope: 'admin' | 'read'; expiresAt: string } | null>(null, f => f ? 'new' : null)
   const [problem, setProblem] = useState('')
   const [secret, setSecret] = useState<{ title: string; value: string } | null>(null)
 
-  const load = useCallback(async () => {
-    try {
-      const [t, i] = await Promise.all([api.listAdminTokens(), api.info()])
-      setTokens(t)
-      setInfo(i)
-      setError('')
-    } catch (e) {
-      setError(e instanceof ApiError && e.status === 403 ? 'Your token cannot manage admin tokens.' : e instanceof Error ? e.message : String(e))
-    }
-  }, [])
+  const { load, loading, readError } = useSources(() => [source('Admin tokens', api.listAdminTokens, setTokens), source('Gateway information', api.info, setInfo)])
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
     return () => clearTimeout(timer)
   }, [load])
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = (fn: () => Promise<unknown>) => run(async () => {
     try {
       await fn()
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }
+  })
 
-  const create = async () => {
+  const { busy, run } = useOperation()
+  const create = () => run(async () => {
     if (!form) return
     try {
       const r = await api.createAdminToken({...form,expiresAt:form.expiresAt ? new Date(form.expiresAt).toISOString():null})
       setSecret({ title: 'Admin token created', value: r.token })
-      setForm(null)
+      resetForm(null)
       setProblem('')
       await load()
     } catch (e) {
       setProblem(e instanceof ApiError && e.errors.length ? e.errors.map((x) => x.message).join('; ') : String(e instanceof Error ? e.message : e))
     }
-  }
+  })
 
   return (
     <div className="mx-auto max-w-6xl px-10 py-10">
+      {readError && <ErrorBox>{readError}</ErrorBox>}
+      {loading && <p role="status">Loading…</p>}
+      <button className={btn} disabled={loading} onClick={()=>{setError('');void load()}}>Refresh list</button>
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
       <p className="mt-1 text-sm text-ink-muted">Gateway configuration.</p>
       {error && <ErrorBox>{error}</ErrorBox>}
@@ -118,9 +115,9 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
         </dl>
       </section>
 
-      <GitOps canManage={canManage} />
+      <GitOps canManage={role !== 'viewer'} />
       {form && (
-        <Modal title="New admin token" onClose={() => setForm(null)}>
+        <Modal busy={busy} title="New admin token" onClose={() => setForm(null)}>
           <div className="mt-4 space-y-4">
             <label className="block text-sm font-medium">
               Name
@@ -145,7 +142,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
           {problem && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{problem}</div>}
           <div className="mt-6 flex justify-end gap-2">
             <button className={btn} onClick={() => setForm(null)}>Cancel</button>
-            <button className={primary} disabled={!form.slug} onClick={create}>Create</button>
+            <button className={primary} disabled={busy || !form.slug} onClick={create}>Create</button>
           </div>
         </Modal>
       )}
