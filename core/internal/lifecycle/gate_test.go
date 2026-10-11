@@ -72,3 +72,16 @@ func TestForcedStreamClosureAllowsOutcomeRecording(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDrainingReadinessFailsWhileLivenessSurvives(t *testing.T) {
+	g := &Gate{}
+	handler := g.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
+	g.Stop()
+	for path, want := range map[string]int{"/readyz": 503, "/healthz": 200, "/api": 503} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != want {
+			t.Fatalf("%s: %d", path, w.Code)
+		}
+	}
+}

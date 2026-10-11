@@ -1,15 +1,18 @@
 # Security policy
 
-## Reporting a vulnerability
+This repository is in development. No production-supported release or response
+SLA is declared. Only the current main branch receives fixes until a supported
+release policy is published. Deployments must evaluate their own risk and the
+release gates in `docs/PRODUCTION_DEPLOYMENT.md`.
 
-Please **do not** open a public issue. Use GitHub's private
-["Report a vulnerability"](https://github.com/bishoku/vmcp/security/advisories/new) form on this repository.
-Include affected version/commit, reproduction steps and impact. We aim to acknowledge reports within a few days.
+Report suspected vulnerabilities privately through the repository's GitHub
+Security Advisory reporting channel when enabled. If it is unavailable, contact
+the repository maintainer privately before sharing exploit details. Do not post
+credentials, personal information or sensitive upstream payloads in public
+issues. Maintainers should acknowledge reports, agree on disclosure timing and
+publish affected/fixed versions in an advisory. There is no promised response
+time until maintainers explicitly adopt one.
 
-## Scope
-
-vMCP handles upstream credentials, agent keys and potentially sensitive tool output. Issues of particular interest:
-authentication or authorization bypass, secret disclosure (headers, keys, tokens), SSRF through upstream URLs,
-TLS verification bypass, PII masking bypass, and cross-session data leakage.
-
-Hardening guidance for operators is in [docs/Security.md](docs/Security.md).
+Dependencies are locked by go.sum/package-lock.json. CI runs vulnerability
+checks and image scans; review findings rather than blanket-suppressing them.
+Schema, key-envelope and protocol compatibility are separate upgrade concerns.

@@ -25,6 +25,10 @@ func (g *Gate) Handler(next http.Handler) http.Handler {
 		}
 		if g.draining {
 			g.mu.Unlock()
+			if r.URL.Path == "/readyz" {
+				http.Error(w, "server draining", http.StatusServiceUnavailable)
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

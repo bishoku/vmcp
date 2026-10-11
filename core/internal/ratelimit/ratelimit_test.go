@@ -73,6 +73,9 @@ func TestFailOpenFallsBackToLocal(t *testing.T) {
 func TestRedisSharedBetweenNodes(t *testing.T) {
 	url := os.Getenv("VMCP_TEST_REDIS_URL")
 	if url == "" {
+		if os.Getenv("VMCP_REQUIRE_INTEGRATION") == "1" {
+			t.Fatal("required Redis integration URL is missing")
+		}
 		t.Skip("VMCP_TEST_REDIS_URL not set")
 	}
 	opt, err := redis.ParseURL(url)

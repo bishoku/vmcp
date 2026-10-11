@@ -1,0 +1,35 @@
+name: release-artifacts
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+      - name: Build and checksum Linux binaries
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p artifacts
+          cd core
+          for service in control-plane data-plane migrate audit-exporter rotate-secrets; do
+            go build -trimpath -ldflags='-s -w' -o ../artifacts/vmcp-$service-linux-$GOARCH ./cmd/$service
+          done
+          cd ../artifacts
+          sha256sum vmcp-* > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vmcp-linux-${{ matrix.arch }}
+          path: artifacts/

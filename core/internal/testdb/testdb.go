@@ -22,6 +22,9 @@ func New(t *testing.T) string {
 	t.Helper()
 	base := os.Getenv("VMCP_TEST_DATABASE_URL")
 	if base == "" {
+		if os.Getenv("VMCP_REQUIRE_INTEGRATION") == "1" {
+			t.Fatal("required PostgreSQL integration URL is missing")
+		}
 		t.Skip("VMCP_TEST_DATABASE_URL not set")
 	}
 	u, err := url.Parse(base)

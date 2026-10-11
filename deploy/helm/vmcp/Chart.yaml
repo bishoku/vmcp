@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vmcp
+description: vMCP gateway with externally managed PostgreSQL, secrets and ingress
+type: application
+version: 0.1.0
+appVersion: development

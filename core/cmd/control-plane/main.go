@@ -62,7 +62,12 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	if err := store.Migrate(ctx, dbURL); err != nil {
+	if err := func() error {
+		if config.Env("VMCP_SKIP_MIGRATIONS", "false") == "true" {
+			return nil
+		}
+		return store.Migrate(ctx, dbURL)
+	}(); err != nil {
 		return err
 	}
 	pool, err := store.Connect(ctx, dbURL)
@@ -70,6 +75,9 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
+	if err := store.CheckSchema(ctx, pool); err != nil {
+		return err
+	}
 
 	// Audit retention: 0 keeps events forever.
 	if days, err := strconv.Atoi(config.Env("VMCP_AUDIT_RETENTION_DAYS", "90")); err != nil || days < 0 {

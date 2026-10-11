@@ -1,0 +1,30 @@
+# Set immutable image digests and existing Secret names before installation.
+controlPlane:
+  image: ""
+  replicas: 2
+  secretName: ""
+  env: {}
+dataPlane:
+  image: ""
+  replicas: 2
+  secretName: ""
+  env:
+    VMCP_AUDIT_MODE: strict
+    VMCP_AUTH_MAX_STALE: 30s
+    VMCP_REDIS_FAILURE_POLICY: strict
+migration:
+  image: ""
+  secretName: ""
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "2"
+    memory: 512Mi
+networkPolicy:
+  enabled: true
+  # Only the configured ingress namespace can connect to the planes.
+  ingressNamespace: ingress-nginx
+  # Supply PG/Redis/IdP/upstream CIDRs; DNS alone is enabled by default.
+  egressCIDRs: []

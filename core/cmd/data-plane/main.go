@@ -72,6 +72,10 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	if err := store.CheckSchema(ctx, pool); err != nil {
+		pool.Close()
+		return err
+	}
 	auditor, err := audit.NewService(auditCtx, pool, log, config.Env("VMCP_AUDIT_MODE", "strict"))
 	if err != nil {
 		pool.Close()

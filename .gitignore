@@ -6,3 +6,4 @@ dist/
 core/bin/
 
 .agents
+verification.jsonl
