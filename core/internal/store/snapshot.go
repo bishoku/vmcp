@@ -66,12 +66,12 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 			rows.Close()
 			return nil, err
 		}
-		if u.Headers, err = box.OpenHeaders(enc); err != nil {
+		if u.Headers, err = box.OpenHeadersBound(enc, u.ID); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("decrypt headers for upstream %q: %w", u.Slug, err)
 		}
 		if len(encKey) > 0 {
-			k, err := box.Open(encKey)
+			k, err := box.OpenBound(encKey, u.ID, "upstream.client_key")
 			if err != nil {
 				rows.Close()
 				return nil, fmt.Errorf("decrypt client key for upstream %q: %w", u.Slug, err)
@@ -80,7 +80,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 		}
 		if oc.TokenURL != "" {
 			if len(encOAuth) > 0 {
-				k, err := box.Open(encOAuth)
+				k, err := box.OpenBound(encOAuth, u.ID, "upstream.oauth_secret")
 				if err != nil {
 					rows.Close()
 					return nil, fmt.Errorf("decrypt oauth client secret for upstream %q: %w", u.Slug, err)

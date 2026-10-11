@@ -73,7 +73,9 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("POST /auth/logout", func(w http.ResponseWriter, r *http.Request) {
 		if s.OIDC != nil {
-			s.OIDC.Logout(w)
+			if !s.OIDC.Logout(w, r) {
+				return
+			}
 			if u := s.OIDC.EndSessionURL(); u != "" {
 				_ = writeJSON(w, http.StatusOK, map[string]string{"endSessionUrl": u})
 				return

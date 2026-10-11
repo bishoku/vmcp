@@ -34,14 +34,15 @@ func (s *Store) ResourceUpdated(ctx context.Context, session, uri, owner string)
 		return ErrCapacity
 	}
 	raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "notifications/resources/updated", "params": map[string]string{"uri": uri}})
-	sealed, err := s.Box.Seal(raw)
+	eventID := UUID()
+	sealed, err := s.Box.SealBound(raw, eventID, "mcp.event")
 	if err != nil {
 		return err
 	}
 	if err := audit.Insert(ctx, tx, audit.Event{Time: time.Now().UTC(), ActorType: "system", Action: "mcp.resource_updated", Method: "notifications/resources/updated", Target: session, Status: "ok", Stage: "event", Revision: revision}); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, UUID(), stream, sealed); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, eventID, stream, sealed); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, session); err != nil {

@@ -2,6 +2,7 @@ package agentauth
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -21,7 +22,8 @@ type Config struct {
 	// let tokens meant for other applications call vMCP.
 	Audience string
 	// Algs are the accepted signing algorithms. Default RS256 and ES256. "none" and HMAC are refused.
-	Algs []string
+	Algs        []string
+	Revocations TokenRevocations
 }
 
 // Identity is a verified caller.
@@ -32,10 +34,11 @@ type Identity struct {
 
 // Verifier validates access tokens that are signed JWTs.
 type Verifier struct {
-	issuer   string
-	audience string
-	verifier *gooidc.IDTokenVerifier
-	now      func() time.Time
+	issuer      string
+	audience    string
+	verifier    *gooidc.IDTokenVerifier
+	now         func() time.Time
+	revocations TokenRevocations
 }
 
 // ErrInvalidToken is returned (wrapped) for any token that fails verification.
@@ -70,10 +73,11 @@ func NewVerifier(ctx context.Context, cfg Config) (*Verifier, error) {
 		return nil, fmt.Errorf("agent oidc discovery: %w", err)
 	}
 	return &Verifier{
-		issuer:   cfg.Issuer,
-		audience: cfg.Audience,
-		verifier: p.Verifier(&gooidc.Config{SkipClientIDCheck: true, SupportedSigningAlgs: algs}),
-		now:      time.Now,
+		issuer:      cfg.Issuer,
+		audience:    cfg.Audience,
+		verifier:    p.Verifier(&gooidc.Config{SkipClientIDCheck: true, SupportedSigningAlgs: algs}),
+		now:         time.Now,
+		revocations: cfg.Revocations,
 	}, nil
 }
 
@@ -82,6 +86,15 @@ func (v *Verifier) Issuer() string { return v.issuer }
 
 // Verify checks signature, issuer, expiry, not-before and audience.
 func (v *Verifier) Verify(ctx context.Context, raw string) (*Identity, error) {
+	if v.revocations != nil {
+		hash := sha256.Sum256([]byte(raw))
+		check, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		revoked, err := v.revocations.Revoked(check, hash[:])
+		if err != nil || revoked {
+			return nil, ErrInvalidToken
+		}
+	}
 	t, err := v.verifier.Verify(ctx, raw)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)

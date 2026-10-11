@@ -124,14 +124,14 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 		return nil, err
 	}
 	if len(encKey) > 0 {
-		k, err := t.box.Open(encKey)
+		k, err := t.box.OpenBound(encKey, r.id, "upstream.client_key")
 		if err != nil {
 			return nil, fmt.Errorf("decrypt client key of upstream %q: %w", r.Slug, err)
 		}
 		r.tls.ClientKeyPEM = string(k)
 	}
 	if len(encOAuth) > 0 {
-		k, err := t.box.Open(encOAuth)
+		k, err := t.box.OpenBound(encOAuth, r.id, "upstream.oauth_secret")
 		if err != nil {
 			return nil, fmt.Errorf("decrypt oauth client secret of upstream %q: %w", r.Slug, err)
 		}
@@ -146,7 +146,7 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 		return nil, err
 	}
 	r.Health.summarize()
-	h, err := t.box.OpenHeaders(enc)
+	h, err := t.box.OpenHeadersBound(enc, r.id)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt headers of upstream %q: %w", r.Slug, err)
 	}
@@ -243,7 +243,11 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 		if ifMatch != nil {
 			return nil, "", apierror.PreconditionFailed()
 		}
-		enc, err := t.box.SealHeaders(in.Headers)
+		var immutableID string
+		if err := t.q.QueryRow(ctx, `SELECT gen_random_uuid()::text`).Scan(&immutableID); err != nil {
+			return nil, "", err
+		}
+		enc, err := t.box.SealHeadersBound(in.Headers, immutableID)
 		if err != nil {
 			return nil, "", err
 		}
@@ -251,7 +255,7 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 		if err != nil {
 			return nil, "", err
 		}
-		encKey, err := t.sealKey(tl)
+		encKey, err := t.sealKey(tl, immutableID)
 		if err != nil {
 			return nil, "", err
 		}
@@ -259,18 +263,18 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 		if err != nil {
 			return nil, "", err
 		}
-		encOAuth, err := t.sealOAuthSecret(oc)
+		encOAuth, err := t.sealOAuthSecret(oc, immutableID)
 		if err != nil {
 			return nil, "", err
 		}
 		if _, err := t.q.Exec(ctx, `
 			INSERT INTO upstreams (tenant_id, slug, name, description, url, transport, enabled, encrypted_headers, fallback_urls,
 			                       ca_pem, tls_server_name, client_cert_pem, encrypted_client_key,
-			                       oauth_token_url, oauth_client_id, oauth_scopes, oauth_audience, encrypted_oauth_secret)
-			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+			                       oauth_token_url, oauth_client_id, oauth_scopes, oauth_audience, encrypted_oauth_secret,id)
+			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,$18)`,
 			slug, in.Name, in.Description, in.URL, in.Transport, in.Enabled, enc, in.FallbackURLs,
 			tl.CAPEM, tl.ServerName, tl.ClientCertPEM, encKey,
-			oc.TokenURL, oc.ClientID, nonNil(oc.Scopes), oc.Audience, encOAuth); err != nil {
+			oc.TokenURL, oc.ClientID, nonNil(oc.Scopes), oc.Audience, encOAuth, immutableID); err != nil {
 			return nil, "", mapWriteErr(err, "upstream", slug)
 		}
 		u, err := t.GetUpstream(ctx, slug)
@@ -307,15 +311,15 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 	}
 	var enc []byte
 	if setHeaders {
-		if enc, err = t.box.SealHeaders(in.Headers); err != nil {
+		if enc, err = t.box.SealHeadersBound(in.Headers, cur.id); err != nil {
 			return nil, "", err
 		}
 	}
-	encKey, err := t.sealKey(tl)
+	encKey, err := t.sealKey(tl, cur.id)
 	if err != nil {
 		return nil, "", err
 	}
-	encOAuth, err := t.sealOAuthSecret(oc)
+	encOAuth, err := t.sealOAuthSecret(oc, cur.id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -407,18 +411,18 @@ func ResolveOAuth(in *oauthtoken.Config, cur oauthtoken.Config, headers map[stri
 	return c, nil
 }
 
-func (t *Tx) sealOAuthSecret(c oauthtoken.Config) ([]byte, error) {
+func (t *Tx) sealOAuthSecret(c oauthtoken.Config, id string) ([]byte, error) {
 	if c.ClientSecret == "" {
 		return nil, nil
 	}
-	return t.box.Seal([]byte(c.ClientSecret))
+	return t.box.SealBound([]byte(c.ClientSecret), id, "upstream.oauth_secret")
 }
 
-func (t *Tx) sealKey(s tlsconf.Settings) ([]byte, error) {
+func (t *Tx) sealKey(s tlsconf.Settings, id string) ([]byte, error) {
 	if s.ClientKeyPEM == "" {
 		return nil, nil
 	}
-	return t.box.Seal([]byte(s.ClientKeyPEM))
+	return t.box.SealBound([]byte(s.ClientKeyPEM), id, "upstream.client_key")
 }
 
 // PatchUpstream applies a JSON merge patch.

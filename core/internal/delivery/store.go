@@ -88,7 +88,8 @@ func (s *Store) Cancel(ctx context.Context, session, request string) error {
 	return err
 }
 func (s *Store) Append(ctx context.Context, op Operation, payload []byte, terminal bool) error {
-	sealed, err := s.Box.Seal(payload)
+	eventID := UUID()
+	sealed, err := s.Box.SealBound(payload, eventID, "mcp.event")
 	if err != nil {
 		return err
 	}
@@ -105,7 +106,7 @@ func (s *Store) Append(ctx context.Context, op Operation, payload []byte, termin
 	if (terminal && count >= 256) || (!terminal && count >= 255) || (!terminal && totalBytes+len(sealed) > 2<<20) || totalBytes+len(sealed) > 12<<20 {
 		return ErrCapacity
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload,terminal) VALUES($1,$2,$3,$4)`, UUID(), op.Stream, sealed, terminal); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload,terminal) VALUES($1,$2,$3,$4)`, eventID, op.Stream, sealed, terminal); err != nil {
 		return err
 	}
 	if terminal {
@@ -150,7 +151,7 @@ func (s *Store) Events(ctx context.Context, session, stream, owner string, after
 		if err := rows.Scan(&e.Seq, &e.ID, &sealed, &e.Terminal); err != nil {
 			return nil, err
 		}
-		e.Payload, err = s.Box.Open(sealed)
+		e.Payload, err = s.Box.OpenBound(sealed, e.ID, "mcp.event")
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +160,7 @@ func (s *Store) Events(ctx context.Context, session, stream, owner string, after
 	return events, rows.Err()
 }
 func (s *Store) Reply(ctx context.Context, session, id string, response []byte) error {
-	sealed, err := s.Box.Seal(response)
+	sealed, err := s.Box.SealBound(response, id, "mcp.response")
 	if err != nil {
 		return err
 	}
@@ -203,7 +204,7 @@ func (s *Store) WaitReply(ctx context.Context, op Operation, id string) ([]byte,
 			return nil, err
 		}
 		if len(sealed) > 0 {
-			return s.Box.Open(sealed)
+			return s.Box.OpenBound(sealed, id, "mcp.response")
 		}
 		select {
 		case <-ctx.Done():
@@ -276,11 +277,12 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 				return err
 			}
 			raw, _ := json.Marshal(map[string]string{"jsonrpc": "2.0", "method": method})
-			sealed, err := s.Box.Seal(raw)
+			eventID := UUID()
+			sealed, err := s.Box.SealBound(raw, eventID, "mcp.event")
 			if err != nil {
 				return err
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, UUID(), id, sealed); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, eventID, id, sealed); err != nil {
 				return err
 			}
 		}
@@ -311,7 +313,7 @@ func (s *Store) Run(ctx context.Context, revision func() int64) {
 }
 
 func (s *Store) CancelPending(ctx context.Context, op Operation, id string, response []byte) error {
-	sealed, err := s.Box.Seal(response)
+	sealed, err := s.Box.SealBound(response, id, "mcp.response")
 	if err != nil {
 		return err
 	}

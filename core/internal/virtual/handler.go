@@ -40,6 +40,7 @@ type SnapshotProvider interface {
 
 // Handler serves /mcp/v1/virtual/{slug}.
 type Handler struct {
+	Approval *ApprovalPolicy
 	Snap     SnapshotProvider
 	Sessions *Manager
 	Delivery *delivery.Store
@@ -454,6 +455,14 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	}
 
 	ev.Upstream = up.Slug
+	if err := h.Approval.Check(ctx, PolicyDecision{Actor: sess.owner.CredentialID, Server: vs.Slug, Method: msg.Method, Object: p.Name, Revision: snap.Revision}, p.Arguments); err != nil {
+		if !finish("denied", "approval policy") {
+			http.Error(w, "audit outcome unavailable", 503)
+			return
+		}
+		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, -32003, "approval policy denied operation"))
+		return
+	}
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
@@ -502,6 +511,16 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 				var n int
 				masked := *rpcErr
 				masked.Message, n = vs.PII.MaskString(rpcErr.Message)
+				if len(masked.Data) > 0 {
+					data, redactions, privacyErr := vs.PII.MaskJSON(masked.Data)
+					n += redactions
+					if privacyErr != nil {
+						masked.Data = nil
+						masked.Message = "upstream error data denied by privacy policy"
+					} else {
+						masked.Data = data
+					}
+				}
 				rpcErr, ev.Redactions = &masked, ev.Redactions+n
 			}
 			if !finish("error", "upstream rpc error") {
@@ -515,7 +534,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
 			return
 		}
-		h.Log.Error("upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName, "err", err)
+		h.Log.Error("upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName, "category", "transport_failure")
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream unavailable"))
 		return
 	}

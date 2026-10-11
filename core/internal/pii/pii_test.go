@@ -65,7 +65,7 @@ func TestSelectedDetectorsAndCustomRules(t *testing.T) {
 
 func TestMaskJSON(t *testing.T) {
 	m := mustMasker(t, Config{})
-	in := json.RawMessage(`{"content":[{"type":"text","text":"mail ada@example.com"},{"type":"image","data":"ada@example.com","mimeType":"image/png"}],"structuredContent":{"owner":"bob@example.com","count":3},"isError":false}`)
+	in := json.RawMessage(`{"content":[{"type":"text","text":"mail ada@example.com"}],"structuredContent":{"owner":"bob@example.com","count":3},"isError":false}`)
 	out, n, err := m.MaskJSON(in)
 	if err != nil || n != 2 {
 		t.Fatalf("n=%d err=%v out=%s", n, err, out)
@@ -74,9 +74,7 @@ func TestMaskJSON(t *testing.T) {
 	if strings.Contains(s, "bob@example.com") || strings.Contains(s, "mail ada@") {
 		t.Fatalf("not masked: %s", s)
 	}
-	if !strings.Contains(s, `"data":"ada@example.com"`) {
-		t.Fatalf("binary image payload must be untouched: %s", s)
-	}
+
 	// Untouched documents keep their exact bytes.
 	same := json.RawMessage(`{"a": "nothing here"}`)
 	if out, n, _ := m.MaskJSON(same); n != 0 || string(out) != string(same) {
@@ -96,5 +94,14 @@ func TestValidate(t *testing.T) {
 	}
 	if _, err := Compile(Config{Enabled: false, Detectors: []string{"bogus"}}); err != nil {
 		t.Fatal("disabled config must not be compiled")
+	}
+}
+
+func TestPrivacyDeniesKeysNumbersBinaryAndBudgets(t *testing.T) {
+	m := mustMasker(t, Config{})
+	for _, raw := range []string{`{"ada@example.com":1}`, `{"card":4111111111111111}`, `{"card":4.111111111111111e15}`, `{"type":"image","data":"opaque"}`, `{"blob":"opaque"}`, strings.Repeat("[", 66) + "0" + strings.Repeat("]", 66)} {
+		if out, _, err := m.MaskJSON(json.RawMessage(raw)); err == nil || out != nil {
+			t.Fatal("privacy denial failed")
+		}
 	}
 }

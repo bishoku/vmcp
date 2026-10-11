@@ -55,7 +55,7 @@ func setup(t *testing.T) (context.Context, *snapshot.Syncer) {
 
 func seed(t *testing.T, ctx context.Context, s *snapshot.Syncer) {
 	t.Helper()
-	enc, err := s.Box.SealHeaders(map[string]string{"Authorization": "Bearer tok"})
+	enc, err := s.Box.SealHeadersBound(map[string]string{"Authorization": "Bearer tok"}, "00000000-0000-4000-8000-000000000002")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +63,8 @@ func seed(t *testing.T, ctx context.Context, s *snapshot.Syncer) {
 		q    string
 		args []any
 	}{
-		{`INSERT INTO upstreams (tenant_id, slug, name, url, transport, encrypted_headers)
-		  SELECT id, 'github', 'GitHub', 'http://gh.example/mcp', 'streamable_http', $1 FROM tenants WHERE slug='default'`, []any{enc}},
+		{`INSERT INTO upstreams (id, tenant_id, slug, name, url, transport, encrypted_headers)
+		  SELECT '00000000-0000-4000-8000-000000000002'::uuid, id, 'github', 'GitHub', 'http://gh.example/mcp', 'streamable_http', $1 FROM tenants WHERE slug='default'`, []any{enc}},
 		{`INSERT INTO upstreams (tenant_id, slug, name, url, transport, enabled)
 		  SELECT id, 'off', 'Off', 'http://off.example/mcp', 'sse', false FROM tenants WHERE slug='default'`, nil},
 		{`INSERT INTO upstream_tools (upstream_id, name, description, input_schema)
@@ -162,7 +162,7 @@ func TestFailedDecryptionExpiresAuthorization(t *testing.T) {
 	if snap, err := s.AuthorizedSnapshot(); err == nil || snap != nil {
 		t.Fatal("stale snapshot authorized")
 	}
-	enc, err := s.Box.SealHeaders(map[string]string{"Authorization": "Bearer rotated"})
+	enc, err := s.Box.SealHeadersBound(map[string]string{"Authorization": "Bearer rotated"}, "00000000-0000-4000-8000-000000000002")
 	if err != nil {
 		t.Fatal(err)
 	}

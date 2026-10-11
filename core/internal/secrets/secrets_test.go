@@ -79,3 +79,47 @@ func TestBadKeys(t *testing.T) {
 		t.Fatal("wrong key length must fail")
 	}
 }
+
+func TestBoundEnvelopeRejectsTransplantAndTampering(t *testing.T) {
+	b, _ := NewBox(newKey(t))
+	sealed, err := b.SealBound([]byte("sensitive"), "immutable-a", "headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range [][2]string{{"immutable-b", "headers"}, {"immutable-a", "oauth"}, {"", "generic"}} {
+		if _, err := b.OpenBound(sealed, c[0], c[1]); err == nil {
+			t.Fatal("transplanted ciphertext accepted")
+		}
+	}
+	for i := range sealed {
+		modified := append([]byte(nil), sealed...)
+		modified[i] ^= 1
+		if _, err := b.OpenBound(modified, "immutable-a", "headers"); err == nil {
+			t.Fatalf("tampered byte %d accepted", i)
+		}
+	}
+}
+func TestReaderFirstRotationAndRecovery(t *testing.T) {
+	oldKey, newKey := newKey(t), newKey(t)
+	legacy, _ := NewKeyring("old", map[string]string{"old": oldKey}, true)
+	original, _ := legacy.SealBound([]byte("recoverable"), "entity", "purpose")
+	reader, _ := NewKeyring("new", map[string]string{"old": oldKey, "new": newKey}, false)
+	raw, err := reader.OpenBound(original, "entity", "purpose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := reader.SealBound(raw, "entity", "purpose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, _ := NewKeyring("new", map[string]string{"new": newKey}, false)
+	if got, err := restored.OpenBound(migrated, "entity", "purpose"); err != nil || string(got) != "recoverable" {
+		t.Fatal("restore failed", err)
+	}
+	if _, err := restored.OpenBound(original, "entity", "purpose"); err == nil {
+		t.Fatal("missing old recovery key accepted")
+	}
+	if id, ok := reader.KeyID(migrated); !ok || id != "new" {
+		t.Fatal("missing primary key ID")
+	}
+}

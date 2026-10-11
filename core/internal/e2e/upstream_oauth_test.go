@@ -52,12 +52,12 @@ func TestUpstreamOAuth(t *testing.T) {
 	}))
 	t.Cleanup(secured.Close)
 
-	sealed, err := e.syncer.Box.Seal([]byte("gw-secret"))
+	sealed, err := e.syncer.Box.SealBound([]byte("gw-secret"), "00000000-0000-4000-8000-000000000003", "upstream.oauth_secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.exec(t, `INSERT INTO upstreams (tenant_id, slug, name, url, transport, oauth_token_url, oauth_client_id, oauth_scopes, oauth_audience, encrypted_oauth_secret)
-		SELECT id, 'oa', 'OA', $1, 'streamable_http', $2, 'gateway', ARRAY['mcp.read'], 'fixture', $3 FROM tenants WHERE slug='default'`,
+	e.exec(t, `INSERT INTO upstreams (id, tenant_id, slug, name, url, transport, oauth_token_url, oauth_client_id, oauth_scopes, oauth_audience, encrypted_oauth_secret)
+		SELECT '00000000-0000-4000-8000-000000000003'::uuid, id, 'oa', 'OA', $1, 'streamable_http', $2, 'gateway', ARRAY['mcp.read'], 'fixture', $3 FROM tenants WHERE slug='default'`,
 		secured.URL, idp.URL, sealed)
 	for _, tool := range fixture.Tools() {
 		e.exec(t, `INSERT INTO upstream_tools (upstream_id, name, description, input_schema)

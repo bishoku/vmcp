@@ -57,7 +57,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	box, err := secrets.NewBox(masterKey)
+	box, err := secrets.FromEnv(masterKey)
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func run(log *slog.Logger) error {
 		go purgeLoop(ctx, log, pool, time.Duration(days)*24*time.Hour)
 	}
 
-	provider, err := oidcFromEnv(ctx, masterKey)
+	provider, err := oidcFromEnv(ctx, masterKey, pool)
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func purgeLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, retent
 }
 
 // oidcFromEnv returns nil when VMCP_OIDC_ISSUER is unset (sign-in with tokens only).
-func oidcFromEnv(ctx context.Context, masterKey string) (*oidc.Provider, error) {
+func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oidc.Provider, error) {
 	issuer := config.Env("VMCP_OIDC_ISSUER", "")
 	if issuer == "" {
 		return nil, nil
@@ -190,5 +190,6 @@ func oidcFromEnv(ctx context.Context, masterKey string) (*oidc.Provider, error) 
 		EditorGroups: list("VMCP_OIDC_EDITOR_GROUPS"),
 		ViewerGroups: list("VMCP_OIDC_VIEWER_GROUPS"),
 		SessionKey:   key[:],
+		Sessions:     oidc.PostgresSessions{Pool: pool},
 	})
 }

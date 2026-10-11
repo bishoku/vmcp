@@ -108,7 +108,7 @@ func TestTwoWarmNodesRevokeGrantsRotateCredentialsAndTerminate(t *testing.T) {
 	// The same session must use both the new URL and the new header on each node.
 	rotated := httptest.NewServer(fixture.New(fixture.Options{Token: "rotated-secret"}))
 	defer rotated.Close()
-	enc, err := e.syncer.Box.SealHeaders(map[string]string{"Authorization": "Bearer rotated-secret"})
+	enc, err := e.syncer.Box.SealHeadersBound(map[string]string{"Authorization": "Bearer rotated-secret"}, "00000000-0000-4000-8000-000000000001")
 	if err != nil {
 		t.Fatal(err)
 	}

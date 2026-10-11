@@ -63,7 +63,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	box, err := secrets.NewBox(masterKey)
+	box, err := secrets.FromEnv(masterKey)
 	if err != nil {
 		return err
 	}
@@ -208,6 +208,7 @@ func run(log *slog.Logger) error {
 		jwt, err = agentauth.NewVerifier(ctx, agentauth.Config{
 			Issuer: issuer, DiscoveryURL: config.Env("VMCP_AGENT_OIDC_DISCOVERY_URL", ""),
 			Audience: config.Env("VMCP_AGENT_OIDC_AUDIENCE", ""), Algs: algs,
+			Revocations: agentauth.PostgresRevocations{Pool: pool},
 		})
 		if err != nil {
 			return fmt.Errorf("agent oauth: %w", err)
@@ -216,7 +217,11 @@ func run(log *slog.Logger) error {
 	}
 	deliveryStore := &delivery.Store{Pool: pool, Box: box, ListenerURL: syncer.ListenerURL}
 	go deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
-	virtualHandler := &virtual.Handler{Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
+	approval, err := virtual.NewApprovalPolicy(config.Env("VMCP_APPROVAL_URL", ""))
+	if err != nil {
+		return err
+	}
+	virtualHandler := &virtual.Handler{Approval: approval, Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
 		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}
 	virtualHandler.RunSubscriptions(ctx)
 	virtualHandler.Register(mux)

@@ -1,8 +1,7 @@
 // Package oidc implements browser sign-in for the control plane UI (authorization code flow
 // with PKCE) and maps the identity provider's group claim to a vMCP role.
 //
-// Sessions are stateless signed cookies: there is no server-side session store, so a session
-// cannot be revoked before it expires and role changes apply at the next sign-in.
+// Production sessions use signed cookies backed by a shared revocation store.
 package oidc
 
 import (
@@ -57,10 +56,12 @@ type Config struct {
 	SessionTTL time.Duration
 	// HTTPClient is used for discovery and token exchange (tests only).
 	HTTPClient *http.Client
+	Sessions   SessionStore
 }
 
 // Session is the signed-in user.
 type Session struct {
+	ID      string    `json:"sid,omitempty"`
 	Subject string    `json:"sub"`
 	Name    string    `json:"name"`
 	Role    string    `json:"role"`
@@ -186,7 +187,13 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = idt.Subject
 	}
-	s := Session{Subject: idt.Subject, Name: name, Role: role, Expires: p.now().Add(p.cfg.SessionTTL)}
+	s := Session{ID: random(), Subject: idt.Subject, Name: name, Role: role, Expires: p.now().Add(p.cfg.SessionTTL)}
+	if p.cfg.Sessions != nil {
+		if err := p.cfg.Sessions.Save(r.Context(), s); err != nil {
+			http.Error(w, "session storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	p.setCookie(w, sessionCookie, s, p.cfg.SessionTTL)
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -210,13 +217,38 @@ func (p *Provider) EndSessionURL() string {
 }
 
 // Logout clears the session cookie.
-func (p *Provider) Logout(w http.ResponseWriter) { p.clearCookie(w, sessionCookie) }
+func (p *Provider) Logout(w http.ResponseWriter, r *http.Request) bool {
+	if p.cfg.Sessions != nil {
+		var s Session
+		if p.readCookie(r, sessionCookie, &s) && s.ID != "" {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if err := p.cfg.Sessions.Revoke(ctx, s.ID); err != nil {
+				http.Error(w, "session revocation unavailable", http.StatusServiceUnavailable)
+				return false
+			}
+		}
+	}
+	p.clearCookie(w, sessionCookie)
+	return true
+}
 
 // Session returns the signed-in user of a request, if any.
 func (p *Provider) Session(r *http.Request) (Session, bool) {
 	var s Session
 	if !p.readCookie(r, sessionCookie, &s) || p.now().After(s.Expires) {
 		return Session{}, false
+	}
+	if p.cfg.Sessions != nil {
+		if s.ID == "" {
+			return Session{}, false
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		valid, err := p.cfg.Sessions.Valid(ctx, s.ID)
+		if err != nil || !valid {
+			return Session{}, false
+		}
 	}
 	return s, true
 }

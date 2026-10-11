@@ -6,10 +6,15 @@
 package pii
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"math/big"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -148,50 +153,103 @@ func (m *Masker) MaskString(s string) (string, int) {
 	return s, n
 }
 
-// MaskJSON masks every string value in a JSON document (object keys are left alone).
-// Binary payloads of image/audio content blocks are skipped.
+// MaskJSON masks strings and denies sensitive keys, sensitive numbers and
+// uninspectable binary content. Budgets are independent of detector matches.
 func (m *Masker) MaskJSON(raw json.RawMessage) (json.RawMessage, int, error) {
 	if len(raw) == 0 {
 		return raw, 0, nil
 	}
+	if len(raw) > 10<<20 {
+		return nil, 0, errors.New("privacy document limit")
+	}
 	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&v); err != nil {
 		return nil, 0, err
 	}
-	n := 0
-	v = m.walk(v, &n)
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		return nil, 0, errors.New("invalid privacy document")
+	}
+	n, nodes := 0, 0
+	v, err := m.walk(v, &n, &nodes, 0)
+	if err != nil {
+		return nil, 0, err
+	}
 	if n == 0 {
-		return raw, 0, nil // keep the original bytes when nothing changed
+		return raw, 0, nil
 	}
 	out, err := json.Marshal(v)
 	return out, n, err
 }
-
-func (m *Masker) walk(v any, n *int) any {
+func (m *Masker) walk(v any, n, nodes *int, depth int) (any, error) {
+	*nodes++
+	if *nodes > 100000 || depth > 64 {
+		return nil, errors.New("privacy traversal limit")
+	}
 	switch x := v.(type) {
 	case string:
+		if len(x) > 1<<20 {
+			return nil, errors.New("privacy string limit")
+		}
 		s, c := m.MaskString(x)
 		*n += c
-		return s
+		return s, nil
+	case json.Number:
+		value := string(x)
+		if len(value) > 128 {
+			return nil, errors.New("privacy number limit")
+		}
+		if i := strings.IndexAny(value, "eE"); i >= 0 {
+			exponent, err := strconv.Atoi(value[i+1:])
+			if err != nil || exponent > 512 || exponent < -512 {
+				return nil, errors.New("privacy exponent limit")
+			}
+		}
+		rat, ok := new(big.Rat).SetString(value)
+		if !ok {
+			return nil, errors.New("invalid privacy number")
+		}
+		normalized := value
+		if rat.IsInt() {
+			normalized = rat.Num().String()
+		}
+		if _, c := m.MaskString(normalized); c > 0 {
+			return nil, errors.New("sensitive numeric value denied")
+		}
 	case []any:
 		for i := range x {
-			x[i] = m.walk(x[i], n)
-		}
-		return x
-	case map[string]any:
-		binary := false
-		if t, _ := x["type"].(string); t == "image" || t == "audio" {
-			binary = true
-		}
-		for k, e := range x {
-			if binary && (k == "data" || k == "mimeType") {
-				continue
+			masked, err := m.walk(x[i], n, nodes, depth+1)
+			if err != nil {
+				return nil, err
 			}
-			x[k] = m.walk(e, n)
+			x[i] = masked
 		}
-		return x
+		return x, nil
+	case map[string]any:
+		if t, _ := x["type"].(string); t == "image" || t == "audio" {
+			return nil, errors.New("uninspectable binary content denied")
+		}
+		if _, ok := x["blob"]; ok {
+			return nil, errors.New("uninspectable binary content denied")
+		}
+		for key, value := range x {
+			if len(key) > 1<<20 {
+				return nil, errors.New("privacy key limit")
+			}
+			if _, c := m.MaskString(key); c > 0 {
+				return nil, errors.New("sensitive object key denied")
+			}
+			masked, err := m.walk(value, n, nodes, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			x[key] = masked
+		}
+		return x, nil
 	}
-	return v
+	return v, nil
 }
 
 func digitsOf(s string) string {

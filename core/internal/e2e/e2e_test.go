@@ -85,12 +85,12 @@ func setup(t *testing.T) *env {
 	t.Cleanup(alpha.Close)
 	t.Cleanup(beta.Close)
 
-	enc, err := box.SealHeaders(map[string]string{"Authorization": "Bearer fixture-secret"})
+	enc, err := box.SealHeadersBound(map[string]string{"Authorization": "Bearer fixture-secret"}, "00000000-0000-4000-8000-000000000001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.exec(t, `INSERT INTO upstreams (tenant_id, slug, name, url, transport, encrypted_headers)
-		SELECT id, 'alpha', 'Alpha', $1, 'streamable_http', $2 FROM tenants WHERE slug='default'`, alpha.URL, enc)
+	e.exec(t, `INSERT INTO upstreams (id, tenant_id, slug, name, url, transport, encrypted_headers)
+		SELECT '00000000-0000-4000-8000-000000000001'::uuid, id, 'alpha', 'Alpha', $1, 'streamable_http', $2 FROM tenants WHERE slug='default'`, alpha.URL, enc)
 	e.exec(t, `INSERT INTO upstreams (tenant_id, slug, name, url, transport)
 		SELECT id, 'beta', 'Beta', $1, 'streamable_http' FROM tenants WHERE slug='default'`, beta.URL)
 
