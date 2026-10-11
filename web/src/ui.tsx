@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { Check, Copy } from 'lucide-react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Check, Copy, X } from 'lucide-react'
 import clsx from 'clsx'
 
 import { btn, primary } from './styles'
@@ -27,14 +27,44 @@ export function ErrorBox({ children }: { children: ReactNode }) {
 
 
 
-export function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose?: () => void }) {
+export function Modal({ title, children, onClose, variant = 'modal' }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer' }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  const titleId = useId()
+  useLayoutEffect(() => {
+    const dialog = ref.current!
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialog.showModal()
+    dialog.querySelector<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')?.focus()
+    return () => {
+      dialog.close()
+      if (trigger?.isConnected) trigger.focus()
+    }
+  }, [])
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-card border border-line bg-surface p-6 shadow-card" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        {children}
+    <dialog ref={ref} aria-labelledby={titleId} aria-modal="true"
+      className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none border-0 bg-transparent p-0 text-ink backdrop:bg-black/30"
+      onCancel={e => { e.preventDefault(); onClose?.() }}
+      onKeyDown={e => {
+        if (e.key !== 'Tab') return
+        const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(
+          'button, input, select, textarea, a[href], summary, [tabindex]:not([tabindex="-1"])',
+        )).filter(item => !item.matches(':disabled') && item.tabIndex >= 0 && item.getClientRects().length > 0)
+        const first = items[0], last = items[items.length - 1]
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
+      }}>
+      <div className={clsx('flex h-full w-full', variant === 'drawer' ? 'justify-end' : 'items-center justify-center p-4')}
+        onClick={e => { if (e.target === e.currentTarget) onClose?.() }}>
+        <section className={clsx('overflow-y-auto border border-line bg-surface p-6 shadow-card',
+          variant === 'drawer' ? 'h-full w-full max-w-[420px]' : 'max-h-full w-full max-w-lg rounded-card')}>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 id={titleId} className="text-lg font-semibold">{title}</h2>
+            {onClose && <button type="button" className={btn} aria-label="Close" onClick={onClose}><X className="size-4" /></button>}
+          </div>
+          {children}
+        </section>
       </div>
-    </div>
+    </dialog>
   )
 }
 

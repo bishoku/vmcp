@@ -5,6 +5,12 @@ import { btn, input, primary } from '../styles'
 import { fmt } from '../format'
 import { ErrorBox, Modal, Pill, SecretModal } from '../ui'
 
+function localDateTime(iso: string | null) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+}
+
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
@@ -16,7 +22,9 @@ interface Draft {
   virtualServers: string[]
   ips: string
   rateLimit: string // calls per minute, '' = unlimited
-  expiresAt: string // yyyy-mm-dd or ''
+  expiresAt: string // local datetime for editing
+  originalExpiry: string | null
+  expiryEdited: boolean
 }
 
 export default function AgentKeys() {
@@ -55,8 +63,8 @@ export default function AgentKeys() {
     setProblems([])
     setDraft(
       k
-        ? { version:k.version, slug: k.slug, isNew: false, description: k.description, virtualServers: k.virtualServers, ips: k.ipAllowlist.join('\n'), rateLimit: k.rateLimitPerMinute?.toString() ?? '', expiresAt: k.expiresAt?.slice(0, 10) ?? '' }
-        : { slug: '', isNew: true, description: '', virtualServers: [], ips: '', rateLimit: '', expiresAt: '' },
+        ? { version:k.version, slug: k.slug, isNew: false, description: k.description, virtualServers: k.virtualServers, ips: k.ipAllowlist.join('\n'), rateLimit: k.rateLimitPerMinute?.toString() ?? '', expiresAt: localDateTime(k.expiresAt), originalExpiry: k.expiresAt, expiryEdited: false }
+        : { slug: '', isNew: true, description: '', virtualServers: [], ips: '', rateLimit: '', expiresAt: '', originalExpiry: null, expiryEdited: false },
     )
   }
 
@@ -67,7 +75,7 @@ export default function AgentKeys() {
       virtualServers: draft.virtualServers,
       ipAllowlist: draft.ips.split(/[\s,]+/).filter(Boolean),
       rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
-      expiresAt: draft.expiresAt ? new Date(`${draft.expiresAt}T23:59:59`).toISOString() : null,
+      expiresAt: draft.expiryEdited ? (draft.expiresAt ? new Date(draft.expiresAt).toISOString() : null) : draft.originalExpiry,
     }
     try {
       if (draft.isNew) {
@@ -180,8 +188,8 @@ export default function AgentKeys() {
               <input type="number" min={1} className={`${input} mt-1`} value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} />
             </label>
             <label className="block text-sm font-medium">
-              Expires <span className="font-normal text-ink-muted">(optional)</span>
-              <input type="date" className={`${input} mt-1`} value={draft.expiresAt} onChange={(e) => setDraft({ ...draft, expiresAt: e.target.value })} />
+              Expires <span className="font-normal text-ink-muted">(optional; local time: {Intl.DateTimeFormat().resolvedOptions().timeZone})</span>
+              <input type="datetime-local" className={`${input} mt-1`} value={draft.expiresAt} onChange={(e) => setDraft({ ...draft, expiresAt: e.target.value, expiryEdited: true })} />
             </label>
           </div>
           {problems.length > 0 && (

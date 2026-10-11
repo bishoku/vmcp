@@ -1,4 +1,5 @@
 import CatalogPicker from './CatalogPicker'
+import { connectionEndpoint } from '../endpoint'
 import type {CatalogSelection,ClientFeatures} from '../api'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -69,7 +70,11 @@ const fromServer = (v: VirtualServer): Draft => ({
   enabled: v.enabled,
   authRequired: v.authRequired,
   pii: { ...noPii, ...v.pii },
-  policy: { default: v.policy?.default ?? 'allow', tools: { ...v.policy?.tools } },
+  // Draft overrides use stable upstream/tool identities, never editable aliases.
+  policy: { default: v.policy?.default ?? 'allow', tools: Object.fromEntries(v.tools.flatMap(t => {
+    const mode = v.policy?.tools?.[t.alias || `${t.upstream}__${t.tool}`]
+    return mode ? [[key(t), mode]] : []
+  })) },
   rateLimit: v.rateLimitPerMinute?.toString() ?? '',
  clientFeatures:v.clientFeatures??{sampling:false,roots:false,elicitation:false},
  catalog:(v.catalog??[]).map(({upstream,kind,name,alias,description})=>({upstream,kind,name,alias,description})),
@@ -82,10 +87,12 @@ const MODES: [PolicyMode, string][] = [
   ['deny', 'Deny'],
 ]
 
-/** Drops overrides for tools no longer exposed or equal to nothing useful. */
+/** Convert stable draft identities to final exposed names only at save time. */
 function cleanPolicy(d: Draft): ToolPolicy {
-  const names = new Set(d.tools.map((t) => t.alias || `${t.upstream}__${t.tool}`))
-  return { default: d.policy.default, tools: Object.fromEntries(Object.entries(d.policy.tools).filter(([n]) => names.has(n))) }
+  return { default: d.policy.default, tools: Object.fromEntries(d.tools.flatMap(t => {
+    const mode = d.policy.tools[key(t)]
+    return mode ? [[t.alias || `${t.upstream}__${t.tool}`, mode]] : []
+  })) }
 }
 
 export default function VirtualServers() {
@@ -155,7 +162,9 @@ export default function VirtualServers() {
       }),
     })
   const removeTool = (k: string) =>
-    draft && setDraft({ ...draft, tools: draft.tools.filter((t) => key(t) !== k) })
+    draft && setDraft({ ...draft, tools: draft.tools.filter((t) => key(t) !== k), policy: {
+      ...draft.policy, tools: Object.fromEntries(Object.entries(draft.policy.tools).filter(([id]) => id !== k)),
+    } })
 
   const save = async () => {
     if (!draft) return
@@ -191,7 +200,8 @@ export default function VirtualServers() {
     await load()
   }
 
-  const endpoint = draft && !draft.isNew ? `${location.protocol}//${location.hostname}:8080/mcp/v1/virtual/${draft.slug}` : ''
+  const endpointPath = draft && !draft.isNew ? servers.find(v => v.slug === draft.slug)?.endpoint ?? '' : ''
+  const endpoint = connectionEndpoint(endpointPath)
 
   return (
     <div className="mx-auto max-w-7xl px-10 py-10">
@@ -218,7 +228,7 @@ export default function VirtualServers() {
               )}
             >
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{v.name}</div>
+                <button type="button" className="truncate text-sm font-medium hover:underline" onClick={() => { setDraft(fromServer(v)); setProblems([]) }}>{v.name}</button>
                 <div className="text-xs text-ink-muted">{v.tools.length} tools{v.enabled ? '' : ' · disabled'}</div>
               </div>
               <button className="p-1" aria-label="Delete" onClick={(e) => { e.stopPropagation(); void remove(v) }}>
@@ -259,15 +269,16 @@ export default function VirtualServers() {
               Description
               <input className={clsx(input, 'mt-1')} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
             </label>
-            {endpoint && (
+            {endpointPath && (
               <div className="mt-4 flex items-center gap-2 rounded-lg bg-canvas px-3 py-2 text-xs">
-                <code className="flex-1 truncate">{endpoint}</code>
-                <button aria-label="Copy endpoint" onClick={() => navigator.clipboard.writeText(endpoint)}>
+                <code className="flex-1 truncate">{endpoint ?? endpointPath}</code>
+                <button aria-label="Copy endpoint" disabled={!endpoint} onClick={() => endpoint && navigator.clipboard.writeText(endpoint)}>
                   <Copy className="size-3.5" />
                 </button>
               </div>
             )}
 
+            {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to set VITE_PUBLIC_GATEWAY_URL; the path above is not a complete connection URL.</p>}
             <section className="mt-6 rounded border border-line p-4"><h3 className="font-semibold">Client feature permissions</h3><p className="text-xs text-ink-muted">Also requires client negotiation. The MCP client controls approval; sampling uses the client’s model access. Roots never expose gateway files.</p>{(['sampling','roots','elicitation'] as const).map(feature=><label key={feature} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>{feature}</label>)}</section>
  <CatalogPicker upstreams={upstreams} value={draft.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
  <div className="mt-6 grid grid-cols-2 gap-6">
@@ -313,7 +324,7 @@ export default function VirtualServers() {
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                     <SortableContext items={draft.tools.map(key)} strategy={verticalListSortingStrategy}>
                       {draft.tools.map((t) => (
-                        <div key={key(t)}>{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[exposed(t)] ?? draft.policy.default} inherited={!(exposed(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(exposed(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
+                        <div key={key(t)}>{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[key(t)] ?? draft.policy.default} inherited={!(key(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(key(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
                       ))}
                     </SortableContext>
                   </DndContext>
@@ -417,6 +428,7 @@ function Row({ id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, drift, o
         <div className="truncate text-xs text-ink-muted">{t.upstream} / {t.tool}</div>
         <input
           className="w-full bg-transparent text-sm font-medium outline-none placeholder:text-ink"
+          aria-label={`Alias for ${t.upstream}/${t.tool}`}
           placeholder={`${t.upstream}__${t.tool}`}
           value={t.alias ?? ''}
           onChange={(e) => onAlias(e.target.value)}

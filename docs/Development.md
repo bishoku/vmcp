@@ -46,3 +46,23 @@ npx @redocly/cli lint api/openapi.yaml
 PostgreSQL, Redis, imported Keycloak users, two data planes behind nginx and three
 synthetic MCP servers. It starts with empty vMCP configuration. Run its optional
 smoke check and fixture unit tests independently from the core verification gate.
+
+## Public MCP connection URL in the UI
+
+The API supplies each virtual server's MCP endpoint path. The UI combines it with
+`VITE_PUBLIC_GATEWAY_URL`, an explicit public gateway base URL, instead of guessing
+an origin or port. Without a valid base URL the UI displays only the path, disables
+copying a full endpoint, and explains the missing configuration.
+
+For local Vite development, add `VITE_PUBLIC_GATEWAY_URL=http://localhost:8080` to
+`web/.env` (use your actual data-plane/gateway address). For the web Docker image:
+
+```sh
+docker build --build-arg VITE_PUBLIC_GATEWAY_URL=https://mcp.example.com -t vmcp/web:local web
+```
+
+This is public, non-secret **build-time** configuration; rebuild the image after
+changing it. The manual-test Compose stack sets `http://localhost:8800`. The
+`deploy/docker-compose.yml` web build uses `VMCP_PUBLIC_URL`, defaulting to
+`http://localhost:8080`. Use the browser-reachable gateway address, not an internal
+container hostname. HTTP is for local development; production should use HTTPS.

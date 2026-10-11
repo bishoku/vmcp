@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { CheckCircle2, Plus, RefreshCw, Search, Trash2, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
+import { Modal } from '../ui'
 import { api, ApiError, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 const btn =
@@ -150,7 +151,7 @@ export default function Upstreams() {
                 onClick={() => setSelected(u)}
               >
                 <td className="px-4 py-3">
-                  <div className="font-medium">{u.name}</div>
+                  <button type="button" className="font-medium hover:underline" onClick={() => setSelected(u)}>{u.name}</button>
                   <div className="text-xs text-ink-muted">{u.slug}</div>
                 </td>
                 <td className="max-w-56 truncate px-4 py-3">{u.url}</td>
@@ -338,18 +339,7 @@ function Panel({
   }
 
   return (
-    <div className="fixed inset-0 z-10 flex justify-end bg-black/20" onClick={onClose}>
-      <aside
-        className="flex h-full w-[420px] flex-col overflow-y-auto border-l border-line bg-surface p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{upstream ? upstream.slug : 'New upstream'}</h2>
-          <button onClick={onClose} aria-label="Close">
-            <X className="size-5 text-ink-muted" />
-          </button>
-        </div>
-
+    <Modal title={upstream ? upstream.slug : 'New upstream'} onClose={onClose} variant="drawer">
         {upstream && <button className={btn} disabled={busy} onClick={async()=>{setBusy(true);try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}finally{setBusy(false)}}}>Test stored credentials</button>}
         <div className="space-y-4">
           {!upstream && (
@@ -579,7 +569,6 @@ function Panel({
             Save
           </button>
         </div>
-      </aside>
-    </div>
+    </Modal>
   )
 }
