@@ -7,3 +7,7 @@ core/bin/
 
 .agents
 verification.jsonl
+
+# Python demo fixtures
+__pycache__/
+*.pyc

@@ -48,7 +48,12 @@ Cancellation stops new submissions and gives final batches a total ten-second fl
 
 Retention preserves an admission and its related events while it has no outcome. Once an outcome exists, the operation's events become eligible together only after the outcome and individual rows are older than the retention cutoff. This makes incomplete work visible rather than silently expiring it. Unresolved admissions can accumulate indefinitely; operators need a reconciliation and privacy policy.
 
-`audit_export_state` stores independent consumer checkpoints for future exporters; request handling never advances it. No SIEM transport, delivery acknowledgement or tamper-evident archive is implemented here. Retention is not yet coordinated with exporter checkpoints; export/retention coupling belongs to P12. Do not infer SOC 2, ISO 27001 or GDPR certification from audit durability alone.
+The separate `audit-exporter` delivers HTTPS JSON with durable consumer receipts,
+retries and recoverable dead letters. Retention protects incomplete operations,
+legal holds and events without delivered receipts for active consumers. Delivery
+is at least once; the sink must deduplicate stable event IDs. PostgreSQL alone is
+not a tamper-evident archive. See [audit operations](AUDIT_OPERATIONS.md) for sink,
+retention and least-privilege limitations. No compliance certification is implied.
 
 Migration `00018_durable_audit.sql` adds event identity, lifecycle metadata, correlation/indexes and independent checkpoint storage. Existing rows receive event UUIDs and `stage='event'`; historical ownership/correlation cannot be reconstructed. Apply schema 18 through the control plane before replacing data-plane binaries. For an enterprise strict guarantee, drain every old writer and replace it before restoring traffic. Rolling mixed versions can still write legacy best-effort records.
 
@@ -62,4 +67,6 @@ Rollback removes new correlation/lifecycle fields and deletes `started` rows to 
 - `core/internal/controlplane/audit_test.go`: administrative admissions/outcomes, concrete mutation targets, transactional rollback on audit failure, blocked admission, privileged export, named token attribution, query validation and secret/payload exclusion.
 - `core/internal/store/migrations_test.go`: schema-17 upgrade and rollback preserving historical audit events, alongside earlier migration tests.
 
-P04 establishes PostgreSQL admission durability and incomplete-operation evidence. P05 shutdown/resource work, P06 metrics and operational experiments, and P12 SIEM/archive integration remain separate phases.
+The current implementation also includes shutdown/resource bounds, metrics and HTTPS
+SIEM delivery. Real full-disk/restore drills, scalable retention scheduling and
+restricted-role deployment verification remain production acceptance work.

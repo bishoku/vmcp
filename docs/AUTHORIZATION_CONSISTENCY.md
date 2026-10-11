@@ -26,7 +26,7 @@ Retirement stops reuse immediately. Leased clients remain alive until their admi
 
 Authorization is rechecked after body reading, after session resolution, and before each tool dispatch, including retries and upstream-session recovery. A configuration revision change while waiting for an upstream initialization or retry returns HTTP 409 (`configuration changed; retry`) before a further tool dispatch. Stale confirmation returns 503; expired/revoked credentials return the normal 401/403. This conservative behavior avoids continuing with a superseded routing or masking policy. A caller must decide whether to retry a failed operation based on its tool's semantics.
 
-A call dispatched before a revocation, credential rotation or DELETE may finish within its existing deadline and return its result. Automatic retries must pass authorization again. There is no atomic transaction between the authorization check and an external tool's side effect, and cancellation cannot undo an upstream side effect. Streaming reconnect checks will use this same contract when server-initiated streaming is implemented in its later phase.
+A call dispatched before a revocation, credential rotation or DELETE may finish within its existing deadline and return its result. Automatic retries must pass authorization again. There is no atomic transaction between the authorization check and an external tool's side effect, and cancellation cannot undo an upstream side effect. SSE reconnects and active streams use the same freshness/ownership contract and reauthenticate periodically; see [delivery](MCP_DELIVERY.md).
 
 ## Upgrade and rollback
 
@@ -43,4 +43,6 @@ Drain all old data-plane binaries, apply migrations through the control plane, t
 - `core/internal/store/migrations_test.go`: upgrade and rollback from schemas 15 and 16, with explicit legacy ownership defaults.
 - `core/internal/oauthtoken/oauthtoken_test.go`: current sources remain shared; obsolete sources are removed and cannot repopulate the registry.
 
-These changes address P03. Durable audit admission, complete MCP streaming, additional protocol primitives and broader operational hardening remain separate phases.
+The gateway also implements durable audit admission, bidirectional SSE and negotiated
+client features. Deployment-specific HA/restore/load verification and the remaining
+[production roadmap](../README.md#roadmap-to-production-readiness) are still required.

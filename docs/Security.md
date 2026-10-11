@@ -6,13 +6,15 @@ To report a vulnerability, follow [SECURITY.md](https://github.com/bishoku/vmcp/
 
 | Secret | Protection |
 |---|---|
-| Upstream headers, mTLS client keys, OAuth client secrets | AES-256-GCM with `VMCP_MASTER_KEY`; write-only; never exported |
+| Upstream headers, mTLS client keys, OAuth client secrets | Versioned AES-256-GCM envelopes with entity/purpose/tenant AAD and key IDs; write-only; never exported |
 | Agent keys, admin tokens | Only hashes stored; shown once |
 | `VMCP_ADMIN_TOKEN`, `VMCP_MASTER_KEY` | Environment; **replace the development defaults** |
-| SSO sessions | Signed, stateless cookies (8h), CSRF header on writes |
+| SSO sessions | Signed cookies (8h) backed by revocable PostgreSQL sessions; CSRF header on writes |
 
-Back up `VMCP_MASTER_KEY` separately from the database. Rotating it requires re-entering secrets (there is no automatic
-re-encryption yet).
+Back up master/recovery keys separately from the database. `cmd/rotate-secrets` supports
+restartable re-encryption with an old/new keyring. Deploy compatible readers first,
+retain recovery keys and verify restoration before retiring old keys. Legacy ciphertext
+lacks context binding until rotated. See [security operations](SECURITY_OPERATIONS.md).
 
 ## Hardening checklist
 
@@ -31,4 +33,6 @@ re-encryption yet).
 - Tool descriptions come from upstreams and are passed to models; a malicious or compromised upstream can try prompt
   injection through them. Use description overrides and policies to constrain what agents see.
 - PII masking is pattern-based and best effort.
-- SSO sessions cannot be revoked before they expire.
+- SSO logout revokes the shared browser session. Operators can revoke a subject's sessions; role changes apply at the next sign-in. Agent JWT containment uses an exact-token denylist, not universal IdP introspection.
+- The optional approval hook gates request metadata/digests; it does not inspect returned prompt instructions. Treat upstream content as untrusted.
+- Isolated stdio workers require a separate trusted host/runtime. Docker payload logging and crash-safe orphan cleanup remain production-hardening work; see the [roadmap](../README.md#roadmap-to-production-readiness).

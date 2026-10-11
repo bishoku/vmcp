@@ -3,8 +3,8 @@
 # vMCP
 
 **An open-source gateway for the Model Context Protocol.**
-Register upstream MCP servers once, then compose their tools into *virtual MCP servers*:
-one endpoint per agent or team, each exposing exactly the tools it should see.
+Register upstream MCP servers once, then curate their tools, resources and prompts into *virtual MCP servers*:
+one endpoint per agent or team, each exposing the capabilities you select.
 
 [![CI](https://github.com/bishoku/vmcp/actions/workflows/ci.yml/badge.svg)](https://github.com/bishoku/vmcp/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -20,12 +20,13 @@ noisy, there is no audit trail, and one flaky server can stall everything. vMCP 
 
 | You want to… | vMCP gives you |
 |---|---|
-| Expose only some tools to an agent | **Virtual servers**: pick tools from any upstream, reorder them, rename them, rewrite their descriptions |
+| Curate what an agent can access | **Virtual servers**: select tools, resources, URI templates and prompts; alias tools/resources/prompts and override descriptions |
+| Connect interactive MCP hosts | **Bidirectional SSE**: progress, cancellation, replay, subscriptions and opt-in sampling, roots and form elicitation |
 | Stop leaking upstream credentials | Upstream headers & OAuth secrets are **encrypted at rest** (AES-256-GCM) and write-only; agents hold revocable keys or IdP tokens |
 | Authenticate agents with your IdP | **OAuth for agents**: verify asymmetric JWTs, map claims to virtual servers with flexible **identity bindings** |
 | Connect to OAuth-secured upstreams | **Upstream OAuth**: gateway fetches and caches tokens via **OAuth 2.0 client_credentials**, retrying on 401 |
 | Keep sensitive data away from models | **PII masking** (IBAN, card, TCKN, SSN, email, phone, custom regex) on results and, optionally, arguments |
-| Know who called what | **Audit log** of every call: agent, tool, upstream, status, duration, redactions |
+| Trace protected operations | **Strict audit admission/outcome**, administrative change records, incomplete-operation queries and durable HTTPS SIEM delivery |
 | Restrict risky tools | **Tool policies**: allow / deny / read-only per tool, enforced from upstream `readOnlyHint` |
 | Survive upstream failures | **Circuit breaker, retries for idempotent tools, failover URLs, health checks** |
 | Scale out | Run N data-plane nodes on **PostgreSQL only**; Redis is optional and only for global rate limits |
@@ -47,14 +48,15 @@ flowchart LR
       DP --- PG
       UI --> CP
     end
-    DP -->|tools/call| U1[Upstream MCP A]
+    DP -->|MCP calls / events| U1[Upstream MCP A]
     DP --> U2[Upstream MCP B]
     DP -. optional .-> R[(Redis)]
 ```
 
 - **Control plane** (`core/cmd/control-plane`): the configuration API ([`api/openapi.yaml`](api/openapi.yaml)); runs migrations.
-- **Data plane** (`core/cmd/data-plane`): serves `/mcp/v1/virtual/{slug}` and proxies to upstreams. Stateless apart from
-  PostgreSQL, so you can run several. Configuration changes arrive through `LISTEN/NOTIFY`, with no restart.
+- **Data plane** (`core/cmd/data-plane`): serves `/mcp/v1/virtual/{slug}` and proxies to upstreams. Shared session, operation and replay records in
+  PostgreSQL let you run several nodes; physical upstream connections and caches remain local. Configuration
+  changes converge through `LISTEN/NOTIFY` and polling, with bounded authorization freshness.
 - **Web UI** (`web/`): React + Vite + Tailwind.
 - **PostgreSQL**: the single source of truth (config, sessions, audit, health).
 
@@ -66,7 +68,9 @@ and [tenant/worker boundaries](docs/TENANT_AND_STDIO_OPERATIONS.md).
 
 ## Quick start
 
-Requires Docker.
+Requires Docker. For a ready-to-run environment with **Keycloak, Redis, two data planes, a load balancer and three MCP servers**, use the [manual testing stack](benchmark/README.md). It starts with an empty configuration so you can register upstreams and compose virtual servers from the UI.
+
+The smaller quick start below runs the core services.
 
 ```sh
 git clone https://github.com/bishoku/vmcp.git && cd vmcp
@@ -127,7 +131,10 @@ The full documentation lives in [`docs/`](docs/Home.md) (published as the GitHub
 | [Audit log](docs/Audit-Log.md) | [Resilience & high availability](docs/Resilience-and-HA.md) |
 | [Rate limits](docs/Rate-Limits.md) | [REST API & GitOps](docs/REST-API.md) |
 | [Security](docs/Security.md) | [Development](docs/Development.md) |
-| [FAQ & troubleshooting](docs/FAQ.md) | [Getting started](docs/Getting-Started.md) |
+| [Catalogs & prompts](docs/MCP_CATALOGS.md) | [Client features](docs/MCP_CLIENT_FEATURES.md) |
+| [Protocol & SSE delivery](docs/MCP_PROTOCOL_CONTRACT.md) | [Audit operations](docs/AUDIT_OPERATIONS.md) |
+| [Manual testing stack](benchmark/README.md) | [Production deployment](docs/PRODUCTION_DEPLOYMENT.md) |
+| [FAQ & troubleshooting](docs/FAQ.md) | [Tenants & stdio](docs/TENANT_AND_STDIO_OPERATIONS.md) |
 
 ## Repository layout
 
@@ -136,6 +143,7 @@ api/openapi.yaml   REST contract (source of truth for the API)
 core/              Go module github.com/bishoku/vmcp/core (control plane, data plane, fixture server)
 web/               React UI
 deploy/            Docker Compose (Postgres, control plane, data plane, web; optional Redis profile)
+benchmark/         Local multi-node manual testing stack, Keycloak realm, synthetic MCP servers and clients
 docs/              Wiki pages
 ```
 
@@ -158,9 +166,31 @@ compliance certification is claimed.
 | Client features | Explicit sampling, roots and form elicitation permissions/budgets; logging and rich tool metadata; [limits](docs/MCP_CLIENT_FEATURES.md) |
 | Security | Versioned context-bound encryption, restartable rotation, shared SSO revocation, exact-JWT denylist and privacy/approval policies; [operations](docs/SECURITY_OPERATIONS.md) |
 | Audit | Strict admission/outcome, bounded retention, legal holds and durable HTTPS SIEM delivery; [evidence responsibilities](docs/AUDIT_OPERATIONS.md) |
-| Operations | Prometheus metrics, optional OTLP tracing, Helm and mandatory integration release gates; [deployment](docs/PRODUCTION_DEPLOYMENT.md) |
+| Operations | Prometheus metrics, optional OTLP tracing, Helm and integration/SDK/browser CI checks; [deployment](docs/PRODUCTION_DEPLOYMENT.md) |
 | Stdio | Separate mTLS worker with immutable allowlists, resource/filesystem/network isolation and operator secret injection; fixed owner endpoint |
 | Tenants | Dedicated databases, processes, credentials, keys and host routing; shared-schema tenant switching is excluded |
+
+
+## Roadmap to production readiness
+
+The June MCP feature families above are implemented within their documented limits.
+The next milestone is reliable, secure operation under real deployment failures.
+These items remain open; their order reflects production risk, not release dates.
+
+- [ ] **Worker containment and recovery:** prevent Docker daemon payload logging, reconcile orphaned containers after crashes, verify cleanup failures and storage quotas, and share protocol validation with the gateway. Keep fixed worker ownership and avoid unsafe replay.
+- [ ] **Least-privilege audit identities:** make exporter startup and audit inserts work with the supplied restricted roles after tenant identity migration; test allowed and forbidden SQL operations with real runtime logins.
+- [ ] **Policy and audit parity:** record catalog denial decisions, bind approval to executed/returned content, clarify prompt-content trust, and align background subscription revocation/fallback behavior.
+- [ ] **Sustained audit operations:** separately privileged retention runner, large-operation handling, exporter lag/dead-letter metrics and alerts, authenticated SIEM sinks, and representative purge/WAL measurements.
+- [ ] **Repeatable correctness gates:** diagnose intermittent mixed-workload failures, validate fresh update/export/apply API examples, broaden browser GitOps/SSO coverage, and require exact-commit tests/scans before release artifacts.
+- [ ] **Deployment evidence:** sustained multi-node load with p95/p99 and database budgets; rolling restart, PostgreSQL promotion, LISTEN loss and Redis outage drills; restore configuration, encrypted secrets, audit receipts and legal holds with measured RPO/RTO.
+- [ ] **Tenant and routing assurance:** canonical target-origin checks, streaming-aware proxy deadlines and complete deployed cross-tenant credential/session/audit tests. Dedicated databases/processes remain the supported model; shared-schema tenant switching is a separate future design.
+- [ ] **Management and supply-chain polish:** explicit per-object description-drift acknowledgment, complete service image scanning, artifact provenance/SBOM/signing and documented support/security response commitments.
+
+Production acceptance also needs organization-owned secret custody, access reviews,
+retention/privacy decisions and an independently administered immutable audit sink
+where required. Code changes alone do not establish SOC 2, ISO 27001 or GDPR compliance.
+See [production deployment](docs/PRODUCTION_DEPLOYMENT.md),
+[audit operations](docs/AUDIT_OPERATIONS.md) and [security operations](docs/SECURITY_OPERATIONS.md).
 
 
 ## Contributing

@@ -4,12 +4,13 @@ Both planes serve Prometheus text at `/metrics`. Restrict this endpoint to the
 monitoring network. HTTP histogram labels are one of `api`, `mcp`, `probe` or
 `other`; paths, query parameters, methods supplied by callers, tool names,
 subjects and credentials are never labels. Active HTTP requests cover current
-MCP calls; `streams_active` is zero until P08 adds downstream streams. Data-plane
+MCP calls; `streams_active` reports downstream SSE streams. Data-plane
 metrics include sessions, snapshot confirmation age/revision and last refresh
 latency, listener reconnects, aggregate breaker states, pool acquisition counts,
 cumulative wait time, audit failures/loss/queue and durable incomplete age.
-Audit incomplete queries have a one-second scrape budget. No exporter exists yet;
-export lag must be added with P12 rather than publishing a fictitious value.
+Audit incomplete queries have a one-second scrape budget. The separate HTTPS audit
+exporter logs delivery-state counts each minute; Prometheus export-lag/dead-letter
+metrics remain on the production roadmap. See [audit operations](AUDIT_OPERATIONS.md).
 
 Import [the Grafana dashboard](../deploy/observability/dashboard.json) and load
 [Prometheus rules](../deploy/observability/alerts.yml). Change the stale-age alert

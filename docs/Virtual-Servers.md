@@ -1,6 +1,6 @@
 # Virtual servers
 
-A **virtual server** is an endpoint, `/mcp/v1/virtual/{slug}`, that exposes a curated list of upstream tools. Agents
+A **virtual server** is an endpoint, `/mcp/v1/virtual/{slug}`, that exposes curated upstream tools, resources, URI templates and prompts. Agents
 connect to it like to any MCP server.
 
 | Field | Meaning |
@@ -9,6 +9,8 @@ connect to it like to any MCP server.
 | `enabled` | Disabled servers are not served |
 | `authRequired` | Default `true`: callers need an [agent key](Agent-Keys-and-Authentication.md) permitted for this server |
 | `tools` | Ordered selections: `{upstream, tool, alias?, description?}` |
+| `catalog` | Resource/template/prompt selections: `{upstream, kind, name, alias?, description?}`; [routing rules](MCP_CATALOGS.md) |
+| `clientFeatures` | Opt-in sampling, roots and form elicitation permissions; [limits and host consent](MCP_CLIENT_FEATURES.md) |
 | `policy` | [Tool policy](Tool-Policies.md) |
 | `pii` | [PII masking](PII-Masking.md) |
 | `rateLimitPerMinute` | [Rate limit](Rate-Limits.md) |

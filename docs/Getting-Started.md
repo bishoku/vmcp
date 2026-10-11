@@ -1,5 +1,9 @@
 # Getting started
 
+For a UI-first environment with Keycloak, Redis, two data planes and three MCP
+servers exposing tools/resources/prompts, use [the manual testing stack](../benchmark/README.md).
+The smaller walkthrough below demonstrates a single tools upstream.
+
 ## Run the stack
 
 Requires Docker.

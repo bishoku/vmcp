@@ -1,11 +1,14 @@
 # Deployment
 
+For a local UI-first walkthrough with Keycloak, Redis, two data planes and three
+MCP servers, use [the manual testing stack](../benchmark/README.md). The stack is
+development-only and does not constitute an HA PostgreSQL deployment.
+
 ## Minimum production checklist
 
 1. **Secrets**: generate a strong `VMCP_ADMIN_TOKEN` and a fresh `VMCP_MASTER_KEY`; keep the key in a secret manager and
    back it up. Do not reuse the development defaults from the compose file.
-2. **TLS**: terminate HTTPS in front of both the UI/control plane and the data plane (reverse proxy or ingress). vMCP
-   itself speaks plain HTTP.
+2. **TLS**: terminate HTTPS in front of both the UI/control plane and the data plane (reverse proxy or ingress). the API planes speak plain HTTP; the separate stdio worker and tenant router have their own TLS listeners.
 3. **Proxies**: set `VMCP_TRUSTED_PROXIES` on the data plane to your proxy CIDRs, otherwise IP allowlists and audit client IPs
    see the proxy.
 4. **PostgreSQL**: use a managed or replicated instance with backups. It holds all state, including audit events.
@@ -16,7 +19,10 @@
 ## Services
 
 Build images from `core/Dockerfile` (`--build-arg SERVICE=control-plane` or `data-plane`) and `web/Dockerfile`.
-The control plane applies migrations on start; start it before (or together with) the data plane.
+For coordinated startup, run the `migrate` command to completion before starting
+the planes with `VMCP_SKIP_MIGRATIONS=true` on the control plane. Both planes check
+the schema and dedicated tenant identity. The control plane can also migrate on
+startup for development. See [production deployment](PRODUCTION_DEPLOYMENT.md).
 
 ## Scaling out
 
@@ -33,8 +39,12 @@ docker compose -f deploy/docker-compose.yml --profile redis up -d
 
 ## Upgrades
 
-Migrations are forward-only and run automatically by the control plane. Take a database backup before upgrading, and
-upgrade the control plane first. A Helm chart is not provided yet.
+Migrations use a dedicated connection and PostgreSQL advisory lock. Prefer the
+deployment migration job before replacing planes; take a database/key backup first.
+Rollback compatibility is migration-specific and may require a coordinated maintenance
+window. A [Helm chart](../deploy/helm/vmcp) provides plane replicas, migration hook,
+probes, disruption budgets and network policies. HA/restore drills remain deployment
+acceptance gates, not guarantees supplied by the chart.
 
 ## Backups and portability
 

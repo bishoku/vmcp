@@ -78,14 +78,18 @@ no network, a read-only root filesystem and a 16 MiB noexec/nosuid temporary
 filesystem. Limits are 128 MiB memory (no additional swap), 0.5 CPU and 64 PIDs.
 The worker caps sessions at 32, HTTP handlers at 64, request bodies at 1 MiB, event queues at one frame,
 stdin writes at 5 seconds, initialization at 10 seconds and requests at 65
-seconds. Stdout frames are bounded at 2 MiB; stderr is discarded rather than
-mixed with protocol or logs. Idle sessions expire at 15 minutes. Container
+seconds. Stdout frames are bounded at 2 MiB; the worker discards Docker CLI stderr
+rather than mixing it into MCP frames. Docker daemon logging can independently
+retain container stdout/stderr; disabling payload capture is still a production
+roadmap item. Idle sessions expire at 15 minutes. Container
 termination explicitly removes the named container, and worker shutdown closes
 all owned sessions. There is no automatic unsafe tool replay or process restart.
 
 Placement uses a stable **owner endpoint**, not an unfenced load-balanced worker
 pool. Different worker hosts have different URLs. A worker crash loses its
-physical processes and returns unknown sessions after restart; clients create
+in-memory session registry and returns unknown sessions after restart. Daemon-owned
+containers are not guaranteed to stop on abrupt process death; startup orphan
+reconciliation remains a production roadmap item. Clients create
 fresh sessions, and ambiguous unsafe operations require operator/client review.
 Gateway replay remains durable, but stdio process state itself is not migrated.
 Images needing network or host files are intentionally unsupported by this

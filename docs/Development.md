@@ -39,3 +39,10 @@ npx @redocly/cli lint api/openapi.yaml
 - Add a migration for schema changes (`core/migrations`, next number); operational tables must not have revision triggers.
 - Never log or return secrets. No option to disable TLS verification. Core features must not need Redis.
 - See [CONTRIBUTING.md](https://github.com/bishoku/vmcp/blob/main/CONTRIBUTING.md).
+
+## UI-first manual testing
+
+[benchmark/](../benchmark/README.md) provides a separate Compose project with
+PostgreSQL, Redis, imported Keycloak users, two data planes behind nginx and three
+synthetic MCP servers. It starts with empty vMCP configuration. Run its optional
+smoke check and fixture unit tests independently from the core verification gate.

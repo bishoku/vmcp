@@ -1,59 +1,73 @@
-# MCP protocol contract — P01
+# MCP protocol contract
 
-Status: implemented baseline, 10 October 2026. This decision narrows the advertised protocol contract to **2025-06-18**. It does not claim complete MCP conformance: P02 adds the [ingress/egress network boundary](MCP_NETWORK_SECURITY.md); bidirectional client features remain P08–P10.
+The advertised protocol revision is **2025-06-18**. Support is capability-negotiated
+and bounded as described below; this is not independent conformance certification.
 
-## Version and transport decisions
+## Versions and transports
 
-| Hop / transport | Contract |
+| Hop | Supported scope |
 |---|---|
-| Client → vMCP, Streamable HTTP | June 2025; JSON responses; GET returns 405; DELETE terminates sessions. |
-| vMCP → upstream, Streamable HTTP | June 2025; accepts JSON or SSE response streams. |
-| vMCP → upstream, legacy HTTP+SSE | Legacy transport carrying the June 2025 message contract. A strict `2024-11-05` server is unsupported. |
-| March 2025, either hop | No longer advertised. Its batching contract was not implemented. |
-| Later protocol revisions / stdio | Unsupported until separately implemented and tested. |
+| Client → vMCP | Streamable HTTP: POST JSON/SSE, GET SSE, DELETE sessions; June messages |
+| vMCP → upstream | Streamable HTTP JSON/SSE; legacy HTTP+SSE carrying June messages |
+| vMCP → stdio | Private mTLS owner endpoint bridging to an isolated operator-approved container |
+| Other revisions | March, strict November 2024 and later revisions are not advertised |
 
-An unknown initialize version receives the supported June version, allowing the client to decide whether to continue. Upstream initialize responses with unsupported versions are rejected before sending `notifications/initialized`. Required handshake fields are protocolVersion, an object of capabilities, and implementation information containing string name/version. Unknown extension capabilities are retained.
+Unknown initialize versions receive the supported June version; clients decide
+whether to continue. Unsupported upstream negotiated versions are rejected.
+Handshake fields include protocolVersion, object capabilities and implementation
+name/version. A known session supplies its version when the header is absent;
+explicit unsupported or mismatched versions are rejected. Origin, Accept, media
+and bounded-body checks apply to virtual gateway HTTP methods. See
+[network boundaries](MCP_NETWORK_SECURITY.md).
 
-A known session supplies its negotiated version when the HTTP version header is absent. An explicit different version is rejected with HTTP 400 for session POST and DELETE. GET remains 405 after P02 ingress, authentication and optional session validation. Explicit unsupported version headers are rejected on POST/GET/DELETE, including initialize. Without a known session, non-initialize POST returns 400 for a missing session ID or 404 for an unknown ID; it does not silently assume support for March.
+## Framing and lifecycle
 
-Sources: [June lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle), [June transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports), [June base protocol](https://modelcontextprotocol.io/specification/2025-06-18/basic), [March transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports).
+- A body contains one JSON-RPC object. Batches and mixed request/response envelopes are rejected.
+- Request IDs are strings or integer JSON tokens, never null/fractional; replies preserve their representation.
+- Notifications omit IDs. Accepted notifications/client replies receive empty HTTP 202; unknown or cross-session reply IDs fail.
+- Initialization creates a pending, persisted session; normal operations require `notifications/initialized`. Ping is allowed while pending; repeated initialized notifications are idempotent.
+- Session ownership includes authentication mode, immutable credential identity and verified issuer/subject where relevant. Warm caches resolve authoritative PostgreSQL state.
+- Mapped upstream IDs and progress tokens prevent response confusion across calls. GET/POST SSE events and pending replies have shared leases/fences and bounded encrypted storage.
+- Last-Event-ID recovery is session/stream scoped. Disconnecting the gateway HTTP stream does not by itself cancel the operation. Cancellation cannot undo an external side effect, and lost workers do not imply safe automatic replay.
 
-## Envelope and lifecycle rules
+## Implemented feature families
 
-- Decode exactly one JSON object. Malformed JSON returns ParseError; syntactically valid but invalid envelopes, including batches, return InvalidRequest.
-- Request IDs are strings or integer JSON tokens, never null or fractional numbers. Preserve their wire representation when replying. Notifications omit ID.
-- Requests/notifications require a nonempty method, optional object params, and no result/error fields. Responses require ID, exactly one object result or valid error object, and no method/params. Errors require integer code and string message.
-- Match upstream responses to the originating request ID; reject unrelated JSON responses. SSE response streams also reject unrelated responses.
-- Initialize creates a pending session. Reinitializing with an existing session ID is rejected. Ping is allowed while pending; normal operations require the initialized notification. Duplicate initialized notifications are idempotent and acknowledged with empty HTTP 202.
-- Persist client capabilities and initialized state in PostgreSQL. Pending local caches recheck lifecycle state so initialization can complete on another node.
-- Advertise only tools, with listChanged false. Constants for progress/cancellation do not advertise or implement those capabilities. Unsupported requests return MethodNotFound; otherwise accepted notifications receive empty 202. Unsolicited client responses return HTTP 400 because there are no pending server requests.
-
-The gateway does not enforce uniqueness of all historical client request IDs; clients must obey that protocol requirement. Arbitrary extension capabilities are retained as data, not treated as implemented or forwarded features.
-
-## Upgrade and rollback
-
-Migration `00016_session_lifecycle.sql` adds initialized state and client capabilities. Apply migrations through the control plane before deploying new data-plane binaries. New columns are additive; older binaries ignore them. Avoid mixed old/new data-plane serving during cutover because old nodes do not enforce or persist the new lifecycle contract.
-
-Existing sessions default to pending, and March sessions are rejected by upgraded nodes. Clients should reconnect and perform a full handshake. This compatibility change is deliberate; do not rely on existing sessions surviving deployment. Roll back binaries before dropping the columns. Client capabilities persist only for session lifetime and follow session retention, rather than becoming an audit payload.
-
-## Regression matrix and verification
-
-The existing CI `go test -race ./...` job executes these tests with PostgreSQL and Redis:
-
-| Contract | Regression coverage |
+| Family | Scope / limits |
 |---|---|
-| Message kinds, absent IDs, valid ID echo | `core/internal/mcp/jsonrpc_test.go`: TestDecodeKinds, TestIDRoundTripVerbatim, TestNotificationOmitsID |
-| Parse errors vs invalid envelopes; null/fractional IDs; mixed envelopes; result/error validation | TestDecodeRejects, TestProtocolEnvelopeMatrix |
-| Required initialization fields, extension preservation, June-only negotiation | TestInitializeContractMatrix, TestNegotiateVersion |
-| JSON/SSE matching and malformed upstream responses | `core/internal/upstream/client_test.go`: TestClientRejectsUnrelatedOrMalformedResponses |
-| Incomplete/unsupported upstream handshakes; valid JSON/SSE lifecycle | TestClientInitializeValidation, TestClientLifecycle |
-| Legacy SSE June success and unsupported-version rejection | `core/internal/upstream/sse_test.go`: TestSSEClientAgainstLegacyFixture, TestLegacySSERejectsUnsupportedVersion |
-| Pending/ready behavior, fallback, retained capabilities, missing/mismatched headers, unsolicited replies | `core/internal/virtual/handler_test.go`: TestInitializationLifecycleAndVersionMatrix |
-| Migration upgrade/rollback preserving old sessions | `core/internal/store/migrations_test.go`: TestSessionLifecycleMigrationUpgradeAndRollback |
-| Lifecycle persistence with warm caches on two nodes | `core/internal/e2e/e2e_test.go`: TestSessionResumesOnAnotherNode |
+| Tools | Curated list/call, aliases/descriptions, title/outputSchema/structuredContent/_meta, policy and quotas |
+| Resources | Selected list/templates/read/subscribe/unsubscribe and update/list notifications; bounded physical watchers |
+| Prompts/completion | Selected prompt list/get and upstream-supported prompt/template completion |
+| Sampling | Explicit permission and client capability; host owns approval; no gateway model credentials or cross-server context aggregation |
+| Roots | Negotiated host-provided file URI context; no gateway filesystem access; idle physical sessions receive changes on next use |
+| Elicitation | Negotiated primitive forms, decline/cancel/expiry; no later URL mode |
+| Logging | Shared level and sanitized static notification data, not raw upstream payload logs |
 
-This matrix is a regression suite against the stated baseline, not independent interoperability certification. P02 and subsequent phases retain their own release gates.
+Capabilities reflect selected catalogs and implemented/negotiated behavior. Unknown
+extensions are retained as metadata, not automatically executable features. Historical
+client request-ID uniqueness remains the client's responsibility. See
+[catalogs](MCP_CATALOGS.md), [delivery/replay limits](MCP_DELIVERY.md) and
+[client features/consent](MCP_CLIENT_FEATURES.md).
 
-### P01 verification result
+The private stdio bridge has stricter size/time/session limits and weaker independent
+HTTP framing/lifecycle checks than the virtual gateway. It terminates active physical
+sessions on POST disconnect/timeout. Sharing validators and strengthening worker crash
+recovery/logging are [production roadmap](../README.md#roadmap-to-production-readiness)
+items; do not assume identical transport guarantees at both hops.
 
-On 10 October 2026, the complete `go test -race -count=1 -json ./...` run passed with **174 test/subtest pass events, zero failures and zero skips**, using isolated PostgreSQL 17 and Redis 7 containers. `go vet ./...` and `git diff --check` passed. The complete test event log is temporarily available at `/tmp/vmcp-p01-tests.jsonl`; it is not a durable release artifact. Temporary containers were removed after verification. No frontend code changed, so frontend checks were not rerun. P02 has not been started.
+## Verification and upgrades
+
+`make verify` requires real PostgreSQL/Redis integration and pinned SDK interoperability,
+Go vet/race tests, frontend checks, semantic API examples and a browser workflow.
+CI separately runs real Docker sandbox checks. These are regression gates, not a
+claim that every MCP client, optional feature combination or deployment failure has
+been certified. The [manual stack](../benchmark/README.md) exercises curated catalogs,
+progress, subscriptions and cross-node sessions with synthetic upstreams.
+
+Use the coordinated migration command/job before replacing planes. Session lifecycle,
+owner and delivery migrations require the documented cutover; legacy sessions may
+need a fresh handshake. Review [authorization upgrades](AUTHORIZATION_CONSISTENCY.md),
+[audit rollout](AUDIT_DURABILITY.md) and [production deployment](PRODUCTION_DEPLOYMENT.md)
+before upgrades or rollback; do not assume mixed-version session compatibility.
+
+Specification references: [June lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle),
+[June transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).

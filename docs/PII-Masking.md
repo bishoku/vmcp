@@ -29,3 +29,9 @@ the gateway. Matches become `[REDACTED:<name>]`.
 - Each audit event records the number of `redactions` applied.
 - Pattern-based detection is best effort: it reduces exposure, it is not a guarantee. Do not rely on it as the only control
   for regulated data.
+
+- Policies also cover content-bearing resource/prompt and negotiated client-request paths. Routing identifiers remain stable.
+- JSON keys and numeric values are inspected under deterministic budgets; sensitive keys/numbers or uninspectable binary content can be denied rather than silently forwarded. Image/audio/blob content fails closed under an active inspection policy.
+- Error data is inspected; operational upstream log data is omitted. Regex masking does not prevent prompt injection or cover Docker daemon logs from stdio workers.
+
+See [security operations](SECURITY_OPERATIONS.md) for coverage and [the manual demo](../benchmark/README.md#5-pii-policy-quota-authentication-and-ui-checks) for synthetic PII tests.

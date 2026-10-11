@@ -8,6 +8,11 @@ Run `go run ./cmd/audit-exporter` from `core/` as a separate service, injecting
 trusted server certificate. Gateway egress controls apply to the destination.
 Provision a restricted export identity using `deploy/postgres/audit-roles.sql`;
 provision its LOGIN, password/certificate and network access out of band.
+Current limitation: exporter startup also reads `tenant_runtime_identity` and
+`tenants`, but the role script does not yet grant that access. Restricted logins
+need narrowly reviewed identity-table access; audit INSERT defaults also read
+the identity function. Correcting/testing these grants is on the production
+roadmap. Do not replace restricted runtime identities with database-owner access.
 The worker has its own two-connection pool, no request-path dependency and no
 payload logging. One JSON database row is POSTed with its event UUID as the
 `Idempotency-Key`. The sink must acknowledge durable acceptance with a 2xx and

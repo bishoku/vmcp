@@ -55,7 +55,9 @@ to admin.
 
 ## Good to know
 
-- Sessions are signed, stateless cookies valid for **8 hours**. They cannot be revoked earlier, and role changes apply at
-  the next sign-in.
+- Signed cookies are valid for **8 hours** and reference shared PostgreSQL session records.
+  Logout revokes the session across control-plane replicas; operators can revoke all
+  sessions for a subject. Database errors deny authentication. Role changes apply at
+  the next sign-in; see [security operations](SECURITY_OPERATIONS.md).
 - Cookie-authenticated writes must send the header `X-VMCP-CSRF: 1` (the UI does). Bearer-token calls do not need it.
 - Tokens keep working with SSO enabled; use them for automation.

@@ -1,0 +1,183 @@
+name: vmcp-demo
+
+x-common-env: &common-env
+  VMCP_DATABASE_URL: postgres://vmcp:vmcp-demo@postgres:5432/vmcp?sslmode=disable
+  VMCP_MASTER_KEY: OsOj5XCz4oi+W3+L3o0am9uZGfYkNmsXHMu5uCDEP04=
+  VMCP_TENANT_ID: default
+  VMCP_EGRESS_ALLOW_CIDRS: ${VMCP_DEMO_SUBNET:-172.30.42.0/24}
+  VMCP_EGRESS_ALLOW_HOSTS: keycloak,mcp-calculator,mcp-knowledge,mcp-support
+
+x-data-plane: &data-plane
+  image: vmcp-demo/data-plane:local
+  build:
+    context: ../core
+    args: {SERVICE: data-plane}
+  stop_grace_period: 105s
+  environment: &dp-env
+    <<: *common-env
+    VMCP_DP_ADDR: ":8080"
+    VMCP_AUTH_MAX_STALE: 30s
+    VMCP_AUDIT_MODE: strict
+    VMCP_REDIS_URL: redis://redis:6379/0
+    VMCP_REDIS_FAILURE_POLICY: strict
+    VMCP_ALLOWED_ORIGINS: http://localhost:3300,http://localhost:8800
+    VMCP_AGENT_OIDC_ISSUER: http://localhost:9180/realms/vmcp
+    VMCP_AGENT_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/vmcp
+    VMCP_AGENT_OIDC_AUDIENCE: vmcp-gateway
+    VMCP_PUBLIC_URL: http://localhost:8800
+    VMCP_TRUSTED_PROXIES: ${VMCP_DEMO_SUBNET:-172.30.42.0/24}
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+    redis: {condition: service_healthy}
+    keycloak: {condition: service_healthy}
+  networks: [demo]
+
+x-mcp: &mcp
+  image: vmcp-demo/mcp:local
+  build: ./mcp
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  networks: [demo]
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: vmcp
+      POSTGRES_PASSWORD: vmcp-demo
+      POSTGRES_DB: vmcp
+    ports: ["127.0.0.1:55432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U vmcp -d vmcp"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks: [demo]
+
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, "yes"]
+    ports: ["127.0.0.1:56379:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    networks: [demo]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: [start-dev, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak-demo
+      KC_HOSTNAME: http://localhost:9180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports: ["127.0.0.1:9180:8080"]
+    volumes: ["./keycloak/vmcp-realm.json:/opt/keycloak/data/import/vmcp-realm.json:ro"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 30s
+    networks: [demo]
+
+  migrate:
+    build:
+      context: ../core
+      args: {SERVICE: migrate}
+    environment: *common-env
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [demo]
+
+  control-plane:
+    build:
+      context: ../core
+      args: {SERVICE: control-plane}
+    stop_grace_period: 105s
+    environment:
+      <<: *common-env
+      VMCP_CP_ADDR: ":8081"
+      VMCP_SKIP_MIGRATIONS: "true"
+      VMCP_ADMIN_TOKEN: demo-admin-token
+      VMCP_OIDC_ISSUER: http://localhost:9180/realms/vmcp
+      VMCP_OIDC_DISCOVERY_URL: http://keycloak:8080/realms/vmcp
+      VMCP_OIDC_CLIENT_ID: vmcp
+      VMCP_OIDC_CLIENT_SECRET: vmcp-dev-secret
+      VMCP_OIDC_REDIRECT_URL: http://localhost:3300/auth/callback
+      VMCP_OIDC_GROUPS_CLAIM: groups
+      VMCP_OIDC_ADMIN_GROUPS: vmcp-admins
+      VMCP_OIDC_EDITOR_GROUPS: vmcp-editors
+      VMCP_OIDC_VIEWER_GROUPS: vmcp-viewers
+    ports: ["127.0.0.1:8801:8081"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      keycloak: {condition: service_healthy}
+    networks: [demo]
+
+  data-plane-1:
+    <<: *data-plane
+    environment:
+      <<: *dp-env
+      VMCP_NODE_ID: demo-dp-1
+    ports: ["127.0.0.1:8802:8080"]
+
+  data-plane-2:
+    <<: *data-plane
+    environment:
+      <<: *dp-env
+      VMCP_NODE_ID: demo-dp-2
+    ports: ["127.0.0.1:8803:8080"]
+
+  gateway:
+    image: nginx:1.27-alpine
+    ports: ["127.0.0.1:8800:80"]
+    volumes: ["./gateway.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on: [data-plane-1, data-plane-2]
+    networks: [demo]
+
+  web:
+    build: ../web
+    ports: ["127.0.0.1:3300:80"]
+    depends_on: [control-plane]
+    networks: [demo]
+
+  mcp-calculator:
+    <<: *mcp
+    environment: {DEMO_PROFILE: calculator, DEMO_TOKEN: calculator-secret}
+    ports: ["127.0.0.1:9111:9100"]
+
+  mcp-knowledge:
+    <<: *mcp
+    environment: {DEMO_PROFILE: knowledge, DEMO_TOKEN: knowledge-secret}
+    ports: ["127.0.0.1:9112:9100"]
+
+  mcp-support:
+    <<: *mcp
+    environment: {DEMO_PROFILE: support, DEMO_TOKEN: support-secret}
+    ports: ["127.0.0.1:9113:9100"]
+
+networks:
+  demo:
+    ipam:
+      config:
+        - subnet: ${VMCP_DEMO_SUBNET:-172.30.42.0/24}
+
+volumes:
+  pgdata:
+  redisdata:

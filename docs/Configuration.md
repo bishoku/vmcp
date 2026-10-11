@@ -9,7 +9,7 @@ All configuration is through environment variables. Durations use Go syntax (`30
 | `VMCP_DATABASE_URL` | required | both | PostgreSQL connection string |
 | `VMCP_EGRESS_ALLOW_CIDRS` | empty | both | Comma-separated private/loopback CIDRs allowed for MCP upstreams and upstream OAuth token endpoints; metadata and prohibited destinations remain denied |
 | `VMCP_EGRESS_ALLOW_HOSTS` | empty | both | Optional exact DNS names/IP literals allowed for MCP/token HTTP traffic; when empty, public unicast destinations are allowed. Host grants do not override private CIDR checks |
-| `VMCP_MASTER_KEY` | required | both | Base64 32-byte key (`openssl rand -base64 32`) encrypting upstream headers and client keys. **Losing it makes stored secrets unreadable; changing it invalidates them.** Both services must share it |
+| `VMCP_MASTER_KEY` | required | both | Base64 32-byte key (`openssl rand -base64 32`) encrypting upstream headers and client keys. Retain recovery keys; use the reader-first keyring/rotation procedure rather than replacing it blindly. Both planes in one tenant share the keyring |
 
 ## Control plane
 
@@ -48,7 +48,7 @@ All configuration is through environment variables. Durations use Go syntax (`30
 
 ## Health endpoints
 
-Both services expose `GET /healthz` (liveness) and `GET /readyz`. Control-plane readiness checks the database. Data-plane readiness returns authorization freshness JSON and becomes 503 when confirmation expires; it does not directly probe every dependency. See [Authorization consistency](AUTHORIZATION_CONSISTENCY.md).
+Both services expose `GET /healthz` (liveness) and `GET /readyz`. Control-plane readiness checks the database. Data-plane readiness reports authorization freshness and fails on expired confirmation, unavailable audit writes, or a strict Redis quota dependency. Draining planes report unready. See [Authorization consistency](AUTHORIZATION_CONSISTENCY.md).
 
 ## Tests only
 
@@ -56,7 +56,7 @@ Both services expose `GET /healthz` (liveness) and `GET /readyz`. Control-plane 
 
 ## MCP network policy
 
-Set the same egress policy on both services and restart after changes. See [MCP network security](MCP_NETWORK_SECURITY.md) for defaults, private-network examples, disabled redirects/proxies, TLS behavior and deployment compatibility. MCP POST requires `Content-Type: application/json` and `Accept: application/json, text/event-stream`; GET requires `Accept: text/event-stream` even though streams currently return 405 after authentication/validation.
+Set the same egress policy on both services and restart after changes. See [MCP network security](MCP_NETWORK_SECURITY.md) for defaults, private-network examples, disabled redirects/proxies, TLS behavior and deployment compatibility. MCP POST requires `Content-Type: application/json` and `Accept: application/json, text/event-stream`; GET requires `Accept: text/event-stream` and opens an authenticated, session-scoped SSE stream when durable delivery is enabled.
 
 ## Audit durability
 
@@ -75,7 +75,7 @@ Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status
  remains available. Shutdown does not revoke sessions stored for other nodes.
 
 Limits are currently fixed per process: 10,000 cached sessions, 1,024 concurrent
-POST requests, 128 per virtual server, and 16 per authenticated identity (all
+MCP admissions, 128 per virtual server, and 16 per authenticated identity (all
 anonymous requests share the anonymous identity bucket). These counters include
 initialization and body reading and return 429 when saturated; shared sessions
 and replicas do not provide cluster-wide concurrency quotas. Request bodies have
@@ -91,3 +91,28 @@ or HTTP 401. A subsequent client request may reconnect/refresh; clients must
 resolve uncertain side effects before retrying. Read-only/idempotent annotations
 permit bounded replay and are trusted upstream declarations, not a proof of
 idempotency. Caller cancellation and IdP failures do not trip upstream breakers.
+
+
+## Pool, telemetry, identity and operational services
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VMCP_DB_MAX_CONNS`, `VMCP_DB_MIN_CONNS` | `16`, `2` | Request pool size per plane; account for every replica |
+| `VMCP_DB_ACQUIRE_TIMEOUT` | `2s` | Pool acquisition deadline |
+| `VMCP_DB_LISTENER_URL` | database URL | Direct/session-pooling PostgreSQL endpoint for persistent LISTEN; transaction pooling is unsuitable |
+| `VMCP_SKIP_MIGRATIONS` | `false` | Control plane checks the schema instead of migrating; run `cmd/migrate` first |
+| `VMCP_TENANT_ID` | `default` | Dedicated database deployment identity, consistent on planes and operational commands |
+| `VMCP_REDIS_FAILURE_POLICY` | `local` | Per-node fallback (`local`) or quota denial/readiness failure (`strict`) on Redis outage |
+| `VMCP_OTEL_ENABLED` | `false` | Enable bounded OTLP HTTP tracing |
+| `VMCP_OTEL_SAMPLE_RATIO` | `0.1` | Local trace sampling ratio, 0–1 |
+| `VMCP_KEY_ID` | `primary` | Primary encryption key ID |
+| `VMCP_DECRYPT_KEYS` | unset | JSON recovery-key map for reader-first rotation |
+| `VMCP_CIPHERTEXT_WRITE_VERSION` | `v1` | `v1` bound envelope, or transitional `legacy` during reader-first rollout |
+| `VMCP_APPROVAL_URL` | unset | Optional HTTPS metadata/digest request-approval service |
+| `VMCP_AUDIT_EXPORT_DATABASE_URL`, `VMCP_AUDIT_EXPORT_CONSUMER`, `VMCP_AUDIT_EXPORT_URL` | required by exporter | Separate exporter pool, stable consumer name and HTTPS sink |
+
+See [observability](OBSERVABILITY.md) for pool/tracing constraints and OTel variables,
+[security operations](SECURITY_OPERATIONS.md) for rotation/identity containment,
+[audit operations](AUDIT_OPERATIONS.md) for export/retention roles, and
+[tenant/stdio operations](TENANT_AND_STDIO_OPERATIONS.md) for router/worker variables.
+The [manual stack](../benchmark/README.md) supplies an explicit local configuration.

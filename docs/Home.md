@@ -1,8 +1,8 @@
 # vMCP
 
 vMCP is an open-source gateway for the [Model Context Protocol](https://modelcontextprotocol.io). You register
-**upstream** MCP servers once and compose their tools into **virtual servers**: one endpoint per agent or team that
-exposes only the tools it should see, with authentication, PII masking, auditing, tool policies, rate limits and
+**upstream** MCP servers once and curate their tools, resources, templates and prompts into **virtual servers**: one endpoint per agent or team that
+exposes only the selected capabilities, with authentication, PII masking, auditing, tool policies, rate limits and
 failover in between.
 
 ## Start here
@@ -32,3 +32,13 @@ failover in between.
 - [FAQ and troubleshooting](FAQ.md)
 
 > The source of truth for the API is [`api/openapi.yaml`](https://github.com/bishoku/vmcp/blob/main/api/openapi.yaml).
+
+## Protocol and operations
+
+- [MCP protocol contract](MCP_PROTOCOL_CONTRACT.md) and [bidirectional SSE delivery](MCP_DELIVERY.md)
+- [Resources and prompts](MCP_CATALOGS.md) and [negotiated client features](MCP_CLIENT_FEATURES.md)
+- [Audit durability](AUDIT_DURABILITY.md) and [SIEM/retention operations](AUDIT_OPERATIONS.md)
+- [Observability](OBSERVABILITY.md), [security operations](SECURITY_OPERATIONS.md) and [production deployment](PRODUCTION_DEPLOYMENT.md)
+- [Dedicated tenants and stdio workers](TENANT_AND_STDIO_OPERATIONS.md)
+- [Manual testing stack](../benchmark/README.md)
+- [Production roadmap](../README.md#roadmap-to-production-readiness)
