@@ -1510,7 +1510,7 @@ components:
 
     Transport:
       type: string
-      enum: [ streamable_http, sse ]
+      enum: [ streamable_http, sse, stdio_worker ]
       default: streamable_http
       description: '`sse` is the legacy HTTP+SSE transport.'
 
@@ -2582,8 +2582,9 @@ components:
 
     AuditEvent:
       type: object
-      required: [ id, eventId, schemaVersion, stage, time, virtualServer, method, status, durationMs ]
+      required: [ tenantId, id, eventId, schemaVersion, stage, time, virtualServer, method, status, durationMs ]
       properties:
+        tenantId: { type: string }
         eventId: { type: string, format: uuid }
         operationId: { type: [ string, "null" ], format: uuid }
         requestId: { type: [ string, "null" ], format: uuid }
@@ -2660,9 +2661,10 @@ components:
     # ---- System / errors ----
     Info:
       type: object
-      required: [ version, configRevision ]
+      required: [ version, configRevision, tenantId ]
       properties:
         version: { type: string }
+        tenantId: { type: string }
         configRevision: { type: integer, format: int64 }
 
     Problem:

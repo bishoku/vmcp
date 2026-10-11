@@ -12,7 +12,7 @@ const slugify = (s: string) =>
 export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'admin' }) {
   const canManage = role === 'admin'
   const [tokens, setTokens] = useState<AdminToken[]>([])
-  const [info, setInfo] = useState<{ version: string; configRevision: number } | null>(null)
+  const [info, setInfo] = useState<{ version: string; configRevision: number; tenantId?: string } | null>(null)
   const [error, setError] = useState('')
   const [form, setForm] = useState<{ slug: string; description: string; scope: 'admin' | 'read'; expiresAt: string } | null>(null)
   const [problem, setProblem] = useState('')
@@ -113,6 +113,7 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
         <h2 className="text-lg font-semibold">About</h2>
         <dl className="mt-3 grid max-w-sm grid-cols-2 gap-y-2 rounded-card border border-line bg-surface p-5 text-sm shadow-card">
           <dt className="text-ink-muted">Version</dt><dd>{info?.version ?? '—'}</dd>
+          <dt className="text-ink-muted">Tenant</dt><dd>{info?.tenantId ?? 'default'}</dd>
           <dt className="text-ink-muted">Config revision</dt><dd>{info?.configRevision ?? '—'}</dd>
         </dl>
       </section>

@@ -14,17 +14,14 @@ Thanks for helping! Bug reports, docs fixes and features are all welcome.
 
 ## Setup
 
-Requirements: Go (see `core/go.mod`), Node 20+, Docker (PostgreSQL for tests).
+Requirements: Go (see `core/go.mod`), Node 22+, Docker (PostgreSQL for tests).
 
-```sh
-docker compose -f deploy/docker-compose.yml up -d postgres
-export VMCP_TEST_DATABASE_URL='postgres://vmcp:vmcp@localhost:5432/vmcp_test?sslmode=disable'
-cd core && go test -race ./...           # database-backed suites skip without the variable
-cd ../web && npm ci && npm run lint && npm run build
-npx @redocly/cli lint api/openapi.yaml
-```
+See [the reproducible verification workflow](docs/PRODUCTION_DEPLOYMENT.md).
+Install web dependencies/browser, start disposable PostgreSQL and Redis, set both
+integration URLs and run `make verify`. It requires all database/Redis suites,
+runs the pinned MCP SDK fixture, and rejects skipped tests. Individual `go test`
+runs may skip integration tests without those URLs; they are not release evidence.
 
-Optional: `VMCP_TEST_REDIS_URL=redis://localhost:6379/0` enables the Redis rate-limit test.
 
 ## Pull requests
 

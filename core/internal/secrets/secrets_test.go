@@ -123,3 +123,21 @@ func TestReaderFirstRotationAndRecovery(t *testing.T) {
 		t.Fatal("missing primary key ID")
 	}
 }
+
+func TestTenantContextRejectsSharedKeyTransplant(t *testing.T) {
+	key := newKey(t)
+	t.Setenv("VMCP_TENANT_ID", "a")
+	a, err := FromEnv(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VMCP_TENANT_ID", "b")
+	b, err := FromEnv(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := a.SealBound([]byte("sensitive"), "same-id", "upstream.headers")
+	if _, err := b.OpenBound(raw, "same-id", "upstream.headers"); err == nil {
+		t.Fatal("cross-tenant ciphertext accepted")
+	}
+}

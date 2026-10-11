@@ -8,6 +8,7 @@ package ratelimit
 import (
 	"context"
 	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -152,8 +153,12 @@ func NewRedis(url string, log *slog.Logger) (Limiter, error) {
 	if err != nil {
 		return nil, err
 	}
+	tenant := os.Getenv("VMCP_TENANT_ID")
+	if tenant == "" {
+		tenant = "default"
+	}
 	return &FailOpen{
-		Primary:  &Redis{Client: redis.NewClient(opt), Prefix: "vmcp:rl:", Timeout: 250 * time.Millisecond},
+		Primary:  &Redis{Client: redis.NewClient(opt), Prefix: "vmcp:rl:" + tenant + ":", Timeout: 250 * time.Millisecond},
 		Fallback: NewLocal(),
 		Log:      log,
 	}, nil

@@ -63,7 +63,7 @@ export interface Upstream {
   url: string
   fallbackUrls: string[]
   health: { state: 'unknown' | 'healthy' | 'degraded' | 'unhealthy'; nodes: NodeHealth[] }
-  transport: 'streamable_http' | 'sse'
+  transport: 'streamable_http' | 'sse' | 'stdio_worker'
   enabled: boolean
   headerNames: string[]
   tls: UpstreamTLS
@@ -78,7 +78,7 @@ export interface UpstreamInput {
   description?: string
   url: string
   fallbackUrls?: string[]
-  transport: 'streamable_http' | 'sse'
+  transport: 'streamable_http' | 'sse' | 'stdio_worker'
   enabled?: boolean
   /** Write-only. Omit to keep stored headers; null value deletes one header (PATCH). */
   headers?: Record<string, string | null>
@@ -330,7 +330,7 @@ export const api = {
   applyConfig: (document: ConfigDocument, dryRun = true, prune = false, revision?:number) => request<ApplyResult>('POST',`/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),
   testStoredConnection: (slug:string) => request<ConnectionTestResult>('POST',`/upstreams/${encodeURIComponent(slug)}/connection-test`),
   me: () => request<Me>('GET', '/me'),
-  info: () => request<{ version: string; configRevision: number }>('GET', '/info'),
+  info: () => request<{ version: string; configRevision: number; tenantId?: string }>('GET', '/info'),
   listUpstreams: async () => listAll<Upstream>('/upstreams'),
   createUpstream: (slug: string, input: UpstreamInput) =>
     request<Upstream>('POST', '/upstreams', { slug, ...input }),

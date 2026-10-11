@@ -17,7 +17,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/secrets"
 )
 
-// DefaultTenantSlug is the only tenant served until multi-tenancy is exposed.
+// DefaultTenantSlug is the internal configuration row within a dedicated tenant database.
 const DefaultTenantSlug = "default"
 
 // Revision returns the current config revision (cheap; used for change detection).

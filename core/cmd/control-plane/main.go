@@ -187,7 +187,7 @@ func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oi
 		return out
 	}
 	// Cookies are signed with a key derived from the master key, so no extra secret to manage.
-	key := sha256.Sum256([]byte("vmcp-session-v1:" + masterKey))
+	key := sha256.Sum256([]byte("vmcp-session-v1:" + masterKey + ":" + store.TenantID()))
 	return oidc.New(ctx, oidc.Config{
 		Issuer:       issuer,
 		DiscoveryURL: config.Env("VMCP_OIDC_DISCOVERY_URL", ""),

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -102,5 +103,42 @@ func CheckSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	if actual < required {
 		return fmt.Errorf("database migration required: have %d need %d", actual, required)
 	}
+	if err := CheckTenant(ctx, pool); err != nil {
+		return err
+	}
 	return nil
+}
+
+// TenantID is operator configuration; request headers never select a database.
+func TenantID() string {
+	id := os.Getenv("VMCP_TENANT_ID")
+	if id == "" {
+		return "default"
+	}
+	return id
+}
+func CheckTenant(ctx context.Context, pool *pgxpool.Pool) error {
+	var identity string
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT tenant_id,(SELECT count(*) FROM tenants) FROM tenant_runtime_identity WHERE singleton`).Scan(&identity, &count); err != nil {
+		return fmt.Errorf("tenant identity unavailable")
+	}
+	if identity != TenantID() || count != 1 {
+		return fmt.Errorf("tenant database identity mismatch or shared database")
+	}
+	return nil
+}
+
+// BindTenant initializes a new dedicated deployment. Existing configured
+// deployments cannot be reassigned to a different tenant by changing an env var.
+func BindTenant(ctx context.Context, pool *pgxpool.Pool) error {
+	id := TenantID()
+	if !ValidSlug(id) {
+		return fmt.Errorf("invalid tenant identity")
+	}
+	_, err := pool.Exec(ctx, `UPDATE tenant_runtime_identity SET tenant_id=$1 WHERE tenant_id='default' AND NOT EXISTS(SELECT 1 FROM upstreams) AND NOT EXISTS(SELECT 1 FROM virtual_servers) AND NOT EXISTS(SELECT 1 FROM admin_tokens) AND NOT EXISTS(SELECT 1 FROM agent_keys) AND NOT EXISTS(SELECT 1 FROM audit_events) AND NOT EXISTS(SELECT 1 FROM sessions) AND NOT EXISTS(SELECT 1 FROM browser_sessions)`, id)
+	if err != nil {
+		return err
+	}
+	return CheckTenant(ctx, pool)
 }

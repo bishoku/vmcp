@@ -16,7 +16,8 @@ import (
 	"github.com/bishoku/vmcp/core/internal/secrets"
 )
 
-// tenantSQL scopes every query to the default tenant until tenancy is exposed.
+// tenantSQL scopes configuration to the internal row in each dedicated database.
+// CheckTenant enforces the deployment identity; headers never select SQL tenancy.
 const tenantSQL = `(SELECT id FROM tenants WHERE slug = 'default')`
 
 // dbtx is satisfied by both *pgxpool.Pool and pgx.Tx.

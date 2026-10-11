@@ -13,3 +13,5 @@ images:
 	docker build --build-arg SERVICE=data-plane -t vmcp/data-plane:local core
 	docker build --build-arg SERVICE=migrate -t vmcp/migrate:local core
 	docker build --build-arg SERVICE=audit-exporter -t vmcp/audit-exporter:local core
+
+	docker build --build-arg SERVICE=tenant-router -t vmcp/tenant-router:local core

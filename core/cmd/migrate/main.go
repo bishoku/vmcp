@@ -16,4 +16,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "database migration failed")
 		os.Exit(1)
 	}
+	pool, err := store.Connect(ctx, os.Getenv("VMCP_DATABASE_URL"))
+	if err != nil {
+		os.Exit(1)
+	}
+	defer pool.Close()
+	if err := store.BindTenant(ctx, pool); err != nil {
+		fmt.Fprintln(os.Stderr, "tenant database binding failed")
+		os.Exit(1)
+	}
 }

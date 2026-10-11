@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"log/slog"
 	"os"
@@ -29,6 +30,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+	if err := store.CheckTenant(ctx, pool); err != nil {
+		log.Error("exporter tenant database identity mismatch")
+		os.Exit(1)
+	}
 	exporter, err := audit.NewExporter(pool, os.Getenv("VMCP_AUDIT_EXPORT_CONSUMER"), os.Getenv("VMCP_AUDIT_EXPORT_URL"))
 	if err != nil {
 		log.Error("invalid exporter configuration")

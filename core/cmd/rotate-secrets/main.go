@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/secrets"
+	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,6 +34,9 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
+	if err := store.CheckTenant(ctx, pool); err != nil {
+		return err
+	}
 	// Identifiers are compile-time constants, never administrator input. Each
 	// committed row is its own checkpoint; CAS preserves concurrent edits.
 	fields := []struct{ table, column, purpose string }{
@@ -79,12 +83,13 @@ func run() error {
 				if len(r.data) == 0 {
 					continue
 				}
-				if id, ok := box.KeyID(r.data); ok && id == box.PrimaryID() {
-					continue
-				}
 				raw, err := box.OpenBound(r.data, r.id, field.purpose)
 				if err != nil {
 					return err
+				}
+				if id, ok := box.KeyID(r.data); ok && id == box.PrimaryID() {
+					clear(raw)
+					continue
 				}
 				replacement, err := box.SealBound(raw, r.id, field.purpose)
 				clear(raw)

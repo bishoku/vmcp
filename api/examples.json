@@ -1,6 +1,6 @@
 {
   "AdminTokenWithSecret": {
-    "createdAt": "2026-10-11T08:24:10.977588+03:00",
+    "createdAt": "2026-10-11T10:01:39.691856+03:00",
     "description": "",
     "expiresAt": null,
     "lastUsedAt": null,
@@ -9,22 +9,22 @@
     "slug": "automation",
     "status": "active",
     "token": "redacted-example",
-    "tokenPrefix": "vmcpa_JkmVo0",
-    "updatedAt": "2026-10-11T08:24:10.977588+03:00",
+    "tokenPrefix": "vmcpa_QhnLtR",
+    "updatedAt": "2026-10-11T10:01:39.691856+03:00",
     "version": 1
   },
   "AgentKeyWithSecret": {
-    "createdAt": "2026-10-11T08:24:10.969587+03:00",
+    "createdAt": "2026-10-11T10:01:39.686089+03:00",
     "description": "",
     "expiresAt": null,
     "ipAllowlist": [],
     "key": "redacted-example",
-    "keyPrefix": "vmcp_TbcGVjx",
+    "keyPrefix": "vmcp_zVNFpi7",
     "rateLimitPerMinute": null,
     "revokedAt": null,
     "slug": "agent-key",
     "status": "active",
-    "updatedAt": "2026-10-11T08:24:10.969587+03:00",
+    "updatedAt": "2026-10-11T10:01:39.686089+03:00",
     "version": 1,
     "virtualServers": [
       "agent"
@@ -34,7 +34,7 @@
     "auth": {
       "type": "none"
     },
-    "createdAt": "2026-10-11T08:24:10.935913+03:00",
+    "createdAt": "2026-10-11T10:01:39.659007+03:00",
     "description": "",
     "enabled": true,
     "fallbackUrls": [],
@@ -59,8 +59,8 @@
     },
     "toolCount": 0,
     "transport": "streamable_http",
-    "updatedAt": "2026-10-11T08:24:10.935913+03:00",
-    "url": "http://127.0.0.1:55455",
+    "updatedAt": "2026-10-11T10:01:39.659007+03:00",
+    "url": "http://127.0.0.1:60166",
     "version": 1
   },
   "UpstreamCreate": {
@@ -69,11 +69,17 @@
     },
     "name": "Fixture",
     "slug": "fixture",
-    "url": "http://127.0.0.1:55455"
+    "url": "http://127.0.0.1:60166"
   },
   "VirtualServer": {
     "authRequired": false,
-    "createdAt": "2026-10-11T08:24:10.960489+03:00",
+    "catalog": [],
+    "clientFeatures": {
+      "elicitation": false,
+      "roots": false,
+      "sampling": false
+    },
+    "createdAt": "2026-10-11T10:01:39.678495+03:00",
     "description": "",
     "enabled": true,
     "endpoint": "/mcp/v1/virtual/agent",
@@ -97,7 +103,7 @@
         "upstreamDescription": "Returns the given message"
       }
     ],
-    "updatedAt": "2026-10-11T08:24:10.960489+03:00",
+    "updatedAt": "2026-10-11T10:01:39.678495+03:00",
     "version": 1
   },
   "VirtualServerCreate": {

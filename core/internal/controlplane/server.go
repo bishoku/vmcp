@@ -336,5 +336,5 @@ func (s *Server) getInfo(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return writeJSON(w, http.StatusOK, map[string]any{"version": s.Version, "configRevision": rev})
+	return writeJSON(w, http.StatusOK, map[string]any{"version": s.Version, "configRevision": rev, "tenantId": store.TenantID()})
 }

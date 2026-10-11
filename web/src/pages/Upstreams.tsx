@@ -224,7 +224,7 @@ function Panel({
   const [fallbacks, setFallbacks] = useState((upstream?.fallbackUrls ?? []).join('\n'))
   const fallbackUrls = () => fallbacks.split(/[\s,]+/).filter(Boolean)
   const [enabled, setEnabled] = useState(upstream?.enabled ?? true)
-  const [transport, setTransport] = useState<'streamable_http' | 'sse'>(upstream?.transport ?? 'streamable_http')
+  const [transport, setTransport] = useState<'streamable_http' | 'sse' | 'stdio_worker'>(upstream?.transport ?? 'streamable_http')
   // Headers: existing names are masked; only entries the user touches are sent.
   const [existing, setExisting] = useState<string[]>(upstream?.headerNames ?? [])
   const [replaced, setReplaced] = useState<Record<string, string>>({})
@@ -384,9 +384,10 @@ function Panel({
           )}
           <label className="block text-sm font-medium">
             Transport
-            <select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
+            <select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse' | 'stdio_worker')}>
               <option value="streamable_http">Streamable HTTP</option>
               <option value="sse">Legacy SSE</option>
+              <option value="stdio_worker">Isolated stdio worker (HTTPS/mTLS)</option>
             </select>
           </label>
           <label className="flex items-center gap-2 text-sm">

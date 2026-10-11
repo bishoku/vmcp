@@ -44,5 +44,8 @@ Idle sessions expire after 30 minutes.
 
 ## Scope and non-goals
 
-Tools only (no resources/prompts); Streamable HTTP and legacy HTTP+SSE upstreams (no stdio); one tenant (`default`,
-the schema is prepared for more); no human-in-the-loop approvals.
+Tools, resources/templates and prompts are curated through virtual servers.
+Upstreams use Streamable HTTP, legacy HTTP+SSE or a separate isolated stdio worker.
+Tenant hosting uses dedicated plane/database deployments, not shared-schema
+request-selected tenancy. See [tenant and worker architecture](TENANT_AND_STDIO_OPERATIONS.md),
+[delivery](MCP_DELIVERY.md) and [client feature negotiation](MCP_CLIENT_FEATURES.md).

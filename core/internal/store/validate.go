@@ -63,8 +63,13 @@ func ValidateUpstreamInput(in UpstreamInput) []apierror.FieldError {
 			errs = append(errs, vf(fmt.Sprintf("/fallbackUrls/%d", i), "duplicates another URL of this upstream"))
 		}
 	}
-	if in.Transport != "streamable_http" && in.Transport != "sse" {
-		errs = append(errs, vf("/transport", "must be one of: streamable_http, sse"))
+	if in.Transport != "streamable_http" && in.Transport != "sse" && in.Transport != "stdio_worker" {
+		errs = append(errs, vf("/transport", "must be one of: streamable_http, sse, stdio_worker"))
+	}
+	if in.Transport == "stdio_worker" {
+		if !strings.HasPrefix(in.URL, "https://") || len(in.FallbackURLs) > 0 {
+			errs = append(errs, vf("/url", "stdio worker requires a fixed HTTPS owner endpoint without fallbacks"))
+		}
 	}
 	for k, v := range in.Headers {
 		if !headerNameRE.MatchString(k) {

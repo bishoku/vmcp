@@ -58,8 +58,11 @@ flowchart LR
 - **Web UI** (`web/`): React + Vite + Tailwind.
 - **PostgreSQL**: the single source of truth (config, sessions, audit, health).
 
-Scope today: **tools only** (no resources/prompts), upstream transports **Streamable HTTP and legacy HTTP+SSE**
-(no stdio), single tenant (`default`).
+Scope today: curated **tools, resources, templates and prompts**; negotiated client
+features; upstream **Streamable HTTP, legacy HTTP+SSE and isolated stdio workers**.
+Hosted tenants use dedicated plane/database deployments and exact-host routing.
+See [catalog limits](docs/MCP_CATALOGS.md), [client features](docs/MCP_CLIENT_FEATURES.md)
+and [tenant/worker boundaries](docs/TENANT_AND_STDIO_OPERATIONS.md).
 
 ## Quick start
 
@@ -140,10 +143,25 @@ docs/              Wiki pages
 
 MCP protocol baseline: **2025-06-18**. March support is no longer advertised. See the [protocol contract and upgrade notes](docs/MCP_PROTOCOL_CONTRACT.md) for transport compatibility and session migration behavior.
 
-vMCP is young. The feature set above is implemented and covered by integration tests (PostgreSQL-backed, including
-multi-node and TLS scenarios), but expect rough edges, and APIs may still change before a 1.0 release. Known gaps are
-listed in the [FAQ](docs/FAQ.md#known-limitations). Not built (yet): Prometheus/OpenTelemetry metrics, Helm chart,
-stdio upstreams, resources/prompts, multi-tenancy.
+vMCP remains **Beta / development**, with APIs subject to change. Automated regression
+coverage includes PostgreSQL/Redis, multi-node authorization and replay, TLS,
+MCP SDK interoperability, browser workflows and isolated-container checks.
+Production acceptance still requires deployment-specific load, HA promotion,
+backup/restore, sink access-control and incident-response evidence described in
+[the deployment guide](docs/PRODUCTION_DEPLOYMENT.md). No production SLA or
+compliance certification is claimed.
+
+| Capability | Implemented scope and limits |
+|---|---|
+| MCP catalog | Tools, resources/templates, prompts, selected completion and durable subscription grants; [contract](docs/MCP_CATALOGS.md) |
+| Bidirectional delivery | Shared PostgreSQL operation fencing, SSE replay, progress/cancellation and mapped client replies; [delivery](docs/MCP_DELIVERY.md) |
+| Client features | Explicit sampling, roots and form elicitation permissions/budgets; logging and rich tool metadata; [limits](docs/MCP_CLIENT_FEATURES.md) |
+| Security | Versioned context-bound encryption, restartable rotation, shared SSO revocation, exact-JWT denylist and privacy/approval policies; [operations](docs/SECURITY_OPERATIONS.md) |
+| Audit | Strict admission/outcome, bounded retention, legal holds and durable HTTPS SIEM delivery; [evidence responsibilities](docs/AUDIT_OPERATIONS.md) |
+| Operations | Prometheus metrics, optional OTLP tracing, Helm and mandatory integration release gates; [deployment](docs/PRODUCTION_DEPLOYMENT.md) |
+| Stdio | Separate mTLS worker with immutable allowlists, resource/filesystem/network isolation and operator secret injection; fixed owner endpoint |
+| Tenants | Dedicated databases, processes, credentials, keys and host routing; shared-schema tenant switching is excluded |
+
 
 ## Contributing
 

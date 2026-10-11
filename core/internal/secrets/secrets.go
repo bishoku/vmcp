@@ -25,6 +25,7 @@ type Box struct {
 	keys         map[string]cipher.AEAD
 	primary      string
 	legacyWrites bool
+	namespace    string
 }
 
 func NewBox(key string) (*Box, error) {
@@ -82,7 +83,15 @@ func FromEnv(master string) (*Box, error) {
 	if version != "" && version != "v1" && version != "legacy" {
 		return nil, errors.New("VMCP_CIPHERTEXT_WRITE_VERSION must be v1 or legacy")
 	}
-	return NewKeyring(primary, keys, version == "legacy")
+	box, err := NewKeyring(primary, keys, version == "legacy")
+	if err != nil {
+		return nil, err
+	}
+	tenant := os.Getenv("VMCP_TENANT_ID")
+	if tenant != "" && tenant != "default" {
+		box.namespace = tenant + "/"
+	}
+	return box, nil
 }
 func (b *Box) PrimaryID() string { return b.primary }
 func (b *Box) KeyID(data []byte) (string, bool) {
@@ -117,7 +126,7 @@ func (b *Box) SealBound(plaintext []byte, entity, purpose string) ([]byte, error
 	}
 	header := append(append([]byte(nil), envelopeMagic...), byte(len(b.primary)))
 	header = append(header, b.primary...)
-	context, err := aad(header, entity, purpose)
+	context, err := aad(header, b.namespace+entity, purpose)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +163,7 @@ func (b *Box) OpenBound(data []byte, entity, purpose string) ([]byte, error) {
 	if len(data) < headerLen+n+aead.Overhead() {
 		return nil, errors.New("ciphertext envelope too short")
 	}
-	context, err := aad(data[:headerLen], entity, purpose)
+	context, err := aad(data[:headerLen], b.namespace+entity, purpose)
 	if err != nil {
 		return nil, err
 	}

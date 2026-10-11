@@ -1,10 +1,10 @@
 # FAQ and troubleshooting
 
 ## Does vMCP support stdio servers?
-No. Upstreams must be Streamable HTTP or legacy HTTP+SSE. Wrap a stdio server with a bridge if needed.
+Yes, through the separate `stdio_worker` HTTPS/mTLS service. Commands are operator-allowlisted isolated containers, never API-process children. See [worker boundaries](TENANT_AND_STDIO_OPERATIONS.md).
 
 ## Resources and prompts?
-Not yet: vMCP proxies **tools** only.
+Curated resources, templates and prompts are supported with explicit selections, aliases, namespace validation, completion and subscription grants. See [catalog contract](MCP_CATALOGS.md).
 
 ## Do I need Redis?
 No. Redis only makes rate limits global across nodes ([Rate limits](Rate-Limits.md)). Everything else uses PostgreSQL.
@@ -36,12 +36,11 @@ It reloads via PostgreSQL `LISTEN/NOTIFY`. Check data-plane logs and that it use
 
 ## Known limitations
 
-- The data plane's `GET` event stream returns 405: server-initiated notifications such as progress and cancellation are
-  not passed through to agents.
-- Legacy SSE upstreams are tested at the client level but less end-to-end than Streamable HTTP.
-- Existing upstream sessions do not move to a fallback URL; only new sessions do.
-- Circuit-breaker state is per node; there are no Prometheus/OpenTelemetry metrics yet.
-- Connection test in the UI only uses headers/keys typed in the current session.
-- SSO sessions cannot be revoked early.
-- Opaque tokens are not supported on the data plane (asymmetric JWTs only, verified via JWKS).
-- Single tenant; no Helm chart yet.
+- Protocol baseline is 2025-06-18; newer revisions and March batching are not advertised.
+- Resource update hints can be missed during physical watcher reconnection; durable gateway replay does not make upstream events exactly once.
+- Unsafe calls with ambiguous outcomes are not automatically repeated. Physical sessions do not migrate to another stdio worker owner.
+- Circuit-breaker state and local fallback rate limits are per node; shared strict rate limits require Redis.
+- Regex masking does not guarantee privacy or prompt-injection prevention. Binary content is denied when inspection is required.
+- JWT early revocation uses exact-token digests; arbitrary opaque tokens/introspection are unsupported.
+- Tenant isolation uses dedicated plane/database deployments; shared-schema tenant switching is excluded.
+- Production HA, restore, workload scaling and compliance gates require operator evidence. See [deployment](PRODUCTION_DEPLOYMENT.md).
