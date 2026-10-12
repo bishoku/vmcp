@@ -389,3 +389,59 @@ docker compose -f benchmark/compose.yaml run --rm --no-deps --entrypoint promtoo
 For a manual outage drill, stop one data plane, wait for `VMCPScrapeFailed` to fire
 (after a failed scrape plus 30 seconds), then restart it and observe recovery.
 The gateway will have reduced capacity during this drill.
+
+## Traffic generator
+
+Open **http://localhost:3302** after starting the stack. The Traffic lab lists the
+virtual servers you create in the main UI. Select a server, enter an authorized
+agent key, and click **Discover tools**. Select an exposed tool and enter its JSON
+arguments using the displayed input schema. For the calculator `calculate` tool
+(or your alias), use `{"a":4,"b":7}`.
+
+Choose requests per second, duration and worker count, then click **Start traffic**.
+Start with 5 requests/second for 60 seconds and four workers. Open Grafana at
+http://localhost:3301/d/vmcp-mcp and select your virtual server/upstream. Traffic
+passes through nginx to both data planes. Initialization and discovery also
+contribute to HTTP metrics; tool counters record actual tool calls.
+
+Limits are 0.1–100 requests/second, 1–600 seconds, 1–16 concurrent workers, and one
+run at a time. Every scheduled request creates a fresh MCP session, initializes it,
+calls the tool once, and closes it. This exercises session setup as well as tools;
+it is not a persistent-session throughput benchmark. Busy workers skip scheduled
+requests instead of building a queue. The page reports completed rate, failures,
+tool errors (`isError`), skipped requests and p95 end-to-end latency (initialization
+plus call, excluding session close; last 10,000 completions). Compare observed
+rates with the configured target, especially for slow tools.
+
+**Use synthetic tools.** Starting a run repeats real tool execution and may change
+data. Stop prevents new dispatch; it does not undo calls or send MCP cancellation.
+In-flight requests drain. Each network operation has a 10-second socket timeout;
+a streaming response that keeps producing data can take longer. Rate limiting,
+agent-key scopes and IP allowlists apply: the generator connects from the Docker
+benchmark network, not your browser's IP.
+
+Keys, arguments and results are never persisted or logged by the generator. Keys
+are cleared from the form after starting and from the job after draining; results
+are discarded. vMCP's own audit configuration still applies. This localhost-only,
+single-user development service uses the demo admin token solely to list virtual
+servers. Do not expose it to a shared network. To use `127.0.0.1` or change the page
+port, update `TRAFFIC_ORIGIN` and the published port together (requests require the
+configured Host and same origin). Credentials are sent over local HTTP.
+
+Run the generator's regression tests without Docker:
+
+```sh
+PYTHONPATH=benchmark:benchmark/traffic python3 -m unittest discover -s benchmark/traffic -v
+```
+
+With the demo stack running, integration and browser checks are available:
+
+```sh
+python3 benchmark/test_traffic.py
+# Requires web dependencies and Playwright Chromium (see web setup):
+node benchmark/traffic/test_browser.cjs
+```
+
+The integration check creates temporary calculator configuration, sends a short
+run, and deletes the temporary objects. The browser check mocks API responses and
+does not execute tools.

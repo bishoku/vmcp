@@ -206,6 +206,22 @@ services:
     depends_on: [prometheus]
     networks: [demo]
 
+  traffic-generator:
+    build:
+      context: .
+      dockerfile: traffic/Dockerfile
+    environment:
+      TRAFFIC_CONTROL_URL: http://control-plane:8081/api/v1
+      TRAFFIC_GATEWAY_URL: http://gateway
+      TRAFFIC_ADMIN_TOKEN: demo-admin-token
+      TRAFFIC_ORIGIN: http://localhost:3302
+    ports: ["127.0.0.1:3302:8080"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on: [gateway, control-plane]
+    networks: [demo]
+
 networks:
   demo:
     ipam:
