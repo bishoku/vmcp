@@ -1,7 +1,7 @@
 import type { AgentKey, IdentityBinding, Upstream, VirtualServer } from '../api'
 
 export const serverPath = (slug: string, view = 'overview') => `/virtual-servers/${encodeURIComponent(slug)}/${view}`
-export const editorPath = (page: string, slug: string) => `/${page}?inspect=${encodeURIComponent(slug)}`
+export const editorPath = (page: string, slug: string) => page === 'upstreams' || page === 'virtual-servers' ? `/${page}/${encodeURIComponent(slug)}` : `/${page}?inspect=${encodeURIComponent(slug)}`
 export interface Capability {
   kind: 'tool' | 'resource' | 'template' | 'prompt'
   original: string

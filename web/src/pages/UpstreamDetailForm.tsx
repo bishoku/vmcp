@@ -4,7 +4,7 @@ import { useOperation, useUnsaved } from '../interaction'
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { CheckCircle2, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { Modal, StaleRecovery } from '../ui'
+import { StaleRecovery } from '../ui'
 import { api, ApiError, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 import { btn, input } from '../styles'
@@ -12,7 +12,7 @@ import { btn, input } from '../styles'
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : String(e))
 
 
-export default function UpstreamPanel({
+export default function UpstreamDetailForm({
   upstream,
   onClose,
   onSaved,
@@ -21,9 +21,11 @@ export default function UpstreamPanel({
   upstream: Upstream | null
   onClose: () => void
   onReload: (upstream: Upstream) => void
-  onSaved: () => void
+  onSaved: (saved: Upstream) => void
 }) {
   const { edit: canEdit } = useCapabilities()
+  const [editing, setEditing] = useState(!upstream)
+  const editable = canEdit && editing
   const [slug, setSlug] = useState(upstream?.slug ?? '')
   const [name, setName] = useState(upstream?.name ?? '')
   const [url, setUrl] = useState(upstream?.url ?? '')
@@ -78,7 +80,7 @@ export default function UpstreamPanel({
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
   const unsaved = useUnsaved({slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
-  const close = () => { if (!busy) unsaved.guard(onClose) }
+  const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
 
@@ -99,40 +101,44 @@ export default function UpstreamPanel({
 
   const [openedAt] = useState(() => Date.now())
 
-  const save = () => run(async () => {
-    setErr('')
-    try {
-      const headers: Record<string, string | null> = { ...replaced }
-      removed.forEach((h) => (headers[h] = null))
-      if (upstream) {
-        await api.patchUpstream(upstream.slug, {
-          name,
-          url,
-          fallbackUrls: fallbackUrls(),
-          transport,
-          enabled,
-          tls: tlsInput(),
-          auth: authInput(),
-          ...(Object.keys(headers).length && { headers }),
-        },upstream.version)
-      } else {
-        await api.createUpstream(slug, {
-          name: name || slug,
-          url,
-          fallbackUrls: fallbackUrls(),
-          transport,
-          enabled,
-          headers: replaced,
-          tls: tlsInput(),
-          auth: authInput(),
-        })
+  const save = async () => {
+    let saved: Upstream | undefined
+    await run(async () => {
+      if (!editable) return
+      setErr('')
+      try {
+        const headers: Record<string, string | null> = { ...replaced }
+        removed.forEach((h) => (headers[h] = null))
+        if (upstream) {
+          saved = await api.patchUpstream(upstream.slug, {
+            name,
+            url,
+            fallbackUrls: fallbackUrls(),
+            transport,
+            enabled,
+            tls: tlsInput(),
+            auth: authInput(),
+            ...(Object.keys(headers).length && { headers }),
+          },upstream.version)
+        } else {
+          saved = await api.createUpstream(slug, {
+            name: name || slug,
+            url,
+            fallbackUrls: fallbackUrls(),
+            transport,
+            enabled,
+            headers: replaced,
+            tls: tlsInput(),
+            auth: authInput(),
+          })
+        }
+        unsaved.clean()
+      } catch (e) {
+        setErr(errMsg(e))
       }
-      unsaved.clean()
-      onSaved()
-    } catch (e) {
-      setErr(errMsg(e))
-    }
-  })
+    })
+    if (saved) onSaved(saved)
+  }
 
   const runTest = () => run(async () => {
     try {
@@ -144,14 +150,19 @@ export default function UpstreamPanel({
   })
 
   return (
-    <Modal readOnly={!canEdit} busy={busy} title={upstream ? upstream.slug : 'New upstream'} onClose={close} variant="drawer">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <header className="flex flex-wrap items-start justify-between gap-4"><div><button className="text-sm text-accent-700 underline" onClick={close}>Back to upstreams</button><h1 className="mt-2 text-2xl font-semibold">{upstream ? upstream.name : 'New upstream'}</h1><p className="mt-1 text-sm text-ink-muted">{upstream ? `${upstream.slug} · Saved version ${upstream.version}` : 'Register a physical MCP server'}</p><p role="status" className="mt-2 text-sm text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : 'Read-only configuration. Choose Edit to make changes.'}</p></div><div className="flex gap-2">
+        {!editing && canEdit && <button className={btn} onClick={() => setEditing(true)}>Edit upstream</button>}
+        {editing && <><button className={btn} disabled={busy} onClick={() => upstream ? unsaved.guard(() => {unsaved.clean(); setEditing(false); onReload(upstream)}) : close()}>Cancel</button><button className={btn} disabled={!editable || busy || !url || (!upstream && !slug)} onClick={save}>Save</button></>}
+      </div></header>
+      <section className="rounded-card border border-line bg-surface p-6 shadow-card">
         <StaleRecovery message={err} reload={async()=>{
           const latest=(await api.listUpstreams()).find(item=>item.slug===upstream?.slug)
           if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
           unsaved.clean();onReload(latest)
         }}/>
-        {upstream && <button className={btn} disabled={busy} onClick={()=>run(async()=>{try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button>}
-        <div className="space-y-4">
+        {upstream && <button className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button>}
+        <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 p-0 m-0">
           {!upstream && (
             <label className="block text-sm font-medium">
               Slug
@@ -338,6 +349,7 @@ export default function UpstreamPanel({
           <button className={clsx(btn, 'w-full')} disabled={busy || !url} onClick={runTest}>
             Test edited connection
           </button>
+        </fieldset>
           {test && (
             <div className={clsx('flex items-start gap-2 text-sm', test.ok ? 'text-green-700' : 'text-red-700')}>
               {test.ok ? <CheckCircle2 className="size-4 shrink-0" /> : <XCircle className="size-4 shrink-0" />}
@@ -369,21 +381,10 @@ export default function UpstreamPanel({
               {catalog && ([['Resources',catalog.resources ?? [],'uri'],['Templates',catalog.resourceTemplates ?? [],'uriTemplate'],['Prompts',catalog.prompts ?? [],'name']] as const).map(([label,objects,key])=><section key={label} className="mt-4"><h3 className="text-sm font-medium">{label} ({objects.length})</h3><ul className="max-h-48 overflow-y-auto text-sm">{objects.map((object,index)=><li className="break-all border-b border-line py-2" key={index}>{String(object[key])}<p className="text-xs text-ink-muted">{String(object.description ?? '')}</p></li>)}</ul>{objects.length===0 && <p className="text-xs text-ink-muted">None discovered.</p>}</section>)}
             </div>
           )}
-        </div>
+
 
         {err && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button className={btn} onClick={close}>
-            Cancel
-          </button>
-          <button
-            className="rounded-lg bg-accent-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-700 disabled:opacity-50"
-            disabled={busy || !url || (!upstream && !slug)}
-            onClick={save}
-          >
-            Save
-          </button>
-        </div>
-    </Modal>
+      </section>
+    </div>
   )
 }

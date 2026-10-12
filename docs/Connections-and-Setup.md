@@ -38,13 +38,16 @@ independent of the UI role.
 
 Each saved virtual server has Overview, Capabilities, Access, Protection, Connect
 and Activity views. URLs follow `/virtual-servers/<slug>/<view>`, for example
-`/virtual-servers/team/connect`. The editor is available from **Edit configuration**
-(or **Inspect configuration** for viewers), and marks saved version versus unsaved
-draft changes. Navigating away from a dirty draft requires an explicit discard.
+`/virtual-servers/team/connect`. The full-page editor is available to editors from **Edit configuration** at
+`/virtual-servers/<slug>/edit` and marks saved version versus unsaved draft changes.
+Both upstream and virtual-server lists open dedicated read-only detail pages.
+Upstream pages switch to editing with **Edit upstream**; viewers inspect saved
+configuration without edit controls. Navigating away from a dirty draft requires an explicit discard.
 
 Topology node/relationship inspection opens capability aliases, policies, missing
 objects and recorded upstream node health with timestamps. Configuration links
-select the relevant upstream, key, binding or virtual server in its editor.
+open the relevant upstream or virtual-server detail page, or select a key or
+binding in its management editor.
 Search relationships by name, capability, alias, policy or status, or select a
 virtual server to focus the diagram. The accessible relationship table displays
 50 rows at a time; **Show 50 more relationships** expands it. The diagram shows

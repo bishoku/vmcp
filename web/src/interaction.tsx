@@ -21,7 +21,7 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
     window.addEventListener('beforeunload', unload)
     return () => { registry?.delete(id); window.removeEventListener('beforeunload', unload) }
   }, [dirty, registry, id])
-  const reset = (next: T) => { setBaseline(JSON.stringify(next)); current.current = next; rawSet(next) }
+  const reset = (next: T) => { registry?.delete(id); setBaseline(JSON.stringify(next)); current.current = next; rawSet(next) }
   const set: Dispatch<SetStateAction<T>> = next => {
     const resolved = typeof next === 'function' ? (next as (v: T) => T)(current.current) : next
     if (registry && [...registry.values()].includes('busy')) return

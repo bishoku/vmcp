@@ -32,7 +32,7 @@ test('search includes aliases and policies and dialog reveals health timestamps 
  const dialog=screen.getByRole('dialog',{name:'demo → alpha'})
  expect(within(dialog).getByText('Missing object')).toBeTruthy()
  expect(within(dialog).getByText(/Checked:/)).toBeTruthy()
- expect(within(dialog).getByRole('link',{name:'Open configuration'}).getAttribute('href')).toBe('/upstreams?inspect=alpha')
+ expect(within(dialog).getByRole('link',{name:'Open configuration'}).getAttribute('href')).toBe('/upstreams/alpha')
 })
 test('large tables render 50 rows at a time and filtering resets the visible page',async()=>{
  vi.mocked(api.listAgentKeys).mockResolvedValue(Array.from({length:120},(_,i)=>({...key,slug:`key-${i}`})))

@@ -34,8 +34,18 @@ can be described differently elsewhere, which helps agents choose between look-a
 
 ## Ordering and the UI
 
-Order of `tools` is the order agents see. In the UI, drag tools to reorder, type an alias and a description inline, and
-set a per-tool policy.
+The Virtual Servers page lists saved servers in a searchable table, with capability
+counts, authentication, rate limits and status. Select a server to open its
+read-only detail page. Overview, Capabilities, Access, Protection, Connect and
+Activity remain available without entering edit mode.
+
+Choose **Edit configuration** at the top to open the full-page editor at
+`/virtual-servers/<slug>/edit`. Order of `tools` is the order agents see. In the
+editor, drag tools to reorder, type aliases and descriptions, and set per-tool
+policies. **Save** returns to the saved detail page; **Cancel** returns without
+applying changes and prompts before discarding a dirty draft. Viewers cannot edit.
+**New virtual server** opens a dedicated creation page. Existing `?inspect=<slug>`
+links redirect to read-only details.
 
 ## Orphans and disabled upstreams
 

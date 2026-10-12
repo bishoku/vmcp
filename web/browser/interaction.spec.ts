@@ -32,7 +32,7 @@ for(const role of ['viewer','editor','admin'] as const) {
   if(role==='viewer') {
    await expect(page.getByText('Read-only access.',{exact:false})).toBeVisible()
    await expect(page.getByRole('button',{name:'New virtual server',exact:true})).toBeDisabled()
-  } else await expect(page.getByRole('button',{name:'New virtual server',exact:true})).toBeEnabled()
+  } else await expect(page.getByRole('link',{name:'New virtual server',exact:true})).toHaveAttribute('href','/virtual-servers/new')
   await expect(page.getByRole('button',{name:'Refresh list',exact:true})).toBeEnabled()
   await page.getByRole('link',{name:'Settings',exact:true}).click()
   await expect(page.getByRole('button',{name:'New token',exact:true})).toHaveCount(role==='admin'?1:0)

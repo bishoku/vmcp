@@ -2,7 +2,9 @@ import { render } from '../test-utils'
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { api, type Upstream, type VirtualServer } from '../api'
+import VirtualServerEditor from './VirtualServerEditor'
 import VirtualServers from './VirtualServers'
+import { MemoryRouter } from 'react-router-dom'
 
 const server: VirtualServer = {
   slug: 'demo', name: 'Demo server', description: '', version: 7,
@@ -22,8 +24,8 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 async function open() {
-  render(<VirtualServers />)
-  fireEvent.click(await screen.findByText('Demo server'))
+  render(<VirtualServerEditor initialSelection="demo" />)
+  await screen.findByLabelText('Alias for alpha/one')
 }
 async function save() {
   fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -93,13 +95,26 @@ test('failed stale save retains edits until explicit reload, then uses the lates
  await waitFor(()=>expect(api.putVirtualServer).toHaveBeenCalledTimes(2))
  expect(vi.mocked(api.putVirtualServer).mock.calls[1][2]).toBe(8)
 })
-test('an unavailable upstream list does not hide existing virtual servers',async()=>{
+test('the virtual server table does not depend on upstream discovery',async()=>{
  vi.mocked(api.listUpstreams).mockRejectedValue(new Error('catalog offline'))
- render(<VirtualServers/>);expect(await screen.findByText('Demo server')).toBeTruthy()
- await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('catalog offline'))
+ render(<MemoryRouter><VirtualServers/></MemoryRouter>);expect(await screen.findByRole('link',{name:'Demo server'})).toBeTruthy()
+ expect(api.listUpstreams).not.toHaveBeenCalled()
+ expect(screen.getByRole('table')).toBeTruthy()
 })
 test('successful save announces the saved server without retaining a dirty draft',async()=>{
  await open();await save()
  expect(await screen.findByText('Saved Demo server. Refreshing the saved configuration.')).toBeTruthy()
  expect(screen.queryByText(/Unsaved changes/)).toBeNull()
+})
+test('table links open saved details and search/status filters do not open an editor',async()=>{
+  vi.mocked(api.listVirtualServers).mockResolvedValue([server,{...server,slug:'disabled',name:'Offline server',enabled:false}])
+  render(<MemoryRouter><VirtualServers/></MemoryRouter>)
+  const link=await screen.findByRole('link',{name:'Demo server'})
+  expect(link.getAttribute('href')).toBe('/virtual-servers/demo/overview')
+  expect(screen.queryByLabelText('Name')).toBeNull()
+  fireEvent.change(screen.getByLabelText('Search virtual servers'),{target:{value:'Offline'}})
+  expect(screen.queryByRole('link',{name:'Demo server'})).toBeNull()
+  expect(screen.getByRole('link',{name:'Offline server'})).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Virtual server status'),{target:{value:'enabled'}})
+  expect(screen.getByText('No virtual servers match your filters.')).toBeTruthy()
 })

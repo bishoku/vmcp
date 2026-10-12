@@ -14,7 +14,7 @@ test('deep links open saved capability views and display all four kinds',async()
  open('/virtual-servers/demo/capabilities');await screen.findByText('Saved configuration · version 7 · enabled. Open the editor to make a draft.')
  expect(screen.getByRole('link',{name:'Capabilities'}).getAttribute('aria-current')).toBe('page')
  expect(screen.getByText('resource')).toBeTruthy();expect(screen.getByText('template')).toBeTruthy();expect(screen.getByText('prompt')).toBeTruthy();expect(screen.getByText('tool')).toBeTruthy()
- expect(screen.getByRole('link',{name:'Inspect configuration'}).getAttribute('href')).toBe('/virtual-servers?inspect=demo')
+ expect(screen.queryByRole('link',{name:'Edit configuration'})).toBeNull()
  expect(api.listAudit).not.toHaveBeenCalled()
 })
 test('connect uses the configured gateway and credential placeholders; verification is deliberate',async()=>{

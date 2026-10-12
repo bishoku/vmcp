@@ -15,21 +15,15 @@ test.beforeEach(async ({ page }) => {
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
 })
 
-test('upstream drawer has a name, contains keyboard focus, closes with Escape and restores focus', async ({ page }) => {
+test('new upstream opens a full page and Cancel returns to the list', async ({ page }) => {
   await page.getByRole('link', { name: 'Upstreams', exact: true }).click()
-  const trigger = page.getByRole('button', { name: 'Add upstream', exact: true })
-  await trigger.click()
-  const dialog = page.getByRole('dialog', { name: 'New upstream', exact: true })
-  await expect(dialog).toBeVisible()
-  const close = dialog.getByRole('button', { name: 'Close', exact: true })
-  await expect(close).toBeFocused()
-  await page.keyboard.press('Shift+Tab')
-  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
-  await page.keyboard.press('Tab')
-  await expect(close).toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(dialog).toHaveCount(0)
-  await expect(trigger).toBeFocused()
+  await page.getByRole('button', { name: 'Add upstream', exact: true }).click()
+  await expect(page).toHaveURL(/upstreams\/new$/)
+  await expect(page.getByRole('heading', { name: 'New upstream', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Name', {exact:true})).toBeEnabled()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', {name:'Cancel',exact:true}).click()
+  await expect(page).toHaveURL(/upstreams$/)
 })
 
 test('agent form supports Escape, focus restoration and backdrop dismissal', async ({ page }) => {

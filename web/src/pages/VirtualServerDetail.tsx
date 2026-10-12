@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useInventory } from '../connections/useInventory'
-import { capabilitiesOf, capabilityCounts, editorPath, relationships, serverPath } from '../connections/model'
+import { capabilitiesOf, capabilityCounts, relationships, serverPath } from '../connections/model'
 import CapabilityTable from '../connections/CapabilityTable'
 import Health from '../connections/Health'
 import Connect from '../connections/Connect'
@@ -20,8 +20,8 @@ export default function VirtualServerDetail() {
   if(!server)return <div className="p-10 space-y-4"><h1 className="text-2xl font-semibold">Virtual server</h1>{inventory.loading ? <p role="status">Loading saved configuration…</p> : <p>{inventory.loaded.includes('servers') ? `Virtual server “${slug}” was not found.` : 'Virtual server configuration is unavailable.'}</p>}{inventory.readError && <ErrorBox>{inventory.readError}</ErrorBox>}<Link className={btn} to="/virtual-servers">Back to virtual servers</Link></div>
   const objects = capabilitiesOf(server)
   return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-    <header><Link className="text-sm text-accent-700 underline" to="/connections">Connections</Link><h1 className="mt-2 text-2xl font-semibold">{server.name}</h1><p className="text-sm text-ink-muted">Saved configuration · version {server.version} · {server.enabled?'enabled':'disabled'}. Open the editor to make a draft.</p></header>
-    <div className="flex gap-3"><Link className={btn} to={editorPath('virtual-servers',slug)}>{edit?'Edit configuration':'Inspect configuration'}</Link><Link className={btn} to={`/setup?server=${encodeURIComponent(slug)}`}>Setup guide for this server</Link><button className={btn} disabled={inventory.loading} onClick={()=>inventory.load()}>Refresh saved configuration</button></div>
+    <header><Link className="text-sm text-accent-700 underline" to="/virtual-servers">Virtual servers</Link><h1 className="mt-2 text-2xl font-semibold">{server.name}</h1><p className="text-sm text-ink-muted">Saved configuration · version {server.version} · {server.enabled?'enabled':'disabled'}. Open the editor to make a draft.</p></header>
+    <div className="flex gap-3">{edit && <Link className={btn} to={`/virtual-servers/${encodeURIComponent(slug)}/edit`}>Edit configuration</Link>}<Link className={btn} to={`/setup?server=${encodeURIComponent(slug)}`}>Setup guide for this server</Link><button className={btn} disabled={inventory.loading} onClick={()=>inventory.load()}>Refresh saved configuration</button></div>
     {inventory.readError && <ErrorBox>{inventory.readError}. Related configuration may be incomplete or from an earlier refresh.</ErrorBox>}
     <nav aria-label="Virtual server views" className="flex flex-wrap gap-2 border-b border-line pb-3">{views.map(section=><Link key={section} aria-current={section===active?'page':undefined} className={`${btn} ${section===active?'bg-accent-50 text-accent-700':''}`} to={serverPath(slug,section)}>{section[0].toUpperCase()+section.slice(1)}</Link>)}</nav>
     {active==='overview' && <section className="space-y-4"><h2 className="text-lg font-semibold">Overview</h2><p>{server.description || 'No description provided.'}</p><p>{capabilityCounts(server)} selected</p><p>Authentication: {server.authRequired?'agent key or OAuth access token required':'anonymous access enabled'}</p><p>{objects.filter(o=>o.missing).length} missing capability objects · {grants.length} configured access relationships</p><p className="text-sm text-ink-muted">Counts are configuration selections, not successful calls or active clients. Disabled upstreams, missing objects and policies affect what is exposed.</p></section>}

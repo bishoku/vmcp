@@ -13,6 +13,21 @@ An **upstream** is a real MCP server vMCP connects to.
 | `headers` | Sent on every upstream request, typically `Authorization`. **Encrypted at rest, write-only, never returned**; the API only lists `headerNames` |
 | `tls` | Custom CA, server name override, mTLS ([Upstream TLS](Upstream-TLS.md)) |
 
+## View and edit in the web UI
+
+The Upstreams table opens a dedicated page at `/upstreams/<slug>`. Saved
+configuration opens read-only, with node health and stored discovery snapshots.
+Choose **Edit upstream** at the top to change connection settings, credentials,
+TLS or OAuth. **Save** writes the versioned configuration and returns to read-only
+mode; **Cancel** restores saved values after confirming any unsaved changes.
+Viewers cannot enter edit mode. **Add upstream** opens a full-page creation form.
+
+**Test stored credentials** uses the saved configuration. In edit mode,
+**Test edited connection** uses the draft and only credentials entered in this
+session; stored secret values remain write-only. Reloading discovery snapshots
+reads the cache. Use **Refresh capabilities** in the upstream table for fresh
+discovery. Existing `?inspect=<slug>` links redirect to the dedicated detail page.
+
 ## Discovering tools and catalogs
 
 `POST /api/v1/upstreams/{slug}/refresh-tools` connects, lists the tools and caches them. The response reports

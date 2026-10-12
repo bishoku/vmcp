@@ -24,8 +24,9 @@ test('keyboard inspection opens relationship health and a deep-linked upstream e
  const dialog=page.getByRole('dialog',{name:'demo → alpha',exact:true})
  await expect(dialog).toBeVisible();await expect(dialog.getByText('Missing object',{exact:true})).toBeVisible();await expect(dialog.getByText(/Checked:/)).toBeVisible()
  await dialog.getByRole('link',{name:'Open configuration',exact:true}).click()
- await expect(page).toHaveURL(/upstreams\?inspect=alpha/)
- await expect(page.getByRole('dialog',{name:'alpha',exact:true})).toBeVisible()
+ await expect(page).toHaveURL(/upstreams\/alpha/)
+ await expect(page.getByRole('heading',{name:'Alpha',exact:true})).toBeVisible()
+ await expect(page.getByLabel('Name',{exact:true})).toBeDisabled()
 })
 test('saved views deep-link without losing draft protection and activity filters carry into audit',async({page})=>{
  await login(page,'admin','/virtual-servers/demo/capabilities')

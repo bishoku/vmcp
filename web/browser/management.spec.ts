@@ -18,6 +18,8 @@ test('login loads all management pages and rejects a concurrent edit',async({pag
  await page.getByRole('link',{name:'Upstreams',exact:true}).click()
  await expect(page.getByText('Upstream 200',{exact:true})).toBeVisible()
  await page.getByText('Upstream 200',{exact:true}).click()
+ await expect(page.getByLabel('Name',{exact:true})).toBeDisabled()
+ await page.getByRole('button',{name:'Edit upstream',exact:true}).click()
  await page.getByRole('button',{name:'Save',exact:true}).click()
  await expect(page.getByText('This item changed in another session. Reload before saving again.')).toBeVisible()
  expect(writes).toBe(1)

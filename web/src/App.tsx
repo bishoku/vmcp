@@ -1,6 +1,8 @@
 import Connections from './pages/Connections'
 import ConnectionSetup from './pages/ConnectionSetup'
 import VirtualServerDetail from './pages/VirtualServerDetail'
+import VirtualServerEdit from './pages/VirtualServerEdit'
+import UpstreamDetail from './pages/UpstreamDetail'
 import ManagementRoute from './connections/ManagementRoute'
 import { createBrowserRouter, RouterProvider, NavLink, Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
 import { FileText, KeyRound, UserCheck, Layers, Network, Settings, type LucideIcon } from 'lucide-react'
@@ -145,15 +147,19 @@ function Application() {
           <Routes>
             <Route path="/connections" element={<Connections/>}/>
             <Route path="/setup" element={<ConnectionSetup/>}/>
+            <Route path="/upstreams/new" element={<UpstreamDetail key="new" create/>}/>
+            <Route path="/upstreams/:slug" element={<UpstreamDetail key="detail"/>}/>
+            <Route path="/virtual-servers/new" element={<VirtualServerEdit create/>}/>
+            <Route path="/virtual-servers/:slug/edit" element={<VirtualServerEdit/>}/>
             <Route path="/virtual-servers/:slug/:view?" element={<VirtualServerDetail/>}/>
             <Route path="/" element={<Navigate to="/virtual-servers" replace />} />
             <Route
               path="/upstreams"
-              element={<ManagementRoute page={Upstreams} />}
+              element={<ManagementRoute page={Upstreams} detailBase="/upstreams" />}
             />
             <Route
               path="/virtual-servers"
-              element={<ManagementRoute page={VirtualServers} />}
+              element={<ManagementRoute page={VirtualServers} detailBase="/virtual-servers" />}
             />
             <Route
               path="/audit"

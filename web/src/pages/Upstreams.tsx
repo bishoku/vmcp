@@ -1,10 +1,8 @@
-import type { SelectionProps } from '../connections/ManagementRoute'
-import { useInitialSelection } from '../connections/useInitialSelection'
+import { Link, useNavigate } from 'react-router-dom'
 import { useCapabilities } from '../interaction'
 import { ErrorBox } from '../ui'
 import { useOperation } from '../interaction'
 import { useSources, source } from '../requests'
-import UpstreamPanel from './UpstreamPanel'
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
@@ -43,14 +41,13 @@ function Status({ u }: { u: Upstream }) {
 
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : String(e))
 
-export default function Upstreams({ initialSelection }: SelectionProps) {
+export default function Upstreams() {
+  const navigate = useNavigate()
   const { edit: canEdit } = useCapabilities()
   const [items, setItems] = useState<Upstream[]>([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const [saved,setSaved] = useState(false)
-  const [selected, setSelected] = useState<Upstream | 'new' | null>(null)
 
   const { load, loading, readError } = useSources(() => [source('Upstreams', api.listUpstreams, setItems)])
   useEffect(() => {
@@ -90,7 +87,6 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
     void load()
   })
 
-  useInitialSelection(initialSelection, items, setSelected)
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
@@ -107,13 +103,12 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
         <button
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700"
           disabled={!canEdit}
-          onClick={() => setSelected('new')}
+          onClick={() => navigate('/upstreams/new')}
         >
           <Plus className="size-4" /> Add upstream
         </button>
       </div>
 
-      {saved && <p role="status" className="mt-3 text-green-700">Upstream saved. Test its connection and refresh discovery to load current capabilities.</p>}
       {error && (
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -154,10 +149,10 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
               <tr
                 key={u.slug}
                 className="cursor-pointer border-t border-line hover:bg-canvas"
-                onClick={() => setSelected(u)}
+                onClick={() => navigate(`/upstreams/${encodeURIComponent(u.slug)}`)}
               >
                 <td className="px-4 py-3">
-                  <button type="button" className="font-medium hover:underline" onClick={() => setSelected(u)}>{u.name}</button>
+                  <Link className="font-medium text-accent-700 hover:underline" to={`/upstreams/${encodeURIComponent(u.slug)}`} onClick={e=>e.stopPropagation()}>{u.name}</Link>
                   <div className="text-xs text-ink-muted">{u.slug}</div>
                 </td>
                 <td className="max-w-56 truncate px-4 py-3">{u.url}</td>
@@ -193,7 +188,7 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
             {!loading && !readError && shown.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-ink-muted">
-                  No upstreams yet. Add an MCP endpoint, test its stored credentials, then refresh discovery.
+                  {items.length ? 'No upstreams match your filters.' : 'No upstreams yet. Add an MCP endpoint, test its stored credentials, then refresh discovery.'}
                 </td>
               </tr>
             )}
@@ -201,19 +196,7 @@ export default function Upstreams({ initialSelection }: SelectionProps) {
         </table></div>
       </div>
 
-      {selected && (
-        <UpstreamPanel
-          key={selected === 'new' ? 'new' : `${selected.slug}:${selected.version}`}
-          upstream={selected === 'new' ? null : selected}
-          onReload={setSelected}
-          onClose={() => setSelected(null)}
-          onSaved={() => {
-            setSaved(true)
-            setSelected(null)
-            void load()
-          }}
-        />
-      )}
+
     </div>
   )
 }
