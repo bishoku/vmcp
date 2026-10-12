@@ -83,20 +83,26 @@ maximum of three concurrent publishing jobs. Multi-platform Go binaries are
 cross-compiled on the native builder; the web assets also build natively.
 The workflow attaches build provenance, SBOMs and source/version labels.
 
-The existing `release-artifacts` workflow also runs on version tags and uploads
-standalone binaries. Neither workflow creates a GitHub Release page or deploys a
+After successful image publication, `publish-github-release` creates a public
+GitHub Release with deployment assets. The existing `release-artifacts` workflow
+also runs on version tags and uploads standalone binaries as Actions artifacts;
+those binaries are not attached to the public release. Neither workflow deploys a
 Kubernetes application. Pushing a version tag does publish images; ordinary pushes
 to `main` only run CI/wiki workflows.
 
 If a matrix job fails, some other images may already have been pushed. A complete
-release is ready only after all nine publishing jobs and the `helm-values` job
-succeed. Re-run failed jobs for transient errors. Fix source defects with a new
+image set is ready only after all nine publishing jobs and the `helm-values` job
+succeed; the public GitHub Release appears after its separate packaging job succeeds. Re-run failed jobs for transient errors. Fix source defects with a new
 version tag rather than moving the old tag. Image publication is not atomic across
 Docker Hub repositories.
 
 ## Use the images with Helm
 
-After a successful run, download the Actions artifact **docker-images-v0.0.1**.
+After successful publication, open [GitHub Releases](https://github.com/bishoku/vmcp/releases)
+and download `helm-images.yaml`, `images.json`, the `vmcp-<chart-version>.tgz` chart
+and `SHA256SUMS` for your version. Public release assets require no GitHub login
+and do not expire like Actions artifacts. The Actions artifact
+**docker-images-v0.0.1** remains available for troubleshooting.
 It contains:
 
 - `helm-images.yaml`: immutable multi-platform manifest references for web, both
@@ -144,3 +150,41 @@ images, unexpected repositories and malformed digests. Docker action releases ar
 pinned by commit; update those pins deliberately. `scripts/prepare-image-release.py`
 and the workflow namespace currently target `barishoku` together: update both if
 moving registries or accounts. No Docker Hub credentials are committed to this repo.
+
+## Public GitHub Releases and existing versions
+
+`.github/workflows/github-release.yml` runs when `publish-docker-hub` completes
+successfully. It validates the source repository, workflow, tag, commit and image
+inventory, then packages the exact tagged chart with its locked dependencies.
+The packaged chart's `appVersion` is the application tag; its chart `version`
+remains the version declared in `Chart.yaml`. Both versions are independent.
+
+Assets are uploaded to a draft before it becomes public. Tags containing a
+prerelease suffix produce GitHub prereleases. Reruns can repair an incomplete
+draft, but leave an already public release unchanged. A failed release packaging
+job does not rebuild or repush Docker images. Retry it after resolving the cause.
+No additional token is needed: the release job uses `GITHUB_TOKEN` with
+`contents: write` and `actions: read`.
+
+To publish the already uploaded **v0.0.2** images after this workflow reaches
+`main`, select **Actions → publish-github-release → Run workflow**, choose `main`,
+and enter source run ID **38241826020**. This reuses the successful image artifact
+and packages the chart from its original commit; it does not move the version tag.
+Manual runs require an unexpired artifact from a successful version-tag Docker
+publishing run. Future versions publish their GitHub Release automatically once
+this workflow exists on the default branch.
+
+Install directly from downloaded release assets without cloning the repository
+or fetching chart dependencies separately:
+
+```sh
+sha256sum -c SHA256SUMS
+helm upgrade --install vmcp ./vmcp-0.2.0.tgz \
+  --namespace vmcp --create-namespace \
+  -f my-production-values.yaml -f helm-images.yaml \
+  --wait --wait-for-jobs --timeout 15m
+```
+
+Replace the chart archive name with the asset in your selected release. Prepare
+infrastructure, Secrets, DNS, TLS and network policies using the chart guide first.
+The release does not provision external infrastructure or enable optional workloads.

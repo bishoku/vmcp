@@ -6,7 +6,11 @@ infrastructure and pinned optional PostgreSQL, Redis, Kafka and RabbitMQ subchar
 Kubernetes 1.27+ and Helm 3.17+ are required. CI exercises Kubernetes 1.32.
 
 Publish versioned application images with the [Docker Hub workflow](../../../docs/DOCKER_HUB_PUBLISHING.md).
-Its successful run provides a digest-pinned `helm-images.yaml` overlay.
+Successful publication creates a [GitHub Release](https://github.com/bishoku/vmcp/releases)
+with a digest-pinned `helm-images.yaml` overlay, an image inventory, checksums and
+a packaged chart including locked optional dependencies. Download the archive and
+install it with your production values followed by the image overlay; dependency
+downloads are unnecessary when using the packaged release chart.
 
 ## Installation with external infrastructure
 

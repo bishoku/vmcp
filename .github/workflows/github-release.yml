@@ -1,0 +1,132 @@
+name: publish-github-release
+
+on:
+  workflow_run:
+    workflows: [publish-docker-hub]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful publish-docker-hub run ID (for example 38241826020 for v0.0.2)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: github-release-${{ github.event.workflow_run.id || inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+    steps:
+      - name: Check out release automation
+        uses: actions/checkout@v4
+        with:
+          path: automation
+          persist-credentials: false
+      - name: Validate source run and unchanged version tag
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid run ID' >&2; exit 1; }
+          gh api "repos/$GH_REPO/actions/runs/$SOURCE_RUN_ID" > run.json
+          python3 automation/scripts/prepare-github-release.py validate-run run.json \
+            --repository "$GH_REPO" --github-output "$GITHUB_OUTPUT"
+          version=$(python3 -c 'import json; print(json.load(open("run.json"))["head_branch"])')
+          expected=$(python3 -c 'import json; print(json.load(open("run.json"))["head_sha"])')
+          actual=$(gh api "repos/$GH_REPO/commits/refs/tags/$version" --jq .sha)
+          [[ "$actual" == "$expected" ]] || { echo 'Version tag no longer matches the published commit' >&2; exit 1; }
+      - name: Check out the published source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Download successful image publication manifests
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images-${{ steps.source.outputs.version }}
+          path: published-images
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.17.3
+      - name: Validate manifests and package the locked chart
+        env:
+          VERSION: ${{ steps.source.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 automation/scripts/prepare-github-release.py stage published-images/images.json release-assets --version "$VERSION"
+          helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
+          helm dependency build source/deploy/helm/vmcp
+          helm lint source/deploy/helm/vmcp \
+            -f source/deploy/helm/vmcp/examples/production.yaml -f release-assets/helm-images.yaml
+          helm package source/deploy/helm/vmcp --app-version "$VERSION" --destination release-assets
+          (cd release-assets && sha256sum helm-images.yaml images.json vmcp-*.tgz > SHA256SUMS)
+      - name: Create release notes
+        env:
+          VERSION: ${{ steps.source.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart=$(basename release-assets/vmcp-*.tgz)
+          cat > release-notes.md <<EOF
+          vMCP $VERSION images are available on Docker Hub under [barishoku](https://hub.docker.com/u/barishoku), for Linux AMD64 and ARM64.
+
+          CI and all nine image publications passed before this release was prepared.
+
+          Download the assets below:
+          - \`helm-images.yaml\`: immutable image digests for this application version.
+          - \`images.json\`: complete image inventory, including the secret rotation utility.
+          - \`$chart\`: Helm chart with locked optional dependency subcharts included.
+          - \`SHA256SUMS\`: asset checksums.
+
+          Prepare Kubernetes Secrets, PostgreSQL, Redis, ingress, and your production values using the [installation guide](https://github.com/$GH_REPO/blob/$VERSION/deploy/helm/vmcp/README.md).
+
+          Install with the downloaded files (image values must come last):
+          \`\`\`sh
+          sha256sum -c SHA256SUMS
+          helm upgrade --install vmcp ./$chart --namespace vmcp --create-namespace \\
+            -f my-production-values.yaml -f helm-images.yaml \\
+            --wait --wait-for-jobs --timeout 15m
+          \`\`\`
+
+          The chart version and application version are independent. Optional brokers, exporters, and monitoring are not enabled by the image overlay. Review database migrations and back up before upgrading.
+          EOF
+      - name: Upload assets to a draft, then publish
+        env:
+          VERSION: ${{ steps.source.outputs.version }}
+          COMMIT: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" --json isDraft > existing-release.json 2>/dev/null; then
+            if [[ "$(python3 -c 'import json; print(json.load(open("existing-release.json"))["isDraft"])')" != True ]]; then
+              echo "Release $VERSION is already public; leaving its assets unchanged." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          else
+            gh release create "$VERSION" --verify-tag --target "$COMMIT" --draft \
+              --title "vMCP $VERSION" --notes-file release-notes.md
+          fi
+          gh release upload "$VERSION" release-assets/* --clobber
+          prerelease=false
+          if [[ "$VERSION" == *-* ]]; then prerelease=true; fi
+          gh release edit "$VERSION" --notes-file release-notes.md --draft=false --prerelease="$prerelease"
+          echo "Published https://github.com/$GH_REPO/releases/tag/$VERSION" >> "$GITHUB_STEP_SUMMARY"

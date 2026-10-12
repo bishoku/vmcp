@@ -119,7 +119,7 @@ jobs:
           node-version: 22
       - run: npm ci --prefix web
       - name: Test Docker release manifest generation
-        run: python3 -m unittest discover -s scripts -p 'test_prepare_image_release.py'
+        run: python3 -m unittest discover -s scripts -p 'test_prepare*release.py'
       - name: Validate chart configurations
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
