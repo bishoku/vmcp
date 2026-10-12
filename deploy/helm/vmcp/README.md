@@ -22,6 +22,7 @@ image digests are placeholders, not runnable production credentials.
 4. Restore the locked dependencies and install:
 
 ```sh
+helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
 helm dependency build deploy/helm/vmcp
 helm lint deploy/helm/vmcp -f my-production-values.yaml
 helm upgrade --install vmcp deploy/helm/vmcp \
@@ -247,6 +248,7 @@ entry point, network permissions and probes. See `docs/TENANT_OPERATIONS.md`.
 ## Verification and operational limits
 
 ```sh
+helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
 helm dependency build deploy/helm/vmcp
 HELM_BIN=helm node --test tests/helm/chart.test.cjs
 ```

@@ -45,6 +45,7 @@ See the chart guide for bundled dependency image availability, role provisioning
 TLS mounts, LISTEN pooling constraints, ingress streaming settings and recovery.
 
 ```sh
+helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
 helm dependency build deploy/helm/vmcp
 helm lint deploy/helm/vmcp -f my-production-values.yaml
 helm upgrade --install vmcp deploy/helm/vmcp --namespace vmcp --create-namespace \

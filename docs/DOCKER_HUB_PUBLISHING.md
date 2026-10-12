@@ -33,9 +33,10 @@ you configure Docker Hub immutable-tag rules; deploy by digest for a stable iden
 
 ## One-time Docker Hub setup
 
-Sign in as `barishoku` and create the nine repositories above under that namespace.
-For this public project, select **Public** visibility. Creating them explicitly
-avoids relying on automatic repository creation and makes visibility deliberate.
+Sign in as `barishoku` and set the default repository privacy to **Public** for
+this public project. Docker Hub creates missing repositories on the first push;
+creating the nine repositories above manually is optional if you want to choose
+their visibility individually. See [Docker Hub privacy settings](https://docs.docker.com/docker-hub/settings/).
 No Docker Hub automated-build integration or GitHub account linking is required.
 
 Create a personal access token through Docker Home → avatar → **Account settings**
@@ -106,6 +107,7 @@ It contains:
 Keep your existing deployment configuration and layer the image overlay last:
 
 ```sh
+helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
 helm dependency build deploy/helm/vmcp
 helm upgrade --install vmcp deploy/helm/vmcp \
   --namespace vmcp --create-namespace \

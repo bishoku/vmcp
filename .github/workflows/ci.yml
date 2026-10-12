@@ -122,6 +122,7 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_prepare_image_release.py'
       - name: Validate chart configurations
         run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
           helm dependency build deploy/helm/vmcp
           helm lint deploy/helm/vmcp -f deploy/helm/vmcp/examples/production.yaml
           node --test tests/helm/chart.test.cjs
