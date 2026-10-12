@@ -164,7 +164,10 @@ prerelease suffix produce GitHub prereleases. Reruns can repair an incomplete
 draft, but leave an already public release unchanged. A failed release packaging
 job does not rebuild or repush Docker images. Retry it after resolving the cause.
 No additional token is needed: the release job uses `GITHUB_TOKEN` with
-`contents: write` and `actions: read`.
+`contents: write` and `actions: read`. Release creation uses the verified existing
+tag without an explicit `target_commitish`: supplying an older commit with workflow
+changes can trigger a workflow-write permission check that `GITHUB_TOKEN` cannot
+satisfy. See [GitHub release API permissions](https://docs.github.com/en/rest/releases/releases#create-a-release).
 
 To publish the already uploaded **v0.0.2** images after this workflow reaches
 `main`, select **Actions → publish-github-release → Run workflow**, choose `main`,
