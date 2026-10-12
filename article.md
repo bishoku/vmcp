@@ -44,7 +44,7 @@ The same care applies to interactive MCP features. Sampling, roots, and form eli
 
 For example, enabling sampling does not give an upstream the gateway's model credentials. The request is routed to the connected MCP host, which remains responsible for approval and model access.
 
-The supported protocol baseline is MCP revision 2025-06-18. Within its documented scope, vMCP handles Streamable HTTP, SSE delivery, progress, cancellation, replay, subscriptions, and selected completion flows. Upstreams can use Streamable HTTP, legacy HTTP+SSE, or a separate isolated stdio worker.
+The supported protocol baseline is MCP revision 2025-06-18. Within its documented scope, vMCP handles Streamable HTTP, SSE delivery, progress, cancellation, replay, subscriptions, and selected completion flows. Upstreams can use Streamable HTTP or legacy HTTP+SSE.
 
 ## Design principle: separate management from requests
 
@@ -112,7 +112,7 @@ These features can support an organization's controls. They do not certify SOC 2
 
 vMCP remains Beta, with APIs that may change. The next steps focus on proving reliable operation as well as adding features.
 
-The production roadmap includes stronger stdio worker containment and crash recovery, corrected least-privilege audit identities, and more consistent policy and audit coverage across capability paths.
+The production roadmap includes corrected least-privilege audit identities, and more consistent policy and audit coverage across capability paths.
 
 Audit operations need further work around retention separation, large operations, exporter backlog alerts, and sink authentication.
 

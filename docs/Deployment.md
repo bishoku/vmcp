@@ -8,7 +8,7 @@ development-only and does not constitute an HA PostgreSQL deployment.
 
 1. **Secrets**: generate a strong `VMCP_ADMIN_TOKEN` and a fresh `VMCP_MASTER_KEY`; keep the key in a secret manager and
    back it up. Do not reuse the development defaults from the compose file.
-2. **TLS**: terminate HTTPS in front of both the UI/control plane and the data plane (reverse proxy or ingress). the API planes speak plain HTTP; the separate stdio worker and tenant router have their own TLS listeners.
+2. **TLS**: terminate HTTPS in front of both the UI/control plane and the data plane (reverse proxy or ingress). the API planes speak plain HTTP; the optional tenant router has its own TLS listener.
 3. **Proxies**: set `VMCP_TRUSTED_PROXIES` on the data plane to your proxy CIDRs, otherwise IP allowlists and audit client IPs
    see the proxy.
 4. **PostgreSQL**: use a managed or replicated instance with backups. It holds all state, including audit events.

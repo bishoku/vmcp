@@ -9,7 +9,6 @@ and bounded as described below; this is not independent conformance certificatio
 |---|---|
 | Client → vMCP | Streamable HTTP: POST JSON/SSE, GET SSE, DELETE sessions; June messages |
 | vMCP → upstream | Streamable HTTP JSON/SSE; legacy HTTP+SSE carrying June messages |
-| vMCP → stdio | Private mTLS owner endpoint bridging to an isolated operator-approved container |
 | Other revisions | March, strict November 2024 and later revisions are not advertised |
 
 Unknown initialize versions receive the supported June version; clients decide
@@ -47,12 +46,6 @@ extensions are retained as metadata, not automatically executable features. Hist
 client request-ID uniqueness remains the client's responsibility. See
 [catalogs](MCP_CATALOGS.md), [delivery/replay limits](MCP_DELIVERY.md) and
 [client features/consent](MCP_CLIENT_FEATURES.md).
-
-The private stdio bridge has stricter size/time/session limits and weaker independent
-HTTP framing/lifecycle checks than the virtual gateway. It terminates active physical
-sessions on POST disconnect/timeout. Sharing validators and strengthening worker crash
-recovery/logging are [production roadmap](../README.md#roadmap-to-production-readiness)
-items; do not assume identical transport guarantees at both hops.
 
 ## Verification and upgrades
 

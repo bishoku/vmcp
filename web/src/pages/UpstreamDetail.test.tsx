@@ -71,3 +71,11 @@ test('creating an upstream opens its saved read-only detail page',async()=>{
   expect(await screen.findByRole('button',{name:'Edit upstream'})).toBeTruthy()
   expect((screen.getByLabelText('Name').closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true)
 })
+
+test('upstream transport selection offers only HTTP endpoint transports',async()=>{
+  open();await screen.findByLabelText('Name')
+  fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
+  const options=screen.getAllByRole('option')
+    .map(option=>(option as HTMLOptionElement).value)
+  expect(options).toEqual(['streamable_http','sse'])
+})

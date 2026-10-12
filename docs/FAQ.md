@@ -1,7 +1,7 @@
 # FAQ and troubleshooting
 
-## Does vMCP support stdio servers?
-Yes, through the separate `stdio_worker` HTTPS/mTLS service. Commands are operator-allowlisted isolated containers, never API-process children. See [worker boundaries](TENANT_AND_STDIO_OPERATIONS.md).
+## Which upstream transports does vMCP support?
+Only HTTP endpoints: Streamable HTTP and legacy HTTP+SSE. vMCP does not launch upstream server processes.
 
 ## Resources and prompts?
 Curated resources, templates and prompts are supported with explicit selections, aliases, namespace validation, completion and subscription grants. See [catalog contract](MCP_CATALOGS.md).
@@ -38,7 +38,7 @@ It reloads via PostgreSQL `LISTEN/NOTIFY`. Check data-plane logs and that it use
 
 - Protocol baseline is 2025-06-18; newer revisions and March batching are not advertised.
 - Resource update hints can be missed during physical watcher reconnection; durable gateway replay does not make upstream events exactly once.
-- Unsafe calls with ambiguous outcomes are not automatically repeated. Physical sessions do not migrate to another stdio worker owner.
+- Unsafe calls with ambiguous outcomes are not automatically repeated.
 - Circuit-breaker state and local fallback rate limits are per node; shared strict rate limits require Redis.
 - Regex masking does not guarantee privacy or prompt-injection prevention. Binary content is denied when inspection is required.
 - JWT early revocation uses exact-token digests; arbitrary opaque tokens/introspection are unsupported.

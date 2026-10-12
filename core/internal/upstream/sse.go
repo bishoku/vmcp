@@ -35,9 +35,6 @@ func Open(transport, url string, headers map[string]string, tl tlsconf.Settings)
 // OpenAuth is Open with an optional OAuth client: every request then carries a cached
 // client_credentials bearer token (and is replayed once if the upstream answers 401).
 func OpenAuth(transport, url string, headers map[string]string, tl tlsconf.Settings, oc *oauthtoken.Config) (Conn, error) {
-	if transport == "stdio_worker" && (!strings.HasPrefix(url, "https://") || tl.ClientCertPEM == "" || tl.ClientKeyPEM == "") {
-		return nil, fmt.Errorf("stdio worker requires HTTPS and client TLS credentials")
-	}
 	hc, err := tl.Client()
 	if err != nil {
 		return nil, err
@@ -54,7 +51,7 @@ func OpenAuth(transport, url string, headers map[string]string, tl tlsconf.Setti
 		hc = &wrapped
 	}
 	switch transport {
-	case "streamable_http", "stdio_worker", "":
+	case "streamable_http", "":
 		c := NewClient(url, headers, nil)
 		c.http = hc
 		return c, nil

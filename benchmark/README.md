@@ -258,7 +258,7 @@ networks to fix a typo.
 PostgreSQL holds vMCP configuration, audit/session/delivery records and Keycloak's
 separate database. Redis AOF is persisted for local restart experiments. This is
 one PostgreSQL server, so it demonstrates gateway replication, **not database HA**.
-The stack does not provision the separate stdio host/rootless daemon, tenant router,
+The stack does not provision the tenant router,
 HTTPS SIEM sink, external immutable archive or OTLP/Grafana infrastructure. Their
 controls and remaining production work are documented in the main [roadmap](../README.md#roadmap-to-production-readiness).
 

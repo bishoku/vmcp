@@ -1510,7 +1510,7 @@ components:
 
     Transport:
       type: string
-      enum: [ streamable_http, sse, stdio_worker ]
+      enum: [ streamable_http, sse ]
       default: streamable_http
       description: '`sse` is the legacy HTTP+SSE transport.'
 

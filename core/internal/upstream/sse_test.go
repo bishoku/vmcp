@@ -141,3 +141,11 @@ func TestMCPClientCannotDialUnapprovedLoopback(t *testing.T) {
 		t.Fatal("blocked upstream received a request")
 	}
 }
+
+func TestOpenRejectsNonHTTPTransports(t *testing.T) {
+	for _, transport := range []string{"process", "file", "unknown"} {
+		if conn, err := Open(transport, "https://example.com/mcp", nil, tlsconf.Settings{}); err == nil || conn != nil {
+			t.Fatalf("unsupported transport %q accepted", transport)
+		}
+	}
+}

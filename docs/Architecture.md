@@ -22,7 +22,7 @@ flowchart LR
 | PostgreSQL | Configuration/revisions, session truth, delivery leases/encrypted replay, audit/receipts/holds and health; required availability dependency |
 | Redis | Optional shared quota counters; local fallback or strict denial is an explicit operator choice |
 | Operational commands | Coordinated migrations, restartable secret rotation, separate HTTPS, Kafka and RabbitMQ audit exporters |
-| Optional worker/router | Dedicated mTLS stdio owner workers and exact-host routing of dedicated tenant deployments |
+| Optional router | Exact-host routing of dedicated tenant deployments |
 
 ## Configuration and sessions
 
@@ -52,9 +52,9 @@ Some catalog rejection paths still lack equivalent decision audit coverage; see 
 ## Scope and deployment
 
 Tools, resources/templates and prompts are explicitly curated. Upstreams use
-Streamable HTTP, legacy HTTP+SSE or isolated stdio workers. Hosted tenants use
+Streamable HTTP or legacy HTTP+SSE. Hosted tenants use
 separate databases, processes, credentials and keys; internal SQL still selects
 the dedicated database's `default` configuration row. Shared-schema tenant switching
-and RLS are not implemented. See [tenant/worker boundaries](TENANT_AND_STDIO_OPERATIONS.md),
+and RLS are not implemented. See [tenant boundaries](TENANT_OPERATIONS.md),
 [delivery](MCP_DELIVERY.md), [client negotiation](MCP_CLIENT_FEATURES.md) and
 [the runnable multi-node demo](../benchmark/README.md).

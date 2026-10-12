@@ -61,10 +61,10 @@ flowchart LR
 - **PostgreSQL**: the single source of truth (config, sessions, audit, health).
 
 Scope today: curated **tools, resources, templates and prompts**; negotiated client
-features; upstream **Streamable HTTP, legacy HTTP+SSE and isolated stdio workers**.
+features; upstream **Streamable HTTP and legacy HTTP+SSE**.
 Hosted tenants use dedicated plane/database deployments and exact-host routing.
 See [catalog limits](docs/MCP_CATALOGS.md), [client features](docs/MCP_CLIENT_FEATURES.md)
-and [tenant/worker boundaries](docs/TENANT_AND_STDIO_OPERATIONS.md).
+and [tenant boundaries](docs/TENANT_OPERATIONS.md).
 
 ## Quick start
 
@@ -134,7 +134,7 @@ The full documentation lives in [`docs/`](docs/Home.md) (published as the GitHub
 | [Catalogs & prompts](docs/MCP_CATALOGS.md) | [Client features](docs/MCP_CLIENT_FEATURES.md) |
 | [Protocol & SSE delivery](docs/MCP_PROTOCOL_CONTRACT.md) | [Audit operations](docs/AUDIT_OPERATIONS.md) |
 | [Manual testing stack](benchmark/README.md) | [Production deployment](docs/PRODUCTION_DEPLOYMENT.md) |
-| [FAQ & troubleshooting](docs/FAQ.md) | [Tenants & stdio](docs/TENANT_AND_STDIO_OPERATIONS.md) |
+| [FAQ & troubleshooting](docs/FAQ.md) | [Tenant operations](docs/TENANT_OPERATIONS.md) |
 
 ## Repository layout
 
@@ -153,7 +153,7 @@ MCP protocol baseline: **2025-06-18**. March support is no longer advertised. Se
 
 vMCP remains **Beta / development**, with APIs subject to change. Automated regression
 coverage includes PostgreSQL/Redis, multi-node authorization and replay, TLS,
-MCP SDK interoperability, browser workflows and isolated-container checks.
+MCP SDK interoperability and browser workflows.
 Production acceptance still requires deployment-specific load, HA promotion,
 backup/restore, sink access-control and incident-response evidence described in
 [the deployment guide](docs/PRODUCTION_DEPLOYMENT.md). No production SLA or
@@ -167,7 +167,6 @@ compliance certification is claimed.
 | Security | Versioned context-bound encryption, restartable rotation, shared SSO revocation, exact-JWT denylist and privacy/approval policies; [operations](docs/SECURITY_OPERATIONS.md) |
 | Audit | Strict admission/outcome, bounded retention, legal holds and durable HTTPS SIEM delivery; [evidence responsibilities](docs/AUDIT_OPERATIONS.md) |
 | Operations | Prometheus metrics, optional OTLP tracing, Helm and integration/SDK/browser CI checks; [deployment](docs/PRODUCTION_DEPLOYMENT.md) |
-| Stdio | Separate mTLS worker with immutable allowlists, resource/filesystem/network isolation and operator secret injection; fixed owner endpoint |
 | Tenants | Dedicated databases, processes, credentials, keys and host routing; shared-schema tenant switching is excluded |
 
 
@@ -177,7 +176,6 @@ The June MCP feature families above are implemented within their documented limi
 The next milestone is reliable, secure operation under real deployment failures.
 These items remain open; their order reflects production risk, not release dates.
 
-- [ ] **Worker containment and recovery:** prevent Docker daemon payload logging, reconcile orphaned containers after crashes, verify cleanup failures and storage quotas, and share protocol validation with the gateway. Keep fixed worker ownership and avoid unsafe replay.
 - [ ] **Least-privilege audit identities:** make exporter startup and audit inserts work with the supplied restricted roles after tenant identity migration; test allowed and forbidden SQL operations with real runtime logins.
 - [ ] **Policy and audit parity:** record catalog denial decisions, bind approval to executed/returned content, clarify prompt-content trust, and align background subscription revocation/fallback behavior.
 - [ ] **Sustained audit operations:** separately privileged retention runner, large-operation handling, exporter lag/dead-letter metrics and alerts, authenticated SIEM sinks, and representative purge/WAL measurements.

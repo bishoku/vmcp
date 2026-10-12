@@ -1,4 +1,0 @@
-FROM scratch
-COPY fixture-stdio /fixture-stdio
-USER 65532:65532
-ENTRYPOINT ["/fixture-stdio"]

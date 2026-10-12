@@ -8,7 +8,7 @@ An **upstream** is a real MCP server vMCP connects to.
 | `name`, `description` | Display text |
 | `url` | Endpoint, `http://` or `https://` |
 | `fallbackUrls` | Up to 5 more URLs of the same server, tried in order ([failover](Resilience-and-HA.md)) |
-| `transport` | `streamable_http` (default), `sse` (legacy HTTP+SSE), or `stdio_worker` (separate mTLS owner endpoint) |
+| `transport` | `streamable_http` (default) or `sse` (legacy HTTP+SSE) |
 | `enabled` | Disabled upstreams are not served |
 | `headers` | Sent on every upstream request, typically `Authorization`. **Encrypted at rest, write-only, never returned**; the API only lists `headerNames` |
 | `tls` | Custom CA, server name override, mTLS ([Upstream TLS](Upstream-TLS.md)) |
@@ -38,8 +38,7 @@ Tool schemas are cached, so virtual servers keep working while an upstream is br
 changes its tools, resources or prompts. Discovery also caches advertised resources,
 URI templates, prompts and capability metadata. See [catalogs](MCP_CATALOGS.md).
 A saved upstream can be tested with `POST /api/v1/upstreams/{slug}/connection-test`
-without returning its credentials. Stdio uses operator-approved immutable images
-on a [separate worker](TENANT_AND_STDIO_OPERATIONS.md), with no fallback URLs.
+without returning its credentials.
 
 ## Editing headers safely
 
@@ -50,3 +49,13 @@ and others are merged. Exported configuration never contains header values.
 
 Deleting an upstream used by virtual servers returns `409` unless you pass `?force=true`, which also removes those
 selections.
+
+## HTTP-only upgrade
+
+Only HTTP endpoints are supported. Before upgrading an existing deployment, remove
+any upstream whose transport is neither `streamable_http` nor `sse`, or replace it
+with an actual HTTP MCP endpoint. Remove or update its virtual-server selections
+as needed. Migration 26 enforces the HTTP-only database constraint and refuses to
+proceed while unsupported configurations exist; it does not delete configurations.
+Migration version 24 is retained as a no-op for migration-history compatibility.
+Run the migration command before restarting the control and data planes.

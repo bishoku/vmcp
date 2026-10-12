@@ -39,6 +39,6 @@ failover in between.
 - [Resources and prompts](MCP_CATALOGS.md) and [negotiated client features](MCP_CLIENT_FEATURES.md)
 - [Audit durability](AUDIT_DURABILITY.md) and [SIEM/retention operations](AUDIT_OPERATIONS.md)
 - [Observability](OBSERVABILITY.md), [security operations](SECURITY_OPERATIONS.md) and [production deployment](PRODUCTION_DEPLOYMENT.md)
-- [Dedicated tenants and stdio workers](TENANT_AND_STDIO_OPERATIONS.md)
+- [Dedicated tenant operations](TENANT_OPERATIONS.md)
 - [Manual testing stack](../benchmark/README.md)
 - [Production roadmap](../README.md#roadmap-to-production-readiness)

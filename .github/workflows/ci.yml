@@ -121,17 +121,3 @@ jobs:
           image-ref: vmcp-dp:ci
           severity: CRITICAL,HIGH
           exit-code: "1"
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: core/go.mod
-      - name: Verify real stdio sandbox
-        run: |
-          mkdir -p /tmp/vmcp-stdio-fixture
-          cd core
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/vmcp-stdio-fixture/fixture-stdio ./cmd/fixture-stdio
-          cd ..
-          docker build -f deploy/Dockerfile.stdio-fixture -t vmcp-stdio-fixture:test /tmp/vmcp-stdio-fixture
-          export VMCP_TEST_STDIO_IMAGE=$(docker image inspect vmcp-stdio-fixture:test --format '{{.Id}}')
-          cd core
-          go test -race -count=1 ./internal/stdioworker

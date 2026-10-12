@@ -114,7 +114,7 @@ idempotency. Caller cancellation and IdP failures do not trip upstream breakers.
 See [observability](OBSERVABILITY.md) for pool/tracing constraints and OTel variables,
 [security operations](SECURITY_OPERATIONS.md) for rotation/identity containment,
 [audit operations](AUDIT_OPERATIONS.md) for export/retention roles, and
-[tenant/stdio operations](TENANT_AND_STDIO_OPERATIONS.md) for router/worker variables.
+[tenant operations](TENANT_OPERATIONS.md) for router variables.
 The [manual stack](../benchmark/README.md) supplies an explicit local configuration.
 
 ## Independent audit exporter processes

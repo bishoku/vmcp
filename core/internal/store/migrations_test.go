@@ -241,3 +241,44 @@ func TestClientFeatureMigrationUpgradeAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHTTPOnlyMigrationPreservesUnsupportedConfigurations(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 25); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a previously deployed schema allowing a process transport.
+	if _, err := db.ExecContext(ctx, `ALTER TABLE upstreams DROP CONSTRAINT upstreams_transport_check;
+ ALTER TABLE upstreams ADD CONSTRAINT upstreams_transport_check CHECK(transport IN ('streamable_http','sse','process'));
+ INSERT INTO upstreams(tenant_id,slug,name,url,transport) SELECT id,'old-process','Old process','https://example.com/mcp','process' FROM tenants WHERE slug='default'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err == nil {
+		t.Fatal("upgrade accepted unsupported configuration")
+	}
+	var transport string
+	if err := db.QueryRowContext(ctx, `SELECT transport FROM upstreams WHERE slug='old-process'`).Scan(&transport); err != nil || transport != "process" {
+		t.Fatalf("failed upgrade changed configuration: %q %v", transport, err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE upstreams SET transport='streamable_http' WHERE slug='old-process'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE upstreams SET transport='process' WHERE slug='old-process'`); err == nil {
+		t.Fatal("database accepted unsupported transport")
+	}
+	if err := db.QueryRowContext(ctx, `SELECT transport FROM upstreams WHERE slug='old-process'`).Scan(&transport); err != nil || transport != "streamable_http" {
+		t.Fatalf("HTTP configuration lost: %q %v", transport, err)
+	}
+}

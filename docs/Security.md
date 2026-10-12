@@ -35,4 +35,3 @@ lacks context binding until rotated. See [security operations](SECURITY_OPERATIO
 - PII masking is pattern-based and best effort.
 - SSO logout revokes the shared browser session. Operators can revoke a subject's sessions; role changes apply at the next sign-in. Agent JWT containment uses an exact-token denylist, not universal IdP introspection.
 - The optional approval hook gates request metadata/digests; it does not inspect returned prompt instructions. Treat upstream content as untrusted.
-- Isolated stdio workers require a separate trusted host/runtime. Docker payload logging and crash-safe orphan cleanup remain production-hardening work; see the [roadmap](../README.md#roadmap-to-production-readiness).

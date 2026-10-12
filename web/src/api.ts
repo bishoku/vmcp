@@ -64,7 +64,7 @@ export interface Upstream {
   url: string
   fallbackUrls: string[]
   health: { state: 'unknown' | 'healthy' | 'degraded' | 'unhealthy'; nodes: NodeHealth[] }
-  transport: 'streamable_http' | 'sse' | 'stdio_worker'
+  transport: 'streamable_http' | 'sse'
   enabled: boolean
   headerNames: string[]
   tls: UpstreamTLS
@@ -79,7 +79,7 @@ export interface UpstreamInput {
   description?: string
   url: string
   fallbackUrls?: string[]
-  transport: 'streamable_http' | 'sse' | 'stdio_worker'
+  transport: 'streamable_http' | 'sse'
   enabled?: boolean
   /** Write-only. Omit to keep stored headers; null value deletes one header (PATCH). */
   headers?: Record<string, string | null>
