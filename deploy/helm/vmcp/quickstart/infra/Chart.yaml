@@ -1,0 +1,4 @@
+apiVersion: v2
+name: vmcp-quickstart-infra
+version: 0.1.0
+description: Single-node infrastructure for disposable vMCP trials only

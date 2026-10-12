@@ -120,6 +120,10 @@ jobs:
       - run: npm ci --prefix web
       - name: Test Docker release manifest generation
         run: python3 -m unittest discover -s scripts -p 'test_prepare*release.py'
+      - name: Test trial installer
+        run: |
+          bash -n deploy/helm/vmcp/quickstart.sh
+          python3 -m unittest discover -s tests/helm -p 'test_quickstart.py'
       - name: Validate chart configurations
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami --force-update

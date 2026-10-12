@@ -68,6 +68,18 @@ and [tenant boundaries](docs/TENANT_OPERATIONS.md).
 
 ## Quick start
 
+To try the Helm stack on an existing development Kubernetes cluster:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh --context YOUR_CONTEXT --version v0.0.2
+```
+
+This provisions trial PostgreSQL/Redis, credentials, migrations and vMCP, then
+opens localhost port forwards. Add `--exporter kafka` or `--exporter rabbitmq` to
+try broker delivery. See the [Kubernetes quickstart](docs/HELM_QUICKSTART.md) for
+prerequisites, all options and cleanup; run `quickstart.sh --help` for usage.
+
+
 Requires Docker. For a ready-to-run environment with **Keycloak, Redis, two data planes, a load balancer and three MCP servers**, use the [manual testing stack](benchmark/README.md). It starts with an empty configuration so you can register upstreams and compose virtual servers from the UI.
 
 The smaller quick start below runs the core services.

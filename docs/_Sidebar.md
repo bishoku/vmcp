@@ -37,3 +37,5 @@
 - [Dedicated tenant operations](TENANT_OPERATIONS.md)
 - [Manual testing stack](../benchmark/README.md)
 - [Production roadmap](../README.md#roadmap-to-production-readiness)
+
+- [Kubernetes quickstart](HELM_QUICKSTART.md)

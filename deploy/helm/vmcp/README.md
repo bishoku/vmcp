@@ -12,6 +12,19 @@ a packaged chart including locked optional dependencies. Download the archive an
 install it with your production values followed by the image overlay; dependency
 downloads are unnecessary when using the packaged release chart.
 
+## Trial stack in one command
+
+From the repository root, run:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh --context YOUR_CONTEXT --version v0.0.2
+```
+
+The script provisions trial infrastructure, stable Secrets and database roles,
+runs migrations and installs vMCP. Use `--help` for broker/exporter, monitoring,
+ingress, storage and cleanup options. See the [full quickstart guide](../../../docs/HELM_QUICKSTART.md).
+This configuration is for isolated trials; production installation follows below.
+
 ## Installation with external infrastructure
 
 Use `examples/production.yaml` as a starting point. Its domains, addresses and
