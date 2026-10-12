@@ -116,3 +116,9 @@ See [observability](OBSERVABILITY.md) for pool/tracing constraints and OTel vari
 [audit operations](AUDIT_OPERATIONS.md) for export/retention roles, and
 [tenant/stdio operations](TENANT_AND_STDIO_OPERATIONS.md) for router/worker variables.
 The [manual stack](../benchmark/README.md) supplies an explicit local configuration.
+
+## Independent audit exporter processes
+
+HTTPS, Kafka and RabbitMQ exporters use their own database connection pools and
+configuration. See [all exporter variables and deployment examples](AUDIT_EXPORTERS.md).
+No broker configuration is required by the control plane or data plane.

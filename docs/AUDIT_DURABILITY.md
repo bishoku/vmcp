@@ -48,7 +48,7 @@ Cancellation stops new submissions and gives final batches a total ten-second fl
 
 Retention preserves an admission and its related events while it has no outcome. Once an outcome exists, the operation's events become eligible together only after the outcome and individual rows are older than the retention cutoff. This makes incomplete work visible rather than silently expiring it. Unresolved admissions can accumulate indefinitely; operators need a reconciliation and privacy policy.
 
-The separate `audit-exporter` delivers HTTPS JSON with durable consumer receipts,
+The separate `audit-exporter`, `audit-exporter-kafka` and `audit-exporter-rabbitmq` deliver JSON over HTTPS, Kafka or RabbitMQ with durable consumer receipts,
 retries and recoverable dead letters. Retention protects incomplete operations,
 legal holds and events without delivered receipts for active consumers. Delivery
 is at least once; the sink must deduplicate stable event IDs. PostgreSQL alone is
@@ -67,6 +67,9 @@ Rollback removes new correlation/lifecycle fields and deletes `started` rows to 
 - `core/internal/controlplane/audit_test.go`: administrative admissions/outcomes, concrete mutation targets, transactional rollback on audit failure, blocked admission, privileged export, named token attribution, query validation and secret/payload exclusion.
 - `core/internal/store/migrations_test.go`: schema-17 upgrade and rollback preserving historical audit events, alongside earlier migration tests.
 
-The current implementation also includes shutdown/resource bounds, metrics and HTTPS
+The current implementation also includes shutdown/resource bounds, metrics and independent HTTPS/Kafka/RabbitMQ
 SIEM delivery. Real full-disk/restore drills, scalable retention scheduling and
 restricted-role deployment verification remain production acceptance work.
+
+See [independent audit exporters](AUDIT_EXPORTERS.md) for configuration, broker
+acknowledgment boundaries and consumer naming.

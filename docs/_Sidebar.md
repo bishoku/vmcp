@@ -30,6 +30,7 @@
 
 - [MCP protocol contract](MCP_PROTOCOL_CONTRACT.md) and [bidirectional SSE delivery](MCP_DELIVERY.md)
 - [Resources and prompts](MCP_CATALOGS.md) and [negotiated client features](MCP_CLIENT_FEATURES.md)
+- [Independent HTTP, Kafka and RabbitMQ audit exporters](AUDIT_EXPORTERS.md)
 - [Audit durability](AUDIT_DURABILITY.md) and [SIEM/retention operations](AUDIT_OPERATIONS.md)
 - [Observability](OBSERVABILITY.md), [security operations](SECURITY_OPERATIONS.md) and [production deployment](PRODUCTION_DEPLOYMENT.md)
 - [Dedicated tenants and stdio workers](TENANT_AND_STDIO_OPERATIONS.md)

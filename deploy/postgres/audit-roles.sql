@@ -4,6 +4,10 @@ CREATE ROLE vmcp_audit_query NOLOGIN;
 CREATE ROLE vmcp_audit_export NOLOGIN;
 CREATE ROLE vmcp_audit_retention NOLOGIN;
 GRANT USAGE ON SCHEMA public TO vmcp_audit_query, vmcp_audit_export, vmcp_audit_retention;
+-- Export startup verifies the dedicated database identity. INSERT defaults use
+-- vmcp_tenant_id(), which runs with the caller's identity-table privileges.
+GRANT SELECT ON tenant_runtime_identity TO vmcp_audit_export;
+GRANT SELECT ON tenants TO vmcp_audit_export;
 GRANT SELECT ON audit_events TO vmcp_audit_query, vmcp_audit_export, vmcp_audit_retention;
 GRANT SELECT,INSERT,UPDATE ON audit_export_state,audit_deliveries TO vmcp_audit_export;
 GRANT SELECT ON audit_export_state,audit_deliveries,audit_legal_holds TO vmcp_audit_retention;

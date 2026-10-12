@@ -21,7 +21,7 @@ flowchart LR
 | Web UI | React/Vite/Tailwind management, selection editors, ETag conflicts, audit queries and GitOps |
 | PostgreSQL | Configuration/revisions, session truth, delivery leases/encrypted replay, audit/receipts/holds and health; required availability dependency |
 | Redis | Optional shared quota counters; local fallback or strict denial is an explicit operator choice |
-| Operational commands | Coordinated migrations, restartable secret rotation, separate HTTPS audit exporter |
+| Operational commands | Coordinated migrations, restartable secret rotation, separate HTTPS, Kafka and RabbitMQ audit exporters |
 | Optional worker/router | Dedicated mTLS stdio owner workers and exact-host routing of dedicated tenant deployments |
 
 ## Configuration and sessions

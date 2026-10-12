@@ -18,9 +18,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Exporter delivers one JSON event per request, with a stable idempotency key.
-// HTTP acknowledgements are at least once; the sink must deduplicate event IDs.
+// Publisher returns nil only after the destination has acknowledged acceptance.
+// Implementations must bound buffers, respect context cancellation and tolerate duplicates.
+type Publisher interface {
+	Publish(context.Context, string, []byte) error
+	Close()
+}
+
+// Exporter delivers at least once using fenced PostgreSQL receipts.
+// HTTP fields remain supported for existing callers; broker publishers use Publisher.
 type Exporter struct {
+	Publisher          Publisher
 	Pool               *pgxpool.Pool
 	Consumer, Endpoint string
 	Client             *http.Client
@@ -33,6 +41,50 @@ func NewExporter(pool *pgxpool.Pool, consumer, endpoint string) (*Exporter, erro
 	}
 	return &Exporter{Pool: pool, Consumer: consumer, Endpoint: endpoint, Client: netpolicy.Client(&http.Client{Timeout: 5 * time.Second})}, nil
 }
+
+// NewPublishingExporter shares the HTTP exporter's durable delivery ledger.
+func NewPublishingExporter(pool *pgxpool.Pool, consumer string, publisher Publisher) (*Exporter, error) {
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`).MatchString(consumer) || publisher == nil {
+		return nil, errors.New("invalid audit consumer or publisher")
+	}
+	return &Exporter{Pool: pool, Consumer: consumer, Publisher: publisher}, nil
+}
+
+// HTTPPublisher preserves the existing HTTPS and egress-policy contract.
+type HTTPPublisher struct {
+	Endpoint string
+	Client   *http.Client
+}
+
+func NewHTTPPublisher(endpoint string) (*HTTPPublisher, error) {
+	e, err := NewExporter(nil, "validation", endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return &HTTPPublisher{e.Endpoint, e.Client}, nil
+}
+func (p *HTTPPublisher) Close() { p.Client.CloseIdleConnections() }
+func (p *HTTPPublisher) Publish(ctx context.Context, id string, raw []byte) error {
+	request, err := http.NewRequestWithContext(ctx, "POST", p.Endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", id)
+	response, err := p.Client.Do(request)
+	if response != nil {
+		defer response.Body.Close()
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	}
+	if err != nil {
+		return errors.New("HTTP audit delivery failed")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return errors.New("HTTP audit destination rejected event")
+	}
+	return nil
+}
+
 func (e *Exporter) Register(ctx context.Context) error {
 	_, err := e.Pool.Exec(ctx, `INSERT INTO audit_export_state(consumer) VALUES($1) ON CONFLICT(consumer) DO NOTHING`, e.Consumer)
 	return err
@@ -71,19 +123,12 @@ func (e *Exporter) Step(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	request, err := http.NewRequestWithContext(ctx, "POST", e.Endpoint, bytes.NewReader(raw))
-	if err != nil {
-		return true, err
+	publisher := e.Publisher
+	if publisher == nil {
+		publisher = &HTTPPublisher{e.Endpoint, e.Client}
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Idempotency-Key", id)
 	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	response, sendErr := e.Client.Do(request.WithContext(sendCtx))
-	accepted := sendErr == nil && response.StatusCode >= 200 && response.StatusCode < 300
-	if response != nil {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-		response.Body.Close()
-	}
+	accepted := publisher.Publish(sendCtx, id, raw) == nil
 	cancel()
 	complete, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()

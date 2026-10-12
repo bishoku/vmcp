@@ -222,3 +222,69 @@ func TestRetentionIndexPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type uncertainPublisher struct {
+	ids  []string
+	fail bool
+}
+
+func (p *uncertainPublisher) Publish(_ context.Context, id string, _ []byte) error {
+	p.ids = append(p.ids, id)
+	if p.fail {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+func (p *uncertainPublisher) Close() {}
+func TestPublisherIndependentConsumersAndLostAcknowledgement(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := store.Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := store.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	a, b := &uncertainPublisher{fail: true}, &uncertainPublisher{}
+	first, err := audit.NewPublishingExporter(pool, "kafka-evidence", a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := audit.NewPublishingExporter(pool, "rabbit-evidence", b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []*audit.Exporter{first, second} {
+		if err = e.Register(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = audit.Persist(ctx, pool, audit.Event{Action: "broker-retry", Status: "ok", Time: time.Now().Add(-72 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []*audit.Exporter{first, second} {
+		if _, err = e.Step(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := audit.Purge(ctx, pool, 24*time.Hour); err != nil || n != 0 {
+		t.Fatal("one consumer's receipt released another's retention", n, err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE audit_deliveries SET next_attempt=now()`); err != nil {
+		t.Fatal(err)
+	}
+	a.fail = false
+	// A new process uses the same consumer ledger, retrying the same event UUID.
+	restarted, _ := audit.NewPublishingExporter(pool, "kafka-evidence", a)
+	if _, err = restarted.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.ids) != 2 || len(b.ids) != 1 || a.ids[0] != a.ids[1] || a.ids[0] != b.ids[0] {
+		t.Fatal("stable IDs or independent consumers lost")
+	}
+	if n, err := audit.Purge(ctx, pool, 24*time.Hour); err != nil || n != 1 {
+		t.Fatal("confirmed event not released", n, err)
+	}
+}

@@ -193,6 +193,16 @@ See [production deployment](docs/PRODUCTION_DEPLOYMENT.md),
 [audit operations](docs/AUDIT_OPERATIONS.md) and [security operations](docs/SECURITY_OPERATIONS.md).
 
 
+## Independent audit destinations
+
+Export persisted audit records using `audit-exporter` (HTTPS),
+`audit-exporter-kafka`, or `audit-exporter-rabbitmq`. Each runs independently with
+its own PostgreSQL pool; broker dependencies are excluded from the data-plane and
+control-plane binaries. Multiple destinations need distinct consumer names.
+Delivery is at least once, so downstream systems must deduplicate event UUIDs.
+See [configuration, security and delivery guarantees](docs/AUDIT_EXPORTERS.md).
+
+
 ## Contributing
 
 Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; report vulnerabilities privately as

@@ -22,7 +22,36 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U vmcp -d vmcp_test" --health-interval 5s --health-timeout 5s --health-retries 10
+      kafka:
+        image: apache/kafka:4.0.0
+        ports: ["19092:19092"]
+        env:
+          KAFKA_ADVERTISED_LISTENERS: "INTERNAL://localhost:9092,EXTERNAL://localhost:19092"
+          KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+          KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+          KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+          KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+          KAFKA_LISTENERS: "INTERNAL://:9092,EXTERNAL://:19092,CONTROLLER://:9093"
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+          KAFKA_NODE_ID: "1"
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+          KAFKA_PROCESS_ROLES: "broker,controller"
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list" --health-interval 5s --health-timeout 10s --health-retries 30
+      rabbitmq:
+        image: rabbitmq:4.1-alpine
+        ports: ["5673:5672"]
+        env:
+          RABBITMQ_DEFAULT_PASS: "audit"
+          RABBITMQ_DEFAULT_USER: "audit"
+        options: >-
+          --health-cmd 'rabbitmq-diagnostics -q ping' --health-interval 5s --health-timeout 10s --health-retries 30
     env:
+      VMCP_TEST_KAFKA_BROKERS: localhost:19092
+      VMCP_TEST_RABBITMQ_URL: amqp://audit:audit@localhost:5673/
       VMCP_REQUIRE_INTEGRATION: "1"
       VMCP_REQUIRE_SDK_INTEROP: "1"
       VMCP_TEST_REDIS_URL: redis://localhost:6379/0
@@ -39,6 +68,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --prefix ../web
+      - name: Check broker dependency isolation
+        run: python3 ../scripts/check-exporter-isolation.py
       - run: go vet ./...
       - name: Run Go race and integration tests
         run: go test -race -count=1 -json ./... | tee ../verification.jsonl

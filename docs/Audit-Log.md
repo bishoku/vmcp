@@ -21,6 +21,8 @@ Administrative mutations and their identifier-only audit records commit in the s
 `VMCP_AUDIT_RETENTION_DAYS` defaults to 90; `0` keeps everything. Incomplete operations are preserved until reconciliation; completed operation pairs are retained through the outcome cutoff. Explicit `best_effort` data-plane mode can lose queued events on overflow, prolonged shutdown failure or crash and does not provide complete coverage.
 
 See [Audit durability](AUDIT_DURABILITY.md) for exact acknowledgement guarantees, outage and shutdown behavior, reconciliation, migration/rollback requirements and SIEM limitations. See [audit operations](AUDIT_OPERATIONS.md) for the separate
-HTTPS exporter, stable event IDs, legal holds and consumer-aware retention. Some
+independent HTTPS/Kafka/RabbitMQ exporters, stable event IDs, legal holds and consumer-aware retention. Some
 early catalog validation/denial paths still lack equivalent decision records;
 complete denial coverage is on the [production roadmap](../README.md#roadmap-to-production-readiness).
+
+Configure destinations with [independent audit exporters](AUDIT_EXPORTERS.md).
