@@ -5,6 +5,9 @@ audit exporters, and an optional dedicated-tenant router. It supports external
 infrastructure and pinned optional PostgreSQL, Redis, Kafka and RabbitMQ subcharts.
 Kubernetes 1.27+ and Helm 3.17+ are required. CI exercises Kubernetes 1.32.
 
+Publish versioned application images with the [Docker Hub workflow](../../../docs/DOCKER_HUB_PUBLISHING.md).
+Its successful run provides a digest-pinned `helm-images.yaml` overlay.
+
 ## Installation with external infrastructure
 
 Use `examples/production.yaml` as a starting point. Its domains, addresses and

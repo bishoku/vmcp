@@ -69,3 +69,10 @@ upgrade and rolling restart in a temporary Kind cluster. It does not modify an
 external cluster, push images, create a release or deploy the application publicly.
 Go test JSON output is streamed into the job log and retained for seven days
 as the `core-test-results` artifact, including failed test runs.
+
+## Versioned container publishing
+
+Pushing a `vMAJOR.MINOR.PATCH` tag runs `publish-docker-hub`, verifies that commit
+through reusable CI, and publishes the Helm runtime images under `barishoku`.
+See [Docker Hub setup and Helm image overlays](docs/DOCKER_HUB_PUBLISHING.md) for
+the required repository secret, image list and versioning procedure.

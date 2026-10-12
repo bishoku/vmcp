@@ -1,0 +1,154 @@
+name: publish-docker-hub
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-hub-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOCKERHUB_NAMESPACE: barishoku
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Validate version tag
+        id: version
+        shell: bash
+        run: |
+          version="$GITHUB_REF_NAME"
+          if [[ ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] || (( ${#version} > 128 )); then
+            echo "Expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease (maximum 128 characters)." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [validate, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - service: web
+            context: web
+            buildArgs: ""
+          - service: control-plane
+            context: core
+            buildArgs: SERVICE=control-plane
+          - service: data-plane
+            context: core
+            buildArgs: SERVICE=data-plane
+          - service: migrate
+            context: core
+            buildArgs: SERVICE=migrate
+          - service: audit-exporter
+            context: core
+            buildArgs: SERVICE=audit-exporter
+          - service: audit-exporter-kafka
+            context: core
+            buildArgs: SERVICE=audit-exporter-kafka
+          - service: audit-exporter-rabbitmq
+            context: core
+            buildArgs: SERVICE=audit-exporter-rabbitmq
+          - service: tenant-router
+            context: core
+            buildArgs: SERVICE=tenant-router
+          - service: rotate-secrets
+            context: core
+            buildArgs: SERVICE=rotate-secrets
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up ARM emulation
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Sign in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ env.DOCKERHUB_NAMESPACE }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and publish versioned image
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          build-args: ${{ matrix.buildArgs }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}:${{ needs.validate.outputs.version }}
+          labels: |
+            org.opencontainers.image.title=vmcp-${{ matrix.service }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.validate.outputs.version }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=publish-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=publish-${{ matrix.service }}
+          provenance: mode=max
+          sbom: true
+      - name: Record published manifest digest
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          service, image, version, digest = (os.environ[k] for k in ['SERVICE', 'IMAGE', 'VERSION', 'DIGEST'])
+          Path('image-digests').mkdir()
+          Path(f'image-digests/{service}.json').write_text(json.dumps({'service': service, 'image': image, 'version': version, 'digest': digest}) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'Published `{image}:{version}`\n\nHelm reference: `{image}@{digest}`\n')
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-digest-${{ matrix.service }}
+          path: image-digests/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+  helm-values:
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-digest-*
+          merge-multiple: true
+          path: image-digests
+      - name: Generate Helm image values and release manifest
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          python3 scripts/prepare-image-release.py image-digests image-release --version "$VERSION"
+          cat image-release/helm-images.yaml >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-images-${{ needs.validate.outputs.version }}
+          path: image-release/
+          if-no-files-found: error
+          retention-days: 90

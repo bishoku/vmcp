@@ -5,6 +5,7 @@
 - [Architecture](Architecture.md)
 - [Configuration](Configuration.md)
 - [Deployment](Deployment.md)
+- [Docker Hub publishing](DOCKER_HUB_PUBLISHING.md)
 
 **Features**
 - [Upstreams](Upstreams.md)

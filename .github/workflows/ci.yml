@@ -1,6 +1,7 @@
 name: ci
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -117,6 +118,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --prefix web
+      - name: Test Docker release manifest generation
+        run: python3 -m unittest discover -s scripts -p 'test_prepare_image_release.py'
       - name: Validate chart configurations
         run: |
           helm dependency build deploy/helm/vmcp

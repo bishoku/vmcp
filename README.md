@@ -135,6 +135,7 @@ The full documentation lives in [`docs/`](docs/Home.md) (published as the GitHub
 | [Protocol & SSE delivery](docs/MCP_PROTOCOL_CONTRACT.md) | [Audit operations](docs/AUDIT_OPERATIONS.md) |
 | [Manual testing stack](benchmark/README.md) | [Production deployment](docs/PRODUCTION_DEPLOYMENT.md) |
 | [Helm deployment](deploy/helm/vmcp/README.md) | [Production Helm values](deploy/helm/vmcp/examples/production.yaml) |
+| [Docker Hub publishing](docs/DOCKER_HUB_PUBLISHING.md) | |
 | [FAQ & troubleshooting](docs/FAQ.md) | [Tenant operations](docs/TENANT_OPERATIONS.md) |
 
 ## Repository layout
