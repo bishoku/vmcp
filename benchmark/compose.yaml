@@ -175,6 +175,37 @@ services:
     environment: {DEMO_PROFILE: support, DEMO_TOKEN: support-secret}
     ports: ["127.0.0.1:9113:9100"]
 
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=1GB
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../deploy/observability/alerts.yml:/etc/prometheus/vmcp-alerts.yml:ro
+      - prometheusdata:/prometheus
+    depends_on: [control-plane, data-plane-1, data-plane-2]
+    networks: [demo]
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: vmcp-demo-grafana
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports: ["127.0.0.1:3301:3000"]
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../deploy/observability/dashboard.json:/var/lib/grafana/dashboards/operations.json:ro
+      - ../deploy/observability/mcp-dashboard.json:/var/lib/grafana/dashboards/mcp.json:ro
+    depends_on: [prometheus]
+    networks: [demo]
+
 networks:
   demo:
     ipam:
@@ -184,3 +215,5 @@ networks:
 volumes:
   pgdata:
   redisdata:
+  prometheusdata:
+  grafanadata:

@@ -1,0 +1,29 @@
+rule_files:
+  - /etc/prometheus/vmcp-alerts.yml
+evaluation_interval: 10s
+tests:
+  - interval: 10s
+    input_series:
+      - series: 'up{job="vmcp-data-plane",instance="data-plane-1:8080"}'
+        values: '0x6'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: VMCPScrapeFailed
+        exp_alerts: []
+      - eval_time: 40s
+        alertname: VMCPScrapeFailed
+        exp_alerts:
+          - exp_labels:
+              job: vmcp-data-plane
+              instance: data-plane-1:8080
+              severity: critical
+            exp_annotations:
+              summary: A vMCP plane metrics target cannot be scraped
+  - interval: 10s
+    input_series:
+      - series: 'up{job="vmcp-data-plane",instance="data-plane-1:8080"}'
+        values: '1x6'
+    alert_rule_test:
+      - eval_time: 40s
+        alertname: VMCPScrapeFailed
+        exp_alerts: []

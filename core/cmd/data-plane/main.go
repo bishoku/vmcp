@@ -225,13 +225,13 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	virtualHandler := &virtual.Handler{Approval: approval, Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
+	metrics := telemetry.New()
+	virtualHandler := &virtual.Handler{Metrics: metrics, Approval: approval, Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
 		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}
 	virtualHandler.RunSubscriptions(ctx)
 	virtualHandler.Register(mux)
 	defer virtualHandler.StopWorkers()
 
-	metrics := telemetry.New()
 	metrics.Gauges = func(ctx context.Context) map[string]float64 {
 		status := syncer.Status()
 		stats := pool.Stat()

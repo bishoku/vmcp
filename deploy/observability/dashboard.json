@@ -8,7 +8,11 @@
       {
         "name": "DS_PROMETHEUS",
         "type": "datasource",
-        "query": "prometheus"
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "vmcp-prometheus"
+        }
       }
     ]
   },
@@ -244,5 +248,10 @@
         }
       ]
     }
-  ]
+  ],
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  }
 }

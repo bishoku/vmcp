@@ -9,6 +9,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/bishoku/vmcp/core/internal/upstream"
 	"github.com/yosida95/uritemplate/v3"
 	"net/http"
@@ -336,7 +337,9 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 	}
 	writeMessage(w, 200, &mcp.Message{JSONRPC: mcp.JSONRPCVersion, ID: msg.ID, Result: result})
 }
-func (h *Handler) callCatalogUpstream(ctx context.Context, sess *Session, up config.Upstream, method string, params json.RawMessage) (json.RawMessage, error) {
+func (h *Handler) callCatalogUpstream(ctx context.Context, sess *Session, up config.Upstream, method string, params json.RawMessage) (result json.RawMessage, callErr error) {
+	done := h.Metrics.BeginOperation(telemetry.Operation{Family: "upstream_requests", Upstream: up.Slug, Method: method})
+	defer func() { done(operationOutcome(ctx, result, callErr)) }()
 	if err := checkAuthorization(ctx); err != nil {
 		return nil, err
 	}

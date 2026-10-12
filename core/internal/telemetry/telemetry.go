@@ -30,9 +30,12 @@ type series struct {
 	errors        int64
 }
 type Registry struct {
-	mu       sync.Mutex
-	requests map[string]*series
-	Gauges   func(context.Context) map[string]float64
+	operations         map[Operation]*operationSeries
+	operationOverflows uint64
+	operationsPruned   time.Time
+	mu                 sync.Mutex
+	requests           map[string]*series
+	Gauges             func(context.Context) map[string]float64
 }
 
 func New() *Registry { return &Registry{requests: map[string]*series{}} }
@@ -127,6 +130,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "vmcp_http_duration_seconds_bucket{route=%q,le=\"+Inf\"} %d\nvmcp_http_duration_seconds_count{route=%q} %d\nvmcp_http_duration_seconds_sum{route=%q} %g\n", label, s.count, label, s.count, label, s.sum)
 	}
 	r.mu.Unlock()
+	r.serveOperations(w)
 	if r.Gauges != nil {
 		ctx, cancel := context.WithTimeout(req.Context(), time.Second)
 		defer cancel()

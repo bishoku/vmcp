@@ -1,14 +1,14 @@
 # Local vMCP manual testing stack
 
 A UI-first sandbox with PostgreSQL, Redis, Keycloak, one control plane, **two data
-planes behind round-robin nginx**, the web UI and **three synthetic MCP servers**.
+planes behind round-robin nginx**, the web UI and **three synthetic MCP servers**, plus Prometheus and Grafana.
 No upstreams, virtual servers, agent keys or identity bindings are pre-created.
 You configure those from the UI. Keycloak users/clients are imported for convenience.
 
 This directory is named `benchmark` for repeatable experiments; it is **not a
 production benchmark or production deployment**. Images, HTTP, known credentials,
 database-owner application access and synthetic data are development choices.
-Published ports bind to `127.0.0.1`. Docker needs roughly 4–6 GiB available memory;
+Published ports bind to `127.0.0.1`. Docker needs roughly 6–8 GiB available memory with monitoring;
 first builds need internet access. Python 3.10+ is needed only for host-side helpers.
 
 ## Start
@@ -315,3 +315,77 @@ docker compose -f benchmark/compose.yaml restart gateway
 Run the isolated proxy regression with `python3 benchmark/test_gateway_cors.py`
 (requires Docker and `nginx:1.27-alpine`). It uses a temporary loopback port and
 container, leaving running demo services unchanged.
+
+
+## Monitoring
+
+Prometheus and Grafana start with the benchmark Compose stack. After pulling these
+changes, rebuild the data planes to enable the new per-object metrics:
+
+```sh
+docker compose -f benchmark/compose.yaml up -d --build
+```
+
+- Prometheus: <http://localhost:9090>; targets: <http://localhost:9090/targets>;
+  evaluated rules/alerts: <http://localhost:9090/alerts>.
+- Grafana: <http://localhost:3301>; development login `admin` /
+  `vmcp-demo-grafana`. Do not reuse these credentials outside the local demo.
+- Operations dashboard: <http://localhost:3301/d/vmcp-operations>.
+- Virtual servers / upstream tools: <http://localhost:3301/d/vmcp-mcp>.
+
+The provisioned default data source is `Prometheus` (`vmcp-prometheus`), using
+`http://prometheus:9090` inside Docker. Both dashboards load automatically into
+folder `vMCP`. The original operations dashboard and rules are mounted directly
+from `deploy/observability/`; no manual import is needed. Edit the source JSON to
+keep dashboard changes. Existing Grafana volumes retain their original admin
+password if it has already been changed; the environment initializes new storage.
+
+Prometheus scrapes `control-plane:8081`, `data-plane-1:8080` and
+`data-plane-2:8080` every 10 seconds at `/metrics`. It deliberately bypasses the
+round-robin gateway so each replica has a distinct `instance` label. Rules evaluate
+every 10 seconds; data retention is seven days or 1 GB, whichever limit is reached first. Prometheus and Grafana have named
+persistent volumes, removed by `docker compose ... down -v` along with demo data.
+Ports bind only to loopback. No Alertmanager or email/Slack delivery is configured:
+alerts can be tested and inspected in Prometheus without sending notifications.
+
+Create upstreams/virtual servers and invoke tools to populate the MCP dashboard.
+Virtual tool labels use the exposed alias; upstream tool labels use the original
+name. Catalog calls have an empty tool label. Select a virtual server or upstream
+in the dashboard dropdowns; rates/p95 need multiple scrapes and some traffic.
+For low-volume tests inspect counters directly in Prometheus:
+
+```promql
+sum by (virtual_server, tool, outcome) (vmcp_virtual_tool_calls_total)
+sum by (upstream, method, tool, outcome) (vmcp_upstream_requests_total)
+```
+
+See [metric semantics and cardinality limits](../docs/OBSERVABILITY.md#virtual-server-and-upstream-metrics).
+MCP `isError` results and JSON-RPC errors can arrive with HTTP 200; use semantic
+operation counters to investigate them rather than only HTTP errors. The counters
+cover gateway work, not independent instrumentation inside the upstream service.
+
+Run the opt-in monitoring regression after starting the stack:
+
+```sh
+python3 benchmark/test_monitoring.py
+```
+
+It checks all three healthy targets, the existing alert rules, both provisioned
+dashboards/data source, then creates unique synthetic configuration, sends a tool
+call and resource read to each data plane, and verifies their Prometheus series.
+It deletes its keys, virtual server and upstream afterward. Idle metric series and
+Prometheus history may retain those test names according to documented retention.
+
+To check configuration and deterministic alert behavior:
+
+```sh
+docker compose -f benchmark/compose.yaml exec prometheus promtool check config /etc/prometheus/prometheus.yml
+docker compose -f benchmark/compose.yaml exec prometheus promtool check rules /etc/prometheus/vmcp-alerts.yml
+docker compose -f benchmark/compose.yaml run --rm --no-deps --entrypoint promtool \
+  -v "$(pwd)/benchmark/monitoring/alerts.test.yml:/tmp/alerts.test.yml:ro" \
+  prometheus test rules /tmp/alerts.test.yml
+```
+
+For a manual outage drill, stop one data plane, wait for `VMCPScrapeFailed` to fire
+(after a failed scrape plus 30 seconds), then restart it and observe recovery.
+The gateway will have reduced capacity during this drill.

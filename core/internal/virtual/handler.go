@@ -24,6 +24,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
 	"github.com/bishoku/vmcp/core/internal/resilience"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/bishoku/vmcp/core/internal/upstream"
 )
 
@@ -40,6 +41,7 @@ type SnapshotProvider interface {
 
 // Handler serves /mcp/v1/virtual/{slug}.
 type Handler struct {
+	Metrics  *telemetry.Registry
 	Approval *ApprovalPolicy
 	Snap     SnapshotProvider
 	Sessions *Manager
@@ -76,11 +78,11 @@ type Handler struct {
 
 // Register mounts the virtual server routes on mux.
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("POST /mcp/v1/virtual/{slug}", ingress(h.post))
-	mux.HandleFunc("DELETE /mcp/v1/virtual/{slug}", ingress(h.delete))
+	mux.HandleFunc("POST /mcp/v1/virtual/{slug}", ingress(h.observeVirtual(h.post)))
+	mux.HandleFunc("DELETE /mcp/v1/virtual/{slug}", ingress(h.observeVirtual(h.delete)))
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}", h.resourceMetadata)
 	// No server-initiated stream yet: tell clients so, as the spec allows.
-	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", ingress(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /mcp/v1/virtual/{slug}", ingress(h.observeVirtual(func(w http.ResponseWriter, r *http.Request) {
 		if h.Delivery != nil {
 			h.getStream(w, r)
 			return
@@ -115,7 +117,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 		}
 		w.Header().Set("Allow", "POST, DELETE")
 		http.Error(w, "server-initiated stream not supported", http.StatusMethodNotAllowed)
-	}))
+	})))
 }
 
 func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
@@ -398,6 +400,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			completion, cancel := context.WithTimeout(context.WithoutCancel(ctx), audit.WriteTimeout)
 			defer cancel()
 			if err := durable.Complete(completion, ev); err != nil {
+				ev.Status = "error"
 				h.Log.Error("audit outcome unavailable; operation incomplete", "operation_id", ev.OperationID)
 				return false
 			}
@@ -416,6 +419,8 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		return
 	}
 	if reason, blocked := vs.Blocked[p.Name]; blocked {
+		done := h.Metrics.BeginOperation(telemetry.Operation{Family: "virtual_tool_calls", VirtualServer: vs.Slug, Tool: p.Name})
+		defer func() { done(ev.Status) }()
 		if !finish("denied", reason) {
 			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
 			return
@@ -433,6 +438,8 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		return
 	}
 	ev.Tool = vt.Tool.Name
+	done := h.Metrics.BeginOperation(telemetry.Operation{Family: "virtual_tool_calls", VirtualServer: vs.Slug, Tool: vt.Tool.Name})
+	defer func() { done(ev.Status) }()
 	if retry, limited := h.rateLimited(ctx, vs, snap, sess.keySlug); limited {
 		secs := int(math.Ceil(retry.Seconds()))
 		if !finish("denied", "rate limit") {
@@ -650,7 +657,9 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 }
 
 // callUpstream calls the tool, re-establishing the upstream session once if it expired.
-func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Upstream, tool string, args json.RawMessage) (json.RawMessage, error) {
+func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Upstream, tool string, args json.RawMessage) (result json.RawMessage, callErr error) {
+	done := h.Metrics.BeginOperation(telemetry.Operation{Family: "upstream_requests", Upstream: up.Slug, Method: mcp.MethodToolsCall, Tool: tool})
+	defer func() { done(operationOutcome(ctx, result, callErr)) }()
 	for attempt := 0; ; attempt++ {
 		if err := checkAuthorization(ctx); err != nil {
 			return nil, err

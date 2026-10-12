@@ -2,8 +2,9 @@
 
 Both planes serve Prometheus text at `/metrics`. Restrict this endpoint to the
 monitoring network. HTTP histogram labels are one of `api`, `mcp`, `probe` or
-`other`; paths, query parameters, methods supplied by callers, tool names,
-subjects and credentials are never labels. Active HTTP requests cover current
+`other`; paths, query parameters, methods supplied by callers,
+subjects and credentials are never HTTP histogram labels. Separate operation
+families below use configured virtual-server/upstream/tool names. Active HTTP requests cover current
 MCP calls; `streams_active` reports downstream SSE streams. Data-plane
 metrics include sessions, snapshot confirmation age/revision and last refresh
 latency, listener reconnects, aggregate breaker states, pool acquisition counts,
@@ -69,3 +70,53 @@ can multiply allowed throughput by replica count. Automated regression tests
 exercise quota outage, listener termination/reconnection, pool exhaustion and
 snapshot freshness; actual PostgreSQL primary promotion/backup restore remains
 part of P13 deployment testing.
+
+## Virtual server and upstream metrics
+
+Data planes additionally expose the following families. Each family has a
+`_total` counter with `outcome`, an `_active` gauge without outcome, and a
+`_duration_seconds` histogram (`_bucket`, `_count`, `_sum`) without outcome:
+
+- `vmcp_virtual_requests`: label `virtual_server`. HTTP requests (POST, GET SSE,
+  DELETE) to configured virtual server routes, including authentication failures.
+  HTTP status >=400 is `error`; HTTP 200 MCP errors remain HTTP `ok` here.
+  Streaming duration is the HTTP connection lifetime.
+- `vmcp_virtual_tool_calls`: labels `virtual_server`, `tool`. Resolved tool
+  invocations, using the exposed/aliased tool name. Includes configured blocked
+  tools, policy/quota denials and upstream/result failures. `outcome` is `ok`,
+  `tool_error`, `denied` or `error`; failed audit outcome persistence is an error.
+  Durable SSE workers record the operation once, independent of replay clients.
+- `vmcp_upstream_requests`: labels `upstream`, `method`, `tool`. Gateway tool
+  attempts use the original upstream tool name. Curated resource read, prompt
+  get and completion dispatch use an empty tool label, never the resource URI.
+  Duration includes upstream session acquisition/setup and the response. Outcomes
+  are `ok`, `tool_error`, `error` or `cancelled`. Outer resilience retries count
+  separately; internal OAuth/session recovery is included within an observation,
+  so these are not physical HTTP packet/request counts. Policy/quota/open-breaker rejections that never enter an upstream attempt do
+  not create upstream observations. Reauthorization/setup failures inside an
+  entered attempt are counted as errors.
+
+These are per-process counters; aggregate across the two scrape instances with
+`sum by (virtual_server,tool,outcome)` or `sum by (upstream,method,tool,outcome)`.
+They are not unique-user counts, billing records or audit evidence. Upstream
+initialization/discovery/health probes, client feature callbacks and background
+subscription maintenance are not independently instrumented by these families.
+Unauthorized/unknown tool names never become labels; unknown virtual routes remain
+in aggregate HTTP metrics only. Resource/prompt identities, arguments, results,
+credentials, user IDs and raw error text are excluded.
+
+Configured names themselves may be sensitive metadata. Restrict `/metrics`,
+Prometheus and Grafana accordingly. Each data-plane registry admits at most 2,048
+operation label sets plus three family overflow sets. Additional new sets and
+configured names longer than 256 bytes use `__overflow__` labels and increment
+`vmcp_operation_label_overflows_total`. Do not use that reserved value in names.
+Inactive sets expire after one hour (cleanup runs at most once per minute);
+active observations are retained. Counter resets/series disappearance can follow
+restarts and expiry. Prometheus retention still governs previously scraped names.
+Metric families appear after matching work occurs; an empty tool dashboard before
+traffic is expected. HTTP latency and semantic tool latency measure different work.
+
+See [benchmark monitoring](../benchmark/README.md#monitoring) for provisioned
+Prometheus/Grafana, scrape targets, dashboards, alert evaluation and a repeatable
+real-stack check. Alerts are evaluated by Prometheus; no notification receiver is
+configured in the local sandbox.

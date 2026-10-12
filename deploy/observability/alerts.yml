@@ -25,3 +25,8 @@ groups:
         for: 30s
         labels: {severity: warning}
         annotations: {summary: "Shared quotas use the configured Redis failure policy"}
+      - alert: VMCPScrapeFailed
+        expr: up{job=~"vmcp-(data|control)-plane"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: "A vMCP plane metrics target cannot be scraped"}
