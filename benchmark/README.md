@@ -260,7 +260,7 @@ separate database. Redis AOF is persisted for local restart experiments. This is
 one PostgreSQL server, so it demonstrates gateway replication, **not database HA**.
 The stack does not provision the tenant router,
 HTTPS SIEM sink, external immutable archive or OTLP/Grafana infrastructure. Their
-controls and remaining production work are documented in the main [roadmap](../README.md#roadmap-to-production-readiness).
+controls and remaining production work are documented in the main [roadmap](../maintainer/Production-Roadmap.md).
 
 Realm import runs on an empty realm. Editing the JSON does not overwrite an
 existing Keycloak realm; use its admin console or deliberately reset demo volumes.

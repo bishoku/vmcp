@@ -1,6 +1,6 @@
-# MCP network security — P02
+# MCP network security
 
-P02 adds operator-controlled ingress and outbound network boundaries. These checks apply to MCP traffic and upstream OAuth token fetching; they do not provide process sandboxing, tenant isolation or prompt-injection protection.
+vMCP enforces operator-controlled ingress and outbound network boundaries. These checks apply to MCP traffic and upstream OAuth token fetching; they do not provide process sandboxing, tenant isolation or prompt-injection protection.
 
 ## Ingress contract
 
@@ -8,7 +8,7 @@ All MCP POST, GET and DELETE routes validate supplied Origin and explicit MCP-Pr
 
 Only `2025-06-18` explicit protocol headers are accepted. Duplicate, empty or unsupported supplied headers return HTTP 400; a missing header uses the known session's version. An initialize request may still propose an unsupported version in its JSON body and receive the supported version, as defined by negotiation.
 
-POST requires application/json content type (optional UTF-8 charset) and Accept containing both application/json and text/event-stream with nonzero quality. GET requires text/event-stream. Media failures return 415 or 406. Authentication and virtual-server/session ownership checks apply to GET even though server-initiated streaming is still unsupported and returns 405. POST bodies retain the 4 MiB limit. DELETE retains authenticated session ownership checks. Shared JWT-binding subject isolation remains P03.
+POST requires application/json content type (optional UTF-8 charset) and Accept containing both application/json and text/event-stream with nonzero quality. GET requires text/event-stream. Media failures return 415 or 406. GET opens an authenticated, session-scoped SSE stream for notifications and replay; see [delivery and reconnect behavior](MCP_DELIVERY.md). Authentication and virtual-server/session ownership checks apply to GET. POST bodies retain the 4 MiB limit. DELETE retains authenticated session ownership checks. Sessions are bound to the authenticated credential and verified issuer/subject where applicable; see [Authorization consistency](AUTHORIZATION_CONSISTENCY.md).
 
 ## Outbound policy
 
@@ -52,18 +52,4 @@ docker compose -f deploy/docker-compose.yml up -d --force-recreate control-plane
 
 The example IP is not portable; do not assume it is your Docker host. If both IPv4 and IPv6 answers exist, approve each legitimate address. Do not use `0.0.0.0/0` or `::/0` to make development setup convenient. Tests explicitly authorize only loopback fixtures in test processes; security tests reset that grant to verify denial defaults. Real deployments inherit no test grants.
 
-A controlled restart is necessary when changing operator policy. Existing clients/token sources capture settings when constructed; this change does not implement dynamic policy revocation of open sessions/connections. Credential/configuration invalidation and authorization freshness remain P03.
-
-## Regression coverage
-
-- `core/internal/netpolicy/egress_test.go`: default address denials, explicit private/loopback grants, mapped/transition forms, mixed DNS answers, rebinding with direct IP dialing, exact host restrictions, invalid configuration, credential-bearing URLs, redirects/proxies, TLS trust and hostname verification.
-- `core/internal/virtual/ingress_test.go`: origins across POST/GET/DELETE, native clients, duplicate/version headers, media negotiation, body limit, GET authentication and session ownership across methods.
-- `core/internal/upstream/sse_test.go`: same-origin legacy interoperability, cross-origin endpoint credential-exfiltration prevention, denied loopback over both transports.
-- `core/internal/oauthtoken/oauthtoken_test.go`: denied token destination receives no client credentials.
-- Existing PostgreSQL/Redis integration, OAuth, CA/mTLS and discovery tests continue exercising approved paths.
-
-These are implementation regression checks, not a penetration test or full MCP certification. The remaining phases retain their own release gates.
-
-### Verification result
-
-On 10 October 2026, `go test -race -count=1 -json ./...` passed with **253 test/subtest pass events, zero failures and zero skips**, using isolated PostgreSQL 17 and Redis 7. The suite includes `core/internal/controlplane/network_security_test.go`, verifying that connection tests, refresh/discovery, apply preflight and health/fallback probes cannot contact a denied destination. `go vet ./...`, `git diff --check` and `docker compose -f deploy/docker-compose.yml config --quiet` passed. The temporary full test log is `/tmp/vmcp-p02-tests.jsonl`. No frontend code changed; frontend checks were not rerun. Temporary test containers were removed after verification. P03 has not been started.
+A controlled restart is necessary when changing operator policy. Existing clients/token sources capture settings when constructed; this change does not implement dynamic policy revocation of open sessions/connections. For credential/configuration invalidation and authorization freshness, see [Authorization consistency](AUTHORIZATION_CONSISTENCY.md).

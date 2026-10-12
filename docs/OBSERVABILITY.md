@@ -1,4 +1,4 @@
-# Operations and measured baseline (P06)
+# Operations and measured baseline
 
 Both planes serve Prometheus text at `/metrics`. Restrict this endpoint to the
 monitoring network. HTTP histogram labels are one of `api`, `mcp`, `probe` or
@@ -69,7 +69,7 @@ never a session/configuration/audit source of truth. Independent local counters
 can multiply allowed throughput by replica count. Automated regression tests
 exercise quota outage, listener termination/reconnection, pool exhaustion and
 snapshot freshness; actual PostgreSQL primary promotion/backup restore remains
-part of P13 deployment testing.
+part of [deployment acceptance](PRODUCTION_DEPLOYMENT.md#availability-and-disaster-recovery-acceptance).
 
 ## Virtual server and upstream metrics
 

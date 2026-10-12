@@ -42,6 +42,6 @@ Git and applies it from CI; secrets (upstream headers, client keys) are set sepa
 
 ## Calling the data plane
 
-Not part of `/api/v1`: MCP clients speak Streamable HTTP (or legacy SSE) to
+Not part of `/api/v1`: MCP clients speak Streamable HTTP to
 `/mcp/v1/virtual/{slug}` with `Authorization: Bearer <agent-key>` or an IdP-issued JWT.
 See [Agent keys](Agent-Keys-and-Authentication.md) and [OAuth for agents](OAuth-for-Agents.md). RFC 9728 discovery is served at `/.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}`.

@@ -1,4 +1,4 @@
-# Resources and prompts (P09)
+# Resources and prompts
 
 The 2025-06-18 gateway exposes explicitly selected resources, URI templates and
 prompts. Tool selection grants no resource or prompt access. The implementation
@@ -68,7 +68,7 @@ watchers to any available replica. Each watcher initializes a separate physical
 session, subscribes, and receives unsolicited changes over Streamable HTTP GET
 or legacy SSE. Only the selected URI is forwarded. Encrypted hints are appended
 atomically with metadata audit evidence to the session's durable GET stream;
-Last-Event-ID and session ownership rules from P08 apply. A hint can be queued
+Last-Event-ID and session ownership rules from the delivery contract apply. A hint can be queued
 before the client opens GET. PostgreSQL fencing rejects superseded workers.
 
 Limits are 32 subscriptions cluster-wide and 16 per session. Each replica runs
@@ -77,7 +77,7 @@ including during handshake. Workers rotate after 65 seconds; interrupted streams
 are reconnected. A crashed replica is replaced after lease expiry; update hints
 may be missed during physical reconnect, so clients should refresh subscribed
 resources after reconnect. Hints are not an exactly-once change feed. Replay is
-bounded by P08's stream limits and 15-minute retention.
+bounded by the delivery stream limits and 15-minute retention.
 
 Subscription grants expire after 15 minutes; clients renew by subscribing again.
 Unsubscribe deletes the shared grant and stops its physical watcher within about
@@ -86,13 +86,14 @@ selection removal and expired/revoked agent keys stop watchers. Policy/key chang
 also depend on snapshot freshness (default 30 seconds). JWT-backed watchers retain
 the accepted subscription grant until its expiry or binding/session revocation;
 every client GET/reply still revalidates its current JWT. Arbitrary provider JWT
-early revocation is not supplied by P09.
+early revocation is not supplied by catalog support.
 
 Catalog changes observed during active calls enqueue control-plane discovery;
 the existing 30-second catalog polling fallback covers idle upstreams. Revision
 changes generate deduplicated resource/prompt list notifications on GET streams.
-A complete platform still needs the P10 client-feature and P11 privacy/identity
-controls; P09 does not make the application production ready by itself.
+Review [client permissions](MCP_CLIENT_FEATURES.md) and
+[privacy and identity controls](SECURITY_OPERATIONS.md) alongside catalog settings.
+Catalog support alone does not establish production readiness.
 
 Regression coverage includes `internal/e2e/catalog_test.go` (real PostgreSQL,
 two replicas, namespace isolation, template routing, PII/binary policy and

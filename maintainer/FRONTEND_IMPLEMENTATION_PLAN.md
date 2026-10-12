@@ -164,7 +164,7 @@ F03 completed 2026-10-11:
   and MCP responses; the SDK unit test exercises actual SDK framing. Full-stack,
   responsive and broader accessibility checks remain F04. No running demo images
   or services were rebuilt/restarted; rebuild web and reload its proxy to try F03.
-- See [Connections and setup](Connections-and-Setup.md) for behavior, security
+- See [Connections and setup](../docs/Connections-and-Setup.md) for behavior, security
   boundaries, CORS configuration, pagination and verification limitations.
 
 
@@ -211,5 +211,5 @@ F04 completed 2026-10-11:
   accessibility certification or automated pixel baseline. Live smoke uses token
   login and API fixture creation; SSO, UI-only provisioning and adverse-network
   journeys still need broader end-to-end coverage. Configuration/health remains
-  snapshot data, not live traffic. See [Connections and setup](Connections-and-Setup.md)
+  snapshot data, not live traffic. See [Connections and setup](../docs/Connections-and-Setup.md)
   for operational semantics and repeatable test commands.

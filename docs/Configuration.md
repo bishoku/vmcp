@@ -52,7 +52,7 @@ Both services expose `GET /healthz` (liveness) and `GET /readyz`. Control-plane 
 
 ## Tests only
 
-`VMCP_TEST_DATABASE_URL`, `VMCP_TEST_REDIS_URL`: see [Development](Development.md).
+`VMCP_TEST_DATABASE_URL`, `VMCP_TEST_REDIS_URL`: see [Development](../maintainer/Development.md).
 
 ## MCP network policy
 
@@ -62,7 +62,7 @@ Set the same egress policy on both services and restart after changes. See [MCP 
 
 Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status` expose failure counters and incomplete operations. Read [Audit durability](AUDIT_DURABILITY.md) before choosing best-effort mode or rolling back migration 18.
 
-### P05 resource and drain limits
+### Resource and drain limits
 
 `VMCP_DRAIN_TIMEOUT` defaults to `75s` and accepts `65s`–`2m`. On SIGTERM the
  data plane rejects new admissions and readiness returns 503, while admitted
@@ -71,7 +71,7 @@ Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status
  sessions retire, background producers stop, audit buffers flush, and pools close.
  Compose grants 105 seconds; increase that when increasing the drain timeout
  (allow at least another 15 seconds for cancellation and audit flushing).
- A killed process can leave durable incomplete admissions; P04 recovery evidence
+ A killed process can leave durable incomplete admissions; recovery evidence
  remains available. Shutdown does not revoke sessions stored for other nodes.
 
 Limits are currently fixed per process: 10,000 cached sessions, 1,024 concurrent

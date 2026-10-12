@@ -91,13 +91,13 @@ Audit filters debounce reads and protect against out-of-order responses.
 
 Run `npm --prefix web run <script>` with each of `test`, `lint`, `build`,
 `validate:api` and `test:browser` for frontend verification.
-Browser tests use mocked APIs; live-stack and responsive/accessibility verification
-remain in F04 of [the frontend plan](FRONTEND_IMPLEMENTATION_PLAN.md).
+Browser tests use mocked APIs; the separate `test:live` suite exercises a disposable
+stack. See the verification instructions below and the [implementation history](FRONTEND_IMPLEMENTATION_PLAN.md).
 
 
 ### Guided setup and connections
 
-See [Connections and setup](Connections-and-Setup.md) for the configuration flow,
+See [Connections and setup](../docs/Connections-and-Setup.md) for the configuration flow,
 focused virtual-server views, explicit SDK verification and browser CORS setup.
 The MCP SDK is now a runtime dependency; its verification module loads only on
 request. Playwright sets an explicit loopback gateway URL and mocks MCP traffic.
@@ -109,3 +109,75 @@ The production web image listens on port 8080 as an unprivileged user. Set
 a public `/usr/share/nginx/html/runtime-config.js` containing
 `window.__VMCP_CONFIG__ = {"publicGatewayURL":"https://mcp.example.com"};` to reuse
 one image across environments. The Helm chart manages this ConfigMap for you.
+
+
+## Verification scope
+
+Unit/component regressions cover relationship semantics, inactive credentials,
+anonymous access, alias/policy display, missing objects, partial failures, large
+edge sets, saved views, setup steps, activity windows and SDK message sequences.
+Chromium regressions cover keyboard inspection, configuration deep links, dirty
+navigation and deliberate discovery using a separate gateway credential.
+`python3 benchmark/test_gateway_cors.py` runs an isolated Nginx CORS regression
+with Docker and removes its temporary container. It does not modify the demo stack.
+These checks do not replace live-stack, responsive or accessibility testing.
+
+
+
+
+## Frontend verification
+
+From the repository root:
+
+```sh
+npm --prefix web run test
+npm --prefix web run lint
+npm --prefix web run build
+npm --prefix web run validate:api
+npm --prefix web run test:browser
+npm --prefix web run test:live
+```
+
+Install dependencies with `npm --prefix web ci` and install Chromium with
+`cd web && npx playwright install chromium` before browser checks. Standard browser
+tests mock API responses to exercise draft recovery, permissions, keyboard flows,
+audit investigation and layouts at 375/768/1440px. They capture screenshots in
+`web/test-results/` and check selected theme contrast pairs; they are not a complete
+accessibility audit or pixel-diff suite.
+
+`test:live` requires Python 3, Docker with Compose supporting `--wait` and JSON
+configuration, and enough capacity to build/run the full demo. It resolves
+`benchmark/compose.yaml` into a uniquely named project with new volumes, loopback
+ports, network and build image tags. It uses development-only synthetic credentials.
+The default isolated subnet is `172.30.73.0/24`; set `VMCP_UI_TEST_SUBNET` to another
+unused private CIDR if needed. Do not run concurrent live tests on the same subnet.
+The test seeds a real upstream, resource/prompt selection and key through the API,
+then verifies login and MCP discovery from the built UI in Chromium. It exercises
+both configured data planes behind the gateway, but does not assert every request
+reaches a different replica or test SSO. Screenshots are in `web/test-results-live/`.
+A finally block removes its containers, network, volumes and image tags, including
+on failure; existing demo data and images are not used as test state. An externally
+terminated Python process may require cleaning up the printed `vmcp-ui-*` project.
+Rebuild your manual demo's web image to see the new UI; running it was not changed
+by these tests.
+
+
+## Reproducible verification
+
+Use the Go version in `core/go.mod`, Node 22 or newer and Docker. From a clean
+checkout run `npm ci --prefix web` and `cd web && npx playwright install chromium`.
+Start disposable PostgreSQL 17 and Redis 7, set `VMCP_TEST_DATABASE_URL` (a role
+allowed to create/drop temporary test databases) and `VMCP_TEST_REDIS_URL`, then
+run `make verify`. Never point these variables at production infrastructure.
+The release command sets `VMCP_REQUIRE_INTEGRATION=1` and
+`VMCP_REQUIRE_SDK_INTEROP=1` and rejects skipped tests in the Go JSON results.
+CI runs the same race, vet, frontend, browser and OpenAPI checks, plus dependency
+and container scanning. `make images` builds planes and operational commands.
+
+The pinned TypeScript MCP SDK is `@modelcontextprotocol/sdk` **1.32.1**. Its real
+HTTP client negotiates **2025-06-18**, initializes, pings, lists/calls tools and
+terminates a gateway session in `TestPinnedTypeScriptSDKInterop`. This does not
+certify every SDK feature or claim support for newer protocol revisions. The
+other integration tests cover bidirectional replay, resources/prompts and client
+feature negotiation with gateway fixtures. Update the pin deliberately and
+repeat compatibility tests. No March batching compatibility is advertised.

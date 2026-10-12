@@ -47,7 +47,7 @@ and ambiguous external effects do not migrate or become exactly once.
 5. Inspect/mask content and persist outcome. A missing outcome remains incomplete evidence; a failed client response does not prove the upstream side effect did not occur.
 
 Some catalog rejection paths still lack equivalent decision audit coverage; see the
-[production roadmap](../README.md#roadmap-to-production-readiness).
+[production roadmap](../maintainer/Production-Roadmap.md).
 
 ## Scope and deployment
 

@@ -106,20 +106,7 @@ with a last-check timestamp and an explicit refresh button. It does not poll or
 calculate session counts/traffic aggregates. No events does not prove no traffic;
 audit storage/retention/failures can affect visibility. Admissions without outcomes
 are not confirmed successes. **Open audit log** carries the virtual-server filter
-into the full event list. Audit grouping and richer correlation inspection remain
-in frontend phase F04.
-
-## Verification scope
-
-Unit/component regressions cover relationship semantics, inactive credentials,
-anonymous access, alias/policy display, missing objects, partial failures, large
-edge sets, saved views, setup steps, activity windows and SDK message sequences.
-Chromium regressions cover keyboard inspection, configuration deep links, dirty
-navigation and deliberate discovery using a separate gateway credential.
-`python3 benchmark/test_gateway_cors.py` runs an isolated Nginx CORS regression
-with Docker and removes its temporary container. It does not modify the demo stack.
-These checks do not replace live-stack, responsive or accessibility testing.
-
+into the full event list. For correlation and raw event inspection, see the audit investigation section below.
 
 ## Audit investigation and responsive management
 
@@ -144,39 +131,3 @@ Wide audit and management tables scroll within their cards. Focus rings and nati
 dialog keyboard behavior support keyboard operation. Catalog search narrows
 available resources/templates/prompts; it never removes saved selections. Test
 and refresh an upstream after correcting URL/credentials or connectivity failures.
-
-## Frontend verification
-
-From the repository root:
-
-```sh
-npm --prefix web run test
-npm --prefix web run lint
-npm --prefix web run build
-npm --prefix web run validate:api
-npm --prefix web run test:browser
-npm --prefix web run test:live
-```
-
-Install dependencies with `npm --prefix web ci` and install Chromium with
-`cd web && npx playwright install chromium` before browser checks. Standard browser
-tests mock API responses to exercise draft recovery, permissions, keyboard flows,
-audit investigation and layouts at 375/768/1440px. They capture screenshots in
-`web/test-results/` and check selected theme contrast pairs; they are not a complete
-accessibility audit or pixel-diff suite.
-
-`test:live` requires Python 3, Docker with Compose supporting `--wait` and JSON
-configuration, and enough capacity to build/run the full demo. It resolves
-`benchmark/compose.yaml` into a uniquely named project with new volumes, loopback
-ports, network and build image tags. It uses development-only synthetic credentials.
-The default isolated subnet is `172.30.73.0/24`; set `VMCP_UI_TEST_SUBNET` to another
-unused private CIDR if needed. Do not run concurrent live tests on the same subnet.
-The test seeds a real upstream, resource/prompt selection and key through the API,
-then verifies login and MCP discovery from the built UI in Chromium. It exercises
-both configured data planes behind the gateway, but does not assert every request
-reaches a different replica or test SSO. Screenshots are in `web/test-results-live/`.
-A finally block removes its containers, network, volumes and image tags, including
-on failure; existing demo data and images are not used as test state. An externally
-terminated Python process may require cleaning up the printed `vmcp-ui-*` project.
-Rebuild your manual demo's web image to see the new UI; running it was not changed
-by these tests.

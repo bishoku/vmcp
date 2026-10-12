@@ -1,4 +1,4 @@
-# Durable audit admission (P04)
+# Durable audit admission
 
 ## PostgreSQL baseline and guarantees
 
@@ -10,7 +10,7 @@ Transient connection, serialization, deadlock and availability failures retry wi
 
 Outcomes are acknowledged before a normal tool result is returned. Completion uses its own bounded context so client cancellation does not immediately erase the outcome of an admitted action. If the outcome cannot be stored, the gateway returns 503 and leaves a durable admission without an outcome. **The upstream action may already have completed. Do not blindly retry a non-idempotent tool because this response is 503.** Use the request ID and upstream records to reconcile.
 
-The external side effect and the audit outcome cannot be atomic. A crash immediately after admission may precede dispatch; a crash after dispatch may follow a successful side effect. Both leave detectable incomplete work. Recovery surfaces the persisted admission; it never automatically replays the tool or fabricates success. P03 authorization guards still apply before dispatch and retries. A denial after admission receives a denied outcome when persistence is available.
+The external side effect and the audit outcome cannot be atomic. A crash immediately after admission may precede dispatch; a crash after dispatch may follow a successful side effect. Both leave detectable incomplete work. Recovery surfaces the persisted admission; it never automatically replays the tool or fabricates success. Authorization guards still apply before dispatch and retries. A denial after admission receives a denied outcome when persistence is available.
 
 Strict mode has no in-memory admission queue to overflow and no local disk to fill. Database pool exhaustion, database disk-full and durability acknowledgement failure block admission. The PostgreSQL fault-injection test models disk-full with SQLSTATE `53100`; it does not fill a real filesystem. Backup, replication, failover and physical disk-failure exercises remain deployment responsibilities and later operational phases.
 

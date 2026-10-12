@@ -1,4 +1,4 @@
-# MCP delivery contract (P08)
+# MCP delivery contract
 
 The data-plane supports the 2025-06-18 contract. Initialized tools/call requests
 receive POST SSE; GET SSE carries tools/list_changed or resumes the original
@@ -41,8 +41,8 @@ admission budgets. Wake channels contain one coalesced signal.
 Replay expires after 15 minutes; cleanup removes at most 100 streams and 100
 terminal operations per tick. Capacity bounds are safety limits, not a measured
 throughput guarantee. Monitor PostgreSQL storage, WAL and latency under load.
-Payloads use the configured AES-GCM box; existing master-key rotation
-limitations remain until P11. Event payloads do not appear in audit metadata.
+Payloads use the configured AES-GCM box; use the [keyring and rotation procedure](SECURITY_OPERATIONS.md#encryption-upgrades-and-recovery)
+when changing encryption keys. Event payloads do not appear in audit metadata.
 
 Reconnects reauthenticate; live streams check identity, snapshot freshness and
 authoritative session state each second. Session termination closes a healthy
@@ -50,7 +50,8 @@ stream within about one second plus query scheduling. Key/policy revocation
 also depends on the existing snapshot freshness bound (30 seconds).
 Progress and client responses pass through PII masking; durable metadata audit
 writes precede forwarding. Unsupported client features return MethodNotFound;
-sampling, roots and elicitation are not advertised by P08.
+sampling, roots and elicitation require explicit permissions and client negotiation;
+see [Client features](MCP_CLIENT_FEATURES.md).
 
 ## Discovery and shutdown
 
@@ -58,7 +59,7 @@ Tool-list notifications seen on active physical POST/legacy SSE connections
 enqueue reconciliation. Two control-plane workers use shared SQL leases and
 audited discovery; enabled catalogs also refresh on a 30-second polling cycle.
 Configuration revision changes produce deduplicated downstream list-change
-events. P08 does not open idle upstream GET streams, so unsolicited physical
+events. The gateway does not open idle upstream GET streams, so unsolicited physical
 changes while idle rely on polling. This latency must not be described as
 instant upstream push synchronization.
 

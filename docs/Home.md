@@ -1,44 +1,67 @@
-# vMCP
+# vMCP documentation
 
-vMCP is an open-source gateway for the [Model Context Protocol](https://modelcontextprotocol.io). You register
-**upstream** MCP servers once and curate their tools, resources, templates and prompts into **virtual servers**: one endpoint per agent or team that
-exposes only the selected capabilities, with authentication, PII masking, auditing, tool policies, rate limits and
-failover in between.
+vMCP lets you register HTTP MCP servers and expose selected tools, resources and
+prompts through virtual servers. Agents connect to one endpoint with their own
+credentials; upstream credentials remain in the gateway.
+
+New to vMCP? Follow [Getting started](Getting-Started.md) for a local demo from
+installation to authenticated discovery. Already have a running instance? Use
+[Guided setup](Connections-and-Setup.md) to register upstreams and connect clients.
+Choose [Installation options](Deployment.md) for Docker, Kubernetes or published releases.
+
+vMCP is Beta / development. The supported MCP revision is 2025-06-18. Review
+[known limitations](FAQ.md#known-limitations) and the [production guide](PRODUCTION_DEPLOYMENT.md)
+before production use.
 
 ## Start here
 
-- [Getting started](Getting-Started.md): run it in five minutes
-- [Architecture](Architecture.md): control plane, data plane, PostgreSQL
-- [Configuration reference](Configuration.md): every environment variable
-- [Deployment](Deployment.md): production notes, scaling out
+- [Getting started](Getting-Started.md)
+- [Guided setup and client connections](Connections-and-Setup.md)
+- [Installation options](Deployment.md)
+- [Kubernetes quickstart](HELM_QUICKSTART.md)
+- [Install a published release](Release-Installation.md)
 
-## Concepts and features
+## Use vMCP
 
-- [Upstreams](Upstreams.md), [Upstream TLS](Upstream-TLS.md), and [Upstream OAuth](Upstream-OAuth.md)
-- [Virtual servers](Virtual-Servers.md): selecting, renaming and re-describing tools
-- [Tool policies](Tool-Policies.md): allow / deny / read-only
-- [Agent keys and authentication](Agent-Keys-and-Authentication.md) and [OAuth for agents](OAuth-for-Agents.md)
+- [Upstreams](Upstreams.md)
+- [Virtual servers](Virtual-Servers.md)
+- [Resources and prompts](MCP_CATALOGS.md)
+- [Agent keys and authentication](Agent-Keys-and-Authentication.md)
+- [OAuth for agents](OAuth-for-Agents.md)
 - [SSO and roles](SSO-and-RBAC.md)
+- [Tool policies](Tool-Policies.md)
 - [PII masking](PII-Masking.md)
-- [Audit log](Audit-Log.md)
-- [Resilience and high availability](Resilience-and-HA.md)
 - [Rate limits](Rate-Limits.md)
+- [Audit log](Audit-Log.md)
+- [FAQ and troubleshooting](FAQ.md)
+
+## Deploy and operate
+
+- [Production deployment](PRODUCTION_DEPLOYMENT.md)
+- [Security](Security.md)
+- [Network security](MCP_NETWORK_SECURITY.md)
+- [Upstream TLS](Upstream-TLS.md)
+- [Upstream OAuth](Upstream-OAuth.md)
+- [Resilience and high availability](Resilience-and-HA.md)
+- [Observability](OBSERVABILITY.md)
+- [Audit operations](AUDIT_OPERATIONS.md)
+- [Audit exporters](AUDIT_EXPORTERS.md)
+- [Security operations](SECURITY_OPERATIONS.md)
+- [Dedicated tenant operations](TENANT_OPERATIONS.md)
 
 ## Reference
 
+- [Architecture](Architecture.md)
+- [Configuration](Configuration.md)
 - [REST API and GitOps](REST-API.md)
-- [Security](Security.md)
-- [Development](Development.md)
-- [FAQ and troubleshooting](FAQ.md)
+- [MCP protocol compatibility](MCP_PROTOCOL_CONTRACT.md)
+- [SSE delivery and replay](MCP_DELIVERY.md)
+- [Negotiated client features](MCP_CLIENT_FEATURES.md)
+- [Authorization consistency](AUTHORIZATION_CONSISTENCY.md)
+- [Audit durability](AUDIT_DURABILITY.md)
 
-> The source of truth for the API is [`api/openapi.yaml`](https://github.com/bishoku/vmcp/blob/main/api/openapi.yaml).
+## Contribute
 
-## Protocol and operations
-
-- [MCP protocol contract](MCP_PROTOCOL_CONTRACT.md) and [bidirectional SSE delivery](MCP_DELIVERY.md)
-- [Resources and prompts](MCP_CATALOGS.md) and [negotiated client features](MCP_CLIENT_FEATURES.md)
-- [Audit durability](AUDIT_DURABILITY.md) and [SIEM/retention operations](AUDIT_OPERATIONS.md)
-- [Observability](OBSERVABILITY.md), [security operations](SECURITY_OPERATIONS.md) and [production deployment](PRODUCTION_DEPLOYMENT.md)
-- [Dedicated tenant operations](TENANT_OPERATIONS.md)
-- [Manual testing stack](../benchmark/README.md)
-- [Production roadmap](../README.md#roadmap-to-production-readiness)
+For source builds, tests, CI and publishing, see the repository's
+[Contributing guide](../CONTRIBUTING.md) and [maintainer documentation](../maintainer/README.md).
+The API contract is [OpenAPI](../api/openapi.yaml).

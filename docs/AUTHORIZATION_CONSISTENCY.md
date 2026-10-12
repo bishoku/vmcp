@@ -1,4 +1,4 @@
-# Authorization and session consistency (P03)
+# Authorization and session consistency
 
 ## Authorization freshness
 
@@ -45,4 +45,4 @@ Drain all old data-plane binaries, apply migrations through the control plane, t
 
 The gateway also implements durable audit admission, bidirectional SSE and negotiated
 client features. Deployment-specific HA/restore/load verification and the remaining
-[production roadmap](../README.md#roadmap-to-production-readiness) are still required.
+[production roadmap](../maintainer/Production-Roadmap.md) are still required.

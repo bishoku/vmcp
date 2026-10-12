@@ -1,7 +1,7 @@
-# Negotiated client features (P10)
+# Negotiated client features
 
-The gateway's supported protocol revision remains **2025-06-18**. This phase
-adds client request routing inside admitted tool/resource/prompt operations;
+The gateway's supported protocol revision is **2025-06-18**. Client requests
+are routed inside admitted tool/resource/prompt operations;
 it does not advertise later revisions or URL elicitation.
 
 | Primitive | Downstream client requirement | Operator permission | Behavior |
@@ -12,7 +12,7 @@ it does not advertise later revisions or URL elicitation.
 | elicitation/create | elicitation capability | clientFeatures.elicitation | June flat primitive forms; accept/decline/cancel retained |
 | logging/setLevel | logging server capability | Available with durable MCP delivery | Shared session threshold; configured on supported physical sessions |
 | notifications/message | logging server capability | Available with durable MCP delivery | Valid severity and bounded static data; original payload omitted |
-| completion/complete | selected prompt/template | Upstream completion capability | P09's curated routing |
+| completion/complete | selected prompt/template | Upstream completion capability | Curated catalog routing |
 
 Implementation: `config/client_features.go`, `virtual/client_features.go`,
 `virtual/roots.go`, `virtual/streams.go` and `upstream/duplex.go`. Migration 21

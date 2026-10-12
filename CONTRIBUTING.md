@@ -16,7 +16,7 @@ Thanks for helping! Bug reports, docs fixes and features are all welcome.
 
 Requirements: Go (see `core/go.mod`), Node 22+, Docker (PostgreSQL for tests).
 
-See [the reproducible verification workflow](docs/PRODUCTION_DEPLOYMENT.md).
+See [the reproducible verification workflow](maintainer/Development.md#reproducible-verification).
 Install web dependencies/browser, start disposable PostgreSQL and Redis, set both
 integration URLs and run `make verify`. It requires all database/Redis suites,
 runs the pinned MCP SDK fixture, and rejects skipped tests. Individual `go test`
@@ -35,10 +35,12 @@ By contributing you agree your work is licensed under Apache-2.0.
 ## Wiki publishing
 
 The GitHub Wiki is generated from `docs/*.md`, including `Home.md`, `_Sidebar.md`
-and `_Footer.md`. Edit documentation here: publishing replaces wiki Markdown pages
+and `_Footer.md`. Maintainer documents live in `maintainer/` and are not published
+to the wiki. Edit user documentation here: publishing replaces wiki Markdown pages
 and removes pages absent from `docs/`, while preserving other wiki assets.
 
-The `publish-wiki` workflow runs on every push to `main`. To publish documentation
+The `publish-wiki` workflow runs on pushes to `main` that change `docs/` or the
+wiki publishing scripts/workflow. To publish documentation
 without a release, select **Actions → publish-wiki → Run workflow** on `main`.
 It creates commits only in the wiki repository; it creates no release or tag.
 Unchanged content produces no wiki commit.
@@ -74,5 +76,5 @@ as the `core-test-results` artifact, including failed test runs.
 
 Pushing a `vMAJOR.MINOR.PATCH` tag runs `publish-docker-hub`, verifies that commit
 through reusable CI, and publishes the Helm runtime images under `barishoku`.
-See [Docker Hub setup and Helm image overlays](docs/DOCKER_HUB_PUBLISHING.md) for
+See [Docker Hub setup and Helm image overlays](maintainer/DOCKER_HUB_PUBLISHING.md) for
 the required repository secret, image list and versioning procedure.

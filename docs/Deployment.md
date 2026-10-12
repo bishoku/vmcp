@@ -1,8 +1,41 @@
-# Deployment
+# Installation options
 
-For a local UI-first walkthrough with Keycloak, Redis, two data planes and three
-MCP servers, use [the manual testing stack](../benchmark/README.md). The stack is
-development-only and does not constitute an HA PostgreSQL deployment.
+| Your goal | Recommended path |
+|---|---|
+| Explore the UI with sample servers | [Getting started](Getting-Started.md) |
+| Run core services with your own HTTP upstream | Local Docker installation below |
+| Try Kubernetes with bundled dependencies | [Kubernetes quickstart](HELM_QUICKSTART.md) |
+| Install a versioned packaged chart and images | [Release installation](Release-Installation.md) |
+| Operate a production environment | [Production deployment](PRODUCTION_DEPLOYMENT.md) |
+
+## Local Docker installation
+
+Requires Git and Docker with Compose; the images build from source. From a clone:
+
+```sh
+git clone https://github.com/bishoku/vmcp.git
+cd vmcp
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml ps
+```
+
+Open **http://localhost:3000** and sign in with `dev-admin-token`. The API is at
+`http://localhost:8081/api/v1`; MCP endpoints use
+`http://localhost:8080/mcp/v1/virtual/{slug}`. Wait for both planes' `/readyz`
+endpoints to return success before configuring clients.
+
+This stack contains PostgreSQL, the planes and the UI, with no sample upstreams.
+Use [Guided setup](Connections-and-Setup.md) with your own HTTP MCP endpoint.
+Internal/loopback upstreams require explicit outbound network grants on both
+planes; follow [network configuration](MCP_NETWORK_SECURITY.md#development-and-deployment-compatibility).
+Browser verification across UI/gateway origins also requires a CORS-capable proxy;
+see [browser verification](Connections-and-Setup.md#deliberate-browser-verification).
+The [guided demo](Getting-Started.md) already includes that proxy and sample servers.
+
+The Compose file uses public development secrets. Set your own admin token and
+master key before exposing the services; see [Security](Security.md).
+Stop with `docker compose -f deploy/docker-compose.yml down`. Adding `-v` also
+removes the database volume and permanently deletes this stack's stored data.
 
 ## Minimum production checklist
 
@@ -51,10 +84,10 @@ acceptance gates, not guarantees supplied by the chart.
 Besides database backups, `GET /api/v1/export` produces a declarative document (upstreams and virtual servers; no secrets)
 that `POST /api/v1/apply` can load into another environment ([REST API and GitOps](REST-API.md)).
 
-## P03 session schema upgrade
+## Legacy session schema upgrade
 
 Drain old data-plane nodes before migration 17, replace every data-plane binary, and have clients initialize new sessions before restoring traffic. Legacy sessions lack a trustworthy subject binding and are rejected. Mixed versions and rollback need coordinated handling; see [Authorization and session consistency](AUTHORIZATION_CONSISTENCY.md#upgrade-and-rollback).
 
-## P04 audit schema upgrade
+## Legacy audit schema upgrade
 
 Apply schema 18 before starting the new data plane. Drain and replace all legacy writers before claiming strict coverage. Strict tool admission requires durable PostgreSQL storage; failures return 503. Archive audit rows and exporter checkpoints before rollback, which removes lifecycle metadata and started rows. See [Audit durability](AUDIT_DURABILITY.md#retention-export-and-rollout).

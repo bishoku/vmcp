@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'scripts/prepare-wiki.py'
+      - 'scripts/prepare-wiki.sh'
+      - 'scripts/test_prepare_wiki.py'
+      - '.github/workflows/wiki.yml'
   workflow_dispatch:
 
 permissions:

@@ -1,24 +1,11 @@
-# Deployment and release gates
+# Production deployment
 
-## Reproducible verification
+## Before you deploy
 
-Use the Go version in `core/go.mod`, Node 22 or newer and Docker. From a clean
-checkout run `npm ci --prefix web` and `cd web && npx playwright install chromium`.
-Start disposable PostgreSQL 17 and Redis 7, set `VMCP_TEST_DATABASE_URL` (a role
-allowed to create/drop temporary test databases) and `VMCP_TEST_REDIS_URL`, then
-run `make verify`. Never point these variables at production infrastructure.
-The release command sets `VMCP_REQUIRE_INTEGRATION=1` and
-`VMCP_REQUIRE_SDK_INTEROP=1` and rejects skipped tests in the Go JSON results.
-CI runs the same race, vet, frontend, browser and OpenAPI checks, plus dependency
-and container scanning. `make images` builds planes and operational commands.
-
-The pinned TypeScript MCP SDK is `@modelcontextprotocol/sdk` **1.32.1**. Its real
-HTTP client negotiates **2025-06-18**, initializes, pings, lists/calls tools and
-terminates a gateway session in `TestPinnedTypeScriptSDKInterop`. This does not
-certify every SDK feature or claim support for newer protocol revisions. The
-other integration tests cover bidirectional replay, resources/prompts and client
-feature negotiation with gateway fixtures. Update the pin deliberately and
-repeat compatibility tests. No March batching compatibility is advertised.
+Choose a version and follow [Release installation](Release-Installation.md) for
+packaged charts and digest-pinned images. Validate the target environment with
+the availability and recovery procedures below. Source-build and release
+verification instructions are in the [maintainer guide](../maintainer/Development.md).
 
 ## Kubernetes deployment
 
@@ -88,15 +75,16 @@ calling a deployment production ready.
 
 ## Upgrade, rollback and support
 
-Release CI produces Linux amd64/arm64 binaries and SHA-256 manifests as artifacts;
-it does not automatically publish or deploy them. Verify checksums and image
-scans before installation. Review migration SQL and run the migration Job once
+Published releases provide packaged Helm charts, image inventories and checksums;
+standalone Linux binaries are retained separately as Actions artifacts. See
+[Release installation](Release-Installation.md). Publishing a release does not deploy it.
+Verify checksums and image references before installation. Review migration SQL and run the migration Job once
 before new planes. Preserve old recovery keys and follow
-`SECURITY_OPERATIONS.md` for reader-first ciphertext upgrades. Down migrations
+[Security operations](SECURITY_OPERATIONS.md) for reader-first ciphertext upgrades. Down migrations
 can destroy newer feature data; restoring an old binary alone is not a safe
 rollback after schema/envelope changes. Test a database restore or explicitly
 reviewed backward-compatible downgrade in isolation first.
 
-No production SLA or certification is declared. See `SECURITY.md` for the current
-security reporting/support policy and `AUDIT_OPERATIONS.md` for evidence owners,
+No production SLA or certification is declared. See [security reporting policy](../SECURITY.md) for the current
+security reporting/support policy and [Audit operations](AUDIT_OPERATIONS.md) for evidence owners,
 restricted database roles and externally anchored immutable retention.

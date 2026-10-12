@@ -34,6 +34,27 @@ It reloads via PostgreSQL `LISTEN/NOTIFY`. Check data-plane logs and that it use
 ## Stored secrets stopped working
 `VMCP_MASTER_KEY` differs from the key that encrypted them (both services must share it).
 
+## Browser verification fails, but a native client works
+
+Check the configured public gateway URL and use HTTPS for both the UI and gateway
+when the UI is served over HTTPS. For separate origins, the data-plane origin
+allowlist and the reverse proxy's CORS responses must both permit the exact UI
+origin. The gateway does not add CORS headers itself. See
+[browser verification setup](Connections-and-Setup.md#deliberate-browser-verification).
+
+## Internal upstream connections are denied
+
+Grant the upstream's actual private IP/subnet with `VMCP_EGRESS_ALLOW_CIDRS` on
+both planes and restart them. A hostname allowlist alone does not authorize a
+private address. Container `localhost` points to that container, not your host.
+Use the final endpoint URL; redirects are rejected. See [Network security](MCP_NETWORK_SECURITY.md).
+
+## I created an agent key, but the server still allows anonymous access
+
+Edit the virtual server and enable authentication required. Issuing a key does
+not change `authRequired:false`. Also check that the key grants access to the
+intended virtual server. See [Authentication](Agent-Keys-and-Authentication.md).
+
 ## Known limitations
 
 - Protocol baseline is 2025-06-18; newer revisions and March batching are not advertised.

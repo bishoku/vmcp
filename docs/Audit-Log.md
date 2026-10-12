@@ -23,6 +23,6 @@ Administrative mutations and their identifier-only audit records commit in the s
 See [Audit durability](AUDIT_DURABILITY.md) for exact acknowledgement guarantees, outage and shutdown behavior, reconciliation, migration/rollback requirements and SIEM limitations. See [audit operations](AUDIT_OPERATIONS.md) for the separate
 independent HTTPS/Kafka/RabbitMQ exporters, stable event IDs, legal holds and consumer-aware retention. Some
 early catalog validation/denial paths still lack equivalent decision records;
-complete denial coverage is on the [production roadmap](../README.md#roadmap-to-production-readiness).
+complete denial coverage is on the [production roadmap](../maintainer/Production-Roadmap.md).
 
 Configure destinations with [independent audit exporters](AUDIT_EXPORTERS.md).
