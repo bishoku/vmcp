@@ -1,0 +1,50 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") }}{{ fail "ServiceMonitor CRD is required" }}{{ end }}
+{{- range $c := list "control-plane" "data-plane" }}
+{{- $enabled := index $.Values (index (dict "control-plane" "controlPlane" "data-plane" "dataPlane") $c) }}
+{{- if $enabled.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "vmcp.name" (dict "root" $ "component" $c) }}
+  labels: {{ toYaml $.Values.monitoring.serviceMonitor.labels | nindent 4 }}
+spec:
+  jobLabel: app.kubernetes.io/component
+  selector:
+    matchLabels:
+      {{- include "vmcp.labels" (dict "root" $ "component" $c) | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ $.Values.monitoring.serviceMonitor.scrapeTimeout }}
+      relabelings:
+        - {targetLabel: job, replacement: {{ printf "vmcp-%s" $c | quote }}}
+{{- end }}{{- end }}
+{{- end }}
+{{- if .Values.monitoring.prometheusRule.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/PrometheusRule") }}{{ fail "PrometheusRule CRD is required" }}{{ end }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "vmcp.fullname" . }}
+  labels: {{ toYaml .Values.monitoring.prometheusRule.labels | nindent 4 }}
+spec:
+  {{- (.Files.Get "files/alerts.yml" | fromYaml | toYaml) | nindent 2 }}
+{{- end }}
+{{- if .Values.monitoring.dashboards.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vmcp.fullname" . }}-dashboards
+  {{- with .Values.monitoring.dashboards.namespace }}
+  namespace: {{ . | quote }}
+  {{- end }}
+  labels: {{ toYaml .Values.monitoring.dashboards.labels | nindent 4 }}
+data:
+  operations.json: {{ .Files.Get "files/dashboard.json" | quote }}
+  mcp.json: {{ .Files.Get "files/mcp-dashboard.json" | quote }}
+{{- end }}

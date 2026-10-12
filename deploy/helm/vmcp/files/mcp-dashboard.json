@@ -1,0 +1,236 @@
+{
+  "title": "vMCP virtual servers and upstream tools",
+  "uid": "vmcp-mcp",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "vmcp-prometheus"
+        }
+      },
+      {
+        "name": "virtual_server",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(vmcp_virtual_tool_calls_total, virtual_server)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "upstream",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(vmcp_upstream_requests_total, upstream)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Virtual server HTTP requests/s",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (virtual_server,outcome) (rate(vmcp_virtual_requests_total{virtual_server=~\"$virtual_server\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Virtual tool calls/s",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (virtual_server,tool,outcome) (rate(vmcp_virtual_tool_calls_total{virtual_server=~\"$virtual_server\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Virtual tool p95 seconds",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le,virtual_server,tool) (rate(vmcp_virtual_tool_calls_duration_seconds_bucket{virtual_server=~\"$virtual_server\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Active virtual tool calls",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (virtual_server,tool) (vmcp_virtual_tool_calls_active{virtual_server=~\"$virtual_server\"})",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Upstream attempts/s",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (upstream,method,tool,outcome) (rate(vmcp_upstream_requests_total{upstream=~\"$upstream\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Upstream p95 seconds",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le,upstream,method,tool) (rate(vmcp_upstream_requests_duration_seconds_bucket{upstream=~\"$upstream\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Active upstream attempts",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (upstream,method,tool) (vmcp_upstream_requests_active{upstream=~\"$upstream\"})",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Metric label overflows",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "expr": "sum(vmcp_operation_label_overflows_total)",
+          "refId": "A",
+          "legendFormat": "{{virtual_server}} {{upstream}} {{method}} {{tool}} {{outcome}}"
+        }
+      ]
+    }
+  ]
+}

@@ -79,7 +79,7 @@ services:
       args:
         VITE_PUBLIC_GATEWAY_URL: ${VMCP_PUBLIC_URL:-http://localhost:8080}
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       - control-plane
 

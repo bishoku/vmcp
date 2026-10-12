@@ -80,7 +80,7 @@ by 20 seconds and can be cancelled. Session DELETE is attempted on completion,
 and the SDK transport is closed in all cases. Aborted/unreachable sessions may
 remain until gateway expiry when cleanup cannot reach the server.
 
-Configure `VITE_PUBLIC_GATEWAY_URL` at UI build time. Missing configuration or a
+Configure `runtime.publicGatewayURL` in Helm, or `VITE_PUBLIC_GATEWAY_URL` at UI build time for development. Missing configuration or a
 disabled virtual server blocks verification. An HTTPS UI also needs an HTTPS
 browser-reachable gateway to avoid mixed-content blocking.
 

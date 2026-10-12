@@ -255,7 +255,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
               </div>
             )}
 
-            {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to set VITE_PUBLIC_GATEWAY_URL; the path above is not a complete connection URL.</p>}
+            {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to configure the public gateway URL; the path above is not a complete connection URL.</p>}
             <section className="mt-6 rounded border border-line p-4"><h3 className="font-semibold">Client feature permissions</h3><p className="text-xs text-ink-muted">Also requires client negotiation. The MCP client controls approval; sampling uses the client’s model access. Roots never expose gateway files.</p>{(['sampling','roots','elicitation'] as const).map(feature=><label key={feature} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>{feature}</label>)}</section>
  <CatalogPicker upstreams={upstreams} value={draft.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">

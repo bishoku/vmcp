@@ -1,0 +1,35 @@
+{{- $v := .Values -}}
+{{- if and $v.web.enabled (not $v.controlPlane.enabled) }}{{ fail "web requires controlPlane.enabled" }}{{ end -}}
+{{- if gt (int $v.runtime.pool.minConnections) (int $v.runtime.pool.maxConnections) }}{{ fail "pool minConnections must not exceed maxConnections" }}{{ end -}}
+{{- if and $v.ingress.enabled (eq $v.ingress.webHost $v.ingress.gatewayHost) }}{{ fail "use distinct ingress webHost and gatewayHost" }}{{ end -}}
+{{- range $name, $cfg := (include "vmcp.components" . | fromJson) -}}
+{{- if $cfg.enabled -}}
+{{- if and $v.imagePolicy.requireDigest (not (regexMatch "@sha256:[a-f0-9]{64}$" $cfg.image)) }}{{ fail (printf "%s.image must be pinned by SHA-256 digest" $name) }}{{ end -}}
+{{- if gt (int $cfg.autoscaling.minReplicas) (int $cfg.autoscaling.maxReplicas) }}{{ fail (printf "%s autoscaling min exceeds max" $name) }}{{ end -}}
+{{- $minimumReplicas := int $cfg.replicas }}{{ if $cfg.autoscaling.enabled }}{{ $minimumReplicas = int $cfg.autoscaling.minReplicas }}{{ end -}}
+{{- if and $cfg.pdb.enabled (kindIs "float64" $cfg.pdb.minAvailable) (ge (int $cfg.pdb.minAvailable) $minimumReplicas) }}{{ fail (printf "%s PDB must permit a voluntary disruption at its minimum replica count" $name) }}{{ end -}}
+{{- if and $cfg.autoscaling.enabled (not $cfg.resources.requests.cpu) }}{{ fail (printf "%s CPU autoscaling requires resources.requests.cpu" $name) }}{{ end -}}
+{{- range $key, $_ := $cfg.podLabels }}{{ if has $key (list "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/component") }}{{ fail (printf "%s podLabels cannot override chart selectors" $name) }}{{ end }}{{ end -}}
+{{- $managed := list "VMCP_ADMIN_TOKEN" "VMCP_AGENT_OIDC_ALGS" "VMCP_AGENT_OIDC_AUDIENCE" "VMCP_AGENT_OIDC_DISCOVERY_URL" "VMCP_AGENT_OIDC_ISSUER" "VMCP_ALLOWED_ORIGINS" "VMCP_AUDIT_EXPORT_CONSUMER" "VMCP_AUDIT_EXPORT_DATABASE_URL" "VMCP_AUDIT_MODE" "VMCP_AUDIT_RETENTION_DAYS" "VMCP_AUTH_MAX_STALE" "VMCP_CONTROL_PLANE_URL" "VMCP_CP_ADDR" "VMCP_DATABASE_URL" "VMCP_DB_ACQUIRE_TIMEOUT" "VMCP_DB_LISTENER_URL" "VMCP_DB_MAX_CONNS" "VMCP_DB_MIN_CONNS" "VMCP_DP_ADDR" "VMCP_DRAIN_TIMEOUT" "VMCP_EGRESS_ALLOW_CIDRS" "VMCP_EGRESS_ALLOW_HOSTS" "VMCP_MASTER_KEY" "VMCP_NODE_ID" "VMCP_OIDC_ADMIN_GROUPS" "VMCP_OIDC_CLIENT_ID" "VMCP_OIDC_CLIENT_SECRET" "VMCP_OIDC_DISCOVERY_URL" "VMCP_OIDC_EDITOR_GROUPS" "VMCP_OIDC_GROUPS_CLAIM" "VMCP_OIDC_ISSUER" "VMCP_OIDC_REDIRECT_URL" "VMCP_OIDC_VIEWER_GROUPS" "VMCP_PUBLIC_URL" "VMCP_REDIS_FAILURE_POLICY" "VMCP_REDIS_URL" "VMCP_SKIP_MIGRATIONS" "VMCP_TENANT_ID" "VMCP_TRUSTED_PROXIES" -}}
+{{- range $key, $_ := $cfg.env }}{{ if has $key $managed }}{{ fail (printf "%s.env.%s is chart-managed" $name $key) }}{{ end }}{{ end -}}
+{{- range $key, $_ := $cfg.secretEnv }}{{ if has $key $managed }}{{ fail (printf "%s.secretEnv.%s is chart-managed" $name $key) }}{{ end }}{{ if hasKey $cfg.env $key }}{{ fail (printf "%s %s appears in env and secretEnv" $name $key) }}{{ end }}{{ end -}}
+{{- end }}{{- end -}}
+{{- if and $v.migration.enabled (eq $v.migration.mode "auto") $v.imagePolicy.requireDigest (not (regexMatch "@sha256:[a-f0-9]{64}$" $v.migration.image)) }}{{ fail "migration.image must be pinned by SHA-256 digest" }}{{ end -}}
+{{- range $name := list "postgresql" "redis" "kafka" "rabbitmq" -}}
+{{- $cfg := index $v $name -}}
+{{- if and $cfg.enabled (not (regexMatch "^[a-f0-9]{64}$" $cfg.image.digest)) }}{{ fail (printf "%s.image.digest is required; configure a supported, compatible dependency image" $name) }}{{ end -}}
+{{- end -}}
+{{- if and $v.postgresql.enabled (not $v.postgresql.auth.existingSecret) }}{{ fail "postgresql.auth.existingSecret is required for stable credentials" }}{{ end -}}
+{{- if and $v.redis.enabled (not $v.redis.auth.existingSecret) }}{{ fail "redis.auth.existingSecret is required for stable credentials" }}{{ end -}}
+{{- if and $v.rabbitmq.enabled (or (not $v.rabbitmq.auth.existingPasswordSecret) (not $v.rabbitmq.auth.existingErlangSecret)) }}{{ fail "RabbitMQ existing password and Erlang-cookie Secrets are required" }}{{ end -}}
+{{- $drainMinutes := regexFind "[0-9]+m" $v.runtime.drainTimeout | trimSuffix "m" | int -}}
+{{- $drainSeconds := regexFind "[0-9]+s" $v.runtime.drainTimeout | trimSuffix "s" | int -}}
+{{- $drain := add (mul $drainMinutes 60) $drainSeconds -}}
+{{- $dp := index (include "vmcp.components" . | fromJson) "data-plane" -}}
+{{- if and $dp.enabled (lt (int $dp.terminationGracePeriodSeconds) (int (add $drain 15))) }}{{ fail "dataPlane terminationGracePeriodSeconds must exceed drainTimeout by at least 15 seconds" }}{{ end -}}
+{{- range $key, $_ := $v.migration.env }}{{ if has $key (list "VMCP_DATABASE_URL" "VMCP_TENANT_ID") }}{{ fail "migration database URL and tenant ID are chart-managed" }}{{ end }}{{ end -}}
+
+{{- if and $v.kafka.enabled (not $v.kafka.sasl.existingSecret) }}{{ fail "kafka.sasl.existingSecret is required for stable credentials" }}{{ end -}}
+{{- if and $v.credentials.masterKey.value (ne (len (b64dec $v.credentials.masterKey.value)) 32) }}{{ fail "masterKey.value must be a base64-encoded 32-byte key" }}{{ end -}}
+{{- $reserved := list "VMCP_TENANT_ID" "VMCP_DATABASE_URL" -}}
+{{- range $key, $_ := $v.migration.secretEnv }}{{ if has $key $reserved }}{{ fail "migration database URL and tenant ID are chart-managed" }}{{ end }}{{ if hasKey $v.migration.env $key }}{{ fail "migration variable appears in env and secretEnv" }}{{ end }}{{ end -}}

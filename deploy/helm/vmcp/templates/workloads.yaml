@@ -1,0 +1,156 @@
+{{- range $c, $cfg := (include "vmcp.components" . | fromJson) }}
+{{- if $cfg.enabled }}
+{{- $ctx := dict "root" $ "component" $c "cfg" $cfg }}
+{{- $isExporter := hasPrefix "audit-exporter-" $c }}
+{{- $port := 8080 }}{{ if eq $c "control-plane" }}{{ $port = 8081 }}{{ else if eq $c "web" }}{{ $port = 8080 }}{{ else if eq $c "tenant-router" }}{{ $port = 8443 }}{{ end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vmcp.name" $ctx }}
+  labels:
+    {{- include "vmcp.labels" $ctx | nindent 4 }}
+    {{- with $.Values.commonLabels }}{{ toYaml . | nindent 4 }}{{ end }}
+spec:
+  {{- if not $cfg.autoscaling.enabled }}
+  replicas: {{ $cfg.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels:
+      {{- include "vmcp.labels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- with $cfg.podLabels }}{{ toYaml . | nindent 8 }}{{ end }}
+        {{- include "vmcp.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/credentials: {{ include (print $.Template.BasePath "/secrets.yaml") $ | sha256sum }}
+        {{- if eq $c "web" }}
+        checksum/web-config: {{ include (print $.Template.BasePath "/web-config.yaml") $ | sha256sum }}
+        {{- end }}
+        {{- with $cfg.podAnnotations }}{{ toYaml . | nindent 8 }}{{ end }}
+    spec:
+      serviceAccountName: {{ include "vmcp.serviceAccount" $ctx }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $cfg.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml $cfg.podSecurityContext | nindent 8 }}
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $cfg.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $cfg.topologySpreadConstraints }}
+      topologySpreadConstraints: {{ toYaml $cfg.topologySpreadConstraints | nindent 8 }}
+      {{- else if $cfg.spreadAcrossNodes }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "vmcp.labels" $ctx | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: {{ $c }}
+          image: {{ required (printf "%s.image is required" $c) $cfg.image | quote }}
+          imagePullPolicy: {{ $cfg.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $cfg.securityContext | nindent 12 }}
+          {{- if not $isExporter }}
+          ports: [{name: http, containerPort: {{ $port }}}]
+          {{- end }}
+          {{- with $cfg.envFrom }}
+          envFrom: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- include "vmcp.env" $ctx | nindent 12 }}
+          {{- if not $isExporter }}
+          {{- with $cfg.probes.startup }}
+          startupProbe: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $cfg.probes.liveness }}
+          livenessProbe: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $cfg.probes.readiness }}
+          readinessProbe: {{ toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml $cfg.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            {{- if eq $c "web" }}
+            - {name: web-config, mountPath: /usr/share/nginx/html/runtime-config.js, subPath: runtime-config.js, readOnly: true}
+            - {name: nginx-config, mountPath: /etc/nginx/conf.d}
+            - {name: nginx-cache, mountPath: /var/cache/nginx}
+            {{- end }}
+            {{- with $cfg.extraVolumeMounts }}{{ toYaml . | nindent 12 }}{{ end }}
+      volumes:
+        - {name: tmp, emptyDir: {sizeLimit: 64Mi}}
+        {{- if eq $c "web" }}
+        - {name: web-config, configMap: {name: {{ include "vmcp.name" $ctx }}-runtime}}
+        - {name: nginx-config, emptyDir: {sizeLimit: 1Mi}}
+        - {name: nginx-cache, emptyDir: {sizeLimit: 32Mi}}
+        {{- end }}
+        {{- with $cfg.extraVolumes }}{{ toYaml . | nindent 8 }}{{ end }}
+{{- if not $isExporter }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vmcp.name" $ctx }}
+  labels:
+    {{- include "vmcp.labels" $ctx | nindent 4 }}
+  {{- with $cfg.service.annotations }}
+  annotations: {{ toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "vmcp.labels" $ctx | nindent 4 }}
+  ports: [{name: http, port: {{ $port }}, targetPort: http}]
+{{- end }}
+{{- if $cfg.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vmcp.name" $ctx }}
+spec:
+  minAvailable: {{ $cfg.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "vmcp.labels" $ctx | nindent 6 }}
+{{- end }}
+{{- if $cfg.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "vmcp.name" $ctx }}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: {{ include "vmcp.name" $ctx }}}
+  minReplicas: {{ $cfg.autoscaling.minReplicas }}
+  maxReplicas: {{ $cfg.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ $cfg.autoscaling.targetCPUUtilizationPercentage }}}
+  behavior:
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+{{- end }}
+{{- end }}
+{{- end }}

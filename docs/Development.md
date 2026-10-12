@@ -50,7 +50,8 @@ smoke check and fixture unit tests independently from the core verification gate
 ## Public MCP connection URL in the UI
 
 The API supplies each virtual server's MCP endpoint path. The UI combines it with
-`VITE_PUBLIC_GATEWAY_URL`, an explicit public gateway base URL, instead of guessing
+runtime `window.__VMCP_CONFIG__.publicGatewayURL` (or the development fallback
+`VITE_PUBLIC_GATEWAY_URL`), an explicit public gateway base URL, instead of guessing
 an origin or port. Without a valid base URL the UI displays only the path, disables
 copying a full endpoint, and explains the missing configuration.
 
@@ -102,3 +103,9 @@ The MCP SDK is now a runtime dependency; its verification module loads only on
 request. Playwright sets an explicit loopback gateway URL and mocks MCP traffic.
 The demo proxy CORS regression runs separately with
 `python3 benchmark/test_gateway_cors.py` using an isolated Docker container.
+
+The production web image listens on port 8080 as an unprivileged user. Set
+`VMCP_CONTROL_PLANE_URL` at container startup to configure its nginx proxy. Mount
+a public `/usr/share/nginx/html/runtime-config.js` containing
+`window.__VMCP_CONFIG__ = {"publicGatewayURL":"https://mcp.example.com"};` to reuse
+one image across environments. The Helm chart manages this ConfigMap for you.

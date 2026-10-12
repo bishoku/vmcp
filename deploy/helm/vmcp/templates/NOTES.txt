@@ -1,0 +1,15 @@
+vMCP {{ .Chart.Version }} installed in {{ .Release.Namespace }}.
+
+On first install the migration Job runs alongside the Deployments. Planes reject
+startup until the database schema is current; initial retries are expected.
+Use --wait --wait-for-jobs --timeout 15m when installing.
+
+Upgrade migrations run before workload updates. Keep migration credentials,
+ServiceAccount, volumes and network access provisioned before an upgrade.
+Helm rollback does not undo database migrations.
+
+Metrics are private Service endpoints at /metrics. Exporters log delivery counts;
+they do not expose HTTP probes or Prometheus metrics.
+
+External Secret changes require a rollout (or an operator-managed reloader).
+Bundled databases/brokers need your own backup, HA and recovery procedures.

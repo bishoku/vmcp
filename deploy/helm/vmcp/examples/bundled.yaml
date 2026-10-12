@@ -1,0 +1,41 @@
+# Overlay production.yaml. NOT a turnkey HA/backup configuration.
+# Replace placeholder image repositories/digests with compatible supported images.
+# Configure TLS, backup, storage classes and scheduling under each subchart.
+# Helm cannot build PostgreSQL DSNs from passwords stored in existing Secrets:
+# provision vmcp-database URLs matching these services/users before installation.
+global:
+  # Required only for a reviewed private mirror/custom compatible image registry.
+  security: {allowInsecureImages: true}
+postgresql:
+  enabled: true
+  image:
+    registry: registry.example.com
+    repository: supported/postgresql
+    digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  auth:
+    existingSecret: vmcp-postgresql-auth
+  primary:
+    persistence: {enabled: true, size: 100Gi}
+redis:
+  enabled: true
+  image:
+    registry: registry.example.com
+    repository: supported/redis
+    digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  auth: {existingSecret: vmcp-redis-auth}
+kafka:
+  enabled: true
+  image:
+    registry: registry.example.com
+    repository: supported/kafka
+    digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  sasl: {existingSecret: vmcp-kafka-auth}
+rabbitmq:
+  enabled: true
+  image:
+    registry: registry.example.com
+    repository: supported/rabbitmq
+    digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  auth:
+    existingPasswordSecret: vmcp-rabbitmq-auth
+    existingErlangSecret: vmcp-rabbitmq-erlang

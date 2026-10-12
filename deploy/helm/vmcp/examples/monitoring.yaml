@@ -1,0 +1,11 @@
+# Requires Prometheus Operator CRDs and an existing Grafana dashboard sidecar.
+monitoring:
+  serviceMonitor:
+    enabled: true
+    labels: {release: monitoring}
+  prometheusRule:
+    enabled: true
+    labels: {release: monitoring}
+  dashboards:
+    enabled: true
+    labels: {grafana_dashboard: "1"}

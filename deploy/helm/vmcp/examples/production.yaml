@@ -1,0 +1,50 @@
+# Replace image references with your published immutable images.
+controlPlane:
+  image: registry.example.com/vmcp/control-plane@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+dataPlane:
+  image: registry.example.com/vmcp/data-plane@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+web:
+  image: registry.example.com/vmcp/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+migration:
+  image: registry.example.com/vmcp/migrate@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+credentials:
+  masterKey: {existingSecret: vmcp-encryption, key: master-key}
+  adminToken: {existingSecret: vmcp-admin, key: token}
+database:
+  controlPlane: {existingSecret: vmcp-database, key: control-plane-url}
+  dataPlane: {existingSecret: vmcp-database, key: data-plane-url}
+  migration: {existingSecret: vmcp-database, key: migration-url}
+  listener: {existingSecret: vmcp-database, key: listener-url}
+rateLimit:
+  redisURL: {existingSecret: vmcp-redis, key: url}
+runtime:
+  publicGatewayURL: https://mcp.example.com
+  allowedOrigins: [https://console.example.com]
+  # Set only the actual trusted ingress/proxy CIDRs.
+  trustedProxies: []
+ingress:
+  enabled: true
+  className: nginx
+  webHost: console.example.com
+  gatewayHost: mcp.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls:
+    - {hosts: [console.example.com, mcp.example.com], secretName: vmcp-public-tls}
+networkPolicy:
+  ingressFrom:
+    - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+      podSelector: {matchLabels: {app.kubernetes.io/component: controller}}
+  monitoringFrom:
+    - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: monitoring}}
+  # Replace with real dependency destinations. DNS is already allowed.
+  egress:
+    - to: [{ipBlock: {cidr: 192.0.2.10/32}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: 192.0.2.11/32}}]
+      ports: [{protocol: TCP, port: 6379}]
+    - to: [{ipBlock: {cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8]}}]
+      ports: [{protocol: TCP, port: 443}]

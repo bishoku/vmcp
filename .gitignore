@@ -11,3 +11,6 @@ verification.jsonl
 # Python demo fixtures
 __pycache__/
 *.pyc
+
+# Restored from the pinned Helm dependency lock.
+deploy/helm/vmcp/charts/

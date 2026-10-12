@@ -134,6 +134,7 @@ The full documentation lives in [`docs/`](docs/Home.md) (published as the GitHub
 | [Catalogs & prompts](docs/MCP_CATALOGS.md) | [Client features](docs/MCP_CLIENT_FEATURES.md) |
 | [Protocol & SSE delivery](docs/MCP_PROTOCOL_CONTRACT.md) | [Audit operations](docs/AUDIT_OPERATIONS.md) |
 | [Manual testing stack](benchmark/README.md) | [Production deployment](docs/PRODUCTION_DEPLOYMENT.md) |
+| [Helm deployment](deploy/helm/vmcp/README.md) | [Production Helm values](deploy/helm/vmcp/examples/production.yaml) |
 | [FAQ & troubleshooting](docs/FAQ.md) | [Tenant operations](docs/TENANT_OPERATIONS.md) |
 
 ## Repository layout

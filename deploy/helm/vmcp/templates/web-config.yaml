@@ -1,0 +1,9 @@
+{{- if .Values.web.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vmcp.name" (dict "root" . "component" "web") }}-runtime
+data:
+  runtime-config.js: |
+    window.__VMCP_CONFIG__ = {{ dict "publicGatewayURL" .Values.runtime.publicGatewayURL | toJson }};
+{{- end }}

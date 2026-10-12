@@ -22,53 +22,34 @@ repeat compatibility tests. No March batching compatibility is advertised.
 
 ## Kubernetes deployment
 
-The Helm chart is `deploy/helm/vmcp`. It expects external PostgreSQL, optional
-Redis for shared rate limits, existing Secrets, immutable image references and
-an operator-owned TLS ingress. It does not create weak default credentials or
-install a database. Build the migration image with `SERVICE=migrate` and use it
-for the pre-install/pre-upgrade Job. Provide a migration-only database owner
-credential; set plane Secrets to lower-privilege runtime identities. Migrations
-hold a PostgreSQL advisory lock, and the chart disables automatic plane
-migrations. Startup rejects an older schema. DDL credentials need a direct
-PostgreSQL connection, not PgBouncer transaction pooling.
+The [Helm chart](../deploy/helm/vmcp/README.md) deploys the UI, control/data planes,
+optional independent audit exporters, and a migration Job. External PostgreSQL and
+Redis are the default; pinned PostgreSQL, Redis, Kafka and RabbitMQ subcharts are
+optional. Production images require immutable digests, explicit credentials, TLS,
+and approved dependency network destinations.
 
-Each plane Secret supplies `VMCP_DATABASE_URL`, `VMCP_MASTER_KEY` and its
-plane-specific authentication variables. Data plane additionally needs
-`VMCP_DB_LISTENER_URL` as a direct/session-pooling URL, `VMCP_PUBLIC_URL`,
-`VMCP_ALLOWED_ORIGINS` and permitted upstream/IdP egress grants. Use
-`sslmode=verify-full`; mount trusted CA/client certificates through your secret
-operator when required. Keep encryption and cookie recovery material outside
-Git. The control plane requires a strong admin bootstrap credential and/or
-properly mapped OIDC roles; configure redirect URLs to the ingress origin.
-Redis, when supplied, is only rate-limit state. With strict Redis failure policy,
-a Redis outage makes readiness fail rather than silently relaxing quotas.
+Start with [external-service values](../deploy/helm/vmcp/examples/production.yaml),
+then optionally overlay [audit exporters](../deploy/helm/vmcp/examples/exporters.yaml)
+and [monitoring](../deploy/helm/vmcp/examples/monitoring.yaml). All examples contain
+placeholders to replace. Each workload has resources, scheduling, security settings,
+PDBs and optional HPA. Configure runtime settings and Secret sources through values;
+existing Secrets support your chosen secret manager. The web image accepts runtime
+gateway configuration and a release-specific control-plane proxy endpoint.
 
-Set `controlPlane.image`, `dataPlane.image`, `migration.image` to reviewed digest
-references and their `secretName` values. Configure `networkPolicy.egressCIDRs`
-for PostgreSQL, Redis, upstreams, identity and approved telemetry/policy endpoints.
-By default only cluster DNS egress is enabled, so an unconfigured chart cannot
-reach the database. Configure `networkPolicy.ingressNamespace` for the actual
-TLS ingress controller. Verify CNI enforcement and DNS behavior in your cluster.
-The chart intentionally does not select an ingress vendor or expose metrics
-publicly; route `/api` and `/auth` to control plane, MCP paths to data plane,
-and serve the built React UI separately at the approved browser origin.
-
-Example rendering (replace images and existing secrets for installation):
+Fresh installs run migration after normal resources can exist. Upgrades use a
+blocking pre-upgrade hook with already provisioned migration credentials and
+network access; stage changes to those prerequisites first. Manual migration mode
+supports external pipelines. Helm rollback does not reverse database migrations.
+Keep migration-owner credentials separate from runtime and exporter LOGIN roles.
+See the chart guide for bundled dependency image availability, role provisioning,
+TLS mounts, LISTEN pooling constraints, ingress streaming settings and recovery.
 
 ```sh
-helm lint deploy/helm/vmcp \
-  --set controlPlane.image=vmcp/cp:test,dataPlane.image=vmcp/dp:test,migration.image=vmcp/migrate:test \
-  --set controlPlane.secretName=cp,dataPlane.secretName=dp,migration.secretName=migration
+helm dependency build deploy/helm/vmcp
+helm lint deploy/helm/vmcp -f my-production-values.yaml
+helm upgrade --install vmcp deploy/helm/vmcp --namespace vmcp --create-namespace \
+  -f my-production-values.yaml --wait --wait-for-jobs --timeout 15m
 ```
-
-Pods run without root, service-account tokens, added capabilities or writable
-root filesystems; `/tmp` is a bounded emptyDir. Two replicas, topology spreading,
-zero-unavailable rolling updates and a one-pod disruption budget are defaults.
-Set realistic resource limits after load tests. Termination grace is 105 seconds
-for the gateway's drain and durable completion budgets. Configure load-balancer
-SSE read timeouts above 75 seconds and disable response buffering. Reconnect and
-replay are required client behaviors. No local durable audit volume is needed:
-strict admission, delivery and exporter state are PostgreSQL-backed.
 
 ## Availability and disaster recovery acceptance
 

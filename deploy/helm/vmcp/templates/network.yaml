@@ -1,23 +1,50 @@
 {{- if .Values.networkPolicy.enabled }}
+{{- $all := include "vmcp.components" . | fromJson }}
+{{- if .Values.migration.enabled }}{{ $_ := set $all "migration" .Values.migration }}{{ end }}
+{{- range $c, $cfg := $all }}
+{{- if $cfg.enabled }}
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ .Release.Name }}-planes
+  name: {{ include "vmcp.name" (dict "root" $ "component" $c) }}
 spec:
   podSelector:
-    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}}
+    matchLabels:
+      {{- include "vmcp.labels" (dict "root" $ "component" $c) | nindent 6 }}
   policyTypes: [Ingress, Egress]
   ingress:
+    {{- if eq $c "control-plane" }}
     - from:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }}}
-      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8081}]
+        - podSelector:
+            matchLabels:
+              {{- include "vmcp.labels" (dict "root" $ "component" "web") | nindent 14 }}
+      ports: [{protocol: TCP, port: 8081}]
+    {{- end }}
+    {{- if or (eq $c "web") (eq $c "data-plane") (eq $c "tenant-router") }}
+    {{- with $.Values.networkPolicy.ingressFrom }}
+    - from: {{ toYaml . | nindent 8 }}
+      ports: [{protocol: TCP, port: {{ if eq $c "tenant-router" }}8443{{ else }}8080{{ end }}}]
+    {{- end }}
+    {{- end }}
+    {{- if or (eq $c "control-plane") (eq $c "data-plane") }}
+    {{- with $.Values.networkPolicy.monitoringFrom }}
+    - from: {{ toYaml . | nindent 8 }}
+      ports: [{protocol: TCP, port: {{ if eq $c "control-plane" }}8081{{ else }}8080{{ end }}}]
+    {{- end }}
+    {{- end }}
   egress:
     - to:
-        - namespaceSelector:
-            matchLabels: {kubernetes.io/metadata.name: kube-system}
+        - namespaceSelector: {{ toYaml $.Values.networkPolicy.dnsNamespaceSelector | nindent 12 }}
       ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
-    {{- range .Values.networkPolicy.egressCIDRs }}
-    - to: [{ipBlock: {cidr: {{ . | quote }}}}]
+    {{- if eq $c "web" }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "vmcp.labels" (dict "root" $ "component" "control-plane") | nindent 14 }}
+      ports: [{protocol: TCP, port: 8081}]
+    {{- else }}
+    {{- with $.Values.networkPolicy.egress }}{{ toYaml . | nindent 4 }}{{ end }}
     {{- end }}
+{{- end }}{{- end }}
 {{- end }}

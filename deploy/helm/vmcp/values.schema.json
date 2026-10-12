@@ -1,0 +1,563 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "tenantId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "imagePullSecrets": {
+      "type": "array"
+    },
+    "commonLabels": {
+      "type": "object"
+    },
+    "extraSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "data"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "imagePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requireDigest": {
+          "type": "boolean"
+        }
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "masterKey": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "adminToken": {
+          "$ref": "#/definitions/secretSource"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "controlPlane": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "dataPlane": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "migration": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "listener": {
+          "$ref": "#/definitions/secretSource"
+        }
+      }
+    },
+    "rateLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "failurePolicy": {
+          "enum": [
+            "strict",
+            "local"
+          ]
+        },
+        "redisURL": {
+          "$ref": "#/definitions/secretSource"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publicGatewayURL": {
+          "type": "string",
+          "pattern": "^$|^https?://[^\\s]+$"
+        },
+        "allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trustedProxies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "egressAllowCIDRs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "egressAllowHosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pool": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxConnections": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 1000
+            },
+            "minConnections": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "acquireTimeout": {
+              "type": "string"
+            }
+          }
+        },
+        "oidc": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuer": {
+              "type": "string"
+            },
+            "discoveryURL": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "redirectURL": {
+              "type": "string"
+            },
+            "clientSecret": {
+              "$ref": "#/definitions/secretSource"
+            },
+            "groupsClaim": {
+              "type": "string"
+            },
+            "adminGroups": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "editorGroups": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "viewerGroups": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "agentOIDC": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuer": {
+              "type": "string"
+            },
+            "discoveryURL": {
+              "type": "string"
+            },
+            "audience": {
+              "type": "string"
+            },
+            "algorithms": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "RS256",
+                  "ES256"
+                ]
+              }
+            }
+          }
+        },
+        "auditRetentionDays": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "auditMode": {
+          "enum": [
+            "strict",
+            "best_effort"
+          ]
+        },
+        "authorizationMaxStale": {
+          "type": "string"
+        },
+        "drainTimeout": {
+          "type": "string",
+          "pattern": "^(6[5-9]s|[7-9][0-9]s|1[01][0-9]s|120s|1m([5-9]s|[1-5][0-9]s)|2m)$"
+        }
+      }
+    },
+    "workloadDefaults": {
+      "$ref": "#/definitions/workload"
+    },
+    "controlPlane": {
+      "$ref": "#/definitions/workload"
+    },
+    "dataPlane": {
+      "$ref": "#/definitions/workload"
+    },
+    "web": {
+      "$ref": "#/definitions/workload"
+    },
+    "exporters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "http": {
+          "$ref": "#/definitions/workload"
+        },
+        "kafka": {
+          "$ref": "#/definitions/workload"
+        },
+        "rabbitmq": {
+          "$ref": "#/definitions/workload"
+        }
+      }
+    },
+    "tenantRouter": {
+      "$ref": "#/definitions/workload"
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "auto",
+            "manual"
+          ]
+        },
+        "image": {
+          "type": "string"
+        },
+        "backoffLimit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 120
+        },
+        "ttlSecondsAfterFinished": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "type": "object"
+        },
+        "env": {
+          "$ref": "#/definitions/environment"
+        },
+        "secretEnv": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/secretSource"
+          }
+        },
+        "extraVolumes": {
+          "type": "array"
+        },
+        "extraVolumeMounts": {
+          "type": "array"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "serviceAccount": {
+          "type": "object"
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "webHost": {
+          "type": "string"
+        },
+        "gatewayHost": {
+          "type": "string"
+        },
+        "tls": {
+          "type": "array"
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "ingressFrom": {
+          "type": "array"
+        },
+        "monitoringFrom": {
+          "type": "array"
+        },
+        "egress": {
+          "type": "array"
+        },
+        "dnsNamespaceSelector": {
+          "type": "object"
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object"
+    },
+    "postgresql": {
+      "type": "object"
+    },
+    "redis": {
+      "type": "object"
+    },
+    "kafka": {
+      "type": "object"
+    },
+    "rabbitmq": {
+      "type": "object"
+    },
+    "global": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "secretSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "imagePullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "serviceAccount": {
+          "type": "object"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "spreadAcrossNodes": {
+          "type": "boolean"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 90
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "securityContext": {
+          "type": "object"
+        },
+        "env": {
+          "$ref": "#/definitions/environment"
+        },
+        "secretEnv": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/secretSource"
+          }
+        },
+        "envFrom": {
+          "type": "array"
+        },
+        "extraVolumes": {
+          "type": "array"
+        },
+        "extraVolumeMounts": {
+          "type": "array"
+        },
+        "service": {
+          "type": "object"
+        },
+        "pdb": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "minAvailable": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^([0-9]|[1-9][0-9]|100)%$"
+                }
+              ]
+            }
+          }
+        },
+        "autoscaling": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "minReplicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxReplicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "targetCPUUtilizationPercentage": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false
+        },
+        "probes": {
+          "type": "object"
+        },
+        "consumer": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        },
+        "database": {
+          "$ref": "#/definitions/secretSource"
+        }
+      }
+    }
+  }
+}

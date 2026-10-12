@@ -42,7 +42,7 @@ docker compose -f deploy/docker-compose.yml --profile redis up -d
 Migrations use a dedicated connection and PostgreSQL advisory lock. Prefer the
 deployment migration job before replacing planes; take a database/key backup first.
 Rollback compatibility is migration-specific and may require a coordinated maintenance
-window. A [Helm chart](../deploy/helm/vmcp) provides plane replicas, migration hook,
+window. A [Helm chart](../deploy/helm/vmcp) provides UI and plane replicas, safe install/upgrade migrations, optional dependencies,
 probes, disruption budgets and network policies. HA/restore drills remain deployment
 acceptance gates, not guarantees supplied by the chart.
 

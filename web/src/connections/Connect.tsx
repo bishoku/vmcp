@@ -35,7 +35,7 @@ export default function Connect({server}: {server:VirtualServer}) {
   })
   return <section className="space-y-4"><h2 className="text-lg font-semibold">Connect a client</h2>
     <p className="text-sm">Streamable HTTP endpoint from the saved server configuration:</p><div className="flex items-center gap-3 rounded-lg bg-canvas p-3"><code className="min-w-0 flex-1 break-all">{endpoint ?? server.endpoint}</code><CopyButton label="Copy endpoint" value={endpoint}/></div>
-    {!endpoint && <ErrorBox>Public gateway URL is not configured. Set VITE_PUBLIC_GATEWAY_URL and rebuild the UI; the path alone is not a client connection URL.</ErrorBox>}
+    {!endpoint && <ErrorBox>Public gateway URL is not configured. Configure the public gateway URL in the deployment; the path alone is not a client connection URL.</ErrorBox>}
     {!server.authRequired && <p className="text-amber-700">Anonymous access is enabled. Credentials are bypassed on this server.</p>}
     <p className="text-sm text-ink-muted">HTTP client settings: adapt this example to your client's configuration format. Replace the credential placeholder with an agent key or verified OAuth access token, never an admin API token.</p>
     {settings && <><pre className="overflow-x-auto rounded-lg bg-canvas p-4 text-xs">{settings}</pre><CopyButton label="Copy client settings" value={settings}/></>}

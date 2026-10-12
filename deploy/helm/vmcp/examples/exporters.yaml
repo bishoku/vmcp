@@ -1,0 +1,36 @@
+# Overlay production.yaml. Destinations are independent; provision topic/queues first.
+exporters:
+  http:
+    enabled: true
+    image: registry.example.com/vmcp/audit-exporter@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    consumer: siem-http
+    database: {existingSecret: vmcp-export-database, key: http-url}
+    secretEnv:
+      VMCP_AUDIT_EXPORT_URL: {existingSecret: vmcp-export-http, key: url}
+  kafka:
+    enabled: true
+    image: registry.example.com/vmcp/audit-exporter-kafka@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    consumer: siem-kafka
+    database: {existingSecret: vmcp-export-database, key: kafka-url}
+    env:
+      VMCP_AUDIT_KAFKA_BROKERS: kafka.example.com:9093
+      VMCP_AUDIT_KAFKA_TOPIC: vmcp-audit
+      VMCP_AUDIT_KAFKA_SASL: SCRAM-SHA-512
+      VMCP_AUDIT_EXPORT_TLS_CA_FILE: /etc/vmcp-tls/ca.crt
+    secretEnv:
+      VMCP_AUDIT_KAFKA_USERNAME: {existingSecret: vmcp-export-kafka, key: username}
+      VMCP_AUDIT_KAFKA_PASSWORD: {existingSecret: vmcp-export-kafka, key: password}
+    extraVolumes:
+      - {name: sink-ca, secret: {secretName: vmcp-export-ca}}
+    extraVolumeMounts:
+      - {name: sink-ca, mountPath: /etc/vmcp-tls, readOnly: true}
+  rabbitmq:
+    enabled: true
+    image: registry.example.com/vmcp/audit-exporter-rabbitmq@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    consumer: siem-rabbitmq
+    database: {existingSecret: vmcp-export-database, key: rabbitmq-url}
+    env:
+      VMCP_AUDIT_RABBITMQ_EXCHANGE: audit
+      VMCP_AUDIT_RABBITMQ_ROUTING_KEY: vmcp.audit
+    secretEnv:
+      VMCP_AUDIT_RABBITMQ_URL: {existingSecret: vmcp-export-rabbitmq, key: url}

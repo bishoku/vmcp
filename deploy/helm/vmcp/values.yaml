@@ -1,30 +1,191 @@
-# Set immutable image digests and existing Secret names before installation.
-controlPlane:
+# No credentials or application images are generated. See examples/production.yaml.
+nameOverride: ""
+fullnameOverride: ""
+tenantId: default
+imagePullSecrets: []
+commonLabels: {}
+# Optional named Secrets, including credentials consumed by dependency subcharts.
+extraSecrets: []
+imagePolicy: {requireDigest: true}
+credentials:
+  masterKey: {existingSecret: "", key: master-key, value: ""}
+  adminToken: {existingSecret: "", key: admin-token, value: ""}
+database:
+  # Use distinct LOGIN roles. Values are full PostgreSQL URLs, including TLS options.
+  controlPlane: {existingSecret: "", key: control-plane-url, value: ""}
+  dataPlane: {existingSecret: "", key: data-plane-url, value: ""}
+  migration: {existingSecret: "", key: migration-url, value: ""}
+  # Direct/session-pooled endpoint for LISTEN; omit to use dataPlane URL.
+  listener: {existingSecret: "", key: listener-url, value: ""}
+rateLimit:
+  enabled: true
+  redisURL: {existingSecret: "", key: redis-url, value: ""}
+  failurePolicy: strict
+runtime:
+  publicGatewayURL: ""
+  allowedOrigins: []
+  trustedProxies: []
+  egressAllowCIDRs: []
+  egressAllowHosts: []
+  pool: {maxConnections: 16, minConnections: 2, acquireTimeout: 2s}
+  oidc:
+    issuer: ""
+    discoveryURL: ""
+    clientId: ""
+    redirectURL: ""
+    clientSecret: {existingSecret: "", key: client-secret, value: ""}
+    groupsClaim: groups
+    adminGroups: []
+    editorGroups: []
+    viewerGroups: []
+  agentOIDC: {issuer: "", discoveryURL: "", audience: "", algorithms: [RS256, ES256]}
+  auditRetentionDays: 90
+  auditMode: strict
+  authorizationMaxStale: 30s
+  drainTimeout: 75s
+# Shared defaults can be overridden independently on each component.
+workloadDefaults:
   image: ""
   replicas: 2
-  secretName: ""
+  imagePullPolicy: IfNotPresent
+  serviceAccount: {create: true, name: "", annotations: {}}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "2", memory: 512Mi}
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  spreadAcrossNodes: true
+  terminationGracePeriodSeconds: 105
+  podSecurityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+  securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
   env: {}
-dataPlane:
+  secretEnv: {}
+  envFrom: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  service: {annotations: {}}
+  pdb: {enabled: true, minAvailable: 1}
+  autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70}
+  probes:
+    startup: {httpGet: {path: /healthz, port: http}, failureThreshold: 90, periodSeconds: 2}
+    liveness: {httpGet: {path: /healthz, port: http}, periodSeconds: 10, timeoutSeconds: 2}
+    readiness: {httpGet: {path: /readyz, port: http}, periodSeconds: 3, timeoutSeconds: 2, failureThreshold: 1}
+controlPlane: {enabled: true}
+dataPlane: {enabled: true}
+web:
+  enabled: true
+  # Separate web image built from web/Dockerfile.
   image: ""
-  replicas: 2
-  secretName: ""
-  env:
-    VMCP_AUDIT_MODE: strict
-    VMCP_AUTH_MAX_STALE: 30s
-    VMCP_REDIS_FAILURE_POLICY: strict
+  probes:
+    startup: {httpGet: {path: /healthz, port: http}, failureThreshold: 30, periodSeconds: 2}
+    liveness: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+    readiness: {httpGet: {path: /healthz, port: http}, periodSeconds: 3}
+exporters:
+  http:
+    enabled: false
+    image: ""
+    replicas: 1
+    consumer: siem-http
+    database: {existingSecret: "", key: url, value: ""}
+    env: {}
+    secretEnv: {}
+    pdb: {enabled: false}
+  kafka:
+    enabled: false
+    image: ""
+    replicas: 1
+    consumer: siem-kafka
+    database: {existingSecret: "", key: url, value: ""}
+    env: {}
+    secretEnv: {}
+    pdb: {enabled: false}
+  rabbitmq:
+    enabled: false
+    image: ""
+    replicas: 1
+    consumer: siem-rabbitmq
+    database: {existingSecret: "", key: url, value: ""}
+    env: {}
+    secretEnv: {}
+    pdb: {enabled: false}
+tenantRouter:
+  enabled: false
+  image: ""
+  env: {}
+  secretEnv: {}
+  probes:
+    startup: null
+    readiness: null
+    liveness: null
 migration:
+  enabled: true
+  # auto: ordinary Job on install; blocking pre-upgrade hook on upgrades.
+  # manual: no Job; migrate separately before deploying this release.
+  mode: auto
   image: ""
-  secretName: ""
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: "2"
-    memory: 512Mi
+  backoffLimit: 12
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  resources: {requests: {cpu: 100m, memory: 64Mi}, limits: {cpu: "1", memory: 256Mi}}
+  env: {}
+  secretEnv: {}
+  extraVolumes: []
+  extraVolumeMounts: []
+  nodeSelector: {}
+  tolerations: []
+  serviceAccount: {create: true, name: "", annotations: {}}
+ingress:
+  enabled: false
+  className: ""
+  # Supply controller-specific SSE/read timeout and buffering annotations.
+  annotations: {}
+  webHost: ""
+  gatewayHost: ""
+  tls: []
 networkPolicy:
   enabled: true
-  # Only the configured ingress namespace can connect to the planes.
-  ingressNamespace: ingress-nginx
-  # Supply PG/Redis/IdP/upstream CIDRs; DNS alone is enabled by default.
-  egressCIDRs: []
+  # Explicit selectors for your ingress controller and Prometheus pods.
+  ingressFrom: []
+  monitoringFrom: []
+  # Kubernetes NetworkPolicy cannot select external services by DNS name.
+  # List PG/Redis/IdP/upstream/OTLP/SIEM destinations with ports.
+  egress: []
+  dnsNamespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+monitoring:
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 5s
+  prometheusRule: {enabled: false, labels: {}}
+  dashboards: {enabled: false, namespace: "", labels: {grafana_dashboard: "1"}}
+# Optional dependencies. External services are the production default.
+# Enabled dependencies require explicit image digests: old Bitnami image tags
+# may be unavailable/unmaintained. Supply supported compatible registry images.
+postgresql:
+  enabled: false
+  image: {digest: ""}
+  auth: {username: vmcp, database: vmcp, existingSecret: ""}
+  primary: {persistence: {enabled: true, size: 20Gi}}
+redis:
+  enabled: false
+  image: {digest: ""}
+  architecture: standalone
+  auth: {enabled: true, existingSecret: ""}
+  master: {persistence: {enabled: true, size: 8Gi}}
+kafka:
+  enabled: false
+  image: {digest: ""}
+  sasl: {existingSecret: ""}
+  controller: {replicaCount: 3, persistence: {enabled: true, size: 20Gi}}
+  broker: {replicaCount: 0}
+rabbitmq:
+  enabled: false
+  image: {digest: ""}
+  replicaCount: 3
+  auth: {existingPasswordSecret: "", existingErlangSecret: ""}
+  persistence: {enabled: true, size: 8Gi}
