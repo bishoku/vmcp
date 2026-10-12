@@ -48,7 +48,7 @@ jobs:
           RABBITMQ_DEFAULT_PASS: "audit"
           RABBITMQ_DEFAULT_USER: "audit"
         options: >-
-          --health-cmd 'rabbitmq-diagnostics -q ping' --health-interval 5s --health-timeout 10s --health-retries 30
+          --health-cmd "rabbitmq-diagnostics -q ping" --health-interval 5s --health-timeout 10s --health-retries 30
     env:
       VMCP_TEST_KAFKA_BROKERS: localhost:19092
       VMCP_TEST_RABBITMQ_URL: amqp://audit:audit@localhost:5673/
