@@ -9,9 +9,10 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "validate:api": "node scripts/validate-openapi.mjs",
+    "validate:api": "node scripts/generate-openapi.mjs --check && node scripts/validate-openapi.mjs",
     "test:browser": "playwright test",
-    "test:live": "python3 scripts/test-live.py"
+    "test:live": "python3 scripts/test-live.py",
+    "generate:api": "node scripts/generate-openapi.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

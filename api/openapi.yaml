@@ -61,6 +61,38 @@ tags:
     description: Server information.
 
 paths:
+  /api/v1/openapi.json:
+    get:
+      tags: [System]
+      operationId: downloadOpenAPIJSON
+      summary: Download the control plane OpenAPI specification as JSON
+      responses:
+        '200':
+          description: OpenAPI 3.1 specification shipped with this server
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/v1/openapi.yaml:
+    get:
+      tags: [System]
+      operationId: downloadOpenAPIYAML
+      summary: Download the control plane OpenAPI specification as YAML
+      responses:
+        '200':
+          description: OpenAPI 3.1 specification shipped with this server
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/yaml:
+              schema:
+                type: string
   /api/v1/me:
     get:
       tags: [ System ]

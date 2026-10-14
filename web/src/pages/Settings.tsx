@@ -36,6 +36,23 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
   })
 
   const { busy, run } = useOperation()
+  const downloadSpec = (format: 'json' | 'yaml') => run(async () => {
+    setError('')
+    try {
+      const blob = await api.downloadOpenAPI(format)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `vmcp-openapi.${format}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  })
+
   const create = () => run(async () => {
     if (!form) return
     try {
@@ -103,6 +120,15 @@ export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'ad
               {tokens.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-ink-muted">No admin tokens. The bootstrap token from the environment still works.</td></tr>}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold">Control plane API</h2>
+        <p className="mt-1 text-sm text-ink-muted">Manage upstream MCP servers, virtual servers, and gateway configuration through the API. Download the OpenAPI 3.1 specification for this server version.</p>
+        <div className="mt-3 flex gap-3">
+          <button className={btn} disabled={busy} onClick={() => void downloadSpec('json')}>Download OpenAPI JSON</button>
+          <button className={btn} disabled={busy} onClick={() => void downloadSpec('yaml')}>Download OpenAPI YAML</button>
         </div>
       </section>
 

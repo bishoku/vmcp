@@ -121,6 +121,8 @@ func (s *Server) Handler() http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	api("GET /api/v1/openapi.json", s.getOpenAPI)
+	api("GET /api/v1/openapi.yaml", s.getOpenAPI)
 	api("GET /api/v1/info", s.getInfo)
 	api("GET /api/v1/me", s.getMe)
 

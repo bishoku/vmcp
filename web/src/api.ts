@@ -289,7 +289,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown, version?: number, signal?: AbortSignal): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, version?: number, signal?: AbortSignal, responseType: 'json' | 'blob' = 'json'): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     method,
     signal,
@@ -309,6 +309,7 @@ async function request<T>(method: string, path: string, body?: unknown, version?
     window.dispatchEvent(new Event('vmcp:session-expired'))
   }
   if (res.status === 204) return undefined as T
+  if (res.ok && responseType === 'blob') return await res.blob() as T
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "Your session expired. Sign in again to continue." : res.status === 412 ? "This item changed in another session. Reload before saving again." : data.detail ?? data.title ?? res.statusText, data.code, data.errors)
   return data as T
@@ -333,6 +334,7 @@ async function listAll<T>(path: string, signal?: AbortSignal): Promise<T[]> {
 export interface ConfigDocument { apiVersion: string; upstreams: unknown[]; virtualServers: unknown[]; bindings?: unknown[] }
 export interface ApplyResult { changes: {kind:string;slug:string;action:string}[]; configRevision?: number | null }
 export const api = {
+  downloadOpenAPI: (format: 'json' | 'yaml') => request<Blob>('GET', `/openapi.${format}`, undefined, undefined, undefined, 'blob'),
   exportConfig: () => request<ConfigDocument>('GET','/export'),
   applyConfig: (document: ConfigDocument, dryRun = true, prune = false, revision?:number) => request<ApplyResult>('POST',`/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),
   testStoredConnection: (slug:string) => request<ConnectionTestResult>('POST',`/upstreams/${encodeURIComponent(slug)}/connection-test`),

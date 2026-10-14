@@ -46,3 +46,12 @@ Git and applies it from CI; secrets (upstream headers, client keys) are set sepa
 Not part of `/api/v1`: MCP clients speak Streamable HTTP to
 `/mcp/v1/virtual/{slug}` with `Authorization: Bearer <agent-key>` or an IdP-issued JWT.
 See [Agent keys](Agent-Keys-and-Authentication.md) and [OAuth for agents](OAuth-for-Agents.md). RFC 9728 discovery is served at `/.well-known/oauth-protected-resource/mcp/v1/virtual/{slug}`.
+
+## Download the API specification
+
+Settings → **Control plane API** offers JSON and YAML downloads matching the deployed server. Both endpoints use the same bearer-token or SSO-cookie authentication as the rest of the API and are available to all roles:
+
+- `GET /api/v1/openapi.json`
+- `GET /api/v1/openapi.yaml`
+
+For maintainers: after editing `api/openapi.yaml`, run `cd web && npm run generate:api` to refresh the embedded assets. `npm run validate:api` checks that both formats match the source.

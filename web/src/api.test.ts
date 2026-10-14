@@ -36,3 +36,11 @@ test('audit requests propagate abort signals',async()=>{
  await api.listAudit({tool:'test'},controller.signal)
  expect(fetch.mock.calls[0][1].signal).toBe(controller.signal)
 })
+test('OpenAPI downloads preserve raw YAML and carry bearer credentials',async()=>{
+ const fetch=vi.fn().mockResolvedValue(new Response('openapi: 3.1.0\n',{headers:{'Content-Type':'application/yaml'}}))
+ vi.stubGlobal('fetch',fetch);setToken('spec-token')
+ const blob=await api.downloadOpenAPI('yaml')
+ expect(await blob.text()).toBe('openapi: 3.1.0\n')
+ expect(fetch.mock.calls[0][0]).toBe('/api/v1/openapi.yaml')
+ expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer spec-token')
+})
