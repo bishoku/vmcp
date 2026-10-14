@@ -14,3 +14,5 @@ __pycache__/
 
 # Restored from the pinned Helm dependency lock.
 deploy/helm/vmcp/charts/
+
+.idea
