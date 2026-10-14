@@ -97,8 +97,26 @@ Grafana. Use `--monitoring-release NAME` to match your Prometheus selection labe
   --web-port 3301 --gateway-port 8802 --timeout 20m
 ```
 
-For ingress, first provision DNS, an ingress controller and the TLS Secret in the
-target namespace, then run:
+For HTTP ingress, first provision DNS and an ingress controller. For example,
+with MicroK8s, an existing `nginx` IngressClass, `microk8s-hostpath` storage and
+wildcard DNS for `*.kube.local` pointing to your ingress controller:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh --context microk8s \
+  --storage-class microk8s-hostpath \
+  --web-host vmcp.kube.local --gateway-host mcp.kube.local \
+  --ingress-class nginx --exporter kafka --exporter rabbitmq \
+  --no-port-forward --timeout 20m
+```
+
+This installs the base stack plus both brokers and their audit exporters. Open
+`http://vmcp.kube.local`; gateway endpoints use
+`http://mcp.kube.local/mcp/v1/virtual/<slug>`. Without `--tls-secret`, ingress has
+no TLS configuration and nginx HTTPS redirects are disabled. Check your actual
+IngressClass and StorageClass names with `kubectl get ingressclass,storageclass`.
+
+For HTTPS ingress, also provision a TLS Secret in the target namespace before
+running the installer, then supply `--tls-secret`:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh --context YOUR_CONTEXT \
@@ -106,7 +124,8 @@ target namespace, then run:
   --tls-secret vmcp-public-tls --ingress-class nginx
 ```
 
-Ingress mode prints HTTPS URLs and does not start port forwards. The default
+Ingress mode prints HTTP or HTTPS URLs according to `--tls-secret` and does not
+start port forwards. The default
 streaming annotations target nginx; other controllers may need manual adjustment.
 TLS on ingress does not make the trial's internal infrastructure production ready.
 

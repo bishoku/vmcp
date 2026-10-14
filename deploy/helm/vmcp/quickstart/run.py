@@ -45,9 +45,9 @@ def parser():
     p.add_argument('--web-port', type=int, default=3300)
     p.add_argument('--gateway-port', type=int, default=8801)
     p.add_argument('--no-port-forward', action='store_true', help='Print port-forward commands instead of keeping them running')
-    p.add_argument('--web-host', help='Console ingress hostname; requires --gateway-host and --tls-secret')
+    p.add_argument('--web-host', help='Console ingress hostname; requires --gateway-host; HTTP unless --tls-secret is supplied')
     p.add_argument('--gateway-host', help='MCP ingress hostname')
-    p.add_argument('--tls-secret', help='Existing TLS Secret in the target namespace')
+    p.add_argument('--tls-secret', help='Existing TLS Secret in the target namespace; enables HTTPS ingress')
     p.add_argument('--ingress-class', default='nginx', help='Ingress class; default annotations target nginx')
     p.add_argument('--timeout', default='15m', help='Helm timeout, e.g. 15m')
     p.add_argument('--chart', type=Path, help='Local application chart directory/archive; requires --images-file')
@@ -72,8 +72,8 @@ def validate(a):
     if bool(a.chart) != bool(a.images_file):
         raise ValueError('--chart and --images-file must be supplied together')
     if any([a.web_host, a.gateway_host, a.tls_secret]):
-        if not all([a.web_host, a.gateway_host, a.tls_secret]) or a.web_host == a.gateway_host:
-            raise ValueError('ingress requires distinct --web-host/--gateway-host and --tls-secret')
+        if not all([a.web_host, a.gateway_host]) or a.web_host == a.gateway_host:
+            raise ValueError('ingress requires distinct --web-host and --gateway-host; --tls-secret is optional')
         for host in [a.web_host, a.gateway_host]:
             if not re.fullmatch(r'[a-z0-9]+(?:[.-][a-z0-9]+)*', host):
                 raise ValueError('ingress hosts must be DNS hostnames without scheme or path')
@@ -191,10 +191,15 @@ def values(a, refs):
         cfg['monitoring'] = {'serviceMonitor': {'enabled': True, 'labels': {'release': a.monitoring_release}},
                             'prometheusRule': {'enabled': True, 'labels': {'release': a.monitoring_release}}, 'dashboards': {'enabled': True}}
     if a.web_host:
-        cfg['runtime'].update(publicGatewayURL='https://' + a.gateway_host, allowedOrigins=['https://' + a.web_host])
+        scheme = 'https' if a.tls_secret else 'http'
+        cfg['runtime'].update(publicGatewayURL=scheme + '://' + a.gateway_host, allowedOrigins=[scheme + '://' + a.web_host])
         cfg['ingress'] = {'enabled': True, 'className': a.ingress_class, 'webHost': a.web_host, 'gatewayHost': a.gateway_host,
-                          'tls': [{'hosts': [a.web_host, a.gateway_host], 'secretName': a.tls_secret}],
+                          'tls': [{'hosts': [a.web_host, a.gateway_host], 'secretName': a.tls_secret}] if a.tls_secret else [],
                           'annotations': {'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600', 'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600', 'nginx.ingress.kubernetes.io/proxy-buffering': 'off'}}
+        if not a.tls_secret:
+            cfg['ingress']['annotations'].update({
+                'nginx.ingress.kubernetes.io/ssl-redirect': 'false',
+                'nginx.ingress.kubernetes.io/force-ssl-redirect': 'false'})
     return cfg
 
 
@@ -291,8 +296,9 @@ class Installer:
         print('Admin token (retrieve locally; not printed by installer):')
         print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.admin-token}}' | base64 --decode; echo")
         commands = [self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-' + component, f'{port}:8080'] for component, port in [('web', a.web_port), ('data-plane', a.gateway_port)]]
-        print(f'Console: https://{a.web_host}' if a.web_host else f'Console: http://localhost:{a.web_port}')
-        print(f'Gateway: https://{a.gateway_host}/mcp/v1/virtual/<slug>' if a.gateway_host else f'Gateway: http://localhost:{a.gateway_port}/mcp/v1/virtual/<slug>')
+        scheme = 'https' if a.tls_secret else 'http'
+        print(f'Console: {scheme}://{a.web_host}' if a.web_host else f'Console: http://localhost:{a.web_port}')
+        print(f'Gateway: {scheme}://{a.gateway_host}/mcp/v1/virtual/<slug>' if a.gateway_host else f'Gateway: http://localhost:{a.gateway_port}/mcp/v1/virtual/<slug>')
         import shlex
         for command in commands: print(shlex.join(command))
         if a.no_port_forward or a.web_host: return
@@ -357,7 +363,7 @@ def main(argv=None):
             raise ValueError('no selected/default StorageClass; specify --storage-class or --ephemeral')
     if a.monitoring:
         installer.run(['kubectl', '--context', a.context, 'get', 'crd', 'servicemonitors.monitoring.coreos.com', 'prometheusrules.monitoring.coreos.com'])
-    if a.web_host: installer.run(installer.k + ['get', 'secret', a.tls_secret])
+    if a.tls_secret: installer.run(installer.k + ['get', 'secret', a.tls_secret])
     with tempfile.TemporaryDirectory(prefix='vmcp-quickstart-') as temp:
         directory = Path(temp)
         chart, manifest = (a.chart.resolve(), a.images_file.resolve()) if a.chart else download_release(a, directory)

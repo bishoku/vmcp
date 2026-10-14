@@ -1,9 +1,12 @@
 """Trial orchestration regressions. No cluster is touched by these tests."""
+from contextlib import redirect_stdout
+import io
 import importlib.util
 import json
 from pathlib import Path
 import subprocess
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('quickstart', ROOT / 'deploy/helm/vmcp/quickstart/run.py')
@@ -31,8 +34,39 @@ class QuickstartTests(unittest.TestCase):
     def test_rejects_invalid_combinations_before_any_mutation(self):
         for options in [('--purge',), ('--exporter', 'http'), ('--http-export-url', 'https://sink'),
                         ('--chart', '/tmp/chart'), ('--release', 'Bad!'), ('--web-host', 'console.test'),
+                        ('--tls-secret', 'demo-tls'), ('--gateway-host', 'mcp.test'),
+                        ('--web-host', 'same.test', '--gateway-host', 'same.test'),
                         ('--web-port', '8801'), ('--data-plane-replicas', '0')]:
             with self.subTest(options=options), self.assertRaises(ValueError): args(*options)
+
+    def test_ingress_urls_tls_and_access_output(self):
+        for tls in [False, True]:
+            with self.subTest(tls=tls):
+                options = ['--web-host', 'vmcp.kube.local', '--gateway-host', 'mcp.kube.local']
+                if tls:
+                    options += ['--tls-secret', 'demo-tls']
+                a = args(*options)
+                cfg = q.values(a, q.image_values(inventory(), a.version))
+                scheme = 'https' if tls else 'http'
+                self.assertEqual(cfg['runtime']['publicGatewayURL'], scheme + '://mcp.kube.local')
+                self.assertEqual(cfg['runtime']['allowedOrigins'], [scheme + '://vmcp.kube.local'])
+                self.assertEqual(cfg['ingress']['className'], 'nginx')
+                annotations = cfg['ingress']['annotations']
+                self.assertEqual(annotations['nginx.ingress.kubernetes.io/proxy-buffering'], 'off')
+                if tls:
+                    self.assertEqual(cfg['ingress']['tls'], [{
+                        'hosts': ['vmcp.kube.local', 'mcp.kube.local'], 'secretName': 'demo-tls'}])
+                    self.assertNotIn('nginx.ingress.kubernetes.io/ssl-redirect', annotations)
+                else:
+                    self.assertEqual(cfg['ingress']['tls'], [])
+                    for name in ['ssl-redirect', 'force-ssl-redirect']:
+                        self.assertEqual(annotations['nginx.ingress.kubernetes.io/' + name], 'false')
+                output = io.StringIO()
+                with redirect_stdout(output), patch.object(q.subprocess, 'Popen') as popen:
+                    q.Installer(a).access()
+                popen.assert_not_called()
+                self.assertIn('Console: ' + scheme + '://vmcp.kube.local', output.getvalue())
+                self.assertIn('Gateway: ' + scheme + '://mcp.kube.local/mcp/v1/virtual/<slug>', output.getvalue())
 
     def test_validates_image_versions_repositories_and_completeness(self):
         self.assertEqual(len(q.image_values(inventory(), 'v0.0.2')), 9)
