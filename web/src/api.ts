@@ -104,6 +104,7 @@ export interface RefreshResult {
   added: string[]
   removed: string[]
   changed: string[]
+  orphanedSelections?: { virtualServer: string; tool: string }[]
 }
 
 export interface ConnectionTestResult {
@@ -179,7 +180,7 @@ export interface IdentityBinding {
   enabled: boolean
 }
 export interface BindingEvaluation {
-  decision: { allowed: boolean; principal?: string; reason?: string }
+  decision?: { allowed: boolean; principal?: string; reason?: string }
   matches?: { slug: string; virtualServers: string[] }[]
 }
 

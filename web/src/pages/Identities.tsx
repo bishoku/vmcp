@@ -165,8 +165,10 @@ export default function Identities({ initialSelection }: SelectionProps) {
             </div>
           </div>
           {result && (
-            <div className={`mt-4 rounded-lg p-3 text-sm ${result.decision.allowed ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>
-              {result.decision.allowed ? `Allowed as ${result.decision.principal}` : `Denied${result.decision.reason ? `: ${result.decision.reason}` : ''}`}
+            <div className={`mt-4 rounded-lg p-3 text-sm ${result.decision ? (result.decision.allowed ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700') : 'bg-canvas text-ink'}`}>
+              {result.decision
+                ? (result.decision.allowed ? `Allowed as ${result.decision.principal}` : `Denied${result.decision.reason ? `: ${result.decision.reason}` : ''}`)
+                : (result.matches && result.matches.length > 0 ? `${result.matches.length} matching binding(s)` : 'No matching bindings')}
               {result.matches && result.matches.length > 0 && <div className="mt-1 text-xs">Matching bindings: {result.matches.map((m) => m.slug).join(', ')}</div>}
             </div>
           )}

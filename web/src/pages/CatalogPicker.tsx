@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type Catalog, type CatalogSelection, type Upstream } from '../api'
 import { input, btn } from '../styles'
 
-export default function CatalogPicker({upstreams, value, onChange}: {upstreams:Upstream[];value:CatalogSelection[];onChange:(value:CatalogSelection[])=>void}) {
+export default function CatalogPicker({upstreams, value, savedCatalog, onChange}: {upstreams:Upstream[];value:CatalogSelection[];savedCatalog?:(CatalogSelection & {descriptionDrift?:boolean;upstreamDescription?:string})[];onChange:(value:CatalogSelection[])=>void}) {
  const [search,setSearch]=useState('')
  const [catalogs,setCatalogs]=useState<Record<string,Catalog>>({})
  const [error,setError]=useState('')
@@ -43,11 +43,13 @@ export default function CatalogPicker({upstreams, value, onChange}: {upstreams:U
   </label>
   <div className="mt-3 space-y-3">{value.map((selection,index)=>{
    const discovered=choices.find(c=>identity(c)===identity(selection))
+   const saved=savedCatalog?.find(c=>identity(c)===identity(selection))
    const patch=(p:Partial<CatalogSelection>)=>onChange(value.map((s,i)=>i===index?{...s,...p}:s))
    return <div key={identity(selection)} className="rounded border border-line p-3">
     <div className="break-all text-sm">{selection.upstream} · {selection.kind} · {selection.name}</div>
     {!discovered && catalogs[selection.upstream] && <p className="text-xs text-amber-700">Missing from upstream discovery; this selection is not exposed.</p>}
     {selection.description && discovered && <p className="text-xs text-ink-muted">Current upstream description: {discovered.description}</p>}
+    {saved?.descriptionDrift && <p className="text-xs text-amber-700" title={saved.upstreamDescription}>Upstream description changed since this override was written — save to accept.</p>}
     {selection.kind!=='template' && <label className="mt-2 block text-xs">Alias<input aria-label={`Alias ${selection.name}`} className={input} value={selection.alias??''} onChange={e=>patch({alias:e.target.value})}/></label>}
     <label className="mt-2 block text-xs">Description override<input aria-label={`Description ${selection.name}`} className={input} value={selection.description??''} onChange={e=>patch({description:e.target.value})}/></label>
     <button className={btn+' mt-2'} onClick={()=>onChange(value.filter((_,i)=>i!==index))}>Remove selection</button>

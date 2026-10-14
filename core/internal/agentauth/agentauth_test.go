@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,12 @@ import (
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/testidp"
 )
+
+func TestMain(m *testing.M) {
+	_ = os.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
+	_ = os.Setenv("VMCP_EGRESS_ALLOW_HOSTS", "")
+	os.Exit(m.Run())
+}
 
 func verifier(t *testing.T, idp *testidp.IdP) *Verifier {
 	t.Helper()

@@ -119,6 +119,7 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
+		w.Header().Set("X-VMCP-Config-Revision", strconv.FormatInt(revision, 10))
 		w.Header().Set("X-Config-Revision", strconv.FormatInt(revision, 10))
 		return writeJSON(w, http.StatusOK, doc)
 	})

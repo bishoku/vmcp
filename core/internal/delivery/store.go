@@ -55,15 +55,16 @@ func (s *Store) Begin(ctx context.Context, session, request, server string, prin
 		return op, err
 	}
 	defer tx.Rollback(ctx)
-	// Admission locks serialize capacity checks across replicas, not just within one process.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(19840923)`); err != nil {
+	// Admission locks serialize capacity checks per virtual server across replicas.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(19840923, hashtext($1))`, server); err != nil {
 		return op, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE mcp_operations SET state='abandoned' WHERE state='running' AND lease_until<now()`); err != nil {
+	// Release any expired operation holding the same (session_id, client_request_id) slot.
+	if _, err := tx.Exec(ctx, `UPDATE mcp_operations SET state='abandoned' WHERE session_id=$1 AND client_request_id=$2 AND state='running' AND lease_until<now()`, session, request); err != nil {
 		return op, err
 	}
 	var all, perPrincipal, perServer int
-	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE principal_hash=$1),count(*) FILTER(WHERE virtual_server=$2) FROM mcp_operations WHERE state='running'`, principal, server).Scan(&all, &perPrincipal, &perServer); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE principal_hash=$1),count(*) FILTER(WHERE virtual_server=$2) FROM mcp_operations WHERE state='running' AND lease_until>now()`, principal, server).Scan(&all, &perPrincipal, &perServer); err != nil {
 		return op, err
 	}
 	if all >= 1024 || perPrincipal >= 16 || perServer >= 128 {
@@ -117,7 +118,11 @@ func (s *Store) Append(ctx context.Context, op Operation, payload []byte, termin
 	if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, op.Session); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.NotifyLocal(op.Session)
+	return nil
 }
 func (s *Store) GetStream(ctx context.Context, session string) (string, error) {
 	var id string
@@ -168,6 +173,10 @@ func (s *Store) Reply(ctx context.Context, session, id string, response []byte) 
 	if err == nil && tag.RowsAffected() != 1 {
 		return ErrCapacity
 	}
+	if err == nil {
+		_, _ = s.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, session)
+		s.NotifyLocal(session)
+	}
 	return err
 }
 func (s *Store) Request(ctx context.Context, op Operation, id string) error {
@@ -190,6 +199,8 @@ func (s *Store) Request(ctx context.Context, op Operation, id string) error {
 }
 
 func (s *Store) WaitReply(ctx context.Context, op Operation, id string) ([]byte, error) {
+	wake, unsubscribe := s.Subscribe(op.Session)
+	defer unsubscribe()
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	defer func() {
@@ -209,12 +220,13 @@ func (s *Store) WaitReply(ctx context.Context, op Operation, id string) ([]byte,
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
+		case <-wake:
 		case <-tick.C:
 		}
 	}
 }
 func (s *Store) Purge(ctx context.Context) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE mcp_operations SET state='abandoned' WHERE id IN (SELECT id FROM mcp_operations WHERE state='running' AND lease_until<now() LIMIT 100); DELETE FROM mcp_streams WHERE id IN (SELECT id FROM mcp_streams WHERE expires_at<now() LIMIT 100); DELETE FROM mcp_operations WHERE id IN (SELECT id FROM mcp_operations WHERE state<>'running' AND created_at<now()-interval '15 minutes' LIMIT 100)`)
+	_, err := s.Pool.Exec(ctx, `UPDATE mcp_operations SET state='abandoned' WHERE id IN (SELECT id FROM mcp_operations WHERE state='running' AND lease_until<now() LIMIT 200); DELETE FROM mcp_streams WHERE id IN (SELECT id FROM mcp_streams WHERE expires_at<now() LIMIT 200); DELETE FROM mcp_operations WHERE id IN (SELECT id FROM mcp_operations WHERE state<>'running' AND created_at<now()-interval '15 minutes' LIMIT 200)`)
 	return err
 }
 
@@ -244,16 +256,27 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	var notified []string
 	for _, id := range ids {
-		var count int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM mcp_events WHERE stream_id=$1`, id).Scan(&count); err != nil {
+		var prevRev int64
+		if err := tx.QueryRow(ctx, `SELECT last_revision FROM mcp_streams WHERE id=$1`, id).Scan(&prevRev); err != nil {
 			return err
 		}
-		if count >= 256 {
-			if _, err := tx.Exec(ctx, `UPDATE mcp_streams SET closed=true WHERE id=$1`, id); err != nil {
-				return err
+		var slug string
+		_ = tx.QueryRow(ctx, `SELECT virtual_server FROM sessions WHERE id=$1`, sessions[id]).Scan(&slug)
+		if slug != "" && prevRev > 0 {
+			var hasRelevant bool
+			var hasIrrelevant bool
+			_ = s.Pool.QueryRow(ctx, `SELECT
+				EXISTS(SELECT 1 FROM audit_events WHERE stage='mutation' AND config_revision>$1 AND config_revision<=$2 AND (target=('virtual-server:' || $3) OR target LIKE 'upstream:%' OR action LIKE '%/apply%')),
+				EXISTS(SELECT 1 FROM audit_events WHERE stage='mutation' AND config_revision>$1 AND config_revision<=$2)`,
+				prevRev, revision, slug).Scan(&hasRelevant, &hasIrrelevant)
+			if hasIrrelevant && !hasRelevant {
+				if _, err := tx.Exec(ctx, `UPDATE mcp_streams SET last_revision=$2 WHERE id=$1`, id, revision); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 		methods := []string{"notifications/tools/list_changed"}
 		var resource, prompt bool
@@ -266,11 +289,15 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 		if prompt {
 			methods = append(methods, "notifications/prompts/list_changed")
 		}
-		if count+len(methods) > 256 {
-			if _, err := tx.Exec(ctx, `UPDATE mcp_streams SET closed=true WHERE id=$1`, id); err != nil {
+		// Maintain a sliding 256-event window on long-lived session GET streams instead of permanently closing them.
+		var count int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM mcp_events WHERE stream_id=$1`, id).Scan(&count); err != nil {
+			return err
+		}
+		if overflow := (count + len(methods)) - 256; overflow > 0 {
+			if _, err := tx.Exec(ctx, `DELETE FROM mcp_events WHERE seq IN (SELECT seq FROM mcp_events WHERE stream_id=$1 ORDER BY seq ASC LIMIT $2)`, id, overflow); err != nil {
 				return err
 			}
-			continue
 		}
 		for _, method := range methods {
 			if err := audit.Insert(ctx, tx, audit.Event{Time: time.Now().UTC(), ActorType: "system", Action: "mcp.list_changed", Method: method, Target: sessions[id], Status: "ok", Stage: "event", Revision: revision}); err != nil {
@@ -292,8 +319,15 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, sessions[id]); err != nil {
 			return err
 		}
+		notified = append(notified, sessions[id])
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	for _, sessID := range notified {
+		s.NotifyLocal(sessID)
+	}
+	return nil
 }
 func (s *Store) Run(ctx context.Context, revision func() int64) {
 	go s.listen(ctx)
@@ -318,5 +352,9 @@ func (s *Store) CancelPending(ctx context.Context, op Operation, id string, resp
 		return err
 	}
 	_, err = s.Pool.Exec(ctx, `UPDATE mcp_pending_requests SET response=$3 WHERE id=$1 AND operation_id=$2 AND response IS NULL`, id, op.ID, sealed)
+	if err == nil {
+		_, _ = s.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, op.Session)
+		s.NotifyLocal(op.Session)
+	}
 	return err
 }

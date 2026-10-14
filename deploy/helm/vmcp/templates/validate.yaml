@@ -4,7 +4,7 @@
 {{- if and $v.ingress.enabled (eq $v.ingress.webHost $v.ingress.gatewayHost) }}{{ fail "use distinct ingress webHost and gatewayHost" }}{{ end -}}
 {{- range $name, $cfg := (include "vmcp.components" . | fromJson) -}}
 {{- if $cfg.enabled -}}
-{{- if and $v.imagePolicy.requireDigest (not (regexMatch "@sha256:[a-f0-9]{64}$" $cfg.image)) }}{{ fail (printf "%s.image must be pinned by SHA-256 digest" $name) }}{{ end -}}
+{{- if and $v.imagePolicy.requireDigest (not (regexMatch "@sha256:[a-fA-F0-9]{64}$" $cfg.image)) }}{{ fail (printf "%s.image must be pinned by SHA-256 digest" $name) }}{{ end -}}
 {{- if gt (int $cfg.autoscaling.minReplicas) (int $cfg.autoscaling.maxReplicas) }}{{ fail (printf "%s autoscaling min exceeds max" $name) }}{{ end -}}
 {{- $minimumReplicas := int $cfg.replicas }}{{ if $cfg.autoscaling.enabled }}{{ $minimumReplicas = int $cfg.autoscaling.minReplicas }}{{ end -}}
 {{- if and $cfg.pdb.enabled (kindIs "float64" $cfg.pdb.minAvailable) (ge (int $cfg.pdb.minAvailable) $minimumReplicas) }}{{ fail (printf "%s PDB must permit a voluntary disruption at its minimum replica count" $name) }}{{ end -}}
@@ -14,10 +14,10 @@
 {{- range $key, $_ := $cfg.env }}{{ if has $key $managed }}{{ fail (printf "%s.env.%s is chart-managed" $name $key) }}{{ end }}{{ end -}}
 {{- range $key, $_ := $cfg.secretEnv }}{{ if has $key $managed }}{{ fail (printf "%s.secretEnv.%s is chart-managed" $name $key) }}{{ end }}{{ if hasKey $cfg.env $key }}{{ fail (printf "%s %s appears in env and secretEnv" $name $key) }}{{ end }}{{ end -}}
 {{- end }}{{- end -}}
-{{- if and $v.migration.enabled (eq $v.migration.mode "auto") $v.imagePolicy.requireDigest (not (regexMatch "@sha256:[a-f0-9]{64}$" $v.migration.image)) }}{{ fail "migration.image must be pinned by SHA-256 digest" }}{{ end -}}
+{{- if and $v.migration.enabled (eq $v.migration.mode "auto") $v.imagePolicy.requireDigest (not (regexMatch "@sha256:[a-fA-F0-9]{64}$" $v.migration.image)) }}{{ fail "migration.image must be pinned by SHA-256 digest" }}{{ end -}}
 {{- range $name := list "postgresql" "redis" "kafka" "rabbitmq" -}}
 {{- $cfg := index $v $name -}}
-{{- if and $cfg.enabled (not (regexMatch "^[a-f0-9]{64}$" $cfg.image.digest)) }}{{ fail (printf "%s.image.digest is required; configure a supported, compatible dependency image" $name) }}{{ end -}}
+{{- if and $cfg.enabled (not (regexMatch "^[a-fA-F0-9]{64}$" $cfg.image.digest)) }}{{ fail (printf "%s.image.digest is required; configure a supported, compatible dependency image" $name) }}{{ end -}}
 {{- end -}}
 {{- if and $v.postgresql.enabled (not $v.postgresql.auth.existingSecret) }}{{ fail "postgresql.auth.existingSecret is required for stable credentials" }}{{ end -}}
 {{- if and $v.redis.enabled (not $v.redis.auth.existingSecret) }}{{ fail "redis.auth.existingSecret is required for stable credentials" }}{{ end -}}

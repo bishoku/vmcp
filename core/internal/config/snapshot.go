@@ -67,7 +67,18 @@ type Upstream struct {
 	// TLS carries the custom CA / SNI / mTLS settings (zero = system defaults).
 	TLS tlsconf.Settings
 	// OAuth, when set, makes the gateway fetch client_credentials tokens for this upstream (secret decrypted).
-	OAuth *oauthtoken.Config
+	OAuth          *oauthtoken.Config
+	fingerprint    [32]byte
+	hasFingerprint bool
+}
+
+// WithPrecomputedFingerprint returns a copy of u with its connection fingerprint precalculated.
+func (u Upstream) WithPrecomputedFingerprint() Upstream {
+	u.hasFingerprint = false
+	u.fingerprint = [32]byte{}
+	u.fingerprint = u.Fingerprint()
+	u.hasFingerprint = true
+	return u
 }
 
 // VirtualServer is an agent-facing endpoint exposing a filtered set of upstream tools.
@@ -83,7 +94,22 @@ type VirtualServer struct {
 	Tools   []VirtualTool
 	Catalog []VirtualCatalogObject
 	// Blocked maps exposed names of tools hidden by policy to the reason.
-	Blocked map[string]string
+	Blocked   map[string]string
+	toolIndex map[string]int
+}
+
+// WithToolIndex returns a copy of v with an O(1) tool lookup index built from Tools.
+func (v VirtualServer) WithToolIndex() VirtualServer {
+	if len(v.Tools) == 0 {
+		v.toolIndex = nil
+		return v
+	}
+	idx := make(map[string]int, len(v.Tools))
+	for i, t := range v.Tools {
+		idx[t.Tool.Name] = i
+	}
+	v.toolIndex = idx
+	return v
 }
 
 // VirtualTool maps an exposed tool to its upstream origin.
@@ -96,6 +122,12 @@ type VirtualTool struct {
 
 // Lookup finds a tool by its exposed name.
 func (v VirtualServer) Lookup(exposed string) (VirtualTool, bool) {
+	if v.toolIndex != nil {
+		if i, ok := v.toolIndex[exposed]; ok && i >= 0 && i < len(v.Tools) && v.Tools[i].Tool.Name == exposed {
+			return v.Tools[i], true
+		}
+		return VirtualTool{}, false
+	}
 	for _, t := range v.Tools {
 		if t.Tool.Name == exposed {
 			return t, true
@@ -115,6 +147,9 @@ func ExposedName(upstreamSlug, tool, alias string) string {
 // Fingerprint identifies every setting used to establish an upstream connection.
 // Canonical JSON sorts header map keys. The digest must never be logged (it covers secrets).
 func (u Upstream) Fingerprint() [32]byte {
+	if u.hasFingerprint {
+		return u.fingerprint
+	}
 	b, _ := json.Marshal(u)
 	return sha256.Sum256(b)
 }

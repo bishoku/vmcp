@@ -23,7 +23,8 @@ The contract is [`api/openapi.yaml`](https://github.com/bishoku/vmcp/blob/main/a
 | Identity bindings | CRUD on `/identity-bindings`, dry-run `POST /identity-bindings/evaluate` |
 | Agent keys | CRUD on `/agent-keys`, `POST .../rotate`, `POST .../revoke` |
 | Admin tokens | CRUD on `/admin-tokens`, `POST .../rotate`, `POST .../revoke` |
-| Audit | `GET /audit-events` |
+| Revocations | `POST /revocations/jwts`, `POST /revocations/sessions` |
+| Audit | `GET /audit-events`, `GET /audit-status` |
 | Declarative | `GET /export`, `POST /apply` |
 
 ## Export and apply (GitOps)

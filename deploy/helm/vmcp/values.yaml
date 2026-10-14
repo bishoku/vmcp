@@ -27,7 +27,7 @@ runtime:
   trustedProxies: []
   egressAllowCIDRs: []
   egressAllowHosts: []
-  pool: {maxConnections: 16, minConnections: 2, acquireTimeout: 2s}
+  pool: {maxConnections: 64, minConnections: 4, acquireTimeout: 2s}
   oidc:
     issuer: ""
     discoveryURL: ""

@@ -126,6 +126,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	if !fresh {
 		return
 	}
+	initialRev := snap.Revision
 	vs, ok := snap.VirtualServers[slug]
 	if !ok {
 		http.NotFound(w, r)
@@ -135,9 +136,10 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	authAt := time.Now()
 	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))
 
-	release, admitted := h.acquire(owner, slug)
+	release, admitted := h.acquire(owner, slug, h.ipString(r))
 	if !admitted {
 		http.Error(w, "request concurrency limit exceeded", 429)
 		return
@@ -169,14 +171,20 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	currentOwner, ok := h.authenticate(w, r, vs, snap)
-	if !ok {
-		return
+	if snap.Revision != initialRev || time.Since(authAt) >= 25*time.Millisecond {
+		currentOwner, ok := h.authenticate(w, r, vs, snap)
+		if !ok {
+			return
+		}
+		if currentOwner != owner {
+			http.Error(w, "authorization changed; retry", http.StatusConflict)
+			return
+		}
 	}
-	if currentOwner != owner {
-		http.Error(w, "authorization changed; retry", http.StatusConflict)
-		return
-	}
+	var lastVerified atomic.Int64
+	ctx = context.WithValue(ctx, dialHookKey{}, func() {
+		lastVerified.Store(0)
+	})
 	ctx = context.WithValue(ctx, authorizationGuardKey{}, func(dispatchCtx context.Context) error {
 		request := r.WithContext(dispatchCtx)
 		current, ok := h.requestSnapshot(w, request)
@@ -187,6 +195,16 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "configuration changed; retry", http.StatusConflict)
 			return errAuthorizationChanged
 		}
+		sid := r.Header.Get("Mcp-Session-Id")
+		if sid != "" && h.Sessions.Store == nil {
+			if live := h.Sessions.Get(sid); live == nil || live.owner != owner {
+				http.Error(w, "unknown session", 404)
+				return errAuthorizationChanged
+			}
+		}
+		if last := lastVerified.Load(); last > 0 && time.Since(time.Unix(0, last)) < 50*time.Millisecond {
+			return nil
+		}
 		verified, ok := h.authenticate(w, request, vs, current)
 		if !ok {
 			return errAuthorizationChanged
@@ -195,7 +213,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "authorization changed; retry", http.StatusConflict)
 			return errAuthorizationChanged
 		}
-		if sid := r.Header.Get("Mcp-Session-Id"); sid != "" {
+		if sid != "" {
 			live, err := h.Sessions.Resolve(dispatchCtx, sid)
 			if err != nil {
 				http.Error(w, "session store unavailable", 503)
@@ -206,6 +224,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 				return errAuthorizationChanged
 			}
 		}
+		lastVerified.Store(time.Now().UnixNano())
 		return nil
 	})
 
@@ -233,6 +252,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown session", http.StatusNotFound)
 		return
 	}
+	lastVerified.Store(time.Now().UnixNano())
 	if err := checkAuthorization(ctx); err != nil {
 		return
 	}
@@ -300,15 +320,12 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session unavailable", 503)
 			return
 		}
+		sess.SetLoggingLevel(p.Level)
 		h.reply(w, msg.ID, struct{}{})
 	case mcp.MethodPing:
 		h.reply(w, msg.ID, struct{}{})
 	case mcp.MethodToolsList:
-		tools := make([]mcp.Tool, 0, len(vs.Tools))
-		for _, t := range vs.Tools {
-			tools = append(tools, t.Tool)
-		}
-		h.reply(w, msg.ID, mcp.ListToolsResult{Tools: tools})
+		h.listTools(w, msg, vs, snap.Revision)
 	case "resources/list":
 		h.listCatalog(w, msg, vs, snap.Revision, "resource", "resources")
 	case "resources/templates/list":
@@ -771,13 +788,17 @@ func checkAuthorization(ctx context.Context) error {
 }
 
 // Admission counters are removed on release, so arbitrary identities cannot grow the map.
-func (h *Handler) acquire(owner Owner, server string) (func(), bool) {
+func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
 	h.budgetMu.Lock()
 	defer h.budgetMu.Unlock()
 	if h.budgets == nil {
 		h.budgets = map[string]int{}
 	}
-	keys := []string{"all", "server:" + server, "principal:" + owner.Mode + ":" + owner.Principal + ":" + owner.Subject}
+	principalKey := "principal:" + owner.Mode + ":" + owner.Principal + ":" + owner.Subject
+	if owner.Mode == "anonymous" && clientIP != "" {
+		principalKey = "principal:anonymous:" + clientIP
+	}
+	keys := []string{"all", "server:" + server, principalKey}
 	limits := []int{1024, 128, 16}
 	for i, key := range keys {
 		if h.budgets[key] >= limits[i] {

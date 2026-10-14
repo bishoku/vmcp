@@ -141,3 +141,31 @@ func TestTenantContextRejectsSharedKeyTransplant(t *testing.T) {
 		t.Fatal("cross-tenant ciphertext accepted")
 	}
 }
+
+func TestDisallowLegacyCiphertext(t *testing.T) {
+	key := newKey(t)
+	legacyBox, err := NewKeyring("primary", map[string]string{"primary": key}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyCiphertext, err := legacyBox.SealBound([]byte("secret"), "entity", "purpose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VMCP_ALLOW_LEGACY_CIPHERTEXT", "false")
+	strictBox, err := FromEnv(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := strictBox.OpenBound(legacyCiphertext, "entity", "purpose"); err == nil {
+		t.Fatal("expected legacy ciphertext to be rejected when VMCP_ALLOW_LEGACY_CIPHERTEXT=false")
+	}
+	boundCiphertext, err := strictBox.SealBound([]byte("secret"), "entity", "purpose")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := strictBox.OpenBound(boundCiphertext, "entity", "purpose"); err != nil || string(got) != "secret" {
+		t.Fatalf("v1 bound ciphertext failed under strict mode: %v", err)
+	}
+}
+

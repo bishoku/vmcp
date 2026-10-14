@@ -48,6 +48,7 @@ export default function Upstreams() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [orphanedWarning, setOrphanedWarning] = useState('')
 
   const { load, loading, readError } = useSources(() => [source('Upstreams', api.listUpstreams, setItems)])
   useEffect(() => {
@@ -68,7 +69,12 @@ export default function Upstreams() {
   const { run } = useOperation()
   const refresh = (u: Upstream) => run(async () => {
     try {
-      await api.refreshTools(u.slug)
+      setOrphanedWarning('')
+      const res = await api.refreshTools(u.slug)
+      if (res.orphanedSelections && res.orphanedSelections.length > 0) {
+        const list = res.orphanedSelections.map((o) => `${o.virtualServer}:${o.tool}`).join(', ')
+        setOrphanedWarning(`Upstream "${u.slug}" removed tools still selected by virtual servers: ${list}`)
+      }
     } catch (e) {
       setError(errMsg(e))
     }
@@ -94,7 +100,7 @@ export default function Upstreams() {
         <div>
           {readError && <ErrorBox>{readError}</ErrorBox>}
       {loading && <p role="status">Loading…</p>}
-      <button className={btn} disabled={loading} onClick={()=>{setError('');void load()}}>Refresh list</button>
+      <button className={btn} disabled={loading} onClick={()=>{setError('');setOrphanedWarning('');void load()}}>Refresh list</button>
       <h1 className="text-2xl font-semibold tracking-tight">Upstreams</h1>
           <p className="mt-1 text-sm text-ink-muted">
             Register physical MCP servers and inspect their tools.
@@ -112,6 +118,11 @@ export default function Upstreams() {
       {error && (
         <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+      {orphanedWarning && (
+        <div role="status" className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {orphanedWarning}
         </div>
       )}
 

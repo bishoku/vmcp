@@ -10,6 +10,7 @@ type SessionStore interface {
 	Save(context.Context, Session) error
 	Valid(context.Context, string) (bool, error)
 	Revoke(context.Context, string) error
+	RevokeSubject(context.Context, string) error
 }
 type PostgresSessions struct{ Pool *pgxpool.Pool }
 

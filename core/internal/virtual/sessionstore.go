@@ -20,6 +20,7 @@ type Record struct {
 	LastSeen           time.Time
 	Initialized        bool
 	ClientCapabilities json.RawMessage
+	LoggingLevel       string
 }
 
 // SessionStore persists session records so any data-plane node can resume a session.
@@ -46,8 +47,8 @@ func (s PGSessionStore) Save(ctx context.Context, r Record) error {
 func (s PGSessionStore) Load(ctx context.Context, id string) (Record, bool, error) {
 	r := Record{ID: id}
 	err := s.Pool.QueryRow(ctx, `
-		SELECT virtual_server, key_slug, protocol_version, last_seen_at, initialized, client_capabilities, owner_mode, credential_id, owner_issuer, owner_subject FROM sessions WHERE id = $1 AND terminated_at IS NULL`, id).
-		Scan(&r.Slug, &r.KeySlug, &r.Version, &r.LastSeen, &r.Initialized, &r.ClientCapabilities, &r.Owner.Mode, &r.Owner.CredentialID, &r.Owner.Issuer, &r.Owner.Subject)
+		SELECT virtual_server, key_slug, protocol_version, last_seen_at, initialized, client_capabilities, owner_mode, credential_id, owner_issuer, owner_subject, COALESCE(logging_level, 'warning') FROM sessions WHERE id = $1 AND terminated_at IS NULL`, id).
+		Scan(&r.Slug, &r.KeySlug, &r.Version, &r.LastSeen, &r.Initialized, &r.ClientCapabilities, &r.Owner.Mode, &r.Owner.CredentialID, &r.Owner.Issuer, &r.Owner.Subject, &r.LoggingLevel)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Record{}, false, nil
 	}

@@ -3,6 +3,8 @@ package controlplane
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net"
 	"net/http"
@@ -10,14 +12,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/oidc"
 	"github.com/bishoku/vmcp/core/internal/store"
 )
 
 var errAuditResponseLimit = errors.New("audited response exceeds buffer limit")
 
 const maxAuditResponseBytes = 8 << 20
+
+type statusCapture struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusCapture) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
 
 type auditResponse struct {
 	header http.Header
@@ -41,6 +55,76 @@ func (w *auditResponse) Write(p []byte) (int, error) {
 	return w.body.Write(p)
 }
 
+func anyContainsPrefix(ps []netip.Prefix, ip netip.Addr) bool {
+	for _, p := range ps {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) clientIPString(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer, err := netip.ParseAddr(host)
+	if err != nil {
+		return ""
+	}
+	peer = peer.Unmap()
+	if !anyContainsPrefix(s.TrustedProxies, peer) {
+		return peer.String()
+	}
+	parts := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		a, err := netip.ParseAddr(strings.TrimSpace(parts[i]))
+		if err != nil {
+			return peer.String()
+		}
+		a = a.Unmap()
+		if !anyContainsPrefix(s.TrustedProxies, a) {
+			return a.String()
+		}
+		peer = a
+	}
+	return peer.String()
+}
+
+func (s *Server) recordDenial(r *http.Request, p *principal, err error) {
+	var prob *apierror.Error
+	if !errors.As(err, &prob) || (prob.Status != http.StatusUnauthorized && prob.Status != http.StatusForbidden) {
+		return
+	}
+	target := r.Pattern
+	if target == "" {
+		target = r.Method + " " + r.URL.Path
+	} else if slug := r.PathValue("slug"); store.ValidSlug(slug) {
+		target += ":" + slug
+	}
+	action := r.Pattern
+	if action == "" {
+		action = r.Method + " " + r.URL.Path
+	}
+	ev := audit.Event{
+		TraceID:  audit.TraceID(r.Header.Get("traceparent")),
+		ClientIP: s.clientIPString(r),
+		Method:   r.Method,
+		Action:   action,
+		Target:   target,
+		Status:   "denied",
+		Reason:   prob.Detail,
+	}
+	if p != nil {
+		ev.ActorType = p.Via
+		ev.ActorID = p.ID
+		ev.Subject = p.Subject
+		ev.Issuer = p.Issuer
+	}
+	s.auditRecorder().Record(ev)
+}
+
 func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, p *principal) error {
 	sensitive := r.Method != "GET" && r.Method != "HEAD" || r.URL.Path == "/api/v1/export" || strings.HasPrefix(r.URL.Path, "/api/v1/upstreams")
 	if !sensitive {
@@ -55,10 +139,19 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 	if slug := r.PathValue("slug"); store.ValidSlug(slug) {
 		target += ":" + slug
 	}
-	e := audit.Event{OperationID: id, RequestID: id, TraceID: audit.TraceID(r.Header.Get("traceparent")), ActorType: p.Via, ActorID: p.ID, Subject: p.Subject, Issuer: p.Issuer, Method: r.Method, Action: r.Pattern, Target: target, VirtualServer: ""}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if ip, err := netip.ParseAddr(host); err == nil {
-		e.ClientIP = ip.Unmap().String()
+	e := audit.Event{
+		OperationID:   id,
+		RequestID:     id,
+		TraceID:       audit.TraceID(r.Header.Get("traceparent")),
+		ActorType:     p.Via,
+		ActorID:       p.ID,
+		Subject:       p.Subject,
+		Issuer:        p.Issuer,
+		ClientIP:      s.clientIPString(r),
+		Method:        r.Method,
+		Action:        r.Pattern,
+		Target:        target,
+		VirtualServer: "",
 	}
 	d := s.auditRecorder()
 	w.Header().Set("X-Request-Id", id)
@@ -113,3 +206,61 @@ func (s *Server) auditRecorder() *audit.Durable {
 	s.auditOnce.Do(func() { s.auditor = audit.NewDurable(s.Store.Pool, s.Log) })
 	return s.auditor
 }
+
+func (s *Server) revokeJWT(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Token     string     `json:"token"`
+		TokenHash string     `json:"tokenHash"`
+		ExpiresAt *time.Time `json:"expiresAt"`
+	}
+	if err := decode(r, &body); err != nil {
+		return err
+	}
+	var hash []byte
+	switch {
+	case body.Token != "" && body.TokenHash != "":
+		return apierror.Validation([]apierror.FieldError{{Field: "token", Code: apierror.CodeValidationFailed, Message: "provide either token or tokenHash, not both"}})
+	case body.Token != "":
+		sum := sha256.Sum256([]byte(body.Token))
+		hash = sum[:]
+	case body.TokenHash != "":
+		decoded, err := hex.DecodeString(strings.TrimSpace(body.TokenHash))
+		if err != nil || len(decoded) != 32 {
+			return apierror.Validation([]apierror.FieldError{{Field: "tokenHash", Code: apierror.CodeValidationFailed, Message: "must be a 64-character hex SHA-256 digest"}})
+		}
+		hash = decoded
+	default:
+		return apierror.Validation([]apierror.FieldError{{Field: "tokenHash", Code: apierror.CodeValidationFailed, Message: "token or tokenHash is required"}})
+	}
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	if body.ExpiresAt != nil {
+		if !body.ExpiresAt.After(time.Now()) {
+			return apierror.Validation([]apierror.FieldError{{Field: "expiresAt", Code: apierror.CodeValidationFailed, Message: "must be in the future"}})
+		}
+		expiresAt = body.ExpiresAt.UTC()
+	}
+	if err := (agentauth.PostgresRevocations{Pool: s.Store.Pool}).Revoke(r.Context(), hash, expiresAt); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (s *Server) revokeSessions(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Subject string `json:"subject"`
+	}
+	if err := decode(r, &body); err != nil {
+		return err
+	}
+	sub := strings.TrimSpace(body.Subject)
+	if sub == "" || len(sub) > 512 {
+		return apierror.Validation([]apierror.FieldError{{Field: "subject", Code: apierror.CodeValidationFailed, Message: "subject is required"}})
+	}
+	if err := (oidc.PostgresSessions{Pool: s.Store.Pool}).RevokeSubject(r.Context(), sub); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+

@@ -12,6 +12,7 @@
 - {name: VMCP_DB_ACQUIRE_TIMEOUT, value: {{ $v.runtime.pool.acquireTimeout | quote }}}
 - {name: VMCP_EGRESS_ALLOW_CIDRS, value: {{ join "," $v.runtime.egressAllowCIDRs | quote }}}
 - {name: VMCP_EGRESS_ALLOW_HOSTS, value: {{ join "," $v.runtime.egressAllowHosts | quote }}}
+- {name: VMCP_TRUSTED_PROXIES, value: {{ join "," $v.runtime.trustedProxies | quote }}}
 {{- end }}
 {{- if eq $c "control-plane" }}
 {{ include "vmcp.secretEnv" (dict "root" $r "id" "admin-token" "source" $v.credentials.adminToken "env" "VMCP_ADMIN_TOKEN") }}
@@ -39,7 +40,6 @@
 - {name: VMCP_DRAIN_TIMEOUT, value: {{ $v.runtime.drainTimeout | quote }}}
 - {name: VMCP_PUBLIC_URL, value: {{ $v.runtime.publicGatewayURL | quote }}}
 - {name: VMCP_ALLOWED_ORIGINS, value: {{ join "," $v.runtime.allowedOrigins | quote }}}
-- {name: VMCP_TRUSTED_PROXIES, value: {{ join "," $v.runtime.trustedProxies | quote }}}
 {{- if or $v.database.listener.value $v.database.listener.existingSecret }}
 {{ include "vmcp.secretEnv" (dict "root" $r "id" "database-listener" "source" $v.database.listener "env" "VMCP_DB_LISTENER_URL") }}
 {{- end }}

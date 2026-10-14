@@ -68,6 +68,8 @@ func (h *Handler) subscription(ctx context.Context, sess *Session, object config
 	}
 	wait, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	wake, unsubscribe := h.Delivery.Subscribe(sess.id)
+	defer unsubscribe()
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -84,6 +86,7 @@ func (h *Handler) subscription(ctx context.Context, sess *Session, object config
 		select {
 		case <-wait.Done():
 			return wait.Err()
+		case <-wake:
 		case <-tick.C:
 		}
 	}
@@ -97,12 +100,13 @@ func (h *Handler) runSubscription(parent context.Context) {
 	if err != nil {
 		return
 	}
-	ctx, stop := context.WithTimeout(parent, 65*time.Second)
+	ctx, stop := context.WithTimeout(parent, 15*time.Minute)
 	defer stop()
 	release := func(failed bool) {
 		bounded, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		_, _ = h.Delivery.Pool.Exec(bounded, `UPDATE mcp_resource_subscriptions SET owner=NULL,lease_until=NULL,ready=false,failed=$4 WHERE session_id=$1 AND uri=$2 AND owner=$3`, sid, uri, owner, failed)
+		h.Delivery.NotifyLocal(sid)
 	}
 	snap, err := h.Snap.AuthorizedSnapshot()
 	if err != nil {
@@ -122,6 +126,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 		return
 	}
 	// Renew during initialization too: a slow handshake cannot outlive its fence.
+	initCtx, stopInitHeartbeat := context.WithCancel(ctx)
 	heartbeatDone := make(chan struct{})
 	go func() {
 		defer close(heartbeatDone)
@@ -129,7 +134,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 		defer tick.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-initCtx.Done():
 				return
 			case <-tick.C:
 				bounded, cancel := context.WithTimeout(ctx, time.Second)
@@ -142,7 +147,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 			}
 		}
 	}()
-	defer func() { stop(); <-heartbeatDone }()
+	defer func() { stopInitHeartbeat(); stop(); <-heartbeatDone }()
 	recorder := audit.NewDurable(h.Delivery.Pool, h.Log)
 	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "resource-subscription", Action: "mcp.subscription_reconcile", Method: "resources/subscribe", VirtualServer: sess.slug, Revision: snap.Revision, Target: sid, Upstream: up.Slug})
 	if err != nil {
@@ -185,8 +190,8 @@ func (h *Handler) runSubscription(parent context.Context) {
 		defer cancel()
 		_ = h.Delivery.ResourceUpdated(bounded, sid, uri, owner)
 	})
-	initCtx, initCancel := context.WithTimeout(ctx, 10*time.Second)
-	init, err := c.Initialize(initCtx)
+	handshakeCtx, initCancel := context.WithTimeout(ctx, 10*time.Second)
+	init, err := c.Initialize(handshakeCtx)
 	initCancel()
 	if err != nil || init.Capabilities.Resources == nil || !init.Capabilities.Resources.Subscribe {
 		release(true)
@@ -205,6 +210,11 @@ func (h *Handler) runSubscription(parent context.Context) {
 		release(false)
 		return
 	}
+	_, _ = h.Delivery.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, sid)
+	h.Delivery.NotifyLocal(sid)
+	// Handshake is complete; the main watch loop below now owns the 1s lease renewal.
+	stopInitHeartbeat()
+	<-heartbeatDone
 	event.Status = "ok"
 	event.Reason = ""
 	tick := time.NewTicker(time.Second)

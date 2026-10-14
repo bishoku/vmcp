@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,10 +32,11 @@ const (
 
 // Server is the control plane HTTP API.
 type Server struct {
-	Store      *store.Store
-	AdminToken string
-	Version    string
-	Log        *slog.Logger
+	Store          *store.Store
+	AdminToken     string
+	Version        string
+	Log            *slog.Logger
+	TrustedProxies []netip.Prefix
 	// OIDC enables browser sign-in; nil means bearer tokens only.
 	OIDC      *oidc.Provider
 	auditOnce sync.Once
@@ -69,13 +71,48 @@ func (s *Server) Handler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		s.OIDC.Callback(w, r)
+		rec := &statusCapture{ResponseWriter: w, status: http.StatusOK}
+		s.OIDC.Callback(rec, r)
+		status := "ok"
+		reason := ""
+		if rec.status >= 400 {
+			status = "denied"
+			reason = "oidc callback rejected"
+		}
+		s.auditRecorder().Record(audit.Event{
+			TraceID:   audit.TraceID(r.Header.Get("traceparent")),
+			ActorType: "oidc",
+			Issuer:    s.OIDC.Issuer(),
+			ClientIP:  s.clientIPString(r),
+			Method:    r.Method,
+			Action:    "GET /auth/callback",
+			Target:    "GET /auth/callback",
+			Status:    status,
+			Reason:    reason,
+		})
 	})
 	mux.HandleFunc("POST /auth/logout", func(w http.ResponseWriter, r *http.Request) {
+		var sub, iss string
 		if s.OIDC != nil {
+			if sess, ok := s.OIDC.Session(r); ok {
+				sub = sess.Subject
+				iss = s.OIDC.Issuer()
+			}
 			if !s.OIDC.Logout(w, r) {
 				return
 			}
+			s.auditRecorder().Record(audit.Event{
+				TraceID:   audit.TraceID(r.Header.Get("traceparent")),
+				ActorType: "oidc",
+				ActorID:   sub,
+				Subject:   sub,
+				Issuer:    iss,
+				ClientIP:  s.clientIPString(r),
+				Method:    r.Method,
+				Action:    "POST /auth/logout",
+				Target:    "POST /auth/logout",
+				Status:    "ok",
+			})
 			if u := s.OIDC.EndSessionURL(); u != "" {
 				_ = writeJSON(w, http.StatusOK, map[string]string{"endSessionUrl": u})
 				return
@@ -130,6 +167,9 @@ func (s *Server) Handler() http.Handler {
 	api("POST /api/v1/admin-tokens/{slug}/rotate", s.rotateAdminToken)
 	api("POST /api/v1/admin-tokens/{slug}/revoke", s.revokeAdminToken)
 
+	api("POST /api/v1/revocations/jwts", s.revokeJWT)
+	api("POST /api/v1/revocations/sessions", s.revokeSessions)
+
 	api("GET /api/v1/audit-events", s.listAuditEvents)
 	api("GET /api/v1/audit-status", s.auditStatus)
 
@@ -159,10 +199,12 @@ func (s *Server) wrap(h handlerFunc) http.Handler {
 		if err == nil {
 			err = permit(p.Role, r)
 		}
-		if err == nil {
-			err = s.audited(h, w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)), p)
-		}
 		if err != nil {
+			s.recordDenial(r, p, err)
+			apierror.Write(w, r, err, s.Log)
+			return
+		}
+		if err := s.audited(h, w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)), p); err != nil {
 			apierror.Write(w, r, err, s.Log)
 		}
 	})
@@ -170,7 +212,7 @@ func (s *Server) wrap(h handlerFunc) http.Handler {
 
 type principalKey struct{}
 
-// permit enforces roles: viewers read; editors change configuration but not admin tokens;
+// permit enforces roles: viewers read; editors change configuration but not admin tokens or revocations;
 // admins do everything.
 func permit(role string, r *http.Request) error {
 	safe := r.Method == http.MethodGet || r.Method == http.MethodHead
@@ -178,10 +220,10 @@ func permit(role string, r *http.Request) error {
 	case oidc.RoleAdmin:
 		return nil
 	case oidc.RoleEditor:
-		if safe || !strings.HasPrefix(r.URL.Path, "/api/v1/admin-tokens") {
+		if safe || (!strings.HasPrefix(r.URL.Path, "/api/v1/admin-tokens") && !strings.HasPrefix(r.URL.Path, "/api/v1/revocations")) {
 			return nil
 		}
-		return apierror.Forbidden("editors cannot manage admin tokens")
+		return apierror.Forbidden("editors cannot manage admin tokens or identity revocations")
 	}
 	if safe {
 		return nil
@@ -219,11 +261,12 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 	if !ok {
 		return nil, nil
 	}
+	p := &principal{Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}
 	// Cookies are sent automatically by browsers; demand a header a cross-site form cannot set.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-VMCP-CSRF") == "" {
-		return nil, apierror.Forbidden("missing X-VMCP-CSRF header")
+		return p, apierror.Forbidden("missing X-VMCP-CSRF header")
 	}
-	return &principal{Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}, nil
+	return p, nil
 }
 
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {

@@ -59,7 +59,7 @@ func Run(ctx context.Context, log *slog.Logger, factory func() (audit.Publisher,
 				log.Info("audit delivery counts", "counts", string(counts))
 			}
 		case <-tick.C:
-			for i := 0; i < 100; i++ {
+			for i := 0; i < 500; i++ {
 				bounded, cancel := context.WithTimeout(ctx, 10*time.Second)
 				more, err := exporter.Step(bounded)
 				cancel()

@@ -32,7 +32,9 @@ func New(tenants []Tenant) (*Router, error) {
 	r := &Router{routes: map[string]map[string]*httputil.ReverseProxy{}}
 	ids := map[string]bool{}
 	targets := map[string]string{}
-	client := netpolicy.Client(&http.Client{Timeout: 75 * time.Second})
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	baseTransport.ResponseHeaderTimeout = 75 * time.Second
+	client := netpolicy.Client(&http.Client{Transport: baseTransport})
 	for _, t := range tenants {
 		if !regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`).MatchString(t.ID) || ids[t.ID] || t.Host != strings.ToLower(t.Host) || strings.ContainsAny(t.Host, "/:@% ") || !strings.Contains(t.Host, ".") || r.routes[t.Host] != nil {
 			return nil, errors.New("invalid or duplicate tenant identity/host")
@@ -73,10 +75,11 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	kind := "ui"
-	if strings.HasPrefix(request.URL.Path, "/mcp/") {
+	if strings.HasPrefix(request.URL.Path, "/mcp/") || strings.HasPrefix(request.URL.Path, "/.well-known/oauth-protected-resource/") {
 		kind = "data"
 	} else if strings.HasPrefix(request.URL.Path, "/api/") || strings.HasPrefix(request.URL.Path, "/auth/") {
 		kind = "control"
 	}
 	routes[kind].ServeHTTP(w, request)
 }
+

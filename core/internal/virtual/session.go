@@ -27,6 +27,7 @@ type cachedClient struct {
 	rootsRevision      int64
 	clientCapabilities json.RawMessage
 	conn               upstream.Conn
+	baseGeneration     [32]byte
 	generation         [32]byte
 	active             int
 	retired            bool
@@ -65,11 +66,29 @@ type Session struct {
 	owner   Owner
 	ended   atomic.Bool
 
-	mu    sync.Mutex
-	conns map[string]*upstreamConn
-	last  time.Time
+	mu           sync.Mutex
+	loggingLevel string
+	conns        map[string]*upstreamConn
+	last         time.Time
 	// persisted is when the shared store last saw this session alive.
 	persisted time.Time
+}
+
+// LoggingLevel returns the current session logging threshold ("warning" by default).
+func (s *Session) LoggingLevel() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.loggingLevel == "" {
+		return "warning"
+	}
+	return s.loggingLevel
+}
+
+// SetLoggingLevel updates the cached session logging threshold.
+func (s *Session) SetLoggingLevel(level string) {
+	s.mu.Lock()
+	s.loggingLevel = level
+	s.mu.Unlock()
 }
 
 func (s *Session) touch() {
@@ -78,12 +97,14 @@ func (s *Session) touch() {
 	s.mu.Unlock()
 }
 
+const maxSessionUpstreams = 512
+
 func (s *Session) conn(upstreamID string) *upstreamConn {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	uc, ok := s.conns[upstreamID]
 	if !ok {
-		if len(s.conns) >= 32 {
+		if len(s.conns) >= maxSessionUpstreams {
 			return nil
 		}
 		uc = &upstreamConn{}
@@ -91,6 +112,8 @@ func (s *Session) conn(upstreamID string) *upstreamConn {
 	}
 	return uc
 }
+
+type dialHookKey struct{}
 
 // client returns the initialized upstream client, creating it on first use.
 func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn, func(), error) {
@@ -112,11 +135,19 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 		uc.retireLocked()
 	}
 	if uc.current == nil {
+		if onDial, ok := ctx.Value(dialHookKey{}).(func()); ok {
+			onDial()
+		}
 		c, err := Dial(ctx, up)
 		if err != nil {
 			return nil, nil, err
 		}
-		uc.current = &cachedClient{conn: c, generation: generation, clientCapabilities: append(json.RawMessage(nil), upstream.ClientCapabilities(ctx)...)}
+		uc.current = &cachedClient{
+			conn:               c,
+			baseGeneration:     baseGeneration,
+			generation:         generation,
+			clientCapabilities: append(json.RawMessage(nil), upstream.ClientCapabilities(ctx)...),
+		}
 	}
 	c := uc.current
 	c.active++
@@ -189,6 +220,40 @@ func (s *Session) closeUpstreams() {
 	}
 }
 
+func (s *Session) closeUpstreamsSync() {
+	s.mu.Lock()
+	conns := make([]*upstreamConn, 0, len(s.conns))
+	for _, uc := range s.conns {
+		conns = append(conns, uc)
+	}
+	s.mu.Unlock()
+
+	var toClose []*cachedClient
+	for _, uc := range conns {
+		uc.mu.Lock()
+		if c := uc.current; c != nil {
+			c.retired = true
+			uc.current = nil
+			if c.active == 0 && !c.closed {
+				c.closed = true
+				toClose = append(toClose, c)
+			}
+		}
+		uc.mu.Unlock()
+	}
+	var wg sync.WaitGroup
+	for _, c := range toClose {
+		wg.Add(1)
+		go func(cl *cachedClient) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = cl.conn.Close(ctx)
+		}(c)
+	}
+	wg.Wait()
+}
+
 // Manager tracks live sessions. Upstream connections are always node-local; with a Store the
 // session records are shared, so a node that has never seen a session id can still resume it
 // (its upstream sessions are simply re-established on first use).
@@ -216,6 +281,7 @@ func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
 		slug:               slug,
 		version:            protocolVersion,
 		clientCapabilities: json.RawMessage(`{}`),
+		loggingLevel:       "warning",
 		conns:              map[string]*upstreamConn{},
 		last:               time.Now(),
 	}
@@ -238,8 +304,12 @@ func (m *Manager) Persist(ctx context.Context, s *Session) error {
 	}
 	s.mu.Lock()
 	s.persisted = time.Now()
+	level := s.loggingLevel
 	s.mu.Unlock()
-	return m.Store.Save(ctx, Record{Owner: s.owner, ID: s.id, Slug: s.slug, KeySlug: s.keySlug, Version: s.version, ClientCapabilities: s.clientCapabilities})
+	if level == "" {
+		level = "warning"
+	}
+	return m.Store.Save(ctx, Record{Owner: s.owner, ID: s.id, Slug: s.slug, KeySlug: s.keySlug, Version: s.version, ClientCapabilities: s.clientCapabilities, LoggingLevel: level})
 }
 
 // Resolve checks the authoritative store on every request, including warm caches.
@@ -261,18 +331,33 @@ func (m *Manager) Resolve(ctx context.Context, id string) (*Session, error) {
 		m.Delete(id)
 		return nil, nil
 	}
+	level := rec.LoggingLevel
+	if level == "" {
+		level = "warning"
+	}
+	m.mu.RLock()
+	existing := m.sessions[id]
+	m.mu.RUnlock()
+	if existing != nil {
+		existing.mu.Lock()
+		existing.initialized = rec.Initialized
+		existing.loggingLevel = level
+		existing.mu.Unlock()
+		return existing, nil
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing := m.sessions[id]; existing != nil {
 		existing.mu.Lock()
 		existing.initialized = rec.Initialized
+		existing.loggingLevel = level
 		existing.mu.Unlock()
 		return existing, nil
 	}
 	if m.closed || len(m.sessions) >= 10000 {
 		return nil, errors.New("session capacity unavailable")
 	}
-	s := &Session{owner: rec.Owner, id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
+	s := &Session{owner: rec.Owner, id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, loggingLevel: level, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
 	m.sessions[id] = s
 	return s, nil
 }
@@ -411,11 +496,22 @@ func (m *Manager) Reconcile(snap *config.Snapshot) {
 			conns[id] = uc
 		}
 		s.mu.Unlock()
+		vs, vsOK := snap.VirtualServers[s.slug]
 		for id, uc := range conns {
 			up, ok := snap.Upstreams[id]
 			uc.mu.Lock()
-			if uc.current != nil && (!ok || uc.current.generation != up.Fingerprint()) {
-				uc.retireLocked()
+			if uc.current != nil {
+				baseGen := uc.current.baseGeneration
+				if baseGen == ([32]byte{}) {
+					baseGen = uc.current.generation
+				}
+				if !ok || baseGen != up.Fingerprint() {
+					uc.retireLocked()
+				} else if vsOK && len(uc.current.clientCapabilities) > 0 && string(uc.current.clientCapabilities) != "{}" {
+					if string(vs.ClientFeatures.Negotiated(s.clientCapabilities)) != string(uc.current.clientCapabilities) {
+						uc.retireLocked()
+					}
+				}
 			}
 			uc.mu.Unlock()
 		}
@@ -429,7 +525,14 @@ func (m *Manager) Close() {
 	sessions := m.sessions
 	m.sessions = map[string]*Session{}
 	m.mu.Unlock()
+	var wg sync.WaitGroup
 	for _, s := range sessions {
-		s.closeUpstreams()
+		wg.Add(1)
+		go func(sess *Session) {
+			defer wg.Done()
+			sess.closeUpstreamsSync()
+		}(s)
 	}
+	wg.Wait()
 }
+

@@ -29,6 +29,18 @@ func (s *Store) Subscribe(session string) (<-chan struct{}, func()) {
 		}
 	}
 }
+
+// NotifyLocal wakes any in-process subscribers for session immediately without waiting for LISTEN/NOTIFY.
+func (s *Store) NotifyLocal(session string) {
+	s.watchMu.Lock()
+	for _, wake := range s.watchers[session] {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+	s.watchMu.Unlock()
+}
 func (s *Store) listen(ctx context.Context) {
 	for ctx.Err() == nil {
 		s.listenOnce(ctx)

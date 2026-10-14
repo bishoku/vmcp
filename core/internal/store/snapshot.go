@@ -2,9 +2,12 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/netip"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +19,91 @@ import (
 	"github.com/bishoku/vmcp/core/internal/policy"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 )
+
+type secretCacheKey struct {
+	boxHash [32]byte
+	id      string
+	purpose string
+	encHash [32]byte
+}
+
+var (
+	snapshotCacheMu sync.RWMutex
+	piiCache        = map[[32]byte]*pii.Masker{}
+	headersCache    = map[secretCacheKey]map[string]string{}
+	secretCache     = map[secretCacheKey]string{}
+)
+
+func cachedCompilePII(raw []byte) (*pii.Masker, error) {
+	key := sha256.Sum256(raw)
+	snapshotCacheMu.RLock()
+	m, ok := piiCache[key]
+	snapshotCacheMu.RUnlock()
+	if ok {
+		return m, nil
+	}
+	var pc pii.Config
+	if err := json.Unmarshal(raw, &pc); err != nil {
+		return nil, fmt.Errorf("pii config: %w", err)
+	}
+	compiled, err := pii.Compile(pc)
+	if err != nil {
+		return nil, err
+	}
+	snapshotCacheMu.Lock()
+	if len(piiCache) >= 2048 {
+		clear(piiCache)
+	}
+	piiCache[key] = compiled
+	snapshotCacheMu.Unlock()
+	return compiled, nil
+}
+
+func cachedOpenHeaders(box *secrets.Box, boxTag [32]byte, enc []byte, id string) (map[string]string, error) {
+	if len(enc) == 0 {
+		return map[string]string{}, nil
+	}
+	ck := secretCacheKey{boxHash: boxTag, id: id, purpose: "headers", encHash: sha256.Sum256(enc)}
+	snapshotCacheMu.RLock()
+	cached, ok := headersCache[ck]
+	snapshotCacheMu.RUnlock()
+	if ok {
+		return maps.Clone(cached), nil
+	}
+	hdrs, err := box.OpenHeadersBound(enc, id)
+	if err != nil {
+		return nil, err
+	}
+	snapshotCacheMu.Lock()
+	if len(headersCache) >= 2048 {
+		clear(headersCache)
+	}
+	headersCache[ck] = maps.Clone(hdrs)
+	snapshotCacheMu.Unlock()
+	return hdrs, nil
+}
+
+func cachedOpenBound(box *secrets.Box, boxTag [32]byte, enc []byte, id, purpose string) (string, error) {
+	ck := secretCacheKey{boxHash: boxTag, id: id, purpose: purpose, encHash: sha256.Sum256(enc)}
+	snapshotCacheMu.RLock()
+	val, ok := secretCache[ck]
+	snapshotCacheMu.RUnlock()
+	if ok {
+		return val, nil
+	}
+	raw, err := box.OpenBound(enc, id, purpose)
+	if err != nil {
+		return "", err
+	}
+	val = string(raw)
+	snapshotCacheMu.Lock()
+	if len(secretCache) >= 2048 {
+		clear(secretCache)
+	}
+	secretCache[ck] = val
+	snapshotCacheMu.Unlock()
+	return val, nil
+}
 
 // DefaultTenantSlug is the internal configuration row within a dedicated tenant database.
 const DefaultTenantSlug = "default"
@@ -30,6 +118,7 @@ func Revision(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 // LoadSnapshot builds a consistent snapshot of the default tenant's enabled config.
 // It runs in one repeatable-read transaction so revision and content always agree.
 func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*config.Snapshot, error) {
+	boxTag := sha256.Sum256([]byte(fmt.Sprintf("%p", box)))
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return nil, err
@@ -66,30 +155,30 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 			rows.Close()
 			return nil, err
 		}
-		if u.Headers, err = box.OpenHeadersBound(enc, u.ID); err != nil {
+		if u.Headers, err = cachedOpenHeaders(box, boxTag, enc, u.ID); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("decrypt headers for upstream %q: %w", u.Slug, err)
 		}
 		if len(encKey) > 0 {
-			k, err := box.OpenBound(encKey, u.ID, "upstream.client_key")
+			k, err := cachedOpenBound(box, boxTag, encKey, u.ID, "upstream.client_key")
 			if err != nil {
 				rows.Close()
 				return nil, fmt.Errorf("decrypt client key for upstream %q: %w", u.Slug, err)
 			}
-			u.TLS.ClientKeyPEM = string(k)
+			u.TLS.ClientKeyPEM = k
 		}
 		if oc.TokenURL != "" {
 			if len(encOAuth) > 0 {
-				k, err := box.OpenBound(encOAuth, u.ID, "upstream.oauth_secret")
+				k, err := cachedOpenBound(box, boxTag, encOAuth, u.ID, "upstream.oauth_secret")
 				if err != nil {
 					rows.Close()
 					return nil, fmt.Errorf("decrypt oauth client secret for upstream %q: %w", u.Slug, err)
 				}
-				oc.ClientSecret = string(k)
+				oc.ClientSecret = k
 			}
 			u.OAuth = &oc
 		}
-		snap.Upstreams[u.ID] = u
+		snap.Upstreams[u.ID] = u.WithPrecomputedFingerprint()
 		upstreamSlugs[u.ID] = u.Slug
 	}
 	rows.Close()
@@ -122,12 +211,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 			rows.Close()
 			return nil, err
 		}
-		var pc pii.Config
-		if err := json.Unmarshal(piiRaw, &pc); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("virtual server %q: pii config: %w", v.Slug, err)
-		}
-		if v.PII, err = pii.Compile(pc); err != nil {
+		if v.PII, err = cachedCompilePII(piiRaw); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("virtual server %q: %w", v.Slug, err)
 		}
@@ -194,6 +278,9 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	for slug, vs := range snap.VirtualServers {
+		snap.VirtualServers[slug] = vs.WithToolIndex()
 	}
 	if err := loadVirtualCatalog(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err

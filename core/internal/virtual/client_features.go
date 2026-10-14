@@ -299,10 +299,7 @@ func (h *Handler) relayLog(ctx context.Context, message *mcp.Message, sess *Sess
 	if !ok {
 		return errors.New("invalid logging severity")
 	}
-	var threshold string
-	if err := h.Delivery.Pool.QueryRow(ctx, `SELECT logging_level FROM sessions WHERE id=$1 AND terminated_at IS NULL`, sess.id).Scan(&threshold); err != nil {
-		return err
-	}
+	threshold := sess.LoggingLevel()
 	if level < logLevels[threshold] {
 		return nil
 	}
@@ -408,11 +405,7 @@ func (h *Handler) configureLogging(ctx context.Context, sess *Session, c upstrea
 	}
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	var level string
-	if err := h.Delivery.Pool.QueryRow(bounded, `SELECT logging_level FROM sessions WHERE id=$1 AND terminated_at IS NULL`, sess.id).Scan(&level); err != nil {
-		return err
-	}
-	return upstream.SetLoggingLevel(bounded, c, level)
+	return upstream.SetLoggingLevel(bounded, c, sess.LoggingLevel())
 }
 
 func validateSamplingContent(content map[string]json.RawMessage) error {

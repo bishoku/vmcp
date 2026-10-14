@@ -18,8 +18,12 @@ func (h *Handler) notifyRoots(ctx context.Context, sess *Session) {
 	if h.Delivery == nil {
 		return
 	}
-	var revision int64
-	if err := h.Delivery.Pool.QueryRow(ctx, `SELECT roots_revision FROM mcp_client_notifications WHERE session_id=$1`, sess.id).Scan(&revision); err != nil || revision == 0 {
+	var clientCaps struct {
+		Roots *struct {
+			ListChanged bool `json:"listChanged"`
+		} `json:"roots"`
+	}
+	if json.Unmarshal(vs.ClientFeatures.Negotiated(sess.clientCapabilities), &clientCaps) != nil || clientCaps.Roots == nil || !clientCaps.Roots.ListChanged {
 		return
 	}
 	sess.mu.Lock()
@@ -28,6 +32,13 @@ func (h *Handler) notifyRoots(ctx context.Context, sess *Session) {
 		connections = append(connections, conn)
 	}
 	sess.mu.Unlock()
+	if len(connections) == 0 {
+		return
+	}
+	var revision int64
+	if err := h.Delivery.Pool.QueryRow(ctx, `SELECT roots_revision FROM mcp_client_notifications WHERE session_id=$1`, sess.id).Scan(&revision); err != nil || revision == 0 {
+		return
+	}
 	for _, conn := range connections {
 		conn.mu.Lock()
 		cached := conn.current

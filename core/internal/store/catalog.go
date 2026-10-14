@@ -61,6 +61,7 @@ func (t *Tx) ReplaceCatalog(ctx context.Context, slug string, catalog mcp.Catalo
 	if _, err := t.q.Exec(ctx, `DELETE FROM upstream_catalog WHERE upstream_id=$1`, id); err != nil {
 		return err
 	}
+	var kinds, names, defs []string
 	for _, f := range []struct {
 		kind, key string
 		objects   []mcp.CatalogObject
@@ -70,9 +71,18 @@ func (t *Tx) ReplaceCatalog(ctx context.Context, slug string, catalog mcp.Catalo
 			if err != nil {
 				return err
 			}
-			if _, err = t.q.Exec(ctx, `INSERT INTO upstream_catalog(upstream_id,kind,name,definition) VALUES($1,$2,$3,$4)`, id, f.kind, o.String(f.key), raw); err != nil {
-				return err
-			}
+			kinds = append(kinds, f.kind)
+			names = append(names, o.String(f.key))
+			defs = append(defs, string(raw))
+		}
+	}
+	if len(kinds) > 0 {
+		if _, err := t.q.Exec(ctx, `
+			INSERT INTO upstream_catalog(upstream_id, kind, name, definition)
+			SELECT $1::uuid, u.kind, u.name, u.definition::jsonb
+			FROM UNNEST($2::text[], $3::text[], $4::text[]) AS u(kind, name, definition)`,
+			id, kinds, names, defs); err != nil {
+			return err
 		}
 	}
 	_, err = t.q.Exec(ctx, `UPDATE upstreams SET mcp_capabilities=$2 WHERE id=$1`, id, caps)

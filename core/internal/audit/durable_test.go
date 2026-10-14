@@ -177,3 +177,35 @@ func TestBestEffortShutdownFailureExplicitlyAccountsForPending(t *testing.T) {
 		t.Fatalf("shutdown hid failed batch: %+v", w.Stats())
 	}
 }
+
+func TestWriterIsolatesPoisonPillEvent(t *testing.T) {
+	var saved []string
+	var mu sync.Mutex
+	w := testWriter(func(_ context.Context, events []Event) error {
+		for _, e := range events {
+			if e.Method == "poison" {
+				return &pgconn.PgError{Code: "23514"}
+			}
+		}
+		mu.Lock()
+		for _, e := range events {
+			saved = append(saved, e.Method)
+		}
+		mu.Unlock()
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	go w.run(ctx)
+	w.Record(Event{Method: "good-1", Status: "ok"})
+	w.Record(Event{Method: "poison", Status: "ok"})
+	w.Record(Event{Method: "good-2", Status: "ok"})
+	waitAudit(t, func() bool { return w.Stats().Pending == 0 })
+	cancel()
+	<-w.Done()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(saved) != 2 || w.Dropped() != 1 || w.Stats().DeadLetters != 1 {
+		t.Fatalf("poison pill not isolated: saved=%v stats=%+v", saved, w.Stats())
+	}
+}
+

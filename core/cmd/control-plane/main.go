@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -42,8 +43,10 @@ func run(log *slog.Logger) error {
 	if _, err := netpolicy.Origins(); err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx, cancelBg := context.WithCancel(context.Background())
+	defer cancelBg()
 
 	dbURL, err := config.MustEnv("VMCP_DATABASE_URL")
 	if err != nil {
@@ -74,7 +77,12 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	var bgWg sync.WaitGroup
+	defer func() {
+		cancelBg()
+		bgWg.Wait()
+		pool.Close()
+	}()
 	if err := store.CheckSchema(ctx, pool); err != nil {
 		return err
 	}
@@ -83,22 +91,50 @@ func run(log *slog.Logger) error {
 	if days, err := strconv.Atoi(config.Env("VMCP_AUDIT_RETENTION_DAYS", "90")); err != nil || days < 0 {
 		return errors.New("VMCP_AUDIT_RETENTION_DAYS must be a non-negative integer")
 	} else if days > 0 {
-		go purgeLoop(ctx, log, pool, time.Duration(days)*24*time.Hour)
+		bgWg.Add(1)
+		go func(d int) {
+			defer bgWg.Done()
+			purgeLoop(ctx, log, pool, time.Duration(d)*24*time.Hour)
+		}(days)
 	}
 
 	provider, err := oidcFromEnv(ctx, masterKey, pool)
 	if err != nil {
 		return err
 	}
-	api := &controlplane.Server{
-		OIDC:       provider,
-		Store:      &store.Store{Pool: pool, Box: box},
-		AdminToken: adminToken,
-		Version:    version,
-		Log:        log,
+	trusted, err := config.ParsePrefixes(config.Env("VMCP_TRUSTED_PROXIES", ""))
+	if err != nil {
+		return errors.New("invalid VMCP_TRUSTED_PROXIES: " + err.Error())
 	}
-	go api.RunDiscovery(ctx)
+	api := &controlplane.Server{
+		OIDC:           provider,
+		Store:          &store.Store{Pool: pool, Box: box},
+		AdminToken:     adminToken,
+		Version:        version,
+		Log:            log,
+		TrustedProxies: trusted,
+	}
+	bgWg.Add(1)
+	go func() {
+		defer bgWg.Done()
+		api.RunDiscovery(ctx)
+	}()
 	metrics := telemetry.New()
+	metrics.Gauges = func(gctx context.Context) map[string]float64 {
+		stats := pool.Stat()
+		gauges := map[string]float64{
+			"pool_acquired":                 float64(stats.AcquiredConns()),
+			"pool_max":                      float64(stats.MaxConns()),
+			"pool_acquire_seconds_total":    stats.AcquireDuration().Seconds(),
+			"pool_empty_acquires_total":     float64(stats.EmptyAcquireCount()),
+			"pool_cancelled_acquires_total": float64(stats.CanceledAcquireCount()),
+		}
+		if pending, err := audit.Pending(gctx, pool); err == nil {
+			gauges["audit_incomplete"] = float64(pending.Incomplete)
+			gauges["audit_oldest_incomplete_seconds"] = pending.OldestIncompleteAgeSeconds
+		}
+		return gauges
+	}
 	shutdownTracing, err := telemetry.InitTracing(ctx, "vmcp-control-plane")
 	if err != nil {
 		return err
@@ -128,7 +164,7 @@ func run(log *slog.Logger) error {
 	select {
 	case err := <-errCh:
 		return err
-	case <-ctx.Done():
+	case <-signalCtx.Done():
 	}
 
 	gate.Stop()
@@ -146,14 +182,26 @@ func run(log *slog.Logger) error {
 }
 
 func purgeLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, retention time.Duration) {
-	t := time.NewTicker(time.Hour)
+	t := time.NewTicker(15 * time.Minute)
 	defer t.Stop()
 	for {
 		start := time.Now()
-		if n, err := audit.Purge(ctx, pool, retention); err != nil && ctx.Err() == nil {
-			log.Error("audit purge failed", "err", err)
-		} else if n > 0 {
-			log.Info("audit events purged", "count", n, "duration_ms", time.Since(start).Milliseconds())
+		var total int64
+		for batch := 0; batch < 200 && ctx.Err() == nil; batch++ {
+			n, err := audit.Purge(ctx, pool, retention)
+			if err != nil {
+				if ctx.Err() == nil {
+					log.Error("audit purge failed", "err", err)
+				}
+				break
+			}
+			total += n
+			if n < 500 {
+				break
+			}
+		}
+		if total > 0 {
+			log.Info("audit events purged", "count", total, "duration_ms", time.Since(start).Milliseconds())
 		}
 		select {
 		case <-ctx.Done():

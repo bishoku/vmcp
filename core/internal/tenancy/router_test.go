@@ -53,3 +53,31 @@ func TestTenantDirectoryRejectsSharedPlanes(t *testing.T) {
 		t.Fatal("shared tenant planes accepted")
 	}
 }
+
+func TestTenantRoutingForwardsWellKnownOAuthProtectedResourceToDataPlane(t *testing.T) {
+	data := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/oauth-protected-resource/mcp/v1/virtual/srv" && r.Header.Get("X-vMCP-Tenant") == "a" {
+			w.WriteHeader(200)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer data.Close()
+	ui := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(418)
+	}))
+	defer ui.Close()
+	router, err := New([]Tenant{{ID: "a", Host: "a.example.com", Control: ui.URL, Data: data.URL, UI: ui.URL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.routes["a.example.com"]["data"].Transport = data.Client().Transport
+	router.routes["a.example.com"]["ui"].Transport = ui.Client().Transport
+	req := httptest.NewRequest("GET", "https://a.example.com/.well-known/oauth-protected-resource/mcp/v1/virtual/srv", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("expected 200 from data plane for well-known resource metadata, got %d", rec.Code)
+	}
+}
+

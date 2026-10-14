@@ -22,6 +22,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/bishoku/vmcp/core/internal/agentauth"
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 )
 
 // Roles, from least to most privileged.
@@ -71,6 +72,7 @@ type Session struct {
 // Provider runs the sign-in flow.
 type Provider struct {
 	cfg        Config
+	httpClient *http.Client
 	endSession string
 	oauth      oauth2.Config
 	verifier   *gooidc.IDTokenVerifier
@@ -95,9 +97,11 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	if cfg.SessionTTL <= 0 {
 		cfg.SessionTTL = 8 * time.Hour
 	}
-	if cfg.HTTPClient != nil {
-		ctx = gooidc.ClientContext(ctx, cfg.HTTPClient)
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = netpolicy.Client(&http.Client{Timeout: 10 * time.Second})
 	}
+	ctx = gooidc.ClientContext(ctx, httpClient)
 	from := cfg.Issuer
 	if cfg.DiscoveryURL != "" {
 		from = cfg.DiscoveryURL
@@ -113,6 +117,7 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	_ = p.Claims(&meta)
 	return &Provider{
 		cfg:        cfg,
+		httpClient: httpClient,
 		endSession: meta.EndSession,
 		oauth: oauth2.Config{
 			ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Endpoint: p.Endpoint(),
@@ -155,9 +160,9 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if p.cfg.HTTPClient != nil {
-		ctx = context.WithValue(ctx, oauth2.HTTPClient, p.cfg.HTTPClient)
-		ctx = gooidc.ClientContext(ctx, p.cfg.HTTPClient)
+	if p.httpClient != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, p.httpClient)
+		ctx = gooidc.ClientContext(ctx, p.httpClient)
 	}
 	tok, err := p.oauth.Exchange(ctx, r.URL.Query().Get("code"), oauth2.VerifierOption(f.Verifier))
 	if err != nil {

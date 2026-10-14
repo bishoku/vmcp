@@ -147,7 +147,7 @@ func TestDeadLettersAndExpiredLeasesRemainRecoverable(t *testing.T) {
 	if err := exporter.Register(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := audit.Persist(ctx, pool, audit.Event{Action: "dead", Status: "ok", Time: time.Now().Add(-72 * time.Hour)}); err != nil {
+	if err := audit.Persist(ctx, pool, audit.Event{Action: "dead", Status: "ok", Time: time.Now().Add(-36 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := exporter.Fill(ctx); err != nil {
@@ -164,7 +164,10 @@ func TestDeadLettersAndExpiredLeasesRemainRecoverable(t *testing.T) {
 		t.Fatal("failed dead-letter transition", state, err)
 	}
 	if n, err := audit.Purge(ctx, pool, 24*time.Hour); err != nil || n != 0 {
-		t.Fatal("dead letter purged", n, err)
+		t.Fatal("dead letter purged before 2x retention window", n, err)
+	}
+	if n, err := audit.Purge(ctx, pool, 12*time.Hour); err != nil || n != 1 {
+		t.Fatal("dead letter blocked retention past 2x retention window", n, err)
 	}
 }
 func TestRetentionBatchIsBounded(t *testing.T) {

@@ -91,3 +91,43 @@ func TestFailedAdminAdmissionPreventsMutation(t *testing.T) {
 		t.Fatalf("admin admission failure permitted mutation: %d %v", count, err)
 	}
 }
+
+func TestDenialAuditAndRevocationEndpoints(t *testing.T) {
+	a := setup(t)
+	ctx := context.Background()
+
+	status, _, _ := a.do("GET", "/api/v1/upstreams", nil, map[string]string{"Authorization": "Bearer wrong"})
+	if status != 401 {
+		t.Fatalf("expected 401, got %d", status)
+	}
+	var denials int
+	if err := a.pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE status='denied' AND action='GET /api/v1/upstreams'`).Scan(&denials); err != nil || denials != 1 {
+		t.Fatalf("expected 1 unauthorized denial audit event, got %d (%v)", denials, err)
+	}
+
+	_, viewerResp := a.expect(201, "POST", "/api/v1/admin-tokens", map[string]any{"slug": "viewer-tok", "scope": "read"})
+	viewerSecret, _ := viewerResp["token"].(string)
+	status, _, _ = a.do("POST", "/api/v1/upstreams", a.upstream(), map[string]string{"Authorization": "Bearer " + viewerSecret})
+	if status != 403 {
+		t.Fatalf("expected 403 for viewer write, got %d", status)
+	}
+	if err := a.pool.QueryRow(ctx, `SELECT count(*) FROM audit_events WHERE status='denied' AND actor_type='admin-token' AND action='POST /api/v1/upstreams'`).Scan(&denials); err != nil || denials != 1 {
+		t.Fatalf("expected 1 forbidden denial audit event with actor attribution, got %d (%v)", denials, err)
+	}
+
+	a.expect(204, "POST", "/api/v1/revocations/jwts", map[string]any{"token": "eyJhbGciOiJSUzI1NiJ9.payload.sig"})
+	var revokedCount int
+	if err := a.pool.QueryRow(ctx, `SELECT count(*) FROM revoked_jwts`).Scan(&revokedCount); err != nil || revokedCount != 1 {
+		t.Fatalf("expected 1 revoked JWT, got %d (%v)", revokedCount, err)
+	}
+
+	if _, err := a.pool.Exec(ctx, `INSERT INTO browser_sessions(id,subject,expires_at) VALUES('sess-1','user-42',now()+interval '1 hour')`); err != nil {
+		t.Fatal(err)
+	}
+	a.expect(204, "POST", "/api/v1/revocations/sessions", map[string]any{"subject": "user-42"})
+	var activeSessions int
+	if err := a.pool.QueryRow(ctx, `SELECT count(*) FROM browser_sessions WHERE subject='user-42' AND revoked_at IS NULL`).Scan(&activeSessions); err != nil || activeSessions != 0 {
+		t.Fatalf("expected 0 active sessions for user-42, got %d (%v)", activeSessions, err)
+	}
+}
+

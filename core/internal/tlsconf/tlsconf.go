@@ -154,6 +154,9 @@ func (s Settings) Client() (*http.Client, error) {
 		cfg.Certificates = []tls.Certificate{cert}
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.MaxIdleConns = 2048
+	tr.MaxIdleConnsPerHost = 128
+	tr.IdleConnTimeout = 90 * time.Second
 	tr.TLSClientConfig = cfg
 	c := &http.Client{Transport: tr}
 	clients[key] = c

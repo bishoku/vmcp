@@ -17,6 +17,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
+	"github.com/bishoku/vmcp/core/internal/upstream"
 )
 
 type memorySessions struct {
@@ -24,6 +25,7 @@ type memorySessions struct {
 	records            map[string]Record
 	tombstones         map[string]bool
 	loadErr, deleteErr error
+	loads              atomic.Int32
 }
 
 func newMemorySessions() *memorySessions {
@@ -38,6 +40,7 @@ func (s *memorySessions) Save(_ context.Context, r Record) error {
 	return nil
 }
 func (s *memorySessions) Load(_ context.Context, id string) (Record, bool, error) {
+	s.loads.Add(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.records[id]
@@ -335,5 +338,112 @@ func TestOwnerDistinguishesAuthenticationModesAndCredentialIDs(t *testing.T) {
 		if a == b {
 			t.Fatalf("distinct owner compares equal: %+v", b)
 		}
+	}
+}
+
+func TestReconcilePreservesClientCapabilityConnectionsWhenUpstreamUnchanged(t *testing.T) {
+	fake := &fakeUpstream{name: "cap-upstream"}
+	srv := httptest.NewServer(fake)
+	defer srv.Close()
+
+	m := NewManager()
+	s, err := m.Create("agent", mcp.ProtocolVersion20250618)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.clientCapabilities = json.RawMessage(`{"sampling":{},"roots":{"listChanged":true}}`)
+	vs := config.VirtualServer{
+		Slug:           "agent",
+		ClientFeatures: config.ClientFeatures{Sampling: true, Roots: true},
+	}
+	up := config.Upstream{ID: "u1", Slug: "cap", URL: srv.URL}.WithPrecomputedFingerprint()
+	ctx := upstream.WithRelay(context.Background(), upstream.Relay{
+		ClientCapabilities: vs.ClientFeatures.Negotiated(s.clientCapabilities),
+	})
+	_, release, err := s.client(ctx, up)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+
+	uc := s.conn("u1")
+	if uc.current == nil {
+		t.Fatal("expected cached upstream client")
+	}
+	// Reconcile when an unrelated upstream changes; u1 and vs.ClientFeatures are unchanged.
+	m.Reconcile(&config.Snapshot{
+		Upstreams: map[string]config.Upstream{
+			"u1": up,
+			"u2": {ID: "u2", URL: "https://other.example/mcp"},
+		},
+		VirtualServers: map[string]config.VirtualServer{"agent": vs},
+	})
+	uc.mu.Lock()
+	preserved := uc.current != nil && !uc.current.retired
+	uc.mu.Unlock()
+	if !preserved {
+		t.Fatal("Reconcile retired unchanged capability-enabled upstream connection")
+	}
+
+	// Now disable Sampling on the virtual server; Reconcile must retire the connection.
+	vs.ClientFeatures.Sampling = false
+	m.Reconcile(&config.Snapshot{
+		Upstreams:      map[string]config.Upstream{"u1": up},
+		VirtualServers: map[string]config.VirtualServer{"agent": vs},
+	})
+	uc.mu.Lock()
+	retired := uc.current == nil
+	uc.mu.Unlock()
+	if !retired {
+		t.Fatal("Reconcile did not retire connection when negotiated client features changed")
+	}
+}
+
+func TestWarmToolCallMinimizesSessionStoreLoads(t *testing.T) {
+	r := newRig(t)
+	store := newMemorySessions()
+	r.handler.Sessions.Store = store
+	sid := r.initialize(t)
+
+	// Warm the upstream connection on the first call.
+	resp, _ := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Arguments: json.RawMessage(`{"title":"warm"}`)})
+	if resp.StatusCode != 200 {
+		t.Fatalf("warm call status: %d", resp.StatusCode)
+	}
+	store.loads.Store(0)
+
+	// A subsequent warm tool call should resolve the session from the store only once.
+	resp, _ = r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Arguments: json.RawMessage(`{"title":"hot"}`)})
+	if resp.StatusCode != 200 {
+		t.Fatalf("hot call status: %d", resp.StatusCode)
+	}
+	if got := store.loads.Load(); got != 1 {
+		t.Fatalf("expected 1 session store Load on warm tool call, got %d", got)
+	}
+}
+
+func TestVirtualServerToolIndexAndPrecomputedFingerprint(t *testing.T) {
+	up := config.Upstream{
+		ID:      "u-1",
+		Slug:    "gh",
+		URL:     "https://api.example.com/mcp",
+		Headers: map[string]string{"Authorization": "Bearer secret"},
+	}
+	pre := up.WithPrecomputedFingerprint()
+	if pre.Fingerprint() != up.Fingerprint() {
+		t.Fatal("precomputed fingerprint mismatch")
+	}
+	vs := config.VirtualServer{
+		Slug: "dev",
+		Tools: []config.VirtualTool{
+			{UpstreamID: "u-1", UpstreamName: "a", Tool: mcp.Tool{Name: "gh__a"}},
+			{UpstreamID: "u-1", UpstreamName: "b", Tool: mcp.Tool{Name: "gh__b"}},
+		},
+	}.WithToolIndex()
+	if vt, ok := vs.Lookup("gh__b"); !ok || vt.UpstreamName != "b" {
+		t.Fatalf("indexed lookup failed: %+v %v", vt, ok)
+	}
+	if _, ok := vs.Lookup("gh__missing"); ok {
+		t.Fatal("indexed lookup found nonexistent tool")
 	}
 }

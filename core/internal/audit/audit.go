@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -166,6 +168,41 @@ func (w *Writer) run(ctx context.Context) {
 				logged = true
 			}
 			if !markedPermanent && !transient(err) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				var pe *pgconn.PgError
+				if errors.As(err, &pe) && (strings.HasPrefix(pe.Code, "22") || strings.HasPrefix(pe.Code, "23")) {
+					var kept []Event
+					dropped := 0
+					for _, e := range batch {
+						sctx, scancel := context.WithTimeout(retryCtx, WriteTimeout)
+						serr := write(sctx, []Event{e})
+						scancel()
+						if serr == nil {
+							dropped++
+							continue
+						}
+						var spe *pgconn.PgError
+						if errors.As(serr, &spe) && (strings.HasPrefix(spe.Code, "22") || strings.HasPrefix(spe.Code, "23")) {
+							w.dead.Add(1)
+							w.dropped.Add(1)
+							dropped++
+							w.log.Error("best-effort audit dropping invalid event", "event_id", e.EventID, "code", spe.Code)
+							continue
+						}
+						kept = append(kept, e)
+					}
+					if dropped > 0 {
+						w.mu.Lock()
+						w.pending.Add(-int64(dropped))
+						batch = kept
+						if w.pending.Load() == 0 {
+							w.oldest.Store(0)
+						}
+						w.mu.Unlock()
+					}
+					if len(batch) == 0 {
+						return nil
+					}
+				}
 				w.dead.Add(int64(len(batch)))
 				markedPermanent = true
 			}
@@ -263,7 +300,7 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (in
  AND NOT EXISTS(SELECT 1 FROM audit_legal_holds h JOIN audit_events held ON held.event_id=h.event_id WHERE held.event_id=a.event_id OR (a.operation_id IS NOT NULL AND held.operation_id=a.operation_id))
  AND NOT EXISTS(SELECT 1 FROM audit_export_state consumer WHERE consumer.active AND EXISTS(
   SELECT 1 FROM audit_events sibling WHERE (sibling.event_id=a.event_id OR (a.operation_id IS NOT NULL AND sibling.operation_id=a.operation_id))
-  AND NOT EXISTS(SELECT 1 FROM audit_deliveries d WHERE d.consumer=consumer.consumer AND d.event_id=sibling.event_id AND d.state='delivered')))
+  AND NOT EXISTS(SELECT 1 FROM audit_deliveries d WHERE d.consumer=consumer.consumer AND d.event_id=sibling.event_id AND (d.state='delivered' OR (d.state='dead' AND sibling.ts < now() - make_interval(secs => $1 * 2))))))
  AND (a.operation_id IS NULL OR NOT EXISTS(SELECT 1 FROM audit_events p WHERE p.operation_id=a.operation_id AND p.stage='admission')
  OR (EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=a.operation_id AND o.stage='outcome')
  AND NOT EXISTS(SELECT 1 FROM audit_events r WHERE r.operation_id=a.operation_id AND r.ts >= now() - make_interval(secs => $1))))
@@ -272,3 +309,4 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (in
  AND NOT EXISTS(SELECT 1 FROM audit_events sibling WHERE a.operation_id IS NOT NULL AND sibling.operation_id=a.operation_id AND NOT EXISTS(SELECT 1 FROM candidates selected WHERE selected.id=sibling.id))`, retention.Seconds())
 	return tag.RowsAffected(), err
 }
+

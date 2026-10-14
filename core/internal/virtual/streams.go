@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
@@ -215,6 +216,11 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 }
 
 func (h *Handler) authorizationContext(ctx context.Context, w http.ResponseWriter, r *http.Request, snap *config.Snapshot, vs config.VirtualServer, owner Owner) context.Context {
+	var lastVerified atomic.Int64
+	lastVerified.Store(time.Now().UnixNano())
+	ctx = context.WithValue(ctx, dialHookKey{}, func() {
+		lastVerified.Store(0)
+	})
 	return context.WithValue(ctx, authorizationGuardKey{}, func(dispatchCtx context.Context) error {
 		request := r.WithContext(dispatchCtx)
 		current, ok := h.requestSnapshot(w, request)
@@ -225,15 +231,26 @@ func (h *Handler) authorizationContext(ctx context.Context, w http.ResponseWrite
 			http.Error(w, "configuration changed; retry", 409)
 			return errAuthorizationChanged
 		}
+		sid := r.Header.Get("Mcp-Session-Id")
+		if sid != "" && h.Sessions.Store == nil {
+			if live := h.Sessions.Get(sid); live == nil || live.owner != owner {
+				http.Error(w, "session unavailable", 503)
+				return errAuthorizationChanged
+			}
+		}
+		if last := lastVerified.Load(); last > 0 && time.Since(time.Unix(0, last)) < 50*time.Millisecond {
+			return nil
+		}
 		verified, ok := h.authenticate(w, request, vs, current)
 		if !ok || verified != owner {
 			return errAuthorizationChanged
 		}
-		live, err := h.Sessions.Resolve(dispatchCtx, r.Header.Get("Mcp-Session-Id"))
+		live, err := h.Sessions.Resolve(dispatchCtx, sid)
 		if err != nil || live == nil || live.owner != owner {
 			http.Error(w, "session unavailable", 503)
 			return errAuthorizationChanged
 		}
+		lastVerified.Store(time.Now().UnixNano())
 		return nil
 	})
 }
@@ -252,7 +269,7 @@ func (h *Handler) getStream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	release, admitted := h.acquire(owner, vs.Slug)
+	release, admitted := h.acquire(owner, vs.Slug, h.ipString(r))
 	if !admitted {
 		http.Error(w, "stream concurrency limit exceeded", 429)
 		return
@@ -324,31 +341,36 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request, sess *Sess
 	defer unsubscribe()
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
-	checked := time.Time{}
+	// The caller just authenticated, resolved the session, and claimed the stream.
+	checked := time.Now()
 	for {
 		if time.Since(checked) > time.Second {
 			// Reauthenticate reconnects and active streams. Never write auth errors into SSE.
 			checkCtx, checkCancel := context.WithTimeout(r.Context(), time.Second)
-			defer checkCancel()
 			checkRequest := r.WithContext(checkCtx)
 			check := newCapture()
 			snap, fresh := h.requestSnapshot(check, checkRequest)
 			if !fresh {
+				checkCancel()
 				return
 			}
 			vs, exists := snap.VirtualServers[sess.slug]
 			if !exists {
+				checkCancel()
 				return
 			}
 			verified, ok := h.authenticate(check, checkRequest, vs, snap)
 			if !ok || verified != sess.owner {
+				checkCancel()
 				return
 			}
 			live, err := h.Sessions.Resolve(checkCtx, sess.id)
 			if err != nil || live == nil || live.owner != sess.owner {
+				checkCancel()
 				return
 			}
 			if err := h.Delivery.Claim(checkCtx, sess.id, stream, owner); err != nil {
+				checkCancel()
 				return
 			}
 			checkCancel()
@@ -361,12 +383,6 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request, sess *Sess
 			return
 		}
 		for _, event := range events {
-			fenceCtx, fenceCancel := context.WithTimeout(r.Context(), time.Second)
-			claimErr := h.Delivery.Claim(fenceCtx, sess.id, stream, owner)
-			fenceCancel()
-			if claimErr != nil {
-				return
-			}
 			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if _, err := fmt.Fprintf(w, "id: %s\nevent: message\ndata: %s\n\n", event.ID, strings.TrimSpace(string(event.Payload))); err != nil {
 				return

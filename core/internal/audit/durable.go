@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -140,6 +142,9 @@ func Insert(ctx context.Context, q Sink, e Event) error {
 
 // Persist acknowledges local PostgreSQL WAL durability, independent of session defaults.
 func Persist(ctx context.Context, pool *pgxpool.Pool, e Event) error {
+	if pool == nil {
+		return errors.New("audit database pool is nil")
+	}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -177,23 +182,131 @@ type Counters struct {
 	Pending                 int64   `json:"pending"`
 	OldestPendingAgeSeconds float64 `json:"oldestPendingAgeSeconds"`
 }
+type persistReq struct {
+	event Event
+	done  chan error
+}
+
 type Durable struct {
 	Pool                  *pgxpool.Pool
 	Log                   *slog.Logger
 	write                 func(context.Context, Event) error
 	blocked, failed, dead atomic.Int64
+	batchMu               sync.Mutex
+	flushing              bool
+	pendingBatch          []*persistReq
 }
 
 func NewDurable(pool *pgxpool.Pool, log *slog.Logger) *Durable { return &Durable{Pool: pool, Log: log} }
 func (d *Durable) Stats() Counters {
 	return Counters{Mode: "strict", BlockedAdmissions: d.blocked.Load(), FailedWrites: d.failed.Load(), DeadLetters: d.dead.Load()}
 }
+
+func (d *Durable) groupPersist(ctx context.Context, e Event) error {
+	if len(batchFromTest(d)) == 0 && d.Pool == nil {
+		return Persist(ctx, d.Pool, e)
+	}
+	req := &persistReq{event: e, done: make(chan error, 1)}
+	d.batchMu.Lock()
+	d.pendingBatch = append(d.pendingBatch, req)
+	if d.flushing {
+		d.batchMu.Unlock()
+		select {
+		case err := <-req.done:
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	d.flushing = true
+	d.batchMu.Unlock()
+
+	go d.flushPendingBatches()
+
+	select {
+	case err := <-req.done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func batchFromTest(*Durable) []*persistReq { return nil }
+
+func (d *Durable) flushPendingBatches() {
+	for {
+		runtime.Gosched()
+		d.batchMu.Lock()
+		if len(d.pendingBatch) == 0 {
+			d.flushing = false
+			d.batchMu.Unlock()
+			return
+		}
+		n := min(len(d.pendingBatch), 64)
+		batch := make([]*persistReq, n)
+		copy(batch, d.pendingBatch[:n])
+		d.pendingBatch = d.pendingBatch[n:]
+		d.batchMu.Unlock()
+
+		if len(batch) == 1 {
+			bctx, cancel := context.WithTimeout(context.Background(), WriteTimeout)
+			err := Persist(bctx, d.Pool, batch[0].event)
+			cancel()
+			batch[0].done <- err
+			continue
+		}
+
+		bctx, cancel := context.WithTimeout(context.Background(), WriteTimeout)
+		err := persistBatch(bctx, d.Pool, batch)
+		cancel()
+		if err == nil {
+			for _, r := range batch {
+				r.done <- nil
+			}
+			continue
+		}
+		// Fall back to individual persistence so a single bad event cannot fail valid peers.
+		for _, r := range batch {
+			ictx, icancel := context.WithTimeout(context.Background(), WriteTimeout)
+			r.done <- Persist(ictx, d.Pool, r.event)
+			icancel()
+		}
+	}
+}
+
+func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, `SET LOCAL synchronous_commit=on`); err != nil {
+		return err
+	}
+	var fallbackRev int64
+	for _, r := range batch {
+		e := r.event
+		if e.Revision == 0 {
+			if fallbackRev == 0 {
+				if err = tx.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&fallbackRev); err != nil {
+					return err
+				}
+			}
+			e.Revision = fallbackRev
+		}
+		if err = Insert(ctx, tx, e); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 func (d *Durable) persist(ctx context.Context, e Event) error {
 	ctx, cancel := context.WithTimeout(ctx, WriteTimeout)
 	defer cancel()
 	write := d.write
 	if write == nil {
-		write = func(ctx context.Context, e Event) error { return Persist(ctx, d.Pool, e) }
+		write = d.groupPersist
 	}
 	delay := 25 * time.Millisecond
 	for {

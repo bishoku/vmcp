@@ -106,6 +106,57 @@ func (h *Handler) listCatalog(w http.ResponseWriter, msg *mcp.Message, vs config
 	}
 	h.reply(w, msg.ID, result)
 }
+func (h *Handler) listTools(w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, revision int64) {
+	var p mcp.ListToolsParams
+	if len(msg.Params) > 0 && json.Unmarshal(msg.Params, &p) != nil {
+		writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid pagination"))
+		return
+	}
+	offset := 0
+	if p.Cursor != "" {
+		raw, err := base64.RawURLEncoding.DecodeString(p.Cursor)
+		parts := strings.Split(string(raw), ":")
+		if err != nil || len(parts) != 3 || parts[0] != "tool" || parts[1] != strconv.FormatInt(revision, 10) {
+			writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid or stale cursor"))
+			return
+		}
+		offset, err = strconv.Atoi(parts[2])
+		if err != nil || offset < 0 {
+			writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid cursor"))
+			return
+		}
+	}
+	if offset > len(vs.Tools) {
+		writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid cursor"))
+		return
+	}
+	end := min(offset+200, len(vs.Tools))
+	tools := make([]mcp.Tool, 0, end-offset)
+	for _, vt := range vs.Tools[offset:end] {
+		tool := vt.Tool
+		if vs.PII != nil {
+			raw, _ := json.Marshal(tool)
+			masked, _, err := vs.PII.MaskJSON(raw)
+			if err != nil {
+				writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "tool metadata cannot be inspected"))
+				return
+			}
+			var safe mcp.Tool
+			if json.Unmarshal(masked, &safe) != nil {
+				writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "tool metadata cannot be inspected"))
+				return
+			}
+			safe.Name = vt.Tool.Name
+			tool = safe
+		}
+		tools = append(tools, tool)
+	}
+	res := mcp.ListToolsResult{Tools: tools}
+	if end < len(vs.Tools) {
+		res.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("tool:%d:%d", revision, end)))
+	}
+	h.reply(w, msg.ID, res)
+}
 func validatePromptArguments(o config.VirtualCatalogObject, p map[string]json.RawMessage) error {
 	var args map[string]string
 	if p["arguments"] != nil && (json.Unmarshal(p["arguments"], &args) != nil || args == nil) {

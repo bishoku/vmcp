@@ -95,18 +95,10 @@ func (e *Exporter) Fill(ctx context.Context) error {
 	_, err := e.Pool.Exec(ctx, `INSERT INTO audit_deliveries(consumer,event_id)
  SELECT $1,a.event_id FROM audit_events a WHERE EXISTS(SELECT 1 FROM audit_export_state WHERE consumer=$1 AND active)
  AND NOT EXISTS(SELECT 1 FROM audit_deliveries d WHERE d.consumer=$1 AND d.event_id=a.event_id)
- ORDER BY a.id LIMIT 100 ON CONFLICT DO NOTHING`, e.Consumer)
+ ORDER BY a.id LIMIT 500 ON CONFLICT DO NOTHING`, e.Consumer)
 	return err
 }
-func (e *Exporter) Step(ctx context.Context) (bool, error) {
-	if err := e.Fill(ctx); err != nil {
-		return false, err
-	}
-	token := make([]byte, 16)
-	if _, err := rand.Read(token); err != nil {
-		return false, err
-	}
-	lease := fmt.Sprintf("%x-%x-%x-%x-%x", token[:4], token[4:6], token[6:8], token[8:10], token[10:])
+func (e *Exporter) claimOne(ctx context.Context, lease string) (string, int, []byte, error) {
 	var id string
 	var raw []byte
 	var attempts int
@@ -117,6 +109,21 @@ func (e *Exporter) Step(ctx context.Context) (bool, error) {
  UPDATE audit_deliveries d SET state='leased',lease_token=$2,lease_until=now()+interval '30 seconds',attempts=attempts+1
  FROM candidate c WHERE d.consumer=c.consumer AND d.event_id=c.event_id RETURNING d.event_id,d.attempts)
  SELECT c.event_id::text,c.attempts,to_jsonb(a) FROM claimed c JOIN audit_events a ON a.event_id=c.event_id`, e.Consumer, lease).Scan(&id, &attempts, &raw)
+	return id, attempts, raw, err
+}
+func (e *Exporter) Step(ctx context.Context) (bool, error) {
+	token := make([]byte, 16)
+	if _, err := rand.Read(token); err != nil {
+		return false, err
+	}
+	lease := fmt.Sprintf("%x-%x-%x-%x-%x", token[:4], token[4:6], token[6:8], token[8:10], token[10:])
+	id, attempts, raw, err := e.claimOne(ctx, lease)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if fillErr := e.Fill(ctx); fillErr != nil {
+			return false, fillErr
+		}
+		id, attempts, raw, err = e.claimOne(ctx, lease)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

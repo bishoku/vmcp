@@ -21,11 +21,12 @@ var keyIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,63}$`)
 // Box supports versioned, context-bound envelopes and legacy decrypt during a
 // reader-first rolling upgrade. Keys are immutable after construction.
 type Box struct {
-	aead         cipher.AEAD
-	keys         map[string]cipher.AEAD
-	primary      string
-	legacyWrites bool
-	namespace    string
+	aead           cipher.AEAD
+	keys           map[string]cipher.AEAD
+	primary        string
+	legacyWrites   bool
+	disallowLegacy bool
+	namespace      string
 }
 
 func NewBox(key string) (*Box, error) {
@@ -83,10 +84,18 @@ func FromEnv(master string) (*Box, error) {
 	if version != "" && version != "v1" && version != "legacy" {
 		return nil, errors.New("VMCP_CIPHERTEXT_WRITE_VERSION must be v1 or legacy")
 	}
+	allowLegacy := os.Getenv("VMCP_ALLOW_LEGACY_CIPHERTEXT")
+	if allowLegacy != "" && allowLegacy != "true" && allowLegacy != "false" {
+		return nil, errors.New("VMCP_ALLOW_LEGACY_CIPHERTEXT must be true or false")
+	}
+	if allowLegacy == "false" && version == "legacy" {
+		return nil, errors.New("cannot combine VMCP_CIPHERTEXT_WRITE_VERSION=legacy with VMCP_ALLOW_LEGACY_CIPHERTEXT=false")
+	}
 	box, err := NewKeyring(primary, keys, version == "legacy")
 	if err != nil {
 		return nil, err
 	}
+	box.disallowLegacy = allowLegacy == "false"
 	tenant := os.Getenv("VMCP_TENANT_ID")
 	if tenant != "" && tenant != "default" {
 		box.namespace = tenant + "/"
@@ -139,6 +148,9 @@ func (b *Box) SealBound(plaintext []byte, entity, purpose string) ([]byte, error
 }
 func (b *Box) OpenBound(data []byte, entity, purpose string) ([]byte, error) {
 	if !bytes.HasPrefix(data, envelopeMagic) {
+		if b.disallowLegacy {
+			return nil, errors.New("legacy ciphertext is disabled")
+		}
 		for _, aead := range b.keys {
 			n := aead.NonceSize()
 			if len(data) < n+aead.Overhead() {

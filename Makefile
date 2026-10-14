@@ -6,6 +6,7 @@ core:
 	cd core && go vet ./...
 	cd core && VMCP_REQUIRE_INTEGRATION=1 VMCP_REQUIRE_SDK_INTEROP=1 go test -race -count=1 -json ./... > ../verification.jsonl
 	python3 scripts/check-test-results.py verification.jsonl
+	rm -f verification.jsonl
 web:
 	cd web && npm test && npm run lint && npm run build && npm run validate:api && npm run test:browser
 images:

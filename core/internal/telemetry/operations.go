@@ -111,15 +111,33 @@ func (r *Registry) serveOperations(w http.ResponseWriter) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.pruneOperations(time.Now())
+	fmt.Fprintln(w, "# HELP vmcp_operation_label_overflows_total Total number of operations routed to the overflow label bucket.")
 	fmt.Fprintln(w, "# TYPE vmcp_operation_label_overflows_total counter")
 	fmt.Fprintf(w, "vmcp_operation_label_overflows_total %d\n", r.operationOverflows)
 	for _, family := range []string{"virtual_requests", "virtual_tool_calls", "upstream_requests"} {
 		prefix := "vmcp_" + family
-		fmt.Fprintf(w, "# TYPE %s_total counter\n# TYPE %s_active gauge\n# TYPE %s_duration_seconds histogram\n", prefix, prefix, prefix)
-		for key, s := range r.operations {
-			if key.Family != family {
-				continue
+		fmt.Fprintf(w, "# HELP %s_total Total operations for %s.\n# TYPE %s_total counter\n# HELP %s_active Active operations for %s.\n# TYPE %s_active gauge\n# HELP %s_duration_seconds Operation duration seconds for %s.\n# TYPE %s_duration_seconds histogram\n", prefix, family, prefix, prefix, family, prefix, prefix, family, prefix)
+		var keys []Operation
+		for key := range r.operations {
+			if key.Family == family {
+				keys = append(keys, key)
 			}
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			a, b := keys[i], keys[j]
+			if a.VirtualServer != b.VirtualServer {
+				return a.VirtualServer < b.VirtualServer
+			}
+			if a.Upstream != b.Upstream {
+				return a.Upstream < b.Upstream
+			}
+			if a.Method != b.Method {
+				return a.Method < b.Method
+			}
+			return a.Tool < b.Tool
+		})
+		for _, key := range keys {
+			s := r.operations[key]
 			labels := ""
 			switch family {
 			case "virtual_requests":

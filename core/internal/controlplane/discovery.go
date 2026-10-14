@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
@@ -14,9 +15,15 @@ import (
 // RunDiscovery reconciles queued list changes and polls enabled catalogs as a fallback.
 // Each control-plane instance has two workers; SQL leases prevent duplicate ownership.
 func (s *Server) RunDiscovery(ctx context.Context) {
+	var wg sync.WaitGroup
 	for i := 0; i < 2; i++ {
-		go s.discoveryWorker(ctx)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.discoveryWorker(ctx)
+		}()
 	}
+	defer wg.Wait()
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
 	for {

@@ -667,15 +667,28 @@ func (t *Tx) ReplaceTools(ctx context.Context, slug string, tools []mcp.Tool, at
 	slices.Sort(res.Removed)
 	res.ToolCount = len(seen)
 
-	for _, tl := range upsert {
-		definition, _ := json.Marshal(tl)
+	if len(upsert) > 0 {
+		names := make([]string, len(upsert))
+		descs := make([]string, len(upsert))
+		schemas := make([]string, len(upsert))
+		anns := make([]string, len(upsert))
+		defs := make([]string, len(upsert))
+		for i, tl := range upsert {
+			definition, _ := json.Marshal(tl)
+			names[i] = tl.Name
+			descs[i] = tl.Description
+			schemas[i] = string(tl.InputSchema)
+			anns[i] = string(tl.Annotations)
+			defs[i] = string(definition)
+		}
 		if _, err := t.q.Exec(ctx, `
-			INSERT INTO upstream_tools (upstream_id, name, description, input_schema, annotations, fetched_at,definition)
-			VALUES ($1::uuid, $2, $3, $4::jsonb, $5::jsonb, $6,$7::jsonb)
+			INSERT INTO upstream_tools (upstream_id, name, description, input_schema, annotations, fetched_at, definition)
+			SELECT $1::uuid, u.name, u.description, u.input_schema::jsonb, u.annotations::jsonb, $6, u.definition::jsonb
+			FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $7::text[]) AS u(name, description, input_schema, annotations, definition)
 			ON CONFLICT (upstream_id, name) DO UPDATE
 			SET description = EXCLUDED.description, input_schema = EXCLUDED.input_schema,
-			    definition=EXCLUDED.definition,annotations = EXCLUDED.annotations, fetched_at = EXCLUDED.fetched_at`,
-			cur.id, tl.Name, tl.Description, string(tl.InputSchema), string(tl.Annotations), at, string(definition)); err != nil {
+			    definition = EXCLUDED.definition, annotations = EXCLUDED.annotations, fetched_at = EXCLUDED.fetched_at`,
+			cur.id, names, descs, schemas, anns, at, defs); err != nil {
 			return nil, err
 		}
 	}

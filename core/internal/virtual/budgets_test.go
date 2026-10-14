@@ -6,15 +6,21 @@ func TestAdmissionBudgetReclaimsIdentity(t *testing.T) {
 	h := &Handler{}
 	var releases []func()
 	for i := 0; i < 16; i++ {
-		release, ok := h.acquire(Owner{}, "server")
+		release, ok := h.acquire(Owner{Mode: "anonymous"}, "server", "192.0.2.1")
 		if !ok {
 			t.Fatal("early rejection")
 		}
 		releases = append(releases, release)
 	}
-	if _, ok := h.acquire(Owner{}, "server"); ok {
-		t.Fatal("anonymous concurrency unbounded")
+	if _, ok := h.acquire(Owner{Mode: "anonymous"}, "server", "192.0.2.1"); ok {
+		t.Fatal("anonymous concurrency unbounded for same IP")
 	}
+	// A different anonymous client IP must have its own 16-slot budget.
+	otherRelease, ok := h.acquire(Owner{Mode: "anonymous"}, "server", "192.0.2.2")
+	if !ok {
+		t.Fatal("different anonymous IP blocked by noisy neighbor")
+	}
+	otherRelease()
 	for _, release := range releases {
 		release()
 	}

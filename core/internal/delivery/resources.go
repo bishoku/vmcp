@@ -30,8 +30,10 @@ func (s *Store) ResourceUpdated(ctx context.Context, session, uri, owner string)
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM mcp_events WHERE stream_id=$1`, stream).Scan(&count); err != nil {
 		return err
 	}
-	if count >= 256 {
-		return ErrCapacity
+	if overflow := (count + 1) - 256; overflow > 0 {
+		if _, err := tx.Exec(ctx, `DELETE FROM mcp_events WHERE seq IN (SELECT seq FROM mcp_events WHERE stream_id=$1 ORDER BY seq ASC LIMIT $2)`, stream, overflow); err != nil {
+			return err
+		}
 	}
 	raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "notifications/resources/updated", "params": map[string]string{"uri": uri}})
 	eventID := UUID()
@@ -48,5 +50,9 @@ func (s *Store) ResourceUpdated(ctx context.Context, session, uri, owner string)
 	if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, session); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.NotifyLocal(session)
+	return nil
 }

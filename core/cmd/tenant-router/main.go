@@ -30,7 +30,7 @@ func main() {
 	if address == "" {
 		address = ":8443"
 	}
-	server := &http.Server{Addr: address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10}
+	server := &http.Server{Addr: address, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 16 << 10}
 	go func() {
 		<-ctx.Done()
 		bounded, cancel := context.WithTimeout(context.Background(), 90*time.Second)

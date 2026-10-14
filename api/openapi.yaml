@@ -1208,6 +1208,74 @@ paths:
         - $ref: "#/components/parameters/CSRF"
         - $ref: "#/components/parameters/IfMatch"
 
+  /api/v1/revocations/jwts:
+    post:
+      tags: [ Identity Bindings ]
+      operationId: revokeJWT
+      summary: Revoke an IdP-issued agent JWT by raw token or SHA-256 hex digest
+      description: Requires an `admin` caller. Immediately invalidates the token across data-plane nodes on next sync.
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                token:
+                  type: string
+                  description: Raw JWT string (hashed with SHA-256 before storage; never stored in plaintext).
+                tokenHash:
+                  type: string
+                  description: 64-character hex SHA-256 digest of the raw JWT.
+                expiresAt:
+                  type: string
+                  format: date-time
+      responses:
+        "503":
+          $ref: "#/components/responses/AuditUnavailable"
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /api/v1/revocations/sessions:
+    post:
+      tags: [ System ]
+      operationId: revokeSessions
+      summary: Revoke active OIDC browser sessions for a subject
+      description: Requires an `admin` caller. Revokes all active browser sessions matching `subject` (OIDC `sub`).
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ subject ]
+              additionalProperties: false
+              properties:
+                subject:
+                  type: string
+      responses:
+        "503":
+          $ref: "#/components/responses/AuditUnavailable"
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
   /api/v1/audit-status:
     get:
       tags: [ Audit ]

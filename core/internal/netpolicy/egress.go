@@ -209,6 +209,15 @@ func Client(base *http.Client) *http.Client {
 	g := byBase[tr]
 	if g == nil {
 		clone := tr.Clone()
+		if clone.MaxIdleConns < 2048 {
+			clone.MaxIdleConns = 2048
+		}
+		if clone.MaxIdleConnsPerHost < 128 {
+			clone.MaxIdleConnsPerHost = 128
+		}
+		if clone.IdleConnTimeout == 0 {
+			clone.IdleConnTimeout = 90 * time.Second
+		}
 		clone.Proxy = nil
 		clone.DialContext = p.DialContext
 		clone.DialTLSContext = nil

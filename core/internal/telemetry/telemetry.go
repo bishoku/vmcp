@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -121,8 +122,19 @@ func (r *Registry) Handler(next http.Handler) http.Handler {
 func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	r.mu.Lock()
+	fmt.Fprintln(w, "# HELP vmcp_http_active Number of in-flight HTTP requests by route class.")
+	fmt.Fprintln(w, "# TYPE vmcp_http_active gauge")
+	fmt.Fprintln(w, "# HELP vmcp_http_errors_total Total number of HTTP responses with status >= 400 by route class.")
+	fmt.Fprintln(w, "# TYPE vmcp_http_errors_total counter")
+	fmt.Fprintln(w, "# HELP vmcp_http_duration_seconds HTTP request duration histogram by route class.")
 	fmt.Fprintln(w, "# TYPE vmcp_http_duration_seconds histogram")
-	for label, s := range r.requests {
+	routes := make([]string, 0, len(r.requests))
+	for label := range r.requests {
+		routes = append(routes, label)
+	}
+	sort.Strings(routes)
+	for _, label := range routes {
+		s := r.requests[label]
 		fmt.Fprintf(w, "vmcp_http_active{route=%q} %d\nvmcp_http_errors_total{route=%q} %d\n", label, s.active, label, s.errors)
 		for i, b := range bounds {
 			fmt.Fprintf(w, "vmcp_http_duration_seconds_bucket{route=%q,le=%q} %d\n", label, strconv.FormatFloat(b, 'g', -1, 64), s.buckets[i])
@@ -134,8 +146,18 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if r.Gauges != nil {
 		ctx, cancel := context.WithTimeout(req.Context(), time.Second)
 		defer cancel()
-		for name, value := range r.Gauges(ctx) {
-			fmt.Fprintf(w, "vmcp_%s %g\n", name, value)
+		gauges := r.Gauges(ctx)
+		names := make([]string, 0, len(gauges))
+		for name := range gauges {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			kind := "gauge"
+			if strings.HasSuffix(name, "_total") {
+				kind = "counter"
+			}
+			fmt.Fprintf(w, "# HELP vmcp_%s Runtime metric %s.\n# TYPE vmcp_%s %s\nvmcp_%s %g\n", name, name, name, kind, name, gauges[name])
 		}
 	}
 }

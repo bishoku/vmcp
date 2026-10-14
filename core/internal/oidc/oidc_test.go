@@ -9,12 +9,19 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 )
+
+func TestMain(m *testing.M) {
+	_ = os.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
+	_ = os.Setenv("VMCP_EGRESS_ALLOW_HOSTS", "")
+	os.Exit(m.Run())
+}
 
 // fakeIdP is a minimal OIDC provider: discovery, JWKS, authorize and token endpoints.
 type fakeIdP struct {

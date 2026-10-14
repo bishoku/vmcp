@@ -20,7 +20,7 @@ func poolConfig(databaseURL string) (*pgxpool.Config, error) {
 		target   *int32
 		fallback int
 	}{
-		{"VMCP_DB_MAX_CONNS", &cfg.MaxConns, 16}, {"VMCP_DB_MIN_CONNS", &cfg.MinConns, 2},
+		{"VMCP_DB_MAX_CONNS", &cfg.MaxConns, 64}, {"VMCP_DB_MIN_CONNS", &cfg.MinConns, 4},
 	} {
 		n := v.fallback
 		if raw := os.Getenv(v.name); raw != "" {
@@ -33,6 +33,9 @@ func poolConfig(databaseURL string) (*pgxpool.Config, error) {
 			return nil, fmt.Errorf("%s must be between 0 and 1000", v.name)
 		}
 		*v.target = int32(n)
+	}
+	if os.Getenv("VMCP_DB_MIN_CONNS") == "" && cfg.MinConns > cfg.MaxConns {
+		cfg.MinConns = cfg.MaxConns
 	}
 	if cfg.MaxConns < 2 || cfg.MinConns > cfg.MaxConns {
 		return nil, fmt.Errorf("pool requires max >= 2 and min <= max")
