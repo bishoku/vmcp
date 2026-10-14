@@ -9,6 +9,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/upstream"
+	"sync"
 	"time"
 )
 
@@ -19,7 +20,18 @@ func (h *Handler) RunSubscriptions(ctx context.Context) {
 		return
 	}
 	for i := 0; i < 32; i++ {
+		delay := time.Duration(i) * (time.Second / 32)
 		go func() {
+			if delay > 0 {
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+			}
+			h.runSubscription(ctx)
 			tick := time.NewTicker(time.Second)
 			defer tick.Stop()
 			for {
@@ -92,18 +104,33 @@ func (h *Handler) subscription(ctx context.Context, sess *Session, object config
 	}
 }
 func (h *Handler) runSubscription(parent context.Context) {
+	if parent.Err() != nil {
+		return
+	}
 	owner := delivery.UUID()
 	var sid, uri, upID, original string
 	claim, cancel := context.WithTimeout(parent, time.Second)
 	err := h.Delivery.Pool.QueryRow(claim, `UPDATE mcp_resource_subscriptions s SET owner=$1,lease_until=now()+interval '15 seconds',ready=false FROM (SELECT session_id,uri FROM mcp_resource_subscriptions WHERE expires_at>now() AND NOT failed AND (lease_until IS NULL OR lease_until<now()) ORDER BY session_id,uri LIMIT 1 FOR UPDATE SKIP LOCKED) q WHERE s.session_id=q.session_id AND s.uri=q.uri RETURNING s.session_id,s.uri,s.upstream_id::text,s.original_uri`, owner).Scan(&sid, &uri, &upID, &original)
 	cancel()
 	if err != nil {
+		if parent.Err() != nil {
+			bounded, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_, _ = h.Delivery.Pool.Exec(bounded, `UPDATE mcp_resource_subscriptions SET owner=NULL,lease_until=NULL,ready=false WHERE owner=$1`, owner)
+			cleanupCancel()
+		}
 		return
 	}
 	ctx, stop := context.WithTimeout(parent, 15*time.Minute)
 	defer stop()
+	var stopHeartbeat func()
 	release := func(failed bool) {
-		bounded, cancel := context.WithTimeout(context.Background(), time.Second)
+		if stopHeartbeat != nil {
+			stopHeartbeat()
+		}
+		if ctx.Err() != nil || parent.Err() != nil {
+			failed = false
+		}
+		bounded, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_, _ = h.Delivery.Pool.Exec(bounded, `UPDATE mcp_resource_subscriptions SET owner=NULL,lease_until=NULL,ready=false,failed=$4 WHERE session_id=$1 AND uri=$2 AND owner=$3`, sid, uri, owner, failed)
 		h.Delivery.NotifyLocal(sid)
@@ -114,7 +141,11 @@ func (h *Handler) runSubscription(parent context.Context) {
 		return
 	}
 	sess, err := h.Sessions.Resolve(ctx, sid)
-	if err != nil || sess == nil {
+	if err != nil {
+		release(false)
+		return
+	}
+	if sess == nil {
 		release(true)
 		return
 	}
@@ -147,7 +178,14 @@ func (h *Handler) runSubscription(parent context.Context) {
 			}
 		}
 	}()
-	defer func() { stopInitHeartbeat(); stop(); <-heartbeatDone }()
+	var heartbeatOnce sync.Once
+	stopHeartbeat = func() {
+		heartbeatOnce.Do(func() {
+			stopInitHeartbeat()
+			<-heartbeatDone
+		})
+	}
+	defer func() { stop(); stopHeartbeat() }()
 	recorder := audit.NewDurable(h.Delivery.Pool, h.Log)
 	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "resource-subscription", Action: "mcp.subscription_reconcile", Method: "resources/subscribe", VirtualServer: sess.slug, Revision: snap.Revision, Target: sid, Upstream: up.Slug})
 	if err != nil {
@@ -213,8 +251,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 	_, _ = h.Delivery.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, sid)
 	h.Delivery.NotifyLocal(sid)
 	// Handshake is complete; the main watch loop below now owns the 1s lease renewal.
-	stopInitHeartbeat()
-	<-heartbeatDone
+	stopHeartbeat()
 	event.Status = "ok"
 	event.Reason = ""
 	tick := time.NewTicker(time.Second)
@@ -233,7 +270,12 @@ func (h *Handler) runSubscription(parent context.Context) {
 			bounded, cancel := context.WithTimeout(ctx, time.Second)
 			live, resolveErr := h.Sessions.Resolve(bounded, sid)
 			fresh, freshErr := h.Snap.AuthorizedSnapshot()
-			valid := resolveErr == nil && live != nil && freshErr == nil
+			if resolveErr != nil || freshErr != nil {
+				cancel()
+				release(false)
+				return
+			}
+			valid := live != nil
 			if valid {
 				v, ok := fresh.VirtualServers[live.slug]
 				o, mapped, selected := catalogRoute(v, "resource", uri, true)
