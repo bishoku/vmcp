@@ -1,3 +1,4 @@
+import { answerConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import type { AgentKey, VirtualServer } from '../src/api'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
@@ -37,11 +38,11 @@ test('saved views deep-link without losing draft protection and activity filters
  await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Demo')
  await page.getByLabel('Name',{exact:true}).fill('Draft name')
  await expect(page.getByText(/Unsaved changes/)).toBeVisible()
- const dismissed=new Promise<void>(resolve=>page.once('dialog',async d=>{await d.dismiss();resolve()}))
+ const dismissed=answerConfirmation(page,false)
  await page.getByRole('link',{name:'View saved configuration',exact:true}).click()
  await dismissed
  await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Draft name')
- const accepted=new Promise<void>(resolve=>page.once('dialog',async d=>{await d.accept();resolve()}))
+ const accepted=answerConfirmation(page,true)
  await page.getByRole('link',{name:'View saved configuration',exact:true}).click()
  await accepted
  await page.getByRole('link',{name:'Activity',exact:true}).click()
@@ -115,6 +116,7 @@ test('server overview uses composition cards and tool drill-down stays inside th
  await page.screenshot({path:test.info().outputPath('sankey-tool-drilldown.png'),fullPage:true})
  await page.setViewportSize({width:390,height:844})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
+ await page.getByRole('button',{name:'Open navigation',exact:true}).click()
  await page.getByRole('link',{name:'Virtual Servers',exact:true}).click()
  await page.getByRole('link',{name:'Demo',exact:true}).click()
  await expect(page.getByRole('region',{name:'Upstream composition'})).toBeVisible()

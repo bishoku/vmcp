@@ -1,3 +1,4 @@
+import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 async function login(page: Page, role: 'viewer'|'editor'|'admin'='admin') {
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
@@ -15,15 +16,12 @@ test('dirty navigation can be cancelled, accepted and guarded on browser Back',a
  await page.getByRole('link',{name:'Agent Keys',exact:true}).click()
  await page.getByRole('button',{name:'New key',exact:true}).click()
  await page.getByLabel('Name',{exact:true}).fill('unsaved')
- page.once('dialog',dialog=>dialog.dismiss())
- await page.keyboard.press('Escape')
+ await withConfirmation(page,false,()=>page.keyboard.press('Escape'))
  await expect(page.getByLabel('Name',{exact:true})).toHaveValue('unsaved')
  // Browser Back also goes through the router blocker, even while a modal is open.
- page.once('dialog',dialog=>dialog.dismiss())
- await page.goBack()
+ await withConfirmation(page,false,()=>page.goBack())
  await expect(page).toHaveURL(/agent-keys/)
- page.once('dialog',dialog=>dialog.accept())
- await page.goBack()
+ await withConfirmation(page,true,()=>page.goBack())
  await expect(page).toHaveURL(/virtual-servers/)
 })
 for(const role of ['viewer','editor','admin'] as const) {

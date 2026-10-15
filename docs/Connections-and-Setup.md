@@ -10,6 +10,59 @@ session. JWT bindings remain conditional on verified claims, binding precedence
 and IP restrictions. An anonymous virtual server bypasses credential authentication.
 Disabled servers and revoked/expired credentials remain visible for investigation.
 
+## Navigation
+
+Desktop navigation groups pages under Workspace, Servers, Access and
+Administration. The current section stays highlighted on saved details and editor
+routes. The account area shows the signed-in name and role with the existing
+protected sign-out action. On narrow screens a compact header shows the current
+section and opens a keyboard-accessible navigation drawer. Escape closes the
+drawer and restores focus; successful route changes and switching to desktop
+close it automatically. Rejected draft-discard confirmation keeps the menu and
+draft in place. A Skip to content link provides direct keyboard access to the page.
+
+## Loading, empty and error states
+
+Shared feedback components provide loading indicators, empty-state guidance and
+error cards across inventories, saved details, capability pickers, activity,
+audit and settings. Initial reads show loading instead of claiming that a record
+or collection is missing. Empty inventories, filter mismatches, unavailable reads
+and missing saved identifiers have distinct messages and relevant next actions.
+
+Read-error cards offer an explicit retry that reloads saved data. Successfully
+loaded records remain visible when a refresh fails, and source errors explain
+partial or older data. Retrying reads does not replay failed mutations, trigger
+upstream discovery or replace an unsaved editor draft. Validation errors continue
+to require reviewing the fields and saving explicitly. Loading animations respect
+reduced-motion preferences.
+
+## Dialogs and confirmations
+
+Modal and drawer headers stay visible while their content scrolls. They share
+surface, border, spacing and icon styles; Escape/backdrop behavior, focus trapping,
+operation locks and explicit one-time-secret acknowledgement are retained.
+In-app delete, revoke, rotate, prune, stale-reload and draft-discard actions use the
+same confirmation component with a cancel action focused initially. Cancelling
+retains the draft and returns focus to the initiating control. In-use upstreams
+still require a second explicit confirmation before removing their selections.
+Navigation, browser Back within the app and sign-out use the same draft guard;
+refreshing or closing the browser tab retains the browser’s native unload prompt.
+Stored header replacement now uses a masked input dialog and stays in the draft
+until Save; it never displays a stored header value.
+
+## Sign-in and session recovery
+
+Sign-in uses the same panel and input styles as the workspace. Configured SSO is
+shown alongside token access; rejected tokens and unavailable sign-in are reported
+separately. Tokens remain in memory for the current tab and are never persisted to
+browser storage. Empty token submissions are ignored, and the visibility control
+only changes how the current input is displayed.
+
+Session expiry opens a recovery dialog while keeping the current page mounted.
+Signing in with a token preserves the draft and never automatically replays a
+failed write. The SSO option warns that redirecting reloads the page and may lose
+unsaved in-memory changes. The dialog remains open until authentication succeeds.
+
 ## Follow the setup guide
 
 Open **Setup guide**, choose a saved virtual server if available, and follow:

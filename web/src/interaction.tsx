@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { discardConfirmation, useConfirm } from './confirmation'
 import type { Me } from './api'
 
 export const RoleContext = createContext<Me['role']>('viewer')
 export const capabilities = (role: Me['role']) => ({ edit: role !== 'viewer', manageTokens: role === 'admin' })
 export const useCapabilities = () => capabilities(useContext(RoleContext))
 export const Drafts = createContext<Map<symbol, 'dirty' | 'busy'> | null>(null)
-export const discardChanges = () => window.confirm('Discard unsaved changes?')
 /** Tracks a draft baseline without retaining its secrets in browser storage. */
 export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
+  const confirm=useConfirm()
   const [value, rawSet] = useState(initial)
   const [baseline, setBaseline] = useState(() => JSON.stringify(initial))
   const current = useRef(value)
@@ -26,13 +27,23 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
     const resolved = typeof next === 'function' ? (next as (v: T) => T)(current.current) : next
     if (registry && [...registry.values()].includes('busy')) return
     if (identity(resolved) !== identity(current.current)) {
-      if (JSON.stringify(current.current) !== baseline && !discardChanges()) return
+      if (JSON.stringify(current.current) !== baseline) {
+        const before=JSON.stringify(current.current),answer=confirm(discardConfirmation)
+        const apply=(accepted:boolean)=>{if(accepted&&JSON.stringify(current.current)===before&&![...(registry?.values()??[])].includes('busy'))reset(resolved)}
+        if(typeof answer==='boolean')apply(answer);else void answer.then(apply)
+        return
+      }
       reset(resolved)
     } else { current.current = resolved; rawSet(resolved) }
   }
   const open = (next: T) => {
     if (registry && [...registry.values()].includes('busy')) return
-    if (JSON.stringify(current.current) !== baseline && !discardChanges()) return
+    if (JSON.stringify(current.current) !== baseline) {
+      const before=JSON.stringify(current.current),answer=confirm(discardConfirmation)
+      const apply=(accepted:boolean)=>{if(accepted&&JSON.stringify(current.current)===before&&![...(registry?.values()??[])].includes('busy'))reset(next)}
+      if(typeof answer==='boolean')apply(answer);else void answer.then(apply)
+      return
+    }
     reset(next)
   }
   return [value, set, reset, open, dirty] as const
@@ -54,6 +65,7 @@ export function useOperation() {
 }
 
 export function useUnsaved(value: unknown) {
+  const confirm=useConfirm()
   const [baseline, setBaseline] = useState(() => JSON.stringify(value))
   const dirty = JSON.stringify(value) !== baseline
   const registry = useContext(Drafts)
@@ -64,5 +76,5 @@ export function useUnsaved(value: unknown) {
     window.addEventListener('beforeunload', unload)
     return () => { registry?.delete(id); window.removeEventListener('beforeunload', unload) }
   }, [dirty, registry, id])
-  return { guard: (action: () => void) => { if (!dirty || discardChanges()) action() }, clean: (next: unknown = value) => { setBaseline(JSON.stringify(next)); registry?.delete(id) } }
+  return { guard: (action: () => void) => { if (!dirty)action();else {const answer=confirm(discardConfirmation);if(typeof answer==='boolean'){if(answer)action()}else void answer.then(accepted=>{if(accepted)action()})} }, clean: (next: unknown = value) => { setBaseline(JSON.stringify(next)); registry?.delete(id) } }
 }

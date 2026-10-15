@@ -1,3 +1,5 @@
+import { ErrorBox } from '../ui'
+import { EmptyState, LoadingState } from '../Feedback'
 import { useEffect, useState } from 'react'
 import { api, type Catalog, type CatalogSelection, type Upstream } from '../api'
 import { BookOpen, Search } from 'lucide-react'
@@ -31,9 +33,9 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
   return ([['resource',catalog.resources,'uri'],['template',catalog.resourceTemplates,'uriTemplate'],['prompt',catalog.prompts,'name']] as const).flatMap(([kind,objects,key])=>objects.map(o=>({upstream:u.slug,kind,name:String(o[key]),description:String(o.description??'')})))
  })
  return <ServerPanel title="Resources and prompts" description="Select objects explicitly. Tool selections do not grant resource or prompt access." icon={BookOpen} footer="Choices use stored discovery. Refresh the upstream to discover changes."><div className="space-y-5 p-5">
-  {loading && <p role="status">Loading catalogs…</p>}
-  {error && <div role="alert" className="text-red-700">{error} <button className={btn} onClick={()=>setAttempt(a=>a+1)}>Retry catalogs</button></div>}
-  {!loading && !error && choices.length===0 && <p className="text-sm text-ink-muted">No resources or prompts discovered.</p>}
+  {loading && <LoadingState label="Loading catalogs…" compact/>}
+  {error && <ErrorBox title="Some catalogs could not be loaded" onRetry={()=>setAttempt(a=>a+1)} retryLabel="Retry catalogs" busy={loading}>{error}</ErrorBox>}
+  {!loading && !error && choices.length===0 && <EmptyState title="No resources or prompts discovered." description="Refresh discovery from the upstream configuration to find available catalog objects." compact/>}
   <div className="grid gap-4 sm:grid-cols-[2fr_1fr]"><label className="block text-xs font-medium">Search catalog<div className="relative mt-2"><Search className="absolute left-3 top-2.5 size-4 text-ink-muted"/><input aria-label="Search catalog" placeholder="Upstream, name or description" className={input+' pl-9'} value={search} onChange={e=>setSearch(e.target.value)}/></div></label><label className="block text-xs font-medium">Catalog kind<select className={input+' mt-2'} value={kind} onChange={e=>setKind(e.target.value)}><option value="">All kinds</option><option value="resource">Resources</option><option value="template">Templates</option><option value="prompt">Prompts</option></select></label></div>
   {search && !choices.some(c=>Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())) && <p role="status">No catalog matches. Try another search or refresh upstream discovery.</p>}
   <label className="mt-3 block text-sm">Add a resource, template or prompt

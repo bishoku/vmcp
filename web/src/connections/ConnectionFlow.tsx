@@ -1,3 +1,4 @@
+import { EmptyState, LoadingState } from '../Feedback'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ArrowUpRight, ChevronRight, Layers3, Maximize2, Network, Search, SlidersHorizontal, Waypoints } from 'lucide-react'
@@ -6,7 +7,7 @@ import { btn, input } from '../styles'
 import { connectionGraph, highlightedEdges, nodeId, scopedGraph, type FlowNode, type FlowScope, type ToolFocus } from './flow'
 import type { Relationship } from './model'
 
-interface Props { servers:VirtualServer[]; upstreams:Upstream[]; keys:AgentKey[]; bindings:IdentityBinding[]; relationships:Relationship[]; onInspect?:(relationship:Relationship)=>void }
+interface Props { servers:VirtualServer[]; upstreams:Upstream[]; keys:AgentKey[]; bindings:IdentityBinding[]; relationships:Relationship[]; onInspect?:(relationship:Relationship)=>void;loading?:boolean;error?:string }
 interface DiagramNode { id:string; column:number; label:string; status:string; href?:string; base?:FlowNode; tool?:ToolFocus; alias?:boolean }
 interface DiagramEdge { id:string; from:string; to:string; tools:number; relationship:string; tool?:ToolFocus }
 interface ToolScope { column:number; ids:string[]; label:string }
@@ -136,7 +137,7 @@ export default function ConnectionFlow(props:Props) {
       {inspect && <Link className="inline-flex items-center gap-1 text-xs font-medium text-accent-700" to={inspect.href}>Open configuration<ArrowUpRight className="size-3"/></Link>}
     </div>
     {tool && <div role="status" className="mx-5 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-accent-500/20 bg-accent-50 px-3 py-2 text-xs sm:mx-6"><span className="font-medium">Tracing {tool.upstream} / {tool.original}{tool.server?` through ${tool.server}`:' through all virtual servers'}</span><button className="text-accent-700 underline" onClick={clearHighlight}>Clear tool highlight</button></div>}
-    <div className="m-4 overflow-auto rounded-xl border border-line bg-canvas/40 p-3 sm:m-5" style={{maxHeight:largeCanvas?960:680}} tabIndex={0} aria-label="Scrollable configuration diagram">
+    {graph.nodes.length>0 && <div className="m-4 overflow-auto rounded-xl border border-line bg-canvas/40 p-3 sm:m-5" style={{maxHeight:largeCanvas?960:680}} tabIndex={0} aria-label="Scrollable configuration diagram">
       <svg width="100%" viewBox={`0 0 ${canvasWidth} ${contentHeight+80}`} style={{minWidth:880}} role="group" aria-label={expanded?'Identities through exposed tools to upstream definitions':'Identities to virtual servers to upstreams'}>
         <defs><pattern id="flow-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".7" fill="currentColor" opacity=".08"/></pattern>{links.map((e,i)=><linearGradient key={i} id={`ribbon-${i}`} gradientUnits="userSpaceOnUse" x1={positions.get(e.from)!.x+nodeWidth} x2={positions.get(e.to)!.x} y1={ports.get(JSON.stringify([e.from,e.to]))!.from} y2={ports.get(JSON.stringify([e.from,e.to]))!.to}><stop offset="0%" stopColor={colors[positions.get(e.from)!.column]}/><stop offset="100%" stopColor={colors[positions.get(e.to)!.column]}/></linearGradient>)}</defs>
         <rect width={canvasWidth} height={contentHeight+80} fill="url(#flow-grid)" rx="12"/>
@@ -159,10 +160,10 @@ export default function ConnectionFlow(props:Props) {
           </foreignObject>
         })}
       </svg>
-    </div>
+    </div>}
     {expanded && props.onInspect && routes.length>0 && <details className="mx-5 mb-5 rounded-xl border border-line bg-canvas/50 sm:mx-6"><summary className="cursor-pointer px-4 py-3 text-xs font-medium">Connection details · {routes.length} upstream {routes.length===1?'route':'routes'}</summary><div className="flex max-h-56 flex-wrap gap-2 overflow-auto border-t border-line p-4">{routes.map(r=><button key={r.id} className={btn} aria-label={`View connection ${r.from} to ${r.to}`} onClick={()=>props.onInspect?.(r)}><span className="min-w-0 break-all text-xs">{r.from} → {r.to}</span><ArrowUpRight className="size-3.5 shrink-0"/></button>)}</div></details>}
-    {expanded && visibleMappings.length===0 && <p className="px-6 pb-5 text-sm text-ink-muted">No matching configured tool mappings. Catalog-only routes remain visible.</p>}
-    {graph.nodes.length===0 && <p className="px-6 pb-5 text-sm text-ink-muted">No configured identities or servers.</p>}
+    {expanded && visibleMappings.length===0 && <EmptyState title="No matching configured tool mappings. Catalog-only routes remain visible." description="Try another tool, alias or policy search." compact/>}
+    {graph.nodes.length===0 && <div className="p-5">{props.loading?<LoadingState label="Loading connection flow…" detail="Reading saved identities, servers and relationships."/>:<EmptyState title={props.error?'Configuration flow unavailable':'No configured identities or servers.'} description={props.error?'Retry loading the configuration using the message above.':'Start with an upstream and a virtual server to build your connection flow.'} actions={!props.error?<Link className={btn} to="/setup">Open setup guide</Link>:undefined}/>}</div>}
     <div className="border-t border-line px-5 py-3 sm:px-6 text-[11px] text-ink-muted flex flex-wrap gap-x-5 gap-y-1"><span className="font-medium">Width = configured tool selections</span><span>Dashed = zero tools / catalog access</span><span>Conditional, disabled, denied and missing mappings remain visible.</span><span>Configuration only · counts repeat across identity grants</span></div>
   </section>
 }

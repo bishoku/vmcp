@@ -1,3 +1,5 @@
+import { useNotifications } from '../notifications'
+import { EmptyState, LoadingState } from '../Feedback'
 import { Link } from 'react-router-dom'
 import { serverPath } from '../connections/model'
 import type { SelectionProps } from '../connections/ManagementRoute'
@@ -103,6 +105,7 @@ function cleanPolicy(d: Draft): ToolPolicy {
 }
 
 export default function VirtualServerEditor({ initialSelection, onSaved, onCancel }: SelectionProps & {onSaved?: (slug: string) => void; onCancel?: () => void}) {
+  const {notify,available}=useNotifications()
   const { edit: canEdit } = useCapabilities()
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [upstreams, setUpstreams] = useState<Upstream[]>([])
@@ -186,6 +189,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
           tools: draft.tools,
    catalog:draft.catalog,clientFeatures:draft.clientFeatures,
         },draft.version)
+        notify({title:'Virtual server saved',description:draft.name})
         setSaved(`Saved ${draft.name}. Refreshing the saved configuration.`)
         resetDraft(null)
         savedSlug = draft.slug
@@ -216,9 +220,9 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
         if (!latest) throw new Error('This item was deleted. Return to the list and refresh.')
         resetDraft(fromServer(latest)); setProblems([])
       }} />}
-      {readError && <ErrorBox>{readError}</ErrorBox>}
-      {loading && <p role="status">Loading…</p>}
-      {saved && <p role="status" className="mt-3 text-green-700">{saved}</p>}
+      {readError && <ErrorBox title="Saved configuration could not be loaded" onRetry={load} busy={loading}>{readError}</ErrorBox>}
+      {loading && <LoadingState label="Loading capability catalogs…" compact/>}
+      {saved && !available && <p role="status" className="mt-3 text-green-700">{saved}</p>}
       <div className="mt-6">
         {draft ? (
           <div className="space-y-6">
@@ -290,11 +294,11 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                             </button>
                           )
                         })}
-                        {tools.length === 0 && <div className="px-2 text-xs text-ink-muted">{filter?'No matching tools. Try another search.':'No tools. Refresh this upstream first.'}</div>}
+                        {!loading && tools.length === 0 && <div className="px-2 text-xs text-ink-muted">{filter?'No matching tools. Try another search.':'No tools. Refresh this upstream first.'}</div>}
                       </div>
                     )
                   })}
-                  {upstreams.length === 0 && <div className="text-xs text-ink-muted">Register an upstream first.</div>}
+                  {!loading&&upstreams.length===0&&<EmptyState title="Register an upstream first." description="Add a server and refresh its discovery to select tools." compact/>}
                 </div>
               </ServerPanel>
 
@@ -307,7 +311,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                       ))}
                     </SortableContext>
                   </DndContext>
-                  {draft.tools.length === 0 && <div className="py-8 text-center text-xs text-ink-muted">Pick tools from the left.</div>}
+                  {draft.tools.length === 0 && <EmptyState title="Pick tools from the left." description="Only selected tools are composed into this virtual server." compact/>}
                 </div>
               </ServerPanel>
             </div>
@@ -373,16 +377,14 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             </div></ServerPanel>
 
             {problems.length > 0 && (
-              <ul role="alert" className="mt-4 list-disc rounded-lg bg-red-50 py-2 pl-7 pr-3 text-sm text-red-700">
+              <ErrorBox title="The changes could not be saved"><ul className="list-disc space-y-1 pl-4">
                 {problems.map((p, i) => <li key={i}>{p}</li>)}
-              </ul>
+              </ul></ErrorBox>
             )}
             </fieldset>
           </div>
         ) : (
-          <div className="grid place-items-center rounded-card border border-dashed border-line p-16 text-sm text-ink-muted">
-            {initialSelection ? (loading ? 'Loading saved configuration…' : 'Virtual server configuration is unavailable. Return to the list or refresh this page.') : 'Saved. Select a virtual server from the list.'}
-          </div>
+          <div className="rounded-card border border-line bg-surface shadow-card">{initialSelection&&loading?<LoadingState label="Loading saved configuration…"/>:<EmptyState title={initialSelection?'Virtual server configuration is unavailable. Return to the list or refresh this page.':'Saved. Select a virtual server from the list.'} description={initialSelection?'Your current draft is not replaced by a failed read.':'Open the saved configuration to review your changes.'} actions={initialSelection?<button className={btn} onClick={()=>void load()}>Retry</button>:undefined}/>}</div>
         )}
       </div>
     </div>

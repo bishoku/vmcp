@@ -1,10 +1,12 @@
+import { useNotifications } from '../notifications'
+import { EmptyState } from '../Feedback'
 import { source, useSources } from '../requests'
 import { useCapabilities } from '../interaction'
 import { useOperation, useUnsaved } from '../interaction'
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { Activity, Cable, CheckCircle2, ChevronRight, Code2, Fingerprint, KeyRound, Layers3, Pencil, PlugZap, ShieldCheck, Wrench, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { ErrorBox, Pill, StaleRecovery } from '../ui'
+import { ErrorBox, Modal, Pill, StaleRecovery } from '../ui'
 import { api, ApiError, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 import EditorSaveBar from '../connections/EditorSaveBar'
@@ -43,6 +45,8 @@ export default function UpstreamDetailForm({
   const [removed, setRemoved] = useState<string[]>([])
   const [newName, setNewName] = useState('')
   const [newValue, setNewValue] = useState('')
+  const [headerToReplace,setHeaderToReplace]=useState<string|null>(null)
+  const [headerReplacement,setHeaderReplacement]=useState('')
   // TLS: the key is write-only; an empty key field keeps the stored one.
   const [caPem, setCaPem] = useState(upstream?.tls?.caPem ?? '')
   const [serverName, setServerName] = useState(upstream?.tls?.serverName ?? '')
@@ -83,7 +87,7 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
-  const unsaved = useUnsaved({slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
+  const unsaved = useUnsaved({slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
@@ -105,6 +109,7 @@ export default function UpstreamDetailForm({
 
   const [openedAt] = useState(() => Date.now())
 
+  const {notify}=useNotifications()
   const save = async () => {
     let saved: Upstream | undefined
     await run(async () => {
@@ -141,13 +146,15 @@ export default function UpstreamDetailForm({
         setErr(errMsg(e))
       }
     })
-    if (saved) onSaved(saved)
+    if (saved) { notify({title:upstream?'Upstream saved':'Upstream created',description:saved.name}); onSaved(saved) }
   }
 
   const runTest = () => run(async () => {
     try {
       // Stored secrets are never readable, so the test uses only headers typed in this session.
-      setTest(await api.testConnection({ url, transport, headers: replaced, tls: tlsInput(), auth: authInput() }))
+      const result=await api.testConnection({ url, transport, headers: replaced, tls: tlsInput(), auth: authInput() })
+      setTest(result)
+      if(result.ok)notify({title:'Connection test passed',description:'The supplied upstream settings were verified.'})
     } catch (e) {
       setTest({ ok: false, error: errMsg(e) })
     }
@@ -210,7 +217,7 @@ export default function UpstreamDetailForm({
       <div className="min-w-0 space-y-6">
         <ServerPanel title="Connection verification" description="Explicit tests for saved or edited settings" icon={PlugZap} footer="A test checks the gateway-to-upstream connection. It does not verify a client’s access to virtual servers.">
           <div className="space-y-4 p-5">
-            {upstream && <div><button className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
+            {upstream && <div><button className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
             {editing && <div className={upstream?'border-t border-line pt-4':''}><button className={btn} disabled={!editable || busy || !url} onClick={runTest}>Test edited connection</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
             {!canEdit && <p className="text-xs text-ink-muted">Connection tests require editor access.</p>}
             {busy && <p className="text-xs text-ink-muted">An operation is in progress…</p>}
@@ -220,7 +227,7 @@ export default function UpstreamDetailForm({
         {upstream && <ServerPanel title="Recorded node health" description="Last received health and discovery observations" icon={Activity} footer="Stored observations may be stale. Use an explicit connection test to check connectivity.">
           <dl className="divide-y divide-line px-5"><DetailRow label="Health"><Pill status={upstream.enabled?upstream.health?.state ?? 'unknown':'disabled'}/></DetailRow><DetailRow label="Last discovery">{fmt(upstream.lastRefreshAt)}</DetailRow></dl>
           {upstream.lastRefreshError && <p className="mx-5 mb-4 break-words rounded-lg bg-red-50 p-3 text-xs text-red-700">{upstream.lastRefreshError}</p>}
-          <div className="divide-y divide-line border-t border-line">{(upstream.health?.nodes ?? []).map(node=><details key={node.node} className="px-5 py-4"><summary className="cursor-pointer text-xs"><span className="font-medium">{node.node}</span><span className="ml-2 text-ink-muted">{node.state} · {node.latencyMs} ms</span></summary><dl className="mt-2 divide-y divide-line"><DetailRow label="Checked">{fmt(node.checkedAt)}</DetailRow><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="URL"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error && <p className="mt-2 break-words text-xs text-red-700">{node.error}</p>}</details>)}{!upstream.health?.nodes?.length && <p className="px-5 py-5 text-xs text-ink-muted">No node health observations available.</p>}</div>
+          <div className="divide-y divide-line border-t border-line">{(upstream.health?.nodes ?? []).map(node=><details key={node.node} className="px-5 py-4"><summary className="cursor-pointer text-xs"><span className="font-medium">{node.node}</span><span className="ml-2 text-ink-muted">{node.state} · {node.latencyMs} ms</span></summary><dl className="mt-2 divide-y divide-line"><DetailRow label="Checked">{fmt(node.checkedAt)}</DetailRow><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="URL"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error && <p className="mt-2 break-words text-xs text-red-700">{node.error}</p>}</details>)}{!upstream.health?.nodes?.length && <EmptyState title="No node health observations available." compact/>}</div>
         </ServerPanel>}
       </div>
     </div>
@@ -358,8 +365,7 @@ export default function UpstreamDetailForm({
                     <button
                       className={btn}
                       onClick={() => {
-                        const v = prompt(`New value for ${h}`)
-                        if (v !== null) setReplaced((r) => ({ ...r, [h]: v }))
+                        setHeaderToReplace(h);setHeaderReplacement('')
                       }}
                     >
                       Replace
@@ -380,8 +386,9 @@ export default function UpstreamDetailForm({
           </div>
 
       </fieldset>
-      ) : <div className="divide-y divide-line px-5">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<p className="py-5 text-xs text-ink-muted">No request headers configured.</p>}</div>}
+      ) : <div className="divide-y divide-line px-5">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
     </ServerPanel>
+    {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="space-y-5"><label className="block text-xs font-medium">Replacement header value<input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></label><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
     {editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 p-5 text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
     {upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
   </div>

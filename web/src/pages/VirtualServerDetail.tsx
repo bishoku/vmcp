@@ -1,3 +1,4 @@
+import { EmptyState, LoadingState } from '../Feedback'
 import { Box, Cable, ChevronRight, Fingerprint, LayoutDashboard, Pencil, Radio, RefreshCw, Server, ShieldCheck, Wrench } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useInventory } from '../connections/useInventory'
@@ -21,7 +22,8 @@ export default function VirtualServerDetail() {
   const server = inventory.servers.find(s=>s.slug===slug)
   const active = views.includes(view as typeof views[number]) ? view : 'overview'
   const grants = relationships(inventory.servers,inventory.upstreams,inventory.keys,inventory.bindings).filter(e=>e.server===slug && e.kind!=='upstream')
-  if(!server)return <div className="p-10 space-y-4"><h1 className="text-2xl font-semibold">Virtual server</h1>{inventory.loading ? <p role="status">Loading saved configuration…</p> : <p>{inventory.loaded.includes('servers') ? `Virtual server “${slug}” was not found.` : 'Virtual server configuration is unavailable.'}</p>}{inventory.readError && <ErrorBox>{inventory.readError}</ErrorBox>}<Link className={btn} to="/virtual-servers">Back to virtual servers</Link></div>
+  if(!server)return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10"><h1 className="text-2xl font-semibold tracking-tight">Virtual server</h1>{inventory.loading?<LoadingState label="Loading saved configuration…" detail="Reading saved servers and related configuration."/>:inventory.readError&&!inventory.loaded.includes('servers')?<ErrorBox title="Virtual server configuration is unavailable." onRetry={inventory.load}>{inventory.readError}</ErrorBox>:<div className="rounded-card border border-line bg-surface shadow-card"><EmptyState title={inventory.loaded.includes('servers')?`Virtual server “${slug}” was not found.`:'Virtual server configuration is unavailable.'} description="Check the identifier or return to the virtual-server inventory." actions={<button className={btn} onClick={()=>void inventory.load()}>Retry</button>}/></div>}<Link className={btn} to="/virtual-servers">Back to virtual servers</Link></div>
+
   return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
     <header className="space-y-5">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><Link className="hover:text-accent-700" to="/virtual-servers">Virtual servers</Link><ChevronRight className="size-3"/><span className="font-mono">{server.slug}</span></div>
@@ -29,7 +31,7 @@ export default function VirtualServerDetail() {
       <div className="flex flex-wrap gap-2"><button className={btn} disabled={inventory.loading} onClick={()=>inventory.load()} aria-label="Refresh saved configuration"><RefreshCw className={`size-3.5 ${inventory.loading?'animate-spin':''}`}/>Refresh</button>{edit && <Link className={primary} to={`/virtual-servers/${encodeURIComponent(slug)}/edit`}><Pencil className="size-3.5"/>Edit configuration</Link>}</div></div>
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-muted"><p>Saved configuration · version {server.version} · {server.enabled?'enabled':'disabled'}. Open the editor to make a draft.</p><Link className="inline-flex items-center gap-1 text-accent-700" to={`/setup?server=${encodeURIComponent(slug)}`}><Box className="size-3"/>Setup guide for this server<ChevronRight className="size-3"/></Link></div>
     </header>
-    {inventory.readError && <ErrorBox>{inventory.readError}. Related configuration may be incomplete or from an earlier refresh.</ErrorBox>}
+    {inventory.readError && <ErrorBox title="Configuration could not be loaded" onRetry={inventory.load} busy={inventory.loading}>{inventory.readError}. Related configuration may be incomplete or from an earlier refresh.</ErrorBox>}
     <nav aria-label="Virtual server views" className="flex gap-5 overflow-x-auto border-b border-line">{views.map(section=>{const Icon=viewIcons[section];return <Link key={section} aria-current={section===active?'page':undefined} className={`inline-flex shrink-0 items-center gap-2 border-b-2 px-1 pb-3 pt-1 text-sm font-medium transition-colors ${section===active?'border-accent-500 text-accent-700':'border-transparent text-ink-muted hover:text-ink'}`} to={serverPath(slug,section)}><Icon className="size-4"/>{section[0].toUpperCase()+section.slice(1)}</Link>})}</nav>
     {active==='overview' && <ServerOverview server={server} upstreams={inventory.upstreams} grants={grants}/>}
     {active==='capabilities' && <ServerCapabilities key={slug} server={server} upstreams={inventory.upstreams}/>}

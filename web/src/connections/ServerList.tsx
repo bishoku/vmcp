@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { btn, input } from '../styles'
+import { EmptyState, LoadingState } from '../Feedback'
 import { ServerPanel } from './ServerPanels'
 
 export const serverPageSize = 24
@@ -11,11 +12,12 @@ export function ServerListFilters({title,query,onQuery,searchLabel,children,filt
   </ServerPanel>
 }
 
-export function ServerListResults({title,total,matched,page,onPage,loading,readError,empty,children}:{title:string;total:number;matched:number;page:number;onPage:(page:number)=>void;loading:boolean;readError:string;empty:string;children:ReactNode}) {
+export function ServerListResults({title,total,matched,page,onPage,loading,readError,empty,children,onClear,emptyAction}:{title:string;total:number;matched:number;page:number;onPage:(page:number)=>void;loading:boolean;readError:string;empty:string;children:ReactNode;onClear?:()=>void;emptyAction?:ReactNode}) {
   const pages=Math.max(1,Math.ceil(matched/serverPageSize))
   return <section aria-label={title} className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">{title}</h2><p className="text-xs text-ink-muted">{matched} of {total} servers{readError?' · last loaded configuration':''}</p></div>
-    {matched>0?<div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{children}</div>:<div className="rounded-card border border-dashed border-line bg-surface px-5 py-12 text-center"><p className="text-sm font-medium">{loading?'Loading server inventory…':readError?'Server inventory unavailable':empty}</p><p className="mt-2 text-xs text-ink-muted">{readError?'Refresh the list to try again.':total?'Try another search or clear your filters.':'Saved servers appear here once configured.'}</p></div>}
+    {matched>0?<div className="grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">{children}</div>:<div className="rounded-card border border-line bg-surface shadow-card">{loading?<LoadingState label="Loading server inventory…" detail="Reading saved server configuration."/>:<EmptyState title={readError&&!total?'Server inventory unavailable':empty} description={readError&&!total?'Use Try again above to reload saved configuration.':total?'Try another search or clear your filters.':'Saved servers appear here once configured.'} actions={total&&onClear?<button className={btn} onClick={onClear}>Reset search</button>:!readError?emptyAction:undefined}/>}</div>}
+
     {pages>1&&<div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-surface px-5 py-3"><p className="text-xs text-ink-muted">{page*serverPageSize+1}–{Math.min((page+1)*serverPageSize,matched)} of {matched} · Page {page+1} of {pages}</p><div className="flex gap-2"><button className={btn} disabled={page===0} onClick={()=>onPage(page-1)}>Previous</button><button className={btn} disabled={page+1>=pages} onClick={()=>onPage(page+1)}>Next</button></div></div>}
   </section>
 }

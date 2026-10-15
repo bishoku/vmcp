@@ -1,3 +1,4 @@
+import { useNotifications } from '../notifications'
 import { Cable, CheckCircle2, Code2, Globe, KeyRound, PlugZap, ShieldCheck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { VirtualServer } from '../api'
@@ -10,6 +11,7 @@ import { DetailRow, ServerPanel, SummaryTile } from './ServerPanels'
 import type { VerificationResult } from './verify'
 
 export default function Connect({server,showSummary=true}: {server:VirtualServer;showSummary?:boolean}) {
+  const {notify}=useNotifications()
   const endpoint = connectionEndpoint(server.endpoint)
   const settings = endpoint ? connectionSettings(server,endpoint) : null
   const [credential,setCredential] = useState('')
@@ -30,7 +32,7 @@ export default function Connect({server,showSummary=true}: {server:VirtualServer
       if(!endpoint)throw new Error('Public gateway URL is not configured.')
       const {verifyConnection}=await import('./verify')
       const result=await verifyConnection(endpoint,secret,control.signal)
-      if(!control.signal.aborted){setResult(result);setVerifiedAt(new Date().toLocaleString())}
+      if(!control.signal.aborted){setResult(result);setVerifiedAt(new Date().toLocaleString());notify({title:'Connection verified',description:'Gateway initialization and capability listing completed.'})}
     } catch(e) {
       setError(control.signal.aborted ? 'Verification cancelled or timed out. No tool was invoked.' : `Verification failed: ${e instanceof Error ? e.message : String(e)}. Check gateway URL, credential, network access and allowed browser Origin/CORS configuration.`)
     } finally { clearTimeout(timeout);controller.current=null }

@@ -1,3 +1,4 @@
+import { EmptyState } from '../Feedback'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ArrowUpRight, Box, Cable, Fingerprint, KeyRound, Layers3, ShieldCheck, ShieldOff, Wrench } from 'lucide-react'
 import type { Upstream, VirtualServer } from '../api'
@@ -22,7 +23,7 @@ export default function ServerOverview({server,upstreams,grants}:{server:Virtual
         <div className="max-h-80 overflow-auto divide-y divide-line">{sources.map(slug=>{
           const upstream=upstreams.find(u=>u.slug===slug),selected=objects.filter(o=>o.upstream===slug),missingCount=selected.filter(o=>o.missing).length
           return <Link key={slug} to={editorPath('upstreams',slug)} className="flex items-center gap-3 px-5 py-4 hover:bg-canvas transition-colors"><span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-700"><Layers3 className="size-4"/></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{upstream?.name ?? slug}</p><p className="mt-1 text-xs text-ink-muted">{selected.filter(o=>o.kind==='tool').length} tools · {selected.filter(o=>o.kind!=='tool').length} other capabilities{missingCount?` · ${missingCount} missing`:''}</p></div><Pill status={!upstream?'missing':upstream.enabled?'enabled':'disabled'}/><ArrowUpRight className="size-3.5 shrink-0 text-ink-muted"/></Link>
-        })}{sources.length===0 && <p className="px-5 py-8 text-sm text-ink-muted">No upstream capabilities selected yet.</p>}</div>
+        })}{sources.length===0 && <EmptyState title="No upstream capabilities selected yet." compact/>}</div>
         <Link to={serverPath(server.slug,'capabilities')} className="mt-auto flex items-center justify-between border-t border-line px-5 py-3 text-xs font-medium text-accent-700">Explore capabilities<ArrowRight className="size-3.5"/></Link>
       </section>
       <section aria-label="Access and protection" className="flex flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">

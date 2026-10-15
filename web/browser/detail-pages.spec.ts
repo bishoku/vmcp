@@ -1,3 +1,4 @@
+import { withConfirmation } from './confirmation'
 import { expect, test } from '@playwright/test'
 import { server as originalServer, upstream as originalUpstream } from '../src/connections/fixtures'
 
@@ -39,8 +40,7 @@ test('virtual server card opens read-only details; Save and Cancel return to det
   await expect(page).toHaveURL(/virtual-servers\/demo\/overview$/)
   await page.getByRole('link',{name:'Edit configuration',exact:true}).click()
   await page.getByLabel('Name',{exact:true}).fill('Discarded')
-  page.once('dialog',dialog=>dialog.accept())
-  await page.getByRole('button',{name:'Cancel',exact:true}).click()
+  await withConfirmation(page,true,()=>page.getByRole('button',{name:'Cancel',exact:true}).click())
   await expect(page.getByRole('heading',{name:'Updated server',exact:true})).toBeVisible()
 })
 
@@ -52,8 +52,7 @@ test('upstream opens read-only; Cancel restores saved state and Save exits edit 
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button',{name:'Edit upstream'}).click()
   await page.getByLabel('Name',{exact:true}).fill('Discarded')
-  page.once('dialog',dialog=>dialog.accept())
-  await page.getByRole('button',{name:'Cancel',exact:true}).click()
+  await withConfirmation(page,true,()=>page.getByRole('button',{name:'Cancel',exact:true}).click())
   await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Alpha')
   await expect(page.getByLabel('Name',{exact:true})).toBeDisabled()
   await page.getByRole('button',{name:'Edit upstream'}).click()
@@ -105,7 +104,6 @@ test('upstream detail panels remain responsive and discovery reads never trigger
  await expect(page.getByLabel('Upload CA PEM')).toBeVisible()
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
  await page.screenshot({path:test.info().outputPath('upstream-edit-mobile.png'),fullPage:false,animations:'disabled'})
- page.once('dialog',dialog=>dialog.accept())
- await page.getByRole('button',{name:'Cancel',exact:true}).click()
+ await withConfirmation(page,true,()=>page.getByRole('button',{name:'Cancel',exact:true}).click())
  await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Alpha')
 })

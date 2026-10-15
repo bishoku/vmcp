@@ -1,3 +1,4 @@
+import { EmptyState } from '../Feedback'
 import { Activity, Clock3 } from 'lucide-react'
 import type { Upstream } from '../api'
 import { fmt } from '../format'
@@ -14,6 +15,6 @@ export default function Health({upstream}: {upstream: Upstream}) {
       <div className="flex flex-wrap items-center justify-between gap-2"><p className="break-all font-medium">{node.node}</p><Pill status={node.state}/></div>
       <p className="mt-2 inline-flex items-center gap-1.5 text-ink-muted"><Clock3 className="size-3.5 shrink-0"/>Checked: {fmt(node.checkedAt)}</p><dl className="mt-2 divide-y divide-line"><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="Recorded latency">{node.latencyMs} ms</DetailRow><DetailRow label="Endpoint"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error&&<p className="mt-2 break-words rounded-lg bg-red-50 p-3 leading-relaxed text-red-700">{node.error}. Check node connectivity and credentials; retry the upstream test before changing routing.</p>}
     </div>)}</div>
-    {!upstream.health?.nodes?.length && <p className="text-ink-muted">No node health observations available.</p>}
+    {!upstream.health?.nodes?.length && <EmptyState title="No node health observations available." compact/>}
   </section>
 }

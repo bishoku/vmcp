@@ -1,3 +1,4 @@
+import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import type { AdminToken } from '../src/api'
 
@@ -76,7 +77,7 @@ test('settings token filters details and creation share responsive management pa
  await secret.getByRole('button',{name:'I have saved it',exact:true}).click()
  await expect(page.getByText('created-admin-test-secret',{exact:true})).toHaveCount(0)
  const row=page.getByRole('row').filter({has:page.getByRole('button',{name:'release-agent',exact:true})})
- page.once('dialog',dialog=>dialog.accept());await row.getByRole('button',{name:'Revoke',exact:true}).click()
+ await withConfirmation(page,true,()=>row.getByRole('button',{name:'Revoke',exact:true}).click())
  await expect(row.getByText('revoked',{exact:true})).toBeVisible()
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
 })
@@ -84,7 +85,7 @@ test('settings token filters details and creation share responsive management pa
 test('rotation retains one-time acknowledgement and versioned token mutation',async({page})=>{
  await login(page)
  const row=page.getByRole('row').filter({has:page.getByRole('button',{name:'deploy-bot',exact:true})})
- page.once('dialog',dialog=>dialog.accept());await row.getByRole('button',{name:'Rotate',exact:true}).click()
+ await withConfirmation(page,true,()=>row.getByRole('button',{name:'Rotate',exact:true}).click())
  const secret=page.getByRole('dialog',{name:'Token rotated',exact:true})
  await expect(secret.getByText('rotated-admin-test-secret',{exact:true})).toBeVisible()
  await page.keyboard.press('Escape');await expect(secret).toBeVisible()
@@ -128,8 +129,7 @@ test('configuration preview preserves revision guards and invalidates on edits',
  await page.setViewportSize({width:390,height:844})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  await page.screenshot({path:test.info().outputPath('settings-configuration-mobile.png'),animations:'disabled'})
- page.once('dialog',dialog=>dialog.accept())
- await page.getByRole('button',{name:'Apply preview',exact:true}).click()
+ await withConfirmation(page,true,()=>page.getByRole('button',{name:'Apply preview',exact:true}).click())
  await expect(page.getByRole('button',{name:'Apply preview',exact:true})).toHaveCount(0)
  await expect(source).toHaveValue(JSON.stringify(document,null,2))
 })

@@ -1,3 +1,4 @@
+import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import { key, binding, server } from '../src/connections/fixtures'
 
@@ -105,8 +106,7 @@ test('viewer inspection is available without edit or mutation permissions',async
 
 test('rotation still requires confirmation and acknowledgement of its one-time secret',async({page})=>{
  await login(page)
- page.once('dialog',dialog=>dialog.accept())
- await page.getByRole('row').filter({has:page.getByRole('button',{name:'team-key',exact:true})}).getByRole('button',{name:'Rotate',exact:true}).click()
+ await withConfirmation(page,true,()=>page.getByRole('row').filter({has:page.getByRole('button',{name:'team-key',exact:true})}).getByRole('button',{name:'Rotate',exact:true}).click())
  const secret=page.getByRole('dialog',{name:'Key rotated',exact:true})
  await expect(secret.getByText('rotated-test-secret',{exact:true})).toBeVisible()
  await page.keyboard.press('Escape')

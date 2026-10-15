@@ -16,6 +16,7 @@ test('login loads all management pages and rejects a concurrent edit',async({pag
  await page.getByRole('textbox').fill('admin-test')
  await page.getByRole('button',{name:'Continue'}).click()
  await page.getByRole('link',{name:'Upstreams',exact:true}).click()
+ await page.getByLabel('Search upstreams',{exact:true}).fill('Upstream 200')
  await expect(page.getByText('Upstream 200',{exact:true})).toBeVisible()
  await page.getByText('Upstream 200',{exact:true}).click()
  await expect(page.getByLabel('Name',{exact:true})).toBeDisabled()
