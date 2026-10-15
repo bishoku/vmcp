@@ -88,7 +88,7 @@ test('upstream detail panels remain responsive and discovery reads never trigger
  await page.getByRole('button',{name:'Test stored credentials'}).click()
  await expect(page.getByText('Connected · 1 tools',{exact:true})).toBeVisible()
  expect(storedTests).toBe(1)
- await page.getByRole('button',{name:'Resources (1)',exact:true}).click()
+ await page.getByRole('radio',{name:'Resources (1)',exact:true}).click()
  const table=page.getByRole('table',{name:'Stored upstream capabilities'})
  await expect(table.getByText('lookup',{exact:true})).toHaveCount(0)
  await expect(table.getByText('doc://team',{exact:true})).toBeVisible()

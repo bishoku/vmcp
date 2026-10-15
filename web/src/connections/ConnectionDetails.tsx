@@ -1,7 +1,11 @@
+import { SearchField, ActiveFilters, ResultCount } from '../SearchControls'
+import { filterItem } from '../search-filters'
+import Select from '../Select'
+import { LoadMore } from '../DataTable'
 import { EmptyState } from '../Feedback'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, GitBranch, ListChecks, Search, ShieldCheck } from 'lucide-react'
+import { ArrowUpRight, GitBranch, ListChecks, ShieldCheck } from 'lucide-react'
 import type { Upstream } from '../api'
 import { btn, input } from '../styles'
 import { Modal, Pill } from '../ui'
@@ -25,8 +29,9 @@ export default function ConnectionDetails({relationship:r,upstream,onClose}:{rel
       </ServerPanel>
       {r.kind==='upstream'&&<>
         <ServerPanel title="Selected capability mappings" description="Original upstream definitions and exposed names on this virtual server" icon={ListChecks}>
-          <div className="grid gap-3 p-5 sm:grid-cols-[2fr_1fr]"><label className="text-xs font-medium">Search mappings<div className="relative mt-2"><Search className="absolute left-3 top-2.5 size-4 text-ink-muted"/><input className={`${input} pl-9`} value={query} onChange={e=>{setQuery(e.target.value);setLimit(50)}} placeholder="Name, alias, policy or missing"/></div></label><label className="text-xs font-medium">Mapping kind<select className={`${input} mt-2`} value={kind} onChange={e=>{setKind(e.target.value);setLimit(50)}}><option value="">All kinds</option><option value="tool">Tools</option><option value="resource">Resources</option><option value="template">Templates</option><option value="prompt">Prompts</option></select></label></div>
-          <div className="border-t border-line px-5 pb-5"><div className="overflow-x-auto">{shown.length?<CapabilityTable objects={shown.slice(0,limit)}/>:<EmptyState title={r.capabilities.length?'No matching mappings. Adjust your search or kind.':'No capabilities selected.'} compact/>}</div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-ink-muted">{Math.min(shown.length,limit)} of {shown.length} matching mappings · {r.capabilities.length} configured</p>{shown.length>limit&&<button className={btn} onClick={()=>setLimit(n=>n+50)}>Show 50 more mappings</button>}</div></div>
+          <div className="grid gap-3 p-5 sm:grid-cols-[2fr_1fr]"><SearchField label="Search mappings" visibleLabel value={query} onChange={value=>{setQuery(value);setLimit(50)}} placeholder="Name, alias, policy or missing"/><label className="text-xs font-medium">Mapping kind<Select className={`${input} mt-2`} value={kind} onChange={e=>{setKind(e.target.value);setLimit(50)}}><option value="">All kinds</option><option value="tool">Tools</option><option value="resource">Resources</option><option value="template">Templates</option><option value="prompt">Prompts</option></Select></label></div>
+          <ActiveFilters className="border-t border-b border-line px-5 py-3" label="Active mapping filters" items={[filterItem('Search',query,()=>{setQuery('');setLimit(50)}),filterItem('Kind',kind,()=>{setKind('');setLimit(50)})]} onReset={()=>{setQuery('');setKind('');setLimit(50)}}><ResultCount matched={shown.length} total={r.capabilities.length} noun="mappings"/></ActiveFilters>
+          <div className="border-t border-line px-5 pb-5"><div className="min-w-0">{shown.length?<CapabilityTable objects={shown} limit={limit}/>:<EmptyState title={r.capabilities.length?'No matching mappings. Adjust your search or kind.':'No capabilities selected.'} compact/>}</div><LoadMore shown={Math.min(limit,shown.length)} total={shown.length} noun="mappings" label="Show 50 more mappings" onLoad={()=>setLimit(n=>n+50)}/></div>
         </ServerPanel>
         <ServerPanel title="Upstream observations" description="Stored discovery and node health; no live check is performed" icon={ShieldCheck}><div className="p-5">{upstream?<Health upstream={upstream}/>:<p className="text-xs text-ink-muted">This upstream is missing from the loaded configuration.</p>}</div></ServerPanel>
       </>}

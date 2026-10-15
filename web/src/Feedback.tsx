@@ -10,6 +10,6 @@ export function LoadingState({label='Loading…',detail,compact=false}:{label?:s
 
 export function EmptyState({title,description,icon:Icon=Inbox,actions,compact=false}:{title:string;description?:string;icon?:LucideIcon;actions?:ReactNode;compact?:boolean}) {
   return <div data-testid="empty-state" className={clsx('flex min-w-0 flex-col items-center text-center',compact?'px-4 py-6':'px-5 py-10 sm:py-12')}>
-    <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl border border-accent-100 bg-accent-50 text-accent-700"><Icon className="size-5"/></span><h3 className="mt-4 max-w-lg break-words text-sm font-semibold">{title}</h3>{description&&<p className="mt-2 max-w-md break-words text-xs leading-relaxed text-ink-muted">{description}</p>}{actions&&<div className="mt-5 flex flex-wrap items-center justify-center gap-3">{actions}</div>}
+    <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-xl border border-accent-100 bg-accent-50 text-accent-700"><Icon className="size-5"/></span><h3 className="panel-title mt-4 max-w-lg break-words">{title}</h3>{description&&<p className="mt-2 max-w-md break-words text-xs leading-relaxed text-ink-muted">{description}</p>}{actions&&<div className="mt-5 flex flex-wrap items-center justify-center gap-3">{actions}</div>}
   </div>
 }

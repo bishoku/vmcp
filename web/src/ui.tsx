@@ -1,3 +1,4 @@
+import Button from './Button'
 import { useNotifications } from './notifications'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertCircle, AlertTriangle, Check, Copy, RefreshCw, PanelRightOpen, ScanLine, Trash2, X } from 'lucide-react'
@@ -5,32 +6,10 @@ import clsx from 'clsx'
 
 import { useConfirm } from './confirmation'
 import { btn, primary } from './styles'
-const tones: Record<string, string> = {
-  healthy: 'bg-green-50 text-green-700',
-  enabled: 'bg-green-50 text-green-700',
-  started: 'bg-blue-50 text-blue-700',
-  degraded: 'bg-amber-50 text-amber-700',
-  unhealthy: 'bg-red-50 text-red-700',
-  disabled: 'bg-canvas text-ink-muted',
-  active: 'bg-green-50 text-green-700',
-  ok: 'bg-green-50 text-green-700',
-  expired: 'bg-amber-50 text-amber-700',
-  tool_error: 'bg-amber-50 text-amber-700',
-  revoked: 'bg-red-50 text-red-700',
-  error: 'bg-red-50 text-red-700',
-  denied: 'bg-red-50 text-red-700',
-}
-
-export function Pill({ status }: { status: string }) {
-  return (
-    <span className={clsx('rounded-full px-2 py-0.5 text-xs font-medium', tones[status] ?? 'bg-canvas text-ink-muted')}>
-      {status.replace('_', ' ')}
-    </span>
-  )
-}
+export { StatusBadge as Pill } from './Badge'
 
 export function ErrorBox({ children, title='Unable to complete this request', onRetry, retryLabel='Try again', busy=false }: { children: ReactNode; title?:string; onRetry?:()=>void|Promise<void>; retryLabel?:string; busy?:boolean }) {
-  return <div role="alert" className="flex min-w-0 flex-wrap items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4"><span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg border border-red-200 bg-surface text-red-700"><AlertCircle className="size-4"/></span><div className="min-w-0 flex-[1_1_180px]"><p className="text-xs font-semibold text-red-800">{title}</p><div className="mt-1.5 break-words text-xs leading-relaxed text-red-700">{children}</div></div>{onRetry&&<button type="button" className={`${btn} shrink-0 text-xs`} disabled={busy} onClick={()=>void onRetry()}><RefreshCw aria-hidden="true" className={`size-3.5 ${busy?'motion-safe:animate-spin':''}`}/>{retryLabel}</button>}</div>
+  return <div role="alert" className="flex min-w-0 flex-wrap items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4"><span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg border border-red-200 bg-surface text-red-700"><AlertCircle className="size-4"/></span><div className="min-w-0 flex-[1_1_180px]"><p className="text-xs font-semibold text-red-800">{title}</p><div className="mt-1.5 break-words text-xs leading-relaxed text-red-700">{children}</div></div>{onRetry&&<Button className="shrink-0 text-xs" loading={busy} onClick={()=>void onRetry()}><RefreshCw aria-hidden="true" className="size-3.5"/>{retryLabel}</Button>}</div>
 }
 
 
@@ -71,7 +50,7 @@ export function Modal({ title, children, onClose, variant = 'modal', busy = fals
         <section className={clsx('flex min-h-0 flex-col overflow-hidden border border-line bg-canvas shadow-card',
           variant === 'drawer' ? `h-full w-full ${size === 'wide' ? 'max-w-2xl' : 'max-w-[420px]'}` : `max-h-[calc(100dvh-2rem)] w-full ${size === 'wide' ? 'max-w-4xl' : 'max-w-lg'} rounded-card`)}>
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-surface px-5 py-4 sm:px-6">
-            <div className="flex min-w-0 items-start gap-3"><div aria-hidden="true" className={clsx('grid size-9 shrink-0 place-items-center rounded-xl border',tone==='danger'?'border-red-200 bg-red-50 text-red-700':tone==='warning'?'border-amber-200 bg-amber-50 text-amber-700':'border-accent-100 bg-accent-50 text-accent-700')}><Icon className="size-4"/></div><div className="min-w-0 pt-1"><h2 id={titleId} className="break-words text-base font-semibold tracking-tight">{title}</h2>{description&&<p id={descriptionId} className="mt-2 whitespace-pre-line break-words text-xs leading-relaxed text-ink-muted">{description}</p>}</div></div>
+            <div className="flex min-w-0 items-start gap-3"><div aria-hidden="true" className={clsx('grid size-9 shrink-0 place-items-center rounded-xl border',tone==='danger'?'border-red-200 bg-red-50 text-red-700':tone==='warning'?'border-amber-200 bg-amber-50 text-amber-700':'border-accent-100 bg-accent-50 text-accent-700')}><Icon className="size-4"/></div><div className="min-w-0 pt-1"><h2 id={titleId} className="dialog-title">{title}</h2>{description&&<p id={descriptionId} className="supporting-copy mt-2 whitespace-pre-line text-ink-muted">{description}</p>}</div></div>
             {onClose && <button type="button" className={`${btn} shrink-0`} aria-label="Close" disabled={busy} onClick={onClose}><X className="size-4" /></button>}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"><fieldset disabled={busy || readOnly} className="min-w-0 border-0 m-0 p-5 sm:p-6">{children}</fieldset></div>
@@ -104,11 +83,15 @@ export function CopyButton({ value, label = 'Copy' }: { value: string | null; la
   const timer=useRef<ReturnType<typeof setTimeout>|null>(null)
   useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current)},[])
   const [copied, setCopied] = useState<string | null>(null)
+  const [copying,setCopying] = useState(false)
   const [error, setError] = useState('')
-  return <span><button type="button" className={btn} aria-label={label} disabled={!value} onClick={async () => {
+  return <span><Button aria-label={label} loading={copying} loadingLabel="Copying…" disabled={!value} onClick={async () => {
+    if(copying)return
+    setCopying(true)
     try { await navigator.clipboard.writeText(value!); setCopied(value); setError(''); notify({title:'Copied to clipboard',description:label==='Copy'?'Ready to paste.':`${label.replace(/^Copy /,'')} is ready to paste.`,key:'clipboard'}); if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>setCopied(null),2500) }
     catch { setCopied(null); setError('Copy failed. Select the text and copy it manually.') }
-  }}>{copied === value && value ? <Check className="size-4" /> : <Copy className="size-4" />}{copied === value && value ? 'Copied' : 'Copy'}</button>
+    finally { setCopying(false) }
+  }}>{copied === value && value ? <Check className="size-4" /> : <Copy className="size-4" />}{copied === value && value ? 'Copied' : 'Copy'}</Button>
     <span role={available?undefined:"status"} className="sr-only">{!available && copied === value && value ? `${label} succeeded` : ''}</span>
     {error && <span role="alert" className="mt-2 block rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-700">{error}</span>}
   </span>
@@ -120,12 +103,12 @@ export function StaleRecovery({ message, reload }: { message: string; reload: ()
   const [error, setError] = useState('')
   if (!message.includes('another session')) return null
   return <div className="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-900"><p className="inline-flex items-center gap-2 font-semibold"><AlertTriangle className="size-4"/>A newer version is available</p><p>Your draft is retained. Copy any changes you want to keep before loading the latest version.</p>
-    <button className={btn} disabled={busy} onClick={async () => {
+    <Button variant="danger-outline" loading={busy} onClick={async () => {
       if (!await confirm('Discard this draft and load the latest version?')) return
       setBusy(true)
       try { await reload(); setError('') } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
       finally { setBusy(false) }
-    }}>Reload latest and discard draft</button>
+    }}>Reload latest and discard draft</Button>
     {error && <p role="alert">{error}</p>}
   </div>
 }

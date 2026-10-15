@@ -64,7 +64,7 @@ test('session recovery retains a draft after failed reauthentication and never r
  await page.keyboard.press('Escape');await expect(expired).toBeVisible()
  await expired.getByLabel('Admin token',{exact:true}).fill('rejected')
  await expired.getByRole('button',{name:'Continue',exact:true}).click()
- await expect(expired.getByRole('alert')).toBeVisible()
+ await expect(expired.getByRole('form',{name:'Token sign-in',exact:true}).getByRole('alert')).toContainText('This token was not accepted')
  expect(writes).toBe(1)
  await page.setViewportSize({width:390,height:844})
  expect(await expired.locator('section').first().evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)

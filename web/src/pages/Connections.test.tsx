@@ -69,7 +69,7 @@ test('tool selection highlights only virtual servers that map that upstream tool
  fireEvent.click(within(flow).getByRole('button',{name:'Alpha'}))
  fireEvent.click(within(flow).getByRole('button',{name:'Trace upstream tool alpha / lookup'}))
  expect(within(flow).getAllByTestId('flow-ribbon').filter(e=>e.getAttribute('data-highlighted')==='true')).toHaveLength(5)
- expect(within(flow).getByRole('status').textContent).toContain('Tracing alpha / lookup through all virtual servers')
+ expect(within(flow).getByRole('status',{name:'Highlighted tool path'}).textContent).toContain('Tracing alpha / lookup through all virtual servers')
  expect(api.listAudit).not.toHaveBeenCalled()
 })
 test('large inventories bundle all identities and expand groups without truncation',async()=>{

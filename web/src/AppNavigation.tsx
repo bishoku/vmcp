@@ -26,7 +26,7 @@ function MenuLinks({mobile=false}:{mobile?:boolean}){
 function UserArea({me,signOut}:{me:Me;signOut:ReactNode}){
   const initials=me.name.trim().split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase()||'U'
   return <section aria-label="Signed-in account" className="rounded-xl border border-line bg-canvas p-3">
-    <div className="flex items-center gap-3"><div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-surface text-xs font-semibold text-accent-700">{initials}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold" title={me.name}>{me.name}</p><p className="mt-1 inline-flex items-center gap-1 text-[11px] capitalize text-ink-muted"><ShieldCheck aria-hidden="true" className="size-3"/>{me.role}</p></div></div>
+    <div className="flex items-center gap-3"><div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-surface text-xs font-semibold text-accent-700">{initials}</div><div className="min-w-0 flex-1"><p tabIndex={0} className="truncate text-xs font-semibold" data-tooltip={me.name}>{me.name}</p><p className="mt-1 inline-flex items-center gap-1 text-[11px] capitalize text-ink-muted"><ShieldCheck aria-hidden="true" className="size-3"/>{me.role}</p></div></div>
     <div className="mt-3 border-t border-line pt-2">{signOut}</div>
   </section>
 }

@@ -18,7 +18,7 @@ test('premium connection flow retains drill-down tracing and route details acros
  await page.screenshot({path:test.info().outputPath('connections-sankey.png'),animations:'disabled'})
  await flow.getByLabel('Explore server').selectOption('["upstream","alpha"]')
  await flow.getByRole('button',{name:'Trace upstream tool alpha / lookup',exact:true}).click()
- await expect(flow.getByRole('status')).toContainText('Tracing alpha / lookup through all virtual servers')
+ await expect(flow.getByRole('status',{name:'Highlighted tool path'})).toContainText('Tracing alpha / lookup through all virtual servers')
  await expect(flow.locator('[data-highlighted="false"]')).not.toHaveCount(0)
  await flow.getByRole('button',{name:'Expand canvas',exact:true}).click()
  await expect(flow.getByRole('button',{name:'Standard canvas',exact:true})).toHaveAttribute('aria-pressed','true')

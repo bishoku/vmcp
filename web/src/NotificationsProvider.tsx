@@ -26,7 +26,7 @@ function Toast({ notice, dismiss }: { notice: Entry; dismiss: (id: number) => vo
   return <div data-testid="toast" className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-ink shadow-lg" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocusCapture={() => setFocused(true)} onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false) }}>
     <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl border ${color}`}><Icon className="size-4"/></span>
     <div role="status" aria-atomic="true" className="min-w-0 flex-1 pt-0.5"><p className="break-words text-sm font-semibold tracking-tight">{notice.title}</p>{notice.description && <p className="mt-1 break-words text-xs leading-relaxed text-ink-muted">{notice.description}</p>}</div>
-    <button type="button" aria-label={`Dismiss notification: ${notice.title}`} className="shrink-0 rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-canvas focus-visible:outline-2 focus-visible:outline-accent-700" onClick={() => dismiss(notice.id)}><X aria-hidden="true" className="size-4"/></button>
+    <button type="button" aria-label={`Dismiss notification: ${notice.title}`} className="action-button action-ghost action-icon shrink-0" onClick={() => dismiss(notice.id)}><X aria-hidden="true" className="size-4"/></button>
   </div>
 }
 

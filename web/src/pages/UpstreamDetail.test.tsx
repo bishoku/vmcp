@@ -98,7 +98,7 @@ test('stored credential testing remains explicit and separate from edited testin
 test('discovery filtering and partial reloads retain successful snapshots without changing drafts',async()=>{
  vi.mocked(api.listCatalog).mockResolvedValue({resources:[{uri:'doc://team',description:'Team docs'}],resourceTemplates:[],prompts:[{name:'review'}],capabilities:{}})
  open();await screen.findByText('doc://team')
- fireEvent.click(screen.getByRole('button',{name:'Resources (1)'}))
+ fireEvent.click(screen.getByRole('radio',{name:'Resources (1)'}))
  const table=screen.getByRole('table',{name:'Stored upstream capabilities'})
  expect(within(table).getByText('doc://team')).toBeTruthy()
  expect(within(table).queryByText('lookup')).toBeNull()

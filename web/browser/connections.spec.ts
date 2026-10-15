@@ -87,7 +87,7 @@ test('overview traces tools with keyboard focus and expands large identity group
  await flow.getByRole('button',{name:'Trace upstream tool alpha / lookup',exact:true}).focus()
  await expect(flow.locator('[data-highlighted="false"]')).not.toHaveCount(0)
  await page.keyboard.press('Enter')
- await expect(flow.getByRole('status')).toContainText('Tracing alpha / lookup')
+ await expect(flow.getByRole('status',{name:'Highlighted tool path'})).toContainText('Tracing alpha / lookup')
  await page.screenshot({path:test.info().outputPath('tool-path.png'),fullPage:true})
  await flow.getByRole('button',{name:'Reset to overview'}).click()
  await flow.getByRole('button',{name:'Expand 11 identities',exact:true}).first().click()

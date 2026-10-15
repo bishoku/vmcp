@@ -1,3 +1,4 @@
+import TooltipProvider from './TooltipProvider'
 import NotificationsProvider from './NotificationsProvider'
 import { LoadingState } from './Feedback'
 import Connections from './pages/Connections'
@@ -91,7 +92,7 @@ function Application() {
 }
 
 const router = createBrowserRouter([{ path: '*', element: <Application /> }])
-export default function App() { return <NotificationsProvider><RouterProvider router={router} /></NotificationsProvider> }
+export default function App() { return <TooltipProvider><NotificationsProvider><RouterProvider router={router} /></NotificationsProvider></TooltipProvider> }
 
 function AuditRoute() {
   const [params] = useSearchParams()

@@ -1,9 +1,12 @@
+import { filterItem } from '../search-filters'
+import { SearchField, ActiveFilters, ResultCount } from '../SearchControls'
+import { Checkbox } from '../SelectionControls'
+import { LoadMore } from '../DataTable'
 import { EmptyState } from '../Feedback'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Layers3, Search, ShieldCheck } from 'lucide-react'
+import { ArrowUpRight, Layers3, ShieldCheck } from 'lucide-react'
 import type { VirtualServer } from '../api'
-import { input, btn } from '../styles'
 import { Pill } from '../ui'
 import { serverPath } from './model'
 import { DetailRow, ServerPanel } from './ServerPanels'
@@ -28,5 +31,5 @@ export function ServerGrantPicker({servers,selected,toggle}:{servers:VirtualServ
   const [limit,setLimit]=useState(25)
   const choices=[...servers.map(s=>({slug:s.slug,label:s.name,status:s.enabled?'enabled':'disabled'})),...selected.filter(slug=>!servers.some(s=>s.slug===slug)).map(slug=>({slug,label:slug,status:'unavailable'}))]
   const shown=choices.filter(s=>`${s.label} ${s.slug}`.toLowerCase().includes(query.toLowerCase()))
-  return <div className="p-5"><label className="relative block"><span className="sr-only">Search virtual servers</span><Search className="absolute left-3 top-2.5 size-4 text-ink-muted"/><input className={`${input} pl-9`} value={query} onChange={e=>{setQuery(e.target.value);setLimit(25)}} placeholder="Search virtual servers"/></label><p className="my-3 text-xs text-ink-muted">{selected.length} selected · Filtering preserves selections.</p><div className="divide-y divide-line rounded-lg border border-line">{shown.slice(0,limit).map(s=><label key={s.slug} className="flex cursor-pointer items-center gap-3 px-3 py-3 text-xs hover:bg-canvas"><input type="checkbox" checked={selected.includes(s.slug)} onChange={()=>toggle(s.slug)}/><span className="min-w-0 flex-1"><span className="block break-all font-medium">{s.label}</span><span className="mt-1 block break-all font-mono text-ink-muted">{s.slug}</span></span><Pill status={s.status}/></label>)}{shown.length>limit&&<div className="p-3"><button className={btn} onClick={()=>setLimit(n=>n+25)}>Show 25 more servers</button></div>}{shown.length===0 && <EmptyState title={choices.length?'No matching virtual servers.':'No virtual servers.'} compact/>}</div></div>
+  return <div className="p-5"><SearchField label="Search virtual servers" value={query} onChange={value=>{setQuery(value);setLimit(25)}} placeholder="Search virtual servers" className="relative block"/><ActiveFilters className="mt-3" label="Active server picker filters" items={[filterItem('Search',query,()=>{setQuery('');setLimit(25)})]} onReset={()=>{setQuery('');setLimit(25)}}><ResultCount matched={shown.length} total={choices.length} noun="servers"/></ActiveFilters><p className="my-3 text-xs text-ink-muted">{selected.length} selected · Filtering preserves selections.</p><div className="divide-y divide-line rounded-lg border border-line">{shown.slice(0,limit).map(s=><Checkbox key={s.slug} label={s.label} description={<span className="break-all font-mono">{s.slug}</span>} end={<Pill status={s.status}/>} variant="row" checked={selected.includes(s.slug)} onChange={()=>toggle(s.slug)}/>)}{shown.length>limit&&<LoadMore shown={Math.min(limit,shown.length)} total={shown.length} noun="servers" label="Show 25 more servers" onLoad={()=>setLimit(n=>n+25)}/>}{shown.length===0 && <EmptyState title={choices.length?'No matching virtual servers.':'No virtual servers.'} compact/>}</div></div>
 }

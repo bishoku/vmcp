@@ -1,3 +1,4 @@
+import { parseLocalDateTime } from './date-time'
 import { createContext, useEffect, useRef, useState } from 'react'
 import { ApiError } from './api'
 
@@ -42,7 +43,7 @@ export const FormContext = createContext<Omit<Validation,'root'> | null>(null)
 export const requiredText = (value: string, label: string, max?: number) => !value.trim() ? `${label} is required.` : max && value.length > max ? `Use ${max} characters or fewer.` : undefined
 export const slugError = (value: string) => !value ? 'Enter a stable identifier.' : value.length > 63 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(value) ? 'Use 1–63 lowercase letters, numbers or hyphens; start and end with a letter or number.' : undefined
 export const rateError = (value: string) => value && (!Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 1000000) ? 'Enter a whole number from 1 to 1,000,000, or leave empty for unlimited.' : undefined
-export const dateError = (value: string) => value && !Number.isFinite(new Date(value).getTime()) ? 'Enter a valid date and time, or leave empty for no expiry.' : undefined
+export const dateError = (value: string) => value && !parseLocalDateTime(value) ? 'Enter a valid date and time, or leave empty for no expiry.' : undefined
 export const urlError = (value: string) => { try { const url = new URL(value); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash) throw new Error(); return undefined } catch { return 'Enter an absolute HTTP or HTTPS URL without credentials or a fragment.' } }
 
 export function fieldLabel(path: string) {

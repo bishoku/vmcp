@@ -1,3 +1,7 @@
+import Button from '../Button'
+import { TagBadge } from '../Badge'
+import { Switch } from '../SelectionControls'
+import Select from '../Select'
 import { FormField, FormScope, FormErrors } from '../FormField'
 import { useFormValidation, slugError, requiredText, urlError } from '../form-validation'
 import { useNotifications } from '../notifications'
@@ -167,7 +171,7 @@ export default function UpstreamDetailForm({
   return <FormScope validation={validation}><div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
     <header className="space-y-5">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight className="size-3"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
-      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 className="size-6"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="break-words text-2xl font-semibold tracking-tight">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <span className="rounded-md border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-muted">v{upstream.version}</span>}</div><p className="mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
+      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 className="size-6"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
       <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil className="size-3.5"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
@@ -194,21 +198,19 @@ export default function UpstreamDetailForm({
           <FormField name="name" label="Name" hint="Display name, up to 120 characters. New upstreams use the slug if left empty."><input className={clsx(input, 'mt-1')} value={name} onChange={(e) => setName(e.target.value)} /></FormField>
           <FormField name="url" label="URL" required hint="Absolute HTTP or HTTPS endpoint, without credentials or a fragment."><input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://host/mcp" /></FormField>
           <FormField name="fallbackUrls" label="Fallback URLs" hint="Optional. Up to five distinct URLs, one per line, tried in order."><textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} /></FormField>
-          <FormField name="transport" label="Transport" required hint="Choose the protocol supported by the upstream."><select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
+          <FormField name="transport" label="Transport" required help="Choose the protocol implemented by this MCP endpoint. Changing this setting does not automatically test or discover the server." hint="Choose the protocol supported by the upstream."><Select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
               <option value="streamable_http">Streamable HTTP</option>
               <option value="sse">Legacy SSE</option>
-            </select></FormField>
-          <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled
-          </label>
+            </Select></FormField>
+          <Switch label="Enabled" field="enabled" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>
 
         </fieldset>
       </ServerPanel>
       <div className="min-w-0 space-y-6">
         <ServerPanel title="Connection verification" description="Explicit tests for saved or edited settings" icon={PlugZap} footer="A test checks the gateway-to-upstream connection. It does not verify a client’s access to virtual servers.">
           <div className="space-y-4 p-5">
-            {upstream && <div><button className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
-            {editing && <div className={upstream?'border-t border-line pt-4':''}><button className={btn} disabled={!editable || busy || !url} onClick={runTest}>Test edited connection</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
+            {upstream && <div><Button loading={busy} className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
+            {editing && <div className={upstream?'border-t border-line pt-4':''}><Button loading={busy} className={btn} disabled={!editable || busy || !url} onClick={runTest}>Test edited connection</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
             {!canEdit && <p className="text-xs text-ink-muted">Connection tests require editor access.</p>}
             {busy && <p className="text-xs text-ink-muted">An operation is in progress…</p>}
             {test && <div role="status" className={clsx('flex items-start gap-2 rounded-lg border p-3 text-xs leading-relaxed',test.ok?'border-green-200 bg-green-50 text-green-700':'border-red-200 bg-red-50 text-red-700')}>{test.ok?<CheckCircle2 className="mt-0.5 size-4 shrink-0"/>:<XCircle className="mt-0.5 size-4 shrink-0"/>}<span>{test.ok?`Connected${test.toolCount!=null?` · ${test.toolCount} tools`:''}`:test.error ?? 'Connection failed'}</span></div>}
@@ -221,7 +223,7 @@ export default function UpstreamDetailForm({
         </ServerPanel>}
       </div>
     </div>
-    <div><h2 className="text-lg font-semibold tracking-tight">Security & credentials</h2><p className="mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
+    <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
     <div className="grid items-start gap-6 xl:grid-cols-2">
       <ServerPanel title="Transport security" description="Custom trust and mutual TLS settings" icon={ShieldCheck}>
         <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
@@ -233,7 +235,7 @@ export default function UpstreamDetailForm({
               {upstream && (upstream.tls?.caCerts?.length ?? 0) > 0 && caPem === upstream.tls.caPem && (
                 <ul className="text-xs text-ink-muted">
                   {upstream.tls.caCerts.map((c, i) => (
-                    <li key={i} className="truncate" title={c.subject}>
+                    <li key={i} className="truncate" data-tooltip={c.subject}>
                       {c.subject} · expires {new Date(c.notAfter).toLocaleDateString()}
                       {Date.parse(c.notAfter) < openedAt && <span className="ml-1 text-red-700">expired</span>}
                     </li>
@@ -261,14 +263,7 @@ export default function UpstreamDetailForm({
           <details className="min-w-0" open={authType === 'oauth_client_credentials'}>
             <summary className="cursor-pointer text-sm font-medium">OAuth 2.0 Client Credentials</summary>
             <div className="mt-3 space-y-3">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={authType === 'oauth_client_credentials'}
-                  onChange={(e) => setAuthType(e.target.checked ? 'oauth_client_credentials' : 'none')}
-                />
-                Enable OAuth client credentials
-              </label>
+              <Switch label="Enable OAuth client credentials" field="auth.type" checked={authType === 'oauth_client_credentials'} onChange={e=>setAuthType(e.target.checked ? 'oauth_client_credentials' : 'none')}/>
               {authType === 'oauth_client_credentials' && (
                 <>
                   <FormField name="auth.tokenUrl" label="Token URL" required hint="OAuth token endpoint. Use an absolute HTTP or HTTPS URL."><input
@@ -333,7 +328,7 @@ export default function UpstreamDetailForm({
                     >
                       Replace
                     </button>
-                    <button className={btn} aria-label="Remove header" onClick={() => setRemoved((r) => [...r, h])}>
+                    <button className={`${btn} action-danger-outline action-icon`} aria-label="Remove header" onClick={() => setRemoved((r) => [...r, h])}>
                       <X className="size-3.5" />
                     </button>
                   </div>
