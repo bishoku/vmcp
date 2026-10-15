@@ -1,3 +1,4 @@
+import { Cable, CheckCircle2, Code2, Globe, KeyRound, PlugZap, ShieldCheck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { VirtualServer } from '../api'
 import { connectionEndpoint } from '../endpoint'
@@ -5,6 +6,7 @@ import { btn, input, primary } from '../styles'
 import { CopyButton, ErrorBox } from '../ui'
 import { useOperation } from '../interaction'
 import { connectionSettings } from './model'
+import { DetailRow, ServerPanel, SummaryTile } from './ServerPanels'
 import type { VerificationResult } from './verify'
 
 export default function Connect({server}: {server:VirtualServer}) {
@@ -33,22 +35,28 @@ export default function Connect({server}: {server:VirtualServer}) {
       setError(control.signal.aborted ? 'Verification cancelled or timed out. No tool was invoked.' : `Verification failed: ${e instanceof Error ? e.message : String(e)}. Check gateway URL, credential, network access and allowed browser Origin/CORS configuration.`)
     } finally { clearTimeout(timeout);controller.current=null }
   })
-  return <section className="space-y-4"><h2 className="text-lg font-semibold">Connect a client</h2>
-    <p className="text-sm">Streamable HTTP endpoint from the saved server configuration:</p><div className="flex items-center gap-3 rounded-lg bg-canvas p-3"><code className="min-w-0 flex-1 break-all">{endpoint ?? server.endpoint}</code><CopyButton label="Copy endpoint" value={endpoint}/></div>
-    {!endpoint && <ErrorBox>Public gateway URL is not configured. Configure the public gateway URL in the deployment; the path alone is not a client connection URL.</ErrorBox>}
-    {!server.authRequired && <p className="text-amber-700">Anonymous access is enabled. Credentials are bypassed on this server.</p>}
-    <p className="text-sm text-ink-muted">HTTP client settings: adapt this example to your client's configuration format. Replace the credential placeholder with an agent key or verified OAuth access token, never an admin API token.</p>
-    {settings && <><pre className="overflow-x-auto rounded-lg bg-canvas p-4 text-xs">{settings}</pre><CopyButton label="Copy client settings" value={settings}/></>}
-    <section className="space-y-3 rounded-lg border border-line p-4"><h3 className="font-semibold">Verify this connection</h3>
-      <p className="text-sm">Only initialize, ping and list negotiated tools, resources, templates and prompts. No tools are called, resources read, or prompts executed. Results cover the first page of each list.</p>
-      <p className="text-xs text-ink-muted">The browser must reach the gateway and its Origin must be allowed. Verification uses a separate MCP session with no sampling, roots or elicitation permissions.</p>
-      {server.authRequired && <label className="block text-sm">Agent key or OAuth access token<input className={input} autoComplete="off" type="password" value={credential} disabled={busy} onChange={e=>setCredential(e.target.value)}/></label>}
-      <p className="text-xs text-ink-muted">The credential stays in memory and is cleared from the input when verification starts. It is sent only to the configured gateway.</p>
-      <button className={primary} disabled={busy || !endpoint || !server.enabled || (server.authRequired && !credential.trim())} onClick={verify}>Verify connection</button>
-      {busy && <><span role="status" className="ml-3 text-sm">Verifying…</span><button className={btn} onClick={()=>controller.current?.abort()}>Cancel verification</button></>}
-      {!server.enabled && <p className="text-amber-700">Enable this virtual server before verifying.</p>}
-      {error && <ErrorBox>{error}</ErrorBox>}
-      {result && <div role="status"><p>Verified initialization and ping with {result.server} at {verifiedAt}.</p><ul>{result.lists.map(list=><li key={list.kind}>{list.count} {list.kind} on the first page{list.more ? ' (more pages available)' : ''}</li>)}</ul><p className="text-sm">This verifies discovery for the supplied identity, not permission to execute every capability.</p></div>}
-    </section>
+  return <section aria-label="Client connection" className="space-y-6">
+    <div><h2 className="text-lg font-semibold tracking-tight">Connect a client</h2><p className="mt-1 text-sm text-ink-muted">Copy your endpoint, configure a client and verify discovery with a separate gateway credential.</p></div>
+    <div className="grid gap-3 sm:grid-cols-3"><SummaryTile label="Transport" value="Streamable HTTP" detail="Saved MCP endpoint" icon={Cable}/><SummaryTile label="Authentication" value={server.authRequired?'Required':'Anonymous'} detail={server.authRequired?'Agent key or OAuth access token':'Credentials are bypassed'} icon={KeyRound}/><SummaryTile label="Server configuration" value={server.enabled?'Enabled':'Disabled'} detail={endpoint?'Public gateway URL configured':'Public gateway URL not configured'} icon={Globe}/></div>
+    <ServerPanel title="Gateway endpoint" description="Streamable HTTP endpoint from the saved server configuration" icon={Cable}>
+      <div className="flex items-center gap-3 px-5 py-5"><code className="min-w-0 flex-1 break-all rounded-lg bg-canvas px-3 py-3 text-xs">{endpoint ?? server.endpoint}</code><CopyButton label="Copy endpoint" value={endpoint}/></div>
+      {!endpoint && <div className="px-5 pb-5"><ErrorBox>Public gateway URL is not configured. Configure the public gateway URL in the deployment; the path alone is not a client connection URL.</ErrorBox></div>}
+      {!server.authRequired && <p className="mx-5 mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Anonymous access is enabled. Credentials are bypassed on this server.</p>}
+    </ServerPanel>
+    <div className="grid items-start gap-6 xl:grid-cols-2">
+      <ServerPanel title="Client configuration" description="HTTP settings to adapt to your client’s configuration format" icon={Code2} footer="Use an agent key or verified OAuth access token, never an admin API token.">
+        <div className="space-y-4 p-5"><p className="text-xs leading-relaxed text-ink-muted">{server.authRequired?'Replace the credential placeholder before connecting.':'This endpoint accepts anonymous requests; no authorization header is included.'}</p>{settings?<><pre className="max-h-96 overflow-auto rounded-lg border border-line bg-canvas p-4 text-xs leading-relaxed">{settings}</pre><CopyButton label="Copy client settings" value={settings}/></>:<p className="rounded-lg bg-canvas p-4 text-xs text-ink-muted">Client settings become available once the public gateway URL is configured.</p>}</div>
+      </ServerPanel>
+      <ServerPanel title="Verify this connection" description="Check initialization, ping and negotiated discovery" icon={PlugZap} footer="The browser must reach the gateway and its Origin must be allowed. The verification session has no sampling, roots or elicitation permissions.">
+        <div className="space-y-4 p-5"><p className="text-xs leading-relaxed text-ink-muted">Only initialize, ping and list negotiated tools, resources, templates and prompts. No tools are called, resources read, or prompts executed. Results cover the first page of each list.</p>
+          {server.authRequired && <label className="block text-xs font-medium">Agent key or OAuth access token<input className={`${input} mt-2`} autoComplete="off" type="password" value={credential} disabled={busy} onChange={e=>setCredential(e.target.value)}/></label>}
+          <div className="flex items-start gap-2 rounded-lg bg-canvas p-3 text-xs leading-relaxed text-ink-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0"/><p>The credential stays in memory and is cleared from the input when verification starts. It is sent only to the configured gateway.</p></div>
+          <div className="flex flex-wrap items-center gap-3"><button className={primary} disabled={busy || !endpoint || !server.enabled || (server.authRequired && !credential.trim())} onClick={verify}><PlugZap className="size-3.5"/>Verify connection</button>{busy && <><span role="status" className="text-xs text-ink-muted">Verifying…</span><button className={btn} onClick={()=>controller.current?.abort()}>Cancel verification</button></>}</div>
+          {!server.enabled && <p className="text-xs text-amber-700">Enable this virtual server before verifying.</p>}
+          {error && <ErrorBox>{error}</ErrorBox>}
+          {result && <div role="status" className="rounded-xl border border-green-200 bg-green-50 p-4"><div className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green-700"/><p className="text-xs font-medium text-green-800">Verified initialization and ping with {result.server} at {verifiedAt}.</p></div><dl className="mt-3 divide-y divide-green-200">{result.lists.map(list=><DetailRow key={list.kind} label={list.kind}>{list.count} on the first page{list.more?' (more pages available)':''}</DetailRow>)}</dl><p className="mt-3 text-xs leading-relaxed text-green-800">This verifies discovery for the supplied identity, not permission to execute every capability.</p></div>}
+        </div>
+      </ServerPanel>
+    </div>
   </section>
 }

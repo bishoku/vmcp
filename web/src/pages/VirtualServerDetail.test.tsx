@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { api } from '../api'
@@ -46,4 +46,103 @@ test('guide includes all steps and separates configured grants from explicit tes
  expect(screen.getByText('Explicit client verification required')).toBeTruthy()
  expect(screen.getByText('Explicit test required; not inferred from configuration')).toBeTruthy()
  expect(screen.getByRole('status').textContent).toContain('Read-only access')
+})
+
+
+test('overview presents composition and protection with capability navigation, without runtime requests',async()=>{
+ open('/virtual-servers/demo/overview');await screen.findByRole('region',{name:'Server overview'})
+ const overview=screen.getByRole('region',{name:'Server overview'})
+ expect(within(overview).getByRole('link',{name:/Selected tools/}).getAttribute('href')).toBe('/virtual-servers/demo/capabilities')
+ expect(within(overview).getByRole('region',{name:'Upstream composition'}).textContent).toContain('Alpha')
+ expect(within(overview).getByRole('region',{name:'Access and protection'}).textContent).toContain('Agent key / OAuth token')
+ expect(within(overview).getByRole('link',{name:'Connection settings'}).getAttribute('href')).toBe('/virtual-servers/demo/connect')
+ expect(within(overview).getByRole('region',{name:'Gateway endpoint'}).textContent).toContain('/mcp/v1/virtual/demo')
+ expect(api.listAudit).not.toHaveBeenCalled()
+})
+
+
+test.each([
+ {enabled:false},
+ {enabled:true},
+ {enabled:true,detectors:[]},
+ {enabled:true,customRules:[]},
+ {enabled:true,detectors:[],customRules:[]},
+])('protection handles omitted PII lists: %j',async(pii)=>{
+ vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,pii}])
+ open('/virtual-servers/demo/protection')
+ await screen.findByText('all built-in (default)')
+ expect(within(screen.getByRole('region',{name:'Data masking'})).getByText('none')).toBeTruthy()
+ expect(api.listAudit).not.toHaveBeenCalled()
+})
+test('protection displays configured detectors and custom rule names',async()=>{
+ vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,pii:{enabled:true,detectors:['email','phone'],customRules:[{name:'employee',pattern:'EMP-[0-9]+'}]}}])
+ open('/virtual-servers/demo/protection')
+ await screen.findByText('email, phone')
+ expect(screen.getByText('employee')).toBeTruthy()
+})
+
+test('activity keeps admission and outcome records distinct and links to the stored operation',async()=>{
+ const admission={eventId:'admit-1',operationId:'operation-1',requestId:'request-1',traceId:'trace-1',schemaVersion:1,actorType:'agent_key',actorId:'team-key',issuer:'',action:'tools/call',target:'lookup',configRevision:7,stage:'admission' as const,id:1,time:'2026-10-15T10:00:00Z',virtualServer:'demo',method:'tools/call',tool:'lookup',upstream:'alpha',status:'started' as const,durationMs:0}
+ vi.mocked(api.listAudit).mockResolvedValue({items:[admission,{...admission,eventId:'outcome-1',id:2,stage:'outcome',status:'denied',reason:'Tool policy denied access',durationMs:12}],nextCursor:'more-events'})
+ open('/virtual-servers/demo/activity')
+ const events=await screen.findByRole('table',{name:'Recent events for demo'})
+ expect(within(events).getAllByRole('row')).toHaveLength(3)
+ expect(within(events).getByText('admission')).toBeTruthy()
+ expect(within(events).getByText('denied')).toBeTruthy()
+ expect(within(events).getByText('Tool policy denied access')).toBeTruthy()
+ expect(within(events).getAllByRole('link',{name:'Inspect operation'})[0].getAttribute('href')).toBe('/audit?operationId=operation-1')
+ expect(screen.getByRole('link',{name:'Continue in audit log'}).getAttribute('href')).toBe('/audit?virtualServer=demo')
+})
+
+test('failed activity refresh retains stored events and offers manual retry',async()=>{
+ const event={eventId:'event-1',traceId:'trace-1',schemaVersion:1,actorType:'agent_key',actorId:'team-key',issuer:'',action:'tools/call',target:'lookup',configRevision:7,stage:'outcome' as const,id:1,time:'2026-10-15T10:00:00Z',virtualServer:'demo',method:'tools/call',status:'ok' as const,durationMs:5}
+ vi.mocked(api.listAudit).mockResolvedValueOnce({items:[event]}).mockRejectedValueOnce(new Error('Audit storage offline')).mockResolvedValueOnce({items:[]})
+ open('/virtual-servers/demo/activity')
+ await screen.findByRole('table',{name:'Recent events for demo'})
+ fireEvent.click(screen.getByRole('button',{name:'Check recent activity'}))
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Showing events from the last successful check'))
+ expect(screen.getByRole('table',{name:'Recent events for demo'})).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'Check recent activity'}))
+ await screen.findByText('No stored events in this window')
+ expect(screen.queryByRole('table')).toBeNull()
+ expect(screen.queryByRole('alert')).toBeNull()
+})
+
+test('capability search combines kind and alias filters without changing summary counts',async()=>{
+ open('/virtual-servers/demo/capabilities')
+ await screen.findByRole('region',{name:'Selected capabilities'})
+ fireEvent.change(screen.getByLabelText('Capability kind'),{target:{value:'resource'}})
+ fireEvent.change(screen.getByLabelText('Search capabilities'),{target:{value:'doc://team'}})
+ const panel=screen.getByRole('region',{name:'Selected capabilities'})
+ expect(within(panel).getByText('doc://team')).toBeTruthy()
+ expect(within(panel).queryByText('lookup')).toBeNull()
+ fireEvent.change(screen.getByLabelText('Search capabilities'),{target:{value:'no such capability'}})
+ expect(within(panel).getByText('No matching capabilities')).toBeTruthy()
+ fireEvent.change(screen.getByLabelText('Search capabilities'),{target:{value:''}})
+ fireEvent.change(screen.getByLabelText('Capability kind'),{target:{value:''}})
+ expect(within(panel).getByText('Missing object')).toBeTruthy()
+ expect(api.listAudit).not.toHaveBeenCalled()
+})
+
+test('access retains revoked and conditional grants with inspectable restrictions',async()=>{
+ vi.mocked(api.listAgentKeys).mockResolvedValue([{...key,status:'revoked',ipAllowlist:['192.0.2.1'],rateLimitPerMinute:10}])
+ open('/virtual-servers/demo/access')
+ const panel=await screen.findByRole('region',{name:'Configured access relationships'})
+ expect(within(panel).getByText('revoked')).toBeTruthy()
+ expect(within(panel).getByText('conditional')).toBeTruthy()
+ expect(within(panel).getByText(/IP allowlist: 192.0.2.1; key limit: 10/)).toBeTruthy()
+ expect(within(panel).getByRole('link',{name:'team-key'}).getAttribute('href')).toBe('/agent-keys?inspect=team-key')
+ fireEvent.change(screen.getByLabelText('Search access relationships'),{target:{value:'JWT'}})
+ expect(within(panel).getByRole('link',{name:'team-jwt'})).toBeTruthy()
+ expect(within(panel).queryByRole('link',{name:'team-key'})).toBeNull()
+ expect(api.listAudit).not.toHaveBeenCalled()
+})
+
+test('anonymous access distinguishes saved credentials from public endpoint behavior',async()=>{
+ vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,authRequired:false}])
+ open('/virtual-servers/demo/access')
+ const behavior=await screen.findByRole('region',{name:'Authentication behavior'})
+ expect(within(behavior).getByText(/Anonymous access bypasses credential authentication/)).toBeTruthy()
+ expect(within(behavior).getByText(/credential restrictions do not protect an anonymous endpoint/)).toBeTruthy()
+ expect(screen.getByRole('region',{name:'Configured access relationships'}).textContent).toContain('Anonymous')
 })

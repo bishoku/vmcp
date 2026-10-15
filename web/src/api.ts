@@ -237,7 +237,8 @@ export interface VirtualServer {
   description: string
   enabled: boolean
   authRequired: boolean
-  pii?: PiiConfig
+  // The server omits empty lists and optional masking settings in read responses.
+  pii?: Pick<PiiConfig, 'enabled'> & Partial<Omit<PiiConfig, 'enabled'>>
   policy?: ToolPolicy
   rateLimitPerMinute?: number | null
   clientFeatures?:ClientFeatures

@@ -48,11 +48,37 @@ Topology node/relationship inspection opens capability aliases, policies, missin
 objects and recorded upstream node health with timestamps. Configuration links
 open the relevant upstream or virtual-server detail page, or select a key or
 binding in its management editor.
+The initial configuration flow represents all configured identities, virtual servers
+and upstream servers, including disconnected nodes and disabled or missing references.
+Ribbon width represents configured tool selections; identity grants carry their
+virtual server's tool count. These counts repeat across grants and are not runtime
+metrics or proof of effective permission. Zero-tool relationships (including
+catalog-only connections) remain visible as thin dashed lines.
+
+Hover or keyboard-focus a node to preview its paths; select it to pin the highlight.
+Select a virtual or upstream server to unfold exposed aliases and upstream tool
+definitions as two additional Sankey columns. Search narrows tool nodes directly
+in the canvas; tool mappings do not open a separate table. Select
+an upstream tool to trace every exact mapping back to identities, or select an
+exposed alias to restrict the trace to that virtual server. Denied, conditional and
+missing mappings remain visible. Unselected upstream tool definitions are available
+from the upstream configuration page.
+
+Columns with more than twelve nodes are bundled into deterministic, labelled groups;
+all nodes and edges are represented in those groups. Expand a group or select
+**Focus here** to drill into its connected neighborhood. Breadcrumbs and **Reset to
+overview** restore broader context. Large tool columns use the same expandable groups, with back navigation and
+breadcrumbs inside the diagram.
+The diagram scrolls within its canvas on narrow screens and tall inventories.
+
+Virtual-server Overview uses configuration summary cards, upstream composition,
+access/protection controls and a gateway endpoint card. Counts and status describe
+saved configuration; no runtime requests or activity metrics are inferred.
+
 Search relationships by name, capability, alias, policy or status, or select a
-virtual server to focus the diagram. The accessible relationship table displays
-50 rows at a time; **Show 50 more relationships** expands it. The diagram shows
-at most eight edges on each side of one focused virtual server. This bounds visual
-clutter; it is not an all-nodes force-layout graph.
+virtual server to filter the relationship table independently of the overview.
+The accessible table displays fifty rows at a time; **Show 50 more relationships**
+expands it. Relationship inspection retains resource, template and prompt details.
 
 Configuration reads are independent and cancellable. Refresh updates them;
 there is no live subscription. Partial failures are shown and may leave older
@@ -99,7 +125,23 @@ The demo's `benchmark/gateway.conf` includes this policy for
 allowlist. Other deployments must configure their own exact origins, or serve
 UI and gateway routes through one origin. Native MCP clients do not require CORS.
 
+All virtual-server detail tabs share summary tiles and section cards. Capabilities
+supports search, kind filters and incremental display of fifty selections, with
+expandable recorded upstream observations. Access lists saved grants with searchable
+states and expandable restrictions; its authentication panel explains conditional
+JWT matching and anonymous credential bypass. Connect separates the gateway endpoint,
+copyable client configuration and explicit discovery verification into panels.
+
+Protection follows the Overview card layout: saved-policy summaries, tool overrides,
+data masking and individual client feature permissions. Empty or omitted detector
+lists mean all built-in detectors; omitted custom rules are shown as none.
+
 ## Bounded observed activity
+
+Activity separates the selected time window, loaded-record count and last successful
+check from the event table. Empty and failed reads have explicit states; a failed
+refresh preserves earlier records and marks them as retained data. Operation links
+open audit investigation, and a continuation link appears when more records exist.
 
 Activity reads at most 50 events for that virtual server from the last 15 minutes,
 with a last-check timestamp and an explicit refresh button. It does not poll or
