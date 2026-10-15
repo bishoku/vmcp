@@ -108,7 +108,7 @@ for(const role of ['viewer','editor'] as const)test(`${role} keeps token managem
   const download=page.waitForEvent('download')
   await page.getByRole('button',{name:'Download OpenAPI JSON',exact:true}).click()
   expect((await download).suggestedFilename()).toBe('vmcp-openapi.json')
- }else await expect(page.getByRole('button',{name:'Preview changes',exact:true})).toBeDisabled()
+ }else {await page.getByRole('button',{name:'Preview changes',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Configuration document is required.')}
  await page.setViewportSize({width:390,height:844})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
 })

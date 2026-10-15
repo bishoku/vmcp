@@ -55,7 +55,7 @@ function Application() {
       {expired && <SessionRecovery onDone={signedIn}/>}
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <AppNavigation me={me} sessionExpired={expired} signOut={<SignOut onDone={()=>setMe(null)}/>}/>
-        <main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
           {!capabilities(me.role).edit && <p role="status" className="mx-4 mt-4 rounded-xl border border-line bg-surface px-4 py-3 text-xs leading-relaxed text-ink-muted sm:mx-6 lg:mx-10">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
 
           <Routes>

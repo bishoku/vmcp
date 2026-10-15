@@ -62,7 +62,7 @@ test('token creation defaults to read scope, converts local expiry and shows the
  fireEvent.click(screen.getByRole('button',{name:'New token'}))
  expect((screen.getByLabelText('Scope') as HTMLSelectElement).value).toBe('read')
  fireEvent.change(screen.getByLabelText('Name'),{target:{value:'New Token'}})
- fireEvent.change(screen.getByLabelText('Expires at (optional)'),{target:{value:'2027-04-05T06:07'}})
+ fireEvent.change(screen.getByLabelText('Expires at'),{target:{value:'2027-04-05T06:07'}})
  fireEvent.click(screen.getByRole('button',{name:'Create'}))
  const secret=await screen.findByRole('dialog',{name:'Admin token created'})
  expect(create).toHaveBeenCalledWith(expect.objectContaining({slug:'new-token',scope:'read',expiresAt:new Date('2027-04-05T06:07').toISOString()}))

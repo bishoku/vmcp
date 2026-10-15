@@ -1,13 +1,17 @@
+import { FormContext } from '../form-validation'
+import { FormField } from '../FormField'
 import { ErrorBox } from '../ui'
 import { EmptyState, LoadingState } from '../Feedback'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { api, type Catalog, type CatalogSelection, type Upstream } from '../api'
 import { BookOpen, Search } from 'lucide-react'
 import { ServerPanel } from '../connections/ServerPanels'
 import { input, btn } from '../styles'
 
 export default function CatalogPicker({upstreams, value, savedCatalog, onChange}: {upstreams:Upstream[];value:CatalogSelection[];savedCatalog?:(CatalogSelection & {descriptionDrift?:boolean;upstreamDescription?:string})[];onChange:(value:CatalogSelection[])=>void}) {
+ const validation=useContext(FormContext)
  const [search,setSearch]=useState('')
+ const [selectionLimit,setSelectionLimit]=useState(50)
  const [kind,setKind]=useState('')
  const [catalogs,setCatalogs]=useState<Record<string,Catalog>>({})
  const [error,setError]=useState('')
@@ -44,7 +48,7 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
     {choices.filter(c=>(!kind||c.kind===kind)&&Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())).filter(c=>!value.some(v=>identity(v)===identity(c))).map(c=><option key={identity(c)} value={identity(c)}>{c.upstream} · {c.kind} · {c.name}</option>)}
    </select>
   </label>
-  <div><p className="mb-3 text-xs font-semibold">Selected catalog objects ({value.length})</p><div className="max-h-[560px] space-y-3 overflow-y-auto">{value.map((selection,index)=>{
+  <div><p className="mb-3 text-xs font-semibold">Selected catalog objects ({value.length})</p><div className="space-y-3">{value.slice(0,validation?.issues.some(issue=>issue.field?.startsWith('catalog.'))?value.length:selectionLimit).map((selection,index)=>{
    const discovered=choices.find(c=>identity(c)===identity(selection))
    const saved=savedCatalog?.find(c=>identity(c)===identity(selection))
    const patch=(p:Partial<CatalogSelection>)=>onChange(value.map((s,i)=>i===index?{...s,...p}:s))
@@ -53,10 +57,10 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
     {!discovered && catalogs[selection.upstream] && <p className="text-xs text-amber-700">Missing from upstream discovery; this selection is not exposed.</p>}
     {selection.description && discovered && <p className="text-xs text-ink-muted">Current upstream description: {discovered.description}</p>}
     {saved?.descriptionDrift && <p className="text-xs text-amber-700" title={saved.upstreamDescription}>Upstream description changed since this override was written — save to accept.</p>}
-    {selection.kind!=='template' && <label className="mt-2 block text-xs">Alias<input aria-label={`Alias ${selection.name}`} className={input} value={selection.alias??''} onChange={e=>patch({alias:e.target.value})}/></label>}
-    <label className="mt-2 block text-xs">Description override<input aria-label={`Description ${selection.name}`} className={input} value={selection.description??''} onChange={e=>patch({description:e.target.value})}/></label>
+    {selection.kind!=='template' && <FormField name={`catalog.${index}.alias`} label="Alias" className="mt-2" hint="Optional. Leave empty to keep the upstream name."><input aria-label={`Alias ${selection.name}`} className={input} value={selection.alias??''} onChange={e=>patch({alias:e.target.value})}/></FormField>}
+    <FormField name={`catalog.${index}.description`} label="Description override" className="mt-2" hint="Optional. Leave empty to keep the upstream description."><input aria-label={`Description ${selection.name}`} className={input} value={selection.description??''} onChange={e=>patch({description:e.target.value})}/></FormField>
     <button className={btn+' mt-2'} onClick={()=>onChange(value.filter((_,i)=>i!==index))}>Remove selection</button>
    </div>
-  })}{!value.length&&<p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-ink-muted">Choose a discovered object to expose it to clients.</p>}</div></div></div>
+  })}{value.length>selectionLimit&&<button className={btn} onClick={()=>setSelectionLimit(n=>n+50)}>Show 50 more selected objects</button>}{!value.length&&<p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-ink-muted">Choose a discovered object to expose it to clients.</p>}</div></div></div>
  </ServerPanel>
 }

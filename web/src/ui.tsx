@@ -74,7 +74,7 @@ export function Modal({ title, children, onClose, variant = 'modal', busy = fals
             <div className="flex min-w-0 items-start gap-3"><div aria-hidden="true" className={clsx('grid size-9 shrink-0 place-items-center rounded-xl border',tone==='danger'?'border-red-200 bg-red-50 text-red-700':tone==='warning'?'border-amber-200 bg-amber-50 text-amber-700':'border-accent-100 bg-accent-50 text-accent-700')}><Icon className="size-4"/></div><div className="min-w-0 pt-1"><h2 id={titleId} className="break-words text-base font-semibold tracking-tight">{title}</h2>{description&&<p id={descriptionId} className="mt-2 whitespace-pre-line break-words text-xs leading-relaxed text-ink-muted">{description}</p>}</div></div>
             {onClose && <button type="button" className={`${btn} shrink-0`} aria-label="Close" disabled={busy} onClick={onClose}><X className="size-4" /></button>}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto"><fieldset disabled={busy || readOnly} className="min-w-0 border-0 m-0 p-5 sm:p-6">{children}</fieldset></div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"><fieldset disabled={busy || readOnly} className="min-w-0 border-0 m-0 p-5 sm:p-6">{children}</fieldset></div>
         </section>
       </div>
     </dialog>

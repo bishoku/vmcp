@@ -1,3 +1,5 @@
+import { FormField, FormScope, FormErrors } from '../FormField'
+import { useFormValidation, slugError, requiredText, urlError } from '../form-validation'
 import { useNotifications } from '../notifications'
 import { EmptyState } from '../Feedback'
 import { source, useSources } from '../requests'
@@ -110,11 +112,13 @@ export default function UpstreamDetailForm({
   const [openedAt] = useState(() => Date.now())
 
   const {notify}=useNotifications()
+  const validation=useFormValidation()
   const save = async () => {
     let saved: Upstream | undefined
     await run(async () => {
       if (!editable) return
       setErr('')
+      if(!validation.check({slug:upstream?undefined:slugError(slug),name:upstream?requiredText(name,'Name',120):name.length>120?'Use 120 characters or fewer.':undefined,url:urlError(url),fallbackUrls:fallbackUrls().length>5?'Use up to five fallback URLs.':fallbackUrls().some(value=>urlError(value))?'Each fallback must be an absolute HTTP or HTTPS URL without credentials or fragments.':undefined,'auth.tokenUrl':authType==='oauth_client_credentials'?urlError(tokenUrl):undefined,'auth.clientId':authType==='oauth_client_credentials'?requiredText(clientId,'Client ID'):undefined,headers:newName||newValue?'Add or clear the pending header before saving.':undefined}))return
       try {
         const headers: Record<string, string | null> = { ...replaced }
         removed.forEach((h) => (headers[h] = null))
@@ -143,7 +147,7 @@ export default function UpstreamDetailForm({
         }
         unsaved.clean()
       } catch (e) {
-        setErr(errMsg(e))
+        validation.fail(e)
       }
     })
     if (saved) { notify({title:upstream?'Upstream saved':'Upstream created',description:saved.name}); onSaved(saved) }
@@ -160,16 +164,17 @@ export default function UpstreamDetailForm({
     }
   })
 
-  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+  return <FormScope validation={validation}><div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
     <header className="space-y-5">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight className="size-3"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
       <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 className="size-6"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="break-words text-2xl font-semibold tracking-tight">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <span className="rounded-md border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-muted">v{upstream.version}</span>}</div><p className="mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
       <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil className="size-3.5"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
-    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||!url||(!upstream&&!slug)||!!(newName||newValue)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
+    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
     {err && <ErrorBox>{err}</ErrorBox>}
-    <StaleRecovery message={err} reload={async()=>{
+    <FormErrors validation={validation}/>
+    <StaleRecovery message={[err,...validation.issues.map(issue=>issue.message)].join('; ')} reload={async()=>{
       const latest=(await api.listUpstreams()).find(item=>item.slug===upstream?.slug)
       if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
       unsaved.clean();onReload(latest)
@@ -184,30 +189,15 @@ export default function UpstreamDetailForm({
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
         <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 p-5 m-0">
           {!upstream && (
-            <label className="block text-sm font-medium">
-              Slug
-              <input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" />
-            </label>
+            <FormField name="slug" label="Slug" required hint="Stable identifier: lowercase letters, numbers and hyphens, up to 63 characters."><input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" /></FormField>
           )}
-          <label className="block text-sm font-medium">
-            Name
-            <input className={clsx(input, 'mt-1')} value={name} onChange={(e) => setName(e.target.value)} />
-          </label>
-          <label className="block text-sm font-medium">
-            URL
-            <input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://host/mcp" />
-          </label>
-          <label className="block text-sm font-medium">
-            Fallback URLs <span className="font-normal text-ink-muted">(optional, one per line, tried in order)</span>
-            <textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} />
-          </label>
-          <label className="block text-sm font-medium">
-            Transport
-            <select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
+          <FormField name="name" label="Name" hint="Display name, up to 120 characters. New upstreams use the slug if left empty."><input className={clsx(input, 'mt-1')} value={name} onChange={(e) => setName(e.target.value)} /></FormField>
+          <FormField name="url" label="URL" required hint="Absolute HTTP or HTTPS endpoint, without credentials or a fragment."><input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://host/mcp" /></FormField>
+          <FormField name="fallbackUrls" label="Fallback URLs" hint="Optional. Up to five distinct URLs, one per line, tried in order."><textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} /></FormField>
+          <FormField name="transport" label="Transport" required hint="Choose the protocol supported by the upstream."><select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
               <option value="streamable_http">Streamable HTTP</option>
               <option value="sse">Legacy SSE</option>
-            </select>
-          </label>
+            </select></FormField>
           <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled
           </label>
@@ -238,10 +228,7 @@ export default function UpstreamDetailForm({
           <>{!editing && !(caPem || serverName || clientCert) && <p className="mb-3 text-xs leading-relaxed text-ink-muted">Uses system trust. No custom CA, server name or client certificate is configured.</p>}<details className="min-w-0" open={!!(caPem || serverName || clientCert)}>
             <summary className="cursor-pointer text-sm font-medium">TLS (custom CA, server name, mTLS)</summary>
             <div className="mt-3 space-y-3">
-              <label className="block text-sm font-medium">
-                CA certificate(s) <span className="font-normal text-ink-muted">(PEM; trusted only for this upstream)</span>
-                <textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={4} value={caPem} onChange={(e) => setCaPem(e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" />
-              </label>
+              <FormField name="tls.caPem" label="CA certificate(s)" hint="Optional. PEM certificates trusted only for this upstream."><textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={4} value={caPem} onChange={(e) => setCaPem(e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" /></FormField>
               <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setCaPem)} className="max-w-full text-xs" aria-label="Upload CA PEM" />
               {upstream && (upstream.tls?.caCerts?.length ?? 0) > 0 && caPem === upstream.tls.caPem && (
                 <ul className="text-xs text-ink-muted">
@@ -253,25 +240,16 @@ export default function UpstreamDetailForm({
                   ))}
                 </ul>
               )}
-              <label className="block text-sm font-medium">
-                Server name <span className="font-normal text-ink-muted">(optional; SNI and verification when reaching it by IP/alias)</span>
-                <input className={clsx(input, 'mt-1')} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="mcp.internal.example" />
-              </label>
-              <label className="block text-sm font-medium">
-                Client certificate <span className="font-normal text-ink-muted">(optional, mTLS)</span>
-                <textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={3} value={clientCert} onChange={(e) => setClientCert(e.target.value)} />
-              </label>
+              <FormField name="tls.serverName" label="Server name" hint="Optional. Override the TLS server name."><input className={clsx(input, 'mt-1')} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="mcp.internal.example" /></FormField>
+              <FormField name="tls.clientCertPem" label="Client certificate" hint="Optional. PEM certificate used for mutual TLS."><textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={3} value={clientCert} onChange={(e) => setClientCert(e.target.value)} /></FormField>
               <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setClientCert)} className="max-w-full text-xs" aria-label="Upload client certificate" />
-              <label className="block text-sm font-medium">
-                Client key <span className="font-normal text-ink-muted">(write-only)</span>
-                <textarea
+              <FormField name="tls.clientKeyPem" label="Client key" hint="Write-only. Leave empty to keep the stored private key."><textarea
                   className={clsx(input, 'mt-1 font-mono text-xs')}
                   rows={3}
                   value={clientKey}
                   onChange={(e) => setClientKey(e.target.value)}
                   placeholder={upstream?.tls?.hasClientKey ? '•••••••• stored — paste to replace' : '-----BEGIN PRIVATE KEY-----'}
-                />
-              </label>
+                /></FormField>
               <p className="text-xs text-ink-muted">Certificate verification can't be disabled. Using the self-signed server certificate as the CA is fine.</p>
             </div>
           </details></>
@@ -293,51 +271,36 @@ export default function UpstreamDetailForm({
               </label>
               {authType === 'oauth_client_credentials' && (
                 <>
-                  <label className="block text-sm font-medium">
-                    Token URL
-                    <input
+                  <FormField name="auth.tokenUrl" label="Token URL" required hint="OAuth token endpoint. Use an absolute HTTP or HTTPS URL."><input
                       className={clsx(input, 'mt-1')}
                       value={tokenUrl}
                       onChange={(e) => setTokenUrl(e.target.value)}
                       placeholder="https://idp.example.com/oauth/token"
-                    />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Client ID
-                    <input
+                    /></FormField>
+                  <FormField name="auth.clientId" label="Client ID" required hint="Client identifier registered with the upstream identity provider."><input
                       className={clsx(input, 'mt-1')}
                       value={clientId}
                       onChange={(e) => setClientId(e.target.value)}
-                    />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Client Secret <span className="font-normal text-ink-muted">(write-only)</span>
-                    <input
+                    /></FormField>
+                  <FormField name="auth.clientSecret" label="Client secret" hint="Write-only. Leave empty to keep a stored secret."><input
                       type="password"
                       className={clsx(input, 'mt-1')}
                       value={clientSecret}
                       onChange={(e) => setClientSecret(e.target.value)}
                       placeholder={upstream?.auth?.hasClientSecret ? '•••••••• stored — type to replace' : 'Secret'}
-                    />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Scopes <span className="font-normal text-ink-muted">(optional, space-separated)</span>
-                    <input
+                    /></FormField>
+                  <FormField name="auth.scopes" label="Scopes" hint="Optional. Separate OAuth scopes with spaces."><input
                       className={clsx(input, 'mt-1 font-mono text-xs')}
                       value={scopes}
                       onChange={(e) => setScopes(e.target.value)}
                       placeholder="mcp.read mcp.tools"
-                    />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Audience <span className="font-normal text-ink-muted">(optional)</span>
-                    <input
+                    /></FormField>
+                  <FormField name="auth.audience" label="Audience" hint="Optional. Resource audience expected by the upstream."><input
                       className={clsx(input, 'mt-1')}
                       value={audience}
                       onChange={(e) => setAudience(e.target.value)}
                       placeholder="fixture"
-                    />
-                  </label>
+                    /></FormField>
                   <p className="text-xs text-ink-muted">
                     The gateway fetches and caches access tokens from the token endpoint and automatically retries once on 401. Cannot be combined with a static Authorization header.
                   </p>
@@ -375,9 +338,9 @@ export default function UpstreamDetailForm({
                     </button>
                   </div>
                 ))}
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input className={input} aria-label="New header name" placeholder="Header" value={newName} onChange={(e) => setNewName(e.target.value)} />
-                <input className={input} type="password" aria-label="New header value" placeholder="Value" value={newValue} onChange={(e) => setNewValue(e.target.value)} />
+              <div className="flex flex-col items-start gap-3 sm:flex-row">
+                <FormField name="headers" label="New header name" className="w-full sm:flex-1" hint="Optional. Add the header to this draft before saving."><input className={input} aria-label="New header name" placeholder="Header" value={newName} onChange={(e) => setNewName(e.target.value)} /></FormField>
+                <FormField name="headerValue" label="New header value" className="w-full sm:flex-1" hint="Write-only. Header values are never shown again."><input className={input} type="password" aria-label="New header value" placeholder="Value" value={newValue} onChange={(e) => setNewValue(e.target.value)} /></FormField>
                 <button className={btn} disabled={!newName.trim()} onClick={addHeader}>
                   Add
                 </button>
@@ -388,8 +351,8 @@ export default function UpstreamDetailForm({
       </fieldset>
       ) : <div className="divide-y divide-line px-5">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
     </ServerPanel>
-    {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="space-y-5"><label className="block text-xs font-medium">Replacement header value<input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></label><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
+    {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="space-y-5"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
     {editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 p-5 text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
     {upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
-  </div>
+  </div></FormScope>
 }

@@ -1,5 +1,7 @@
-import { useEffect, useId, useState } from 'react'
-import { ArrowRight, CircleAlert, Eye, EyeOff, KeyRound, Layers, LoaderCircle, Network, Server, ShieldCheck } from 'lucide-react'
+import { FormField, FormScope, FormErrors } from './FormField'
+import { useFormValidation, requiredText } from './form-validation'
+import { useEffect, useState } from 'react'
+import { ArrowRight, Eye, EyeOff, KeyRound, Layers, LoaderCircle, Network, Server, ShieldCheck } from 'lucide-react'
 import { api, ApiError, authConfig, clearToken, setToken, type Me } from './api'
 import { useOperation } from './interaction'
 import { input, primary, btn } from './styles'
@@ -8,9 +10,8 @@ import { ServerPanel } from './connections/ServerPanels'
 export default function SignIn({onDone,reauthenticate=false}:{onDone:(identity:Me)=>void;reauthenticate?:boolean}) {
   const [token,setTokenInput]=useState('')
   const [visible,setVisible]=useState(false)
-  const [error,setError]=useState('')
+  const validation=useFormValidation()
   const [method,setMethod]=useState<'loading'|'token'|'sso'>('loading')
-  const errorId=useId(),helpId=useId()
   const {busy,run}=useOperation()
   useEffect(()=>{
     let active=true
@@ -18,9 +19,9 @@ export default function SignIn({onDone,reauthenticate=false}:{onDone:(identity:M
     return()=>{active=false}
   },[])
   const submit=()=>{
-    if(busy||!token.trim())return
+    if(busy||!validation.check({token:requiredText(token,'Admin token')}))return
     void run(async()=>{
-      setError('')
+      validation.reset()
       setToken(token.trim())
       try {
         const identity=await api.me()
@@ -28,23 +29,23 @@ export default function SignIn({onDone,reauthenticate=false}:{onDone:(identity:M
         onDone(identity)
       } catch(e) {
         clearToken()
-        setError(e instanceof ApiError&&(e.status===401||e.status===403)?'This token was not accepted. Check the admin token and try again.':'Sign-in is unavailable. Check your connection and control plane availability, then try again.')
+        validation.fail(new ApiError(0,'Sign-in failed',undefined,[{field:'/token',message:e instanceof ApiError&&(e.status===401||e.status===403)?'This token was not accepted. Check the admin token and try again.':'Sign-in is unavailable. Check your connection and control plane availability, then try again.'}]))
       }
     })
   }
-  const form=<ServerPanel title={reauthenticate?'Restore access':'Administrative access'} description={reauthenticate?'Verify your identity to continue in this workspace':method==='sso'?'Use SSO or an admin token to open the control plane':'Use an admin API token to open the control plane'} icon={ShieldCheck}>
+  const form=<FormScope validation={validation}><ServerPanel title={reauthenticate?'Restore access':'Administrative access'} description={reauthenticate?'Verify your identity to continue in this workspace':method==='sso'?'Use SSO or an admin token to open the control plane':'Use an admin API token to open the control plane'} icon={ShieldCheck}>
     <div className="space-y-5 p-5 sm:p-6">
       {method==='loading'&&<p role="status" className="inline-flex items-center gap-2 text-xs text-ink-muted"><LoaderCircle className="size-3.5 animate-spin"/>Checking sign-in options…</p>}
       {method==='sso'&&<><div className="space-y-3"><a className={`${primary} w-full py-2.5 ${busy?'pointer-events-none opacity-50':''}`} aria-disabled={busy||undefined} tabIndex={busy?-1:undefined} href="/auth/login"><ShieldCheck className="size-4"/>Sign in with SSO<ArrowRight className="ml-auto size-4"/></a><p className="text-xs leading-relaxed text-ink-muted">Use your organization’s identity provider for regular access.</p></div><div className="flex items-center gap-3"><span className="h-px flex-1 bg-line"/><span className="text-[11px] text-ink-muted">or use an admin token</span><span className="h-px flex-1 bg-line"/></div></>}
       <form onSubmit={e=>{e.preventDefault();submit()}} className="space-y-4" aria-label="Token sign-in">
-        <div><label className="block text-xs font-medium" htmlFor={`${helpId}-token`}>Admin token</label><div className="relative mt-2"><KeyRound aria-hidden="true" className="absolute left-3 top-3 size-4 text-ink-muted"/><input id={`${helpId}-token`} disabled={busy} type={visible?'text':'password'} autoComplete="off" autoCapitalize="none" spellCheck={false} className={`${input} py-2.5 pl-9 pr-12`} value={token} onChange={e=>{setTokenInput(e.target.value);setError('')}} aria-invalid={!!error} aria-describedby={`${helpId}${error?` ${errorId}`:''}`}/><button type="button" className="absolute right-2 top-2 rounded-md p-1.5 text-ink-muted hover:bg-canvas" disabled={busy} aria-label={visible?'Hide token':'Show token'} aria-pressed={visible} onClick={()=>setVisible(value=>!value)}>{visible?<EyeOff className="size-4"/>:<Eye className="size-4"/>}</button></div><p id={helpId} className="mt-2 text-xs leading-relaxed text-ink-muted">Use an admin API token. Your role determines which settings you can change.</p></div>
-        {error&&<div id={errorId} role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-relaxed text-red-700"><CircleAlert className="mt-0.5 size-4 shrink-0"/><p>{error}</p></div>}
-        <button type="submit" disabled={busy||!token.trim()} className={`${method==='sso'?btn:primary} w-full py-2.5`}>{busy?<><LoaderCircle className="size-4 animate-spin"/>Signing in…</>:<>Continue<ArrowRight className="size-4"/></>}</button>
+        <FormErrors validation={validation} title="Unable to sign in"/>
+        <FormField name="token" label="Admin token" required hint="Use an admin API token. Your role determines which settings you can change." renderControl={control=><div className="relative"><KeyRound aria-hidden="true" className="absolute left-3 top-3 size-4 text-ink-muted"/>{control}<button type="button" className="absolute right-2 top-2 rounded-md p-1.5 text-ink-muted hover:bg-canvas" disabled={busy} aria-label={visible?'Hide token':'Show token'} aria-pressed={visible} onClick={()=>setVisible(value=>!value)}>{visible?<EyeOff className="size-4"/>:<Eye className="size-4"/>}</button></div>}><input disabled={busy} type={visible?'text':'password'} autoComplete="off" autoCapitalize="none" spellCheck={false} className={`${input} py-2.5 pl-9 pr-12`} value={token} onChange={e=>setTokenInput(e.target.value)}/></FormField>
+        <button type="submit" disabled={busy} className={`${method==='sso'?btn:primary} w-full py-2.5`}>{busy?<><LoaderCircle className="size-4 animate-spin"/>Signing in…</>:<>Continue<ArrowRight className="size-4"/></>}</button>
         {busy&&<p role="status" className="text-xs text-ink-muted">Verifying your session…</p>}
       </form>
       <div className="flex items-start gap-2 rounded-xl border border-line bg-canvas p-3 text-xs leading-relaxed text-ink-muted"><ShieldCheck className="mt-0.5 size-4 shrink-0"/><p>Token sign-in lasts until this tab reloads. {reauthenticate?'Signing in with a token keeps your current draft.':'The token is held in memory for this tab.'}</p></div>
     </div>
-  </ServerPanel>
+  </ServerPanel></FormScope>
   if(reauthenticate)return form
   return <main className="h-full overflow-y-auto px-4 py-8 sm:px-6 sm:py-12">
     <div className="mx-auto flex min-h-full max-w-5xl flex-col justify-center gap-8 lg:grid lg:grid-cols-[1fr_1fr] lg:items-center lg:gap-16">
