@@ -45,7 +45,7 @@ test('guide includes all steps and separates configured grants from explicit tes
  expect(screen.getAllByRole('listitem')).toHaveLength(7)
  expect(screen.getByText('Explicit client verification required')).toBeTruthy()
  expect(screen.getByText('Explicit test required; not inferred from configuration')).toBeTruthy()
- expect(screen.getByRole('status').textContent).toContain('Read-only access')
+ expect(screen.getByText(/Read-only access: inspect configuration/)).toBeTruthy()
 })
 
 
@@ -145,4 +145,28 @@ test('anonymous access distinguishes saved credentials from public endpoint beha
  expect(within(behavior).getByText(/Anonymous access bypasses credential authentication/)).toBeTruthy()
  expect(within(behavior).getByText(/credential restrictions do not protect an anonymous endpoint/)).toBeTruthy()
  expect(screen.getByRole('region',{name:'Configured access relationships'}).textContent).toContain('Anonymous')
+})
+
+test('setup provides connection settings and clears credentials when the selected server changes',async()=>{
+ vi.stubEnv('VITE_PUBLIC_GATEWAY_URL','https://gateway.example')
+ vi.mocked(api.listVirtualServers).mockResolvedValue([server,{...server,slug:'other',name:'Other',endpoint:'/mcp/v1/virtual/other',authRequired:false}])
+ open('/setup?server=demo')
+ await screen.findByRole('region',{name:'Client configuration'})
+ expect(screen.getByText('https://gateway.example/mcp/v1/virtual/demo')).toBeTruthy()
+ fireEvent.change(screen.getByLabelText('Agent key or OAuth access token'),{target:{value:'unsent-credential'}})
+ fireEvent.change(screen.getByLabelText('Guide for virtual server'),{target:{value:'other'}})
+ expect(await screen.findByText('https://gateway.example/mcp/v1/virtual/other')).toBeTruthy()
+ expect(screen.queryByLabelText('Agent key or OAuth access token')).toBeNull()
+ fireEvent.change(screen.getByLabelText('Guide for virtual server'),{target:{value:'demo'}})
+ expect((screen.getByLabelText('Agent key or OAuth access token') as HTMLInputElement).value).toBe('')
+ expect(api.listAudit).not.toHaveBeenCalled()
+})
+
+test('setup does not treat partial upstream inventory as complete discovery',async()=>{
+ vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,tools:[...server.tools,{...server.tools[0],upstream:'missing'}]}])
+ open('/setup?server=demo')
+ await screen.findByText('Discovery needed or not yet known')
+ expect(screen.queryByText('Referenced upstreams have discovery snapshots')).toBeNull()
+ expect(await within(screen.getByRole('region',{name:'Saved connection path'})).findByText('Not loaded')).toBeTruthy()
+ expect(api.listAudit).not.toHaveBeenCalled()
 })

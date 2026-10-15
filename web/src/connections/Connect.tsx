@@ -9,7 +9,7 @@ import { connectionSettings } from './model'
 import { DetailRow, ServerPanel, SummaryTile } from './ServerPanels'
 import type { VerificationResult } from './verify'
 
-export default function Connect({server}: {server:VirtualServer}) {
+export default function Connect({server,showSummary=true}: {server:VirtualServer;showSummary?:boolean}) {
   const endpoint = connectionEndpoint(server.endpoint)
   const settings = endpoint ? connectionSettings(server,endpoint) : null
   const [credential,setCredential] = useState('')
@@ -37,7 +37,7 @@ export default function Connect({server}: {server:VirtualServer}) {
   })
   return <section aria-label="Client connection" className="space-y-6">
     <div><h2 className="text-lg font-semibold tracking-tight">Connect a client</h2><p className="mt-1 text-sm text-ink-muted">Copy your endpoint, configure a client and verify discovery with a separate gateway credential.</p></div>
-    <div className="grid gap-3 sm:grid-cols-3"><SummaryTile label="Transport" value="Streamable HTTP" detail="Saved MCP endpoint" icon={Cable}/><SummaryTile label="Authentication" value={server.authRequired?'Required':'Anonymous'} detail={server.authRequired?'Agent key or OAuth access token':'Credentials are bypassed'} icon={KeyRound}/><SummaryTile label="Server configuration" value={server.enabled?'Enabled':'Disabled'} detail={endpoint?'Public gateway URL configured':'Public gateway URL not configured'} icon={Globe}/></div>
+    {showSummary && <div className="grid gap-3 sm:grid-cols-3"><SummaryTile label="Transport" value="Streamable HTTP" detail="Saved MCP endpoint" icon={Cable}/><SummaryTile label="Authentication" value={server.authRequired?'Required':'Anonymous'} detail={server.authRequired?'Agent key or OAuth access token':'Credentials are bypassed'} icon={KeyRound}/><SummaryTile label="Server configuration" value={server.enabled?'Enabled':'Disabled'} detail={endpoint?'Public gateway URL configured':'Public gateway URL not configured'} icon={Globe}/></div>}
     <ServerPanel title="Gateway endpoint" description="Streamable HTTP endpoint from the saved server configuration" icon={Cable}>
       <div className="flex items-center gap-3 px-5 py-5"><code className="min-w-0 flex-1 break-all rounded-lg bg-canvas px-3 py-3 text-xs">{endpoint ?? server.endpoint}</code><CopyButton label="Copy endpoint" value={endpoint}/></div>
       {!endpoint && <div className="px-5 pb-5"><ErrorBox>Public gateway URL is not configured. Configure the public gateway URL in the deployment; the path alone is not a client connection URL.</ErrorBox></div>}

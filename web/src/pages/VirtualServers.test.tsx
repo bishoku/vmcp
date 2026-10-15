@@ -24,7 +24,7 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 async function open() {
-  render(<VirtualServerEditor initialSelection="demo" />)
+  render(<MemoryRouter><VirtualServerEditor initialSelection="demo" /></MemoryRouter>)
   await screen.findByLabelText('Alias for alpha/one')
 }
 async function save() {
@@ -95,18 +95,18 @@ test('failed stale save retains edits until explicit reload, then uses the lates
  await waitFor(()=>expect(api.putVirtualServer).toHaveBeenCalledTimes(2))
  expect(vi.mocked(api.putVirtualServer).mock.calls[1][2]).toBe(8)
 })
-test('the virtual server table does not depend on upstream discovery',async()=>{
+test('the virtual server inventory does not depend on upstream discovery',async()=>{
  vi.mocked(api.listUpstreams).mockRejectedValue(new Error('catalog offline'))
  render(<MemoryRouter><VirtualServers/></MemoryRouter>);expect(await screen.findByRole('link',{name:'Demo server'})).toBeTruthy()
  expect(api.listUpstreams).not.toHaveBeenCalled()
- expect(screen.getByRole('table')).toBeTruthy()
+ expect(screen.getByRole('article',{name:'Demo server'})).toBeTruthy()
 })
 test('successful save announces the saved server without retaining a dirty draft',async()=>{
  await open();await save()
  expect(await screen.findByText('Saved Demo server. Refreshing the saved configuration.')).toBeTruthy()
  expect(screen.queryByText(/Unsaved changes/)).toBeNull()
 })
-test('table links open saved details and search/status filters do not open an editor',async()=>{
+test('card links open saved details and search/status filters do not open an editor',async()=>{
   vi.mocked(api.listVirtualServers).mockResolvedValue([server,{...server,slug:'disabled',name:'Offline server',enabled:false}])
   render(<MemoryRouter><VirtualServers/></MemoryRouter>)
   const link=await screen.findByRole('link',{name:'Demo server'})
@@ -117,4 +117,19 @@ test('table links open saved details and search/status filters do not open an ed
   expect(screen.getByRole('link',{name:'Offline server'})).toBeTruthy()
   fireEvent.change(screen.getByLabelText('Virtual server status'),{target:{value:'enabled'}})
   expect(screen.getByText('No virtual servers match your filters.')).toBeTruthy()
+})
+
+test('tool upstream and description filters keep exposed tools and their policies intact',async()=>{
+ vi.mocked(api.listUpstreams).mockResolvedValue([{slug:'alpha',name:'Alpha'},{slug:'beta',name:'Beta'}] as Upstream[])
+ vi.mocked(api.listTools).mockImplementation(async slug=>slug==='alpha'?[{name:'one',description:'Find customer records'},{name:'two'}]:[{name:'external',description:'Other tool'}])
+ await open()
+ fireEvent.change(screen.getByLabelText('Tool upstream'),{target:{value:'beta'}})
+ expect(await screen.findByRole('button',{name:/external.*Other tool/})).toBeTruthy()
+ expect(screen.queryByRole('button',{name:/one.*Find customer records/})).toBeNull()
+ expect((screen.getByLabelText('Alias for alpha/one') as HTMLInputElement).value).toBe('first')
+ fireEvent.change(screen.getByLabelText('Tool upstream'),{target:{value:'alpha'}})
+ fireEvent.change(screen.getByLabelText('Filter tools'),{target:{value:'customer'}})
+ expect(screen.getByRole('button',{name:/one.*Find customer records/})).toBeTruthy()
+ const [,body]=await save()
+ expect(body.policy?.tools).toEqual({first:'deny',second:'read_only'})
 })

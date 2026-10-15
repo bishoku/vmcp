@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test'
+import { server, upstream, key, binding } from '../src/connections/fixtures'
+
+test('premium connection flow retains drill-down tracing and route details across screen sizes',async({page})=>{
+ const requests:string[]=[]
+ await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
+ await page.route('**/api/v1/**',route=>{
+  const request=route.request(),path=new URL(request.url()).pathname;requests.push(path)
+  if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role:'viewer'}})
+  const other={...server,slug:'research',name:'Research workspace',tools:[{...server.tools[0],tool:'search',exposedName:'search'}],catalog:[]}
+  return route.fulfill({json:{items:path.endsWith('/virtual-servers')?[{...server,name:'Engineering workspace'},other]:path.endsWith('/upstreams')?[{...upstream,name:'Knowledge MCP'},{...upstream,slug:'idle',name:'Pending integration',lastRefreshAt:null}]:path.endsWith('/agent-keys')?[key,{...key,slug:'research-key',virtualServers:['research']}]:path.endsWith('/identity-bindings')?[binding]:[]}})
+ })
+ await page.goto('/connections');await page.getByLabel('Admin token').fill('test-token');await page.getByRole('button',{name:'Continue',exact:true}).click()
+ await expect(page.getByText('Configured relationships (5)',{exact:true})).toBeVisible()
+ await page.screenshot({path:test.info().outputPath('connections-overview.png'),animations:'disabled'})
+ const flow=page.getByRole('region',{name:'Connection flow'})
+ await flow.evaluate(el=>el.scrollIntoView({block:'start'}))
+ await page.screenshot({path:test.info().outputPath('connections-sankey.png'),animations:'disabled'})
+ await flow.getByLabel('Explore server').selectOption('["upstream","alpha"]')
+ await flow.getByRole('button',{name:'Trace upstream tool alpha / lookup',exact:true}).click()
+ await expect(flow.getByRole('status')).toContainText('Tracing alpha / lookup through all virtual servers')
+ await expect(flow.locator('[data-highlighted="false"]')).not.toHaveCount(0)
+ await flow.getByRole('button',{name:'Expand canvas',exact:true}).click()
+ await expect(flow.getByRole('button',{name:'Standard canvas',exact:true})).toHaveAttribute('aria-pressed','true')
+ await flow.evaluate(el=>el.scrollIntoView({block:'start'}))
+ await page.screenshot({path:test.info().outputPath('connections-drilldown.png'),animations:'disabled'})
+ await flow.getByText('Connection details · 1 upstream route',{exact:true}).click()
+ await flow.getByRole('button',{name:'View connection demo to alpha',exact:true}).click()
+ const detail=page.getByRole('dialog',{name:'demo → alpha',exact:true})
+ await expect(detail.getByRole('region',{name:'Selected capability mappings'})).toBeVisible()
+ await page.screenshot({path:test.info().outputPath('connection-detail.png'),animations:'disabled'})
+ await detail.getByLabel('Mapping kind').selectOption('resource')
+ await expect(detail.getByText('doc://team',{exact:true})).toBeVisible()
+ await detail.getByLabel('Search mappings').fill('nothing')
+ await expect(detail.getByText('No matching mappings. Adjust your search or kind.',{exact:true})).toBeVisible()
+ await page.setViewportSize({width:390,height:844})
+ expect(await detail.locator('section').first().evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)
+ await page.screenshot({path:test.info().outputPath('connection-detail-mobile.png'),animations:'disabled'})
+ await detail.getByRole('button',{name:'Close',exact:true}).click()
+ await expect(flow.getByRole('group',{name:'Identities through exposed tools to upstream definitions'})).toBeVisible()
+ await page.getByRole('combobox',{name:'Relationship kind',exact:true}).selectOption('binding')
+ await expect(page.getByText('Configured relationships (1)',{exact:true})).toBeVisible()
+ await expect(flow.getByRole('group',{name:'Identities through exposed tools to upstream definitions'})).toBeVisible()
+ await page.getByRole('button',{name:'Clear relationship filters',exact:true}).click()
+ for(const width of [390,768,1440]){
+  await page.setViewportSize({width,height:900})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ }
+ await page.setViewportSize({width:390,height:844})
+ await flow.evaluate(el=>el.scrollIntoView({block:'start'}))
+ await page.screenshot({path:test.info().outputPath('connections-mobile.png'),animations:'disabled'})
+ expect(requests.some(path=>path.includes('audit')||path.includes('connection-test')||path.includes('refresh-tools'))).toBe(false)
+})

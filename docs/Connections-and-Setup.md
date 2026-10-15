@@ -24,15 +24,38 @@ Open **Setup guide**, choose a saved virtual server if available, and follow:
    aliases, tool policies, authentication, PII rules and client feature permissions.
 5. Grant an agent key or conditional JWT binding access. Newly issued secrets are
    shown once. Anonymous access requires no key and bypasses credential restrictions.
-6. Open **Connect**, copy the authoritative endpoint and HTTP client settings,
+6. Use the guide’s **Connect a client** section (also available in **Connect**),
+   copy the authoritative endpoint and HTTP client settings,
    then replace the credential placeholder. Client configuration formats vary;
    adapt the settings to the client you use. Admin API tokens are not agent keys.
 7. Explicitly verify discovery, then inspect **Activity** for recent stored events.
+
+The guide shows a saved configuration summary and seven numbered steps alongside
+the referenced upstream path. The selected server is retained in the URL. Endpoint
+copying, client settings and explicit verification are available directly in the
+guide. Changing server or saved version clears the verification credential and
+results; referenced upstreams missing from loaded inventory remain visible.
 
 Configuration alone never marks a connectivity test or client verification as
 complete. Viewers can inspect configuration and verify with a separate gateway
 credential; editors perform configuration changes. Server authorization remains
 independent of the UI role.
+
+## Server inventories
+
+Upstreams and Virtual Servers use the same summary tiles, filter panels and server
+cards as their saved detail pages. Counts cover the loaded inventory, independent
+of filters. Search and configuration filters combine; clear filters restores the
+inventory. Results are paginated in groups of 24, with filters returning to the
+first page. Server names and View server links open saved details.
+
+Upstream filters cover enabled state, transport and discovery snapshot state.
+Recorded health is displayed separately from discovery: a saved snapshot never
+implies a healthy upstream. Refresh list reloads stored data; Refresh capabilities
+explicitly performs discovery and retains warnings for orphaned selections.
+Virtual-server filters cover enabled state and authentication requirements.
+Viewer roles retain inspection access; mutations require an editor role, and
+version checks and deletion confirmations remain in place.
 
 ## Saved server views and drafts
 
@@ -41,6 +64,18 @@ and Activity views. URLs follow `/virtual-servers/<slug>/<view>`, for example
 `/virtual-servers/team/connect`. The full-page editor is available to editors from **Edit configuration** at
 `/virtual-servers/<slug>/edit` and marks saved version versus unsaved draft changes.
 Both upstream and virtual-server lists open dedicated read-only detail pages.
+Creation and editing use the same section panels as saved details. A sticky Save /
+Cancel bar keeps draft state and actions visible while scrolling. Virtual-server
+tool selection supports an upstream filter and name/description search; catalog
+choices support search and kind filters without changing existing selections.
+Aliases, description overrides, per-tool policies and keyboard reordering remain
+part of the draft. Duplicate tool names block Save. Upstream headers must be added
+or cleared before saving, and stored secrets stay unchanged unless replaced.
+Upstream details share the virtual-server summary tiles and section panels for
+connection settings, explicit verification, recorded node health, TLS, OAuth and
+masked request headers. The discovery table supports family filters, search and
+incremental display of fifty stored objects. Reloading those snapshots neither
+tests connectivity nor changes an open configuration draft.
 Upstream pages switch to editing with **Edit upstream**; viewers inspect saved
 configuration without edit controls. Navigating away from a dirty draft requires an explicit discard.
 
@@ -54,6 +89,15 @@ Ribbon width represents configured tool selections; identity grants carry their
 virtual server's tool count. These counts repeat across grants and are not runtime
 metrics or proof of effective permission. Zero-tool relationships (including
 catalog-only connections) remain visible as thin dashed lines.
+
+The Connections page uses summary tiles for all loaded identities, virtual servers,
+upstreams and configured relationships. Explore server jumps directly into a
+Sankey scope; breadcrumbs and Back one level preserve drill-down navigation.
+Expand canvas provides a taller scrollable diagram for larger inventories.
+Relationship-index search, virtual-server and kind filters remain independent of
+the diagram scope. Focused upstream routes can open a wide connection-detail view
+from the Sankey, with searchable capability mappings, kind filters and stored
+upstream observations. Closing details preserves the current diagram scope.
 
 Hover or keyboard-focus a node to preview its paths; select it to pin the highlight.
 Select a virtual or upstream server to unfold exposed aliases and upstream tool
@@ -87,6 +131,23 @@ revision. Selected capability counts are not necessarily advertised/allowed
 capability counts: missing objects, disabled upstreams, policy, negotiation and
 client identity affect runtime behavior. Read-only tool policy relies on upstream
 annotations.
+
+## Credential and identity management
+
+Agent Keys and Identities share the server detail design: summary tiles, searchable
+and status-filtered tables, and fifty-row incremental display. Selecting a saved
+record opens read-only inspection; authorized editors choose **Edit key** or
+**Edit binding** to change it. Viewers can inspect grants and restrictions.
+
+Editors use separate panels for identity details, searchable virtual-server grants,
+network/rate limits, credential expiry and JWT conditions. Filtering server choices
+preserves selections, including references absent from the loaded server inventory.
+Dirty-draft guards and stale-version recovery remain explicit. Unrelated key edits
+preserve the exact saved expiry instant. Exists conditions send no value.
+
+New and rotated secrets retain the one-time acknowledgement dialog. Claim
+evaluation uses supplied claims against saved bindings; it does not verify a JWT.
+Changing evaluation inputs clears the previous result.
 
 ## Deliberate browser verification
 
@@ -152,6 +213,14 @@ into the full event list. For correlation and raw event inspection, see the audi
 
 ## Audit investigation and responsive management
 
+Audit Log uses the same summary tiles, filter panel and section cards as server
+and identity management. Summary counts cover only loaded records and groups,
+never total traffic or confirmed failures. The filter panel can be collapsed while
+active filter chips remain visible; correlation filters include operation, request,
+actor and stage. Individual chips and **Clear all filters** remove restrictions.
+The wider detail drawer separates event context, exact operation correlation and
+individual records, with expandable raw metadata and copyable IDs.
+
 Audit Log initially groups **loaded events** by operation ID. Open Details to
 inspect the raw admission/outcome metadata and copy operation, request or trace
 IDs. Raw events retains a separate row per stored event. Shared request/trace IDs
@@ -173,3 +242,18 @@ Wide audit and management tables scroll within their cards. Focus rings and nati
 dialog keyboard behavior support keyboard operation. Catalog search narrows
 available resources/templates/prompts; it never removes saved selections. Test
 and refresh an upstream after correcting URL/credentials or connectivity failures.
+
+## Settings and administrator credentials
+
+Settings shares the summary tiles and section panels used by server and identity
+management. Gateway information and authenticated OpenAPI downloads sit alongside
+searchable, scope/status-filtered token metadata. Selecting a token opens read-only
+inspection; creation, rotation, revocation and deletion remain admin-only. Secrets
+retain the one-time acknowledgement dialog. Expiry inputs use the displayed local
+timezone.
+
+Configuration as code separates the JSON source from the proposed change preview.
+Viewers can export and inspect stored JSON; editors and admins can import, preview
+and apply. Document or prune changes invalidate the preview. Applying uses the
+preview base revision, and pruning retains explicit deletion confirmation. Export
+excludes stored secrets and import preserves omitted credentials.

@@ -9,9 +9,9 @@ export function SummaryTile({label,value,detail,icon:Icon}:{label:string;value:R
   </div>
 }
 
-export function ServerPanel({title,description,icon:Icon,children,footer}:{title:string;description:string;icon:LucideIcon;children:ReactNode;footer?:ReactNode}) {
+export function ServerPanel({title,description,icon:Icon,children,footer,actions}:{title:string;description:string;icon:LucideIcon;children:ReactNode;footer?:ReactNode;actions?:ReactNode}) {
   return <section aria-label={title} className="min-w-0 flex flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">
-    <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4"><div><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-xs text-ink-muted">{description}</p></div><Icon className="size-4 shrink-0 text-ink-muted" aria-hidden="true"/></div>
+    <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4"><div><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-xs text-ink-muted">{description}</p></div><div className="flex shrink-0 items-center gap-3"><Icon className="size-4 text-ink-muted" aria-hidden="true"/>{actions}</div></div>
     <div className="flex-1">{children}</div>
     {footer && <div className="border-t border-line px-5 py-3 text-xs text-ink-muted">{footer}</div>}
   </section>

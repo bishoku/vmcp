@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type AuditEvent, type AuditQuery } from '../api'
-import { btn, input } from '../styles'
+import { ArrowUpRight, Clock3, FileClock, Layers3, ListFilter, RefreshCw, Search } from 'lucide-react'
+import AuditFilters from '../connections/AuditFilters'
+import AuditDetails from '../connections/AuditDetails'
+import { ServerPanel, SummaryTile } from '../connections/ServerPanels'
+import { btn } from '../styles'
 import { fmt } from '../format'
-import { CopyButton, Modal, ErrorBox, Pill } from '../ui'
+import { ErrorBox, Pill } from '../ui'
 
 export default function Audit({ initialServer, initialOperation, initialQuery }: { initialServer?: string; initialOperation?: string; initialQuery?: AuditQuery }) {
   const [filters, setFilters] = useState<AuditQuery>(()=>({...initialQuery, virtualServer:initialServer ?? initialQuery?.virtualServer, operationId:initialOperation ?? initialQuery?.operationId}))
@@ -58,93 +62,36 @@ export default function Audit({ initialServer, initialOperation, initialQuery }:
     groups.set(key, [...(groups.get(key) ?? []), event])
   }
   const filterLink = `/audit?${new URLSearchParams(Object.entries(filters).filter((entry): entry is [string,string]=>typeof entry[1]==='string'))}`
-  const localTime = (value?:string) => {
-    if (!value) return ''
-    const date = new Date(value)
-    if (!Number.isFinite(date.getTime())) return ''
-    return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16)
-  }
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-      <h1 className="text-2xl font-semibold tracking-tight">Audit Log</h1>
-      <p className="mt-1 text-sm text-ink-muted">Tool calls and administrative operations. Operations group only loaded events. A missing outcome may be pending, outside this page or filter, or lost; it does not confirm failure. Payloads are never stored.</p>
-
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <input className={input} aria-label="Virtual server" placeholder="Virtual server" value={filters.virtualServer ?? ''} onChange={(e) => set('virtualServer', e.target.value.trim())} />
-        <input className={input} aria-label="Agent key / oauth:binding" placeholder="Agent key / oauth:binding" value={filters.agentKey ?? ''} onChange={(e) => set('agentKey', e.target.value.trim())} />
-        <input className={input} aria-label="Subject" placeholder="Subject" value={filters.subject ?? ''} onChange={(e) => set('subject', e.target.value.trim())} />
-        <input className={input} aria-label="Tool" placeholder="Tool" value={filters.tool ?? ''} onChange={(e) => set('tool', e.target.value.trim())} />
-        <select aria-label="Status" value={filters.status ?? ''} className={input} onChange={(e) => set('status', e.target.value)}>
-          <option value="">Any status</option>
-          <option value="started">started</option>
-          <option value="ok">ok</option>
-          <option value="tool_error">tool error</option>
-          <option value="error">error</option>
-          <option value="denied">denied</option>
-        </select>
-        <input type="datetime-local" className={input} aria-label="From" value={localTime(filters.from)} onChange={(e) => when('from', e.target.value)} />
-        <input type="datetime-local" className={input} aria-label="To" value={localTime(filters.to)} onChange={(e) => when('to', e.target.value)} />
+  const operationGroups=new Map<string,AuditEvent[]>()
+  for(const event of items){const id=event.operationId?`operation:${event.operationId}`:`event:${event.id}`;operationGroups.set(id,[...(operationGroups.get(id) ?? []),event])}
+  const missingGroups=[...operationGroups.values()].filter(events=>events.some(e=>e.stage==='admission') && !events.some(e=>e.stage==='outcome')).length
+  const filterCount=Object.entries(filters).filter(([key,value])=>key!=='cursor' && value).length
+  const reset=()=>{setItems([]);setNext(null);setChecked('');setLoading(true);setFilters({})}
+  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+    <header className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><FileClock className="size-5"/></span><div><h1 className="text-2xl font-semibold tracking-tight">Audit Log</h1><p className="mt-1 text-sm text-ink-muted">Investigate tool calls and administrative operations from stored events.</p></div></div><button className={btn} disabled={loading} onClick={()=>void load(filters,false)}><RefreshCw className={`size-3.5 ${loading?'animate-spin':''}`}/>Refresh</button></header>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4"><SummaryTile label="Loaded records" value={items.length} detail="Stored events in the current query" icon={FileClock}/><SummaryTile label="Displayed rows" value={groups.size} detail={raw?'Individual raw stored events':'Grouped by exact operation ID, where present'} icon={Layers3}/><SummaryTile label="Outcome not loaded" value={missingGroups} detail="Loaded groups with admission only · not failures" icon={Clock3}/><SummaryTile label="Last successful read" value={<span className="text-sm font-medium">{checked || 'Not loaded yet'}</span>} detail={error?'Latest query failed; displayed data may be older':loading?'Reading stored events…':'Manual refresh · no live subscription'} icon={RefreshCw}/></div>
+    <AuditFilters filters={filters} set={set} when={when} reset={reset} link={new URL(filterLink,window.location.origin).href} zone={zone}/>
+    {error && <ErrorBox>{error} Displayed events may be from the previous successful query.</ErrorBox>}
+    <ServerPanel title="Stored activity" description={`${items.length} loaded records · ${filterCount} active filters`} icon={ListFilter} footer={<div className="flex flex-wrap items-center justify-between gap-3"><span>{groups.size} displayed rows from {items.length} loaded records{next?' · more records available':''}</span>{next && <button className={btn} disabled={loading} onClick={()=>load({...filters,cursor:next},true)}>Load more</button>}</div>}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4"><div className="inline-flex items-center gap-1 rounded-lg border border-line bg-canvas p-1"><button className={`rounded-md px-3 py-1.5 text-xs font-medium ${!raw?'bg-surface text-accent-700 shadow-sm':'text-ink-muted hover:text-ink'}`} aria-pressed={!raw} onClick={()=>setRaw(false)}>Operations</button><button className={`rounded-md px-3 py-1.5 text-xs font-medium ${raw?'bg-surface text-accent-700 shadow-sm':'text-ink-muted hover:text-ink'}`} aria-pressed={raw} onClick={()=>setRaw(true)}>Raw events</button></div><p className="text-xs text-ink-muted">{raw?'One row per stored event':'Operations group only loaded records'}</p></div>
+      {loading && <p role="status" className="flex items-center gap-2 border-b border-line px-5 py-3 text-xs text-ink-muted"><RefreshCw className="size-3.5 animate-spin"/>Loading audit events…</p>}
+      <div role="region" aria-label="Audit events" tabIndex={0} className="overflow-x-auto">
+        {items.length>0?<table className="w-full min-w-[920px] text-left text-sm"><caption className="sr-only">{raw?'Raw audit events':'Loaded audit operations'}</caption><thead className="bg-canvas text-xs text-ink-muted"><tr>{['Time','Virtual server','Identity','Tool / action','Status','Redacted','Duration'].map(h=><th key={h} scope="col" className="px-4 py-3 font-medium">{h}</th>)}</tr></thead><tbody>{[...groups.values()].map(events=>{
+          const e=events.find(event=>event.stage==='outcome') ?? events[0]
+          const missing=!raw && events.some(event=>event.stage==='admission') && !events.some(event=>event.stage==='outcome')
+          return <tr key={e.id} className="border-t border-line hover:bg-canvas/50" title={[e.clientIp,e.reason,e.operationId && `operation: ${e.operationId}`,e.requestId && `request: ${e.requestId}`,e.traceId && `trace: ${e.traceId}`].filter(Boolean).join(' · ')}>
+            <td className="whitespace-nowrap px-4 py-4"><p className="text-xs text-ink-muted">{fmt(e.time)}</p><button className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent-700 hover:underline" onClick={()=>setSelected(events)}>Details<ArrowUpRight className="size-3"/></button>{events.length>1 && <span className="ml-2 text-[11px] text-ink-muted">{events.length} records</span>}</td>
+            <td className="max-w-40 break-all px-4 py-4 text-xs font-medium">{e.virtualServer || '—'}</td>
+            <td className="max-w-48 px-4 py-4"><p className="break-all text-xs font-medium">{e.agentKey || e.actorId || '—'}</p>{e.subject && <p className="mt-1 break-all font-mono text-[11px] text-ink-muted">sub: {e.subject}</p>}{e.actorType && <p className="mt-1 text-[11px] text-ink-muted">{e.actorType}</p>}</td>
+            <td className="max-w-60 px-4 py-4"><p className="break-all text-xs font-medium">{e.tool || e.action || e.method || '—'}</p><p className="mt-1 break-all text-[11px] text-ink-muted">{e.stage || 'event'}{e.upstream?` · ${e.upstream}`:e.target?` · ${e.target}`:''}</p></td>
+            <td className="max-w-64 px-4 py-4"><Pill status={missing?'outcome not loaded':e.status}/>{e.reason && <p className="mt-2 break-words text-xs leading-relaxed text-ink-muted">{e.reason}</p>}</td>
+            <td className="px-4 py-4 text-xs tabular-nums">{e.redactions?<span className="rounded-full bg-accent-50 px-2 py-0.5 font-medium text-accent-700">{e.redactions}</span>:'—'}</td><td className="whitespace-nowrap px-4 py-4 text-xs tabular-nums text-ink-muted">{e.stage==='outcome'?`${e.durationMs} ms`:'—'}</td>
+          </tr>
+        })}</tbody></table>:!loading && <div className="flex flex-col items-center px-5 py-12 text-center"><span className="flex size-12 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><Search className="size-6"/></span><h3 className="mt-4 text-sm font-semibold">{error?'Audit events unavailable':'No events match.'}</h3><p className="mt-2 max-w-sm text-xs leading-relaxed text-ink-muted">{error?'Refresh to retry loading stored events.':'Adjust filters or refresh to read saved activity. No matching records does not prove that the endpoint is unused.'}</p></div>}
       </div>
-      <p className="mt-3 text-sm text-ink-muted">Times: {zone}. Manual refresh; last loaded: {checked || 'not yet loaded'}. Filters and pagination can split operations.</p>
-      <div className="mt-3 flex flex-wrap gap-3"><button className={btn} aria-pressed={!raw} onClick={()=>setRaw(false)}>Operations</button><button className={btn} aria-pressed={raw} onClick={()=>setRaw(true)}>Raw events</button><button className={btn} disabled={loading} onClick={()=>void load(filters,false)}>Refresh</button><CopyButton label="Copy audit filter link" value={new URL(filterLink,window.location.origin).href}/></div>
-      <label className="mt-3 flex items-center gap-2 text-sm text-ink-muted">
-        <input type="checkbox" checked={filters.incomplete==='true'} onChange={(e) => set('incomplete', e.target.checked ? 'true' : '')} />
-        Incomplete operations only
-      </label>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2"><input className={input} aria-label="Operation ID" placeholder="Operation ID" value={filters.operationId ?? ''} onChange={e=>set('operationId',e.target.value.trim())}/><input className={input} aria-label="Actor ID" placeholder="Actor ID" value={filters.actorId ?? ''} onChange={e=>set('actorId',e.target.value.trim())}/></div>
-      {loading && <p role="status">Loading audit events…</p>}
-      {error && <ErrorBox>{error} Displayed events may be from the previous successful query.</ErrorBox>}
-
-      <div role="region" aria-label="Audit events" tabIndex={0} className="mt-4 overflow-x-auto rounded-card border border-line bg-surface shadow-card">
-        <table className="min-w-[800px] w-full text-left text-sm">
-          <thead className="border-b border-line bg-canvas text-xs uppercase tracking-wide text-ink-muted">
-            <tr>
-              <th className="px-4 py-3">Time</th>
-              <th className="px-4 py-3">Virtual server</th>
-              <th className="px-4 py-3">Key</th>
-              <th className="px-4 py-3">Tool</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Redacted</th>
-              <th className="px-4 py-3 text-right">Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...groups.values()].map((events) => {
-              const e = events.find(event=>event.stage==='outcome') ?? events[0]
-              const missing = !raw && events.some(event=>event.stage==='admission') && !events.some(event=>event.stage==='outcome')
-              return (
-              <tr key={e.id} className="border-b border-line last:border-0" title={[e.clientIp, e.reason, e.operationId && `operation: ${e.operationId}`, e.requestId && `request: ${e.requestId}`, e.traceId && `trace: ${e.traceId}`].filter(Boolean).join(' · ')}>
-                <td className="whitespace-nowrap px-4 py-2.5">{fmt(e.time)}<button className={btn+' block mt-1'} onClick={()=>setSelected(events)}>Details</button></td>
-                <td className="px-4 py-2.5">{e.virtualServer}</td>
-                <td className="px-4 py-2.5">
-                  {e.agentKey || e.actorId || '—'}
-                  {e.subject && <div className="font-mono text-xs text-ink-muted">sub: {e.subject}</div>}
-                </td>
-                <td className="px-4 py-2.5">{e.tool || e.action || e.method}<div className="text-xs text-ink-muted">{e.stage} · {e.target}</div></td>
-                <td className="px-4 py-2.5"><Pill status={missing ? 'outcome not loaded' : e.status} />{e.reason && <span className="ml-2 text-xs text-ink-muted">{e.reason}</span>}</td>
-                <td className="px-4 py-2.5">
-                  {e.redactions ? <span className="rounded-full bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700">{e.redactions}</span> : '—'}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{e.durationMs} ms</td>
-              </tr>
-            )})}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={7} className="p-10 text-center text-ink-muted">No events match. Adjust filters or generate traffic through a virtual server.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {selected && <Modal title="Audit details" variant="drawer" onClose={()=>setSelected(null)}>
-        <p className="text-sm">Raw stored metadata; times shown in {zone}.</p>
-        {selected[0].operationId && <div className="my-3 break-all"><p>{selected[0].operationId}</p><CopyButton label="Copy operation ID" value={selected[0].operationId}/><a className="block text-accent-700 underline" href={`/audit?operationId=${encodeURIComponent(selected[0].operationId)}`}>Open operation</a></div>}
-        {selected.map(event=><section key={event.id} className="mt-4"><h3>{event.stage} · {fmt(event.time)}</h3>{event.requestId && <CopyButton label="Copy request ID" value={event.requestId}/>} {event.traceId && <CopyButton label="Copy trace ID" value={event.traceId}/>}<pre className="whitespace-pre-wrap break-all rounded bg-canvas p-3 text-xs">{JSON.stringify(event,null,2)}</pre></section>)}
-      </Modal>}
-      {next && (
-        <div className="mt-4 text-center">
-          <button className={btn} disabled={loading} onClick={() => load({ ...filters, cursor: next }, true)}>Load more</button>
-        </div>
-      )}
-    </div>
-  )
+    </ServerPanel>
+    <p className="text-xs leading-relaxed text-ink-muted">Filters and pagination can split operations. An admission without a loaded outcome may be pending, outside this page or filter, or unavailable; it does not confirm failure. Shared request or trace IDs do not establish an operation relationship. Payloads are never stored.</p>
+    {selected && <AuditDetails events={selected} zone={zone} close={()=>setSelected(null)}/>}
+  </div>
 }

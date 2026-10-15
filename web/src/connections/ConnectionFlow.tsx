@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, ChevronRight, Layers3, Maximize2, Network, Search, Waypoints } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, ChevronRight, Layers3, Maximize2, Network, Search, SlidersHorizontal, Waypoints } from 'lucide-react'
 import type { AgentKey, IdentityBinding, Upstream, VirtualServer } from '../api'
 import { btn, input } from '../styles'
 import { connectionGraph, highlightedEdges, nodeId, scopedGraph, type FlowNode, type FlowScope, type ToolFocus } from './flow'
 import type { Relationship } from './model'
 
-interface Props { servers:VirtualServer[]; upstreams:Upstream[]; keys:AgentKey[]; bindings:IdentityBinding[]; relationships:Relationship[] }
+interface Props { servers:VirtualServer[]; upstreams:Upstream[]; keys:AgentKey[]; bindings:IdentityBinding[]; relationships:Relationship[]; onInspect?:(relationship:Relationship)=>void }
 interface DiagramNode { id:string; column:number; label:string; status:string; href?:string; base?:FlowNode; tool?:ToolFocus; alias?:boolean }
 interface DiagramEdge { id:string; from:string; to:string; tools:number; relationship:string; tool?:ToolFocus }
 interface ToolScope { column:number; ids:string[]; label:string }
@@ -25,6 +25,7 @@ export default function ConnectionFlow(props:Props) {
   const [tool,setTool] = useState<ToolFocus>()
   const [previewTool,setPreviewTool] = useState<ToolFocus>()
   const [toolQuery,setToolQuery] = useState('')
+  const [largeCanvas,setLargeCanvas] = useState(false)
   const scoped = scopedGraph(graph.nodes,graph.edges,scopes)
   const focusTool=previewTool ?? tool
   const active = highlightedEdges(graph.edges,props.relationships,preview ?? selected,focusTool)
@@ -34,7 +35,7 @@ export default function ConnectionFlow(props:Props) {
   const edges:DiagramEdge[]=scoped.edges.filter(e=>!expanded || e.to===nodeId('server',e.server)).map(e=>({...e,relationship:e.id}))
   const visibleRelationships=new Set(scoped.edges.map(e=>e.id))
   const mappings=props.relationships.filter(r=>expanded && r.kind==='upstream' && visibleRelationships.has(r.id)).flatMap(r=>r.capabilities.filter(c=>c.kind==='tool').map(c=>({...c,server:r.server,relationship:r.id})))
-  const visibleMappings=mappings.filter(c=>`${c.original} ${c.exposed} ${c.upstream} ${c.server} ${c.policy}`.toLowerCase().includes(toolQuery.toLowerCase()) && toolScopes.every(s=>s.ids.includes(s.column===2?aliasId(c.server,c.upstream,c.original,c.exposed):originalId(c.upstream,c.original))))
+  const visibleMappings=mappings.filter(c=>`${c.original} ${c.exposed} ${c.upstream} ${c.server} ${c.policy}`.toLowerCase().includes(toolQuery.trim().toLowerCase()) && toolScopes.every(s=>s.ids.includes(s.column===2?aliasId(c.server,c.upstream,c.original,c.exposed):originalId(c.upstream,c.original))))
   const seen=new Set(nodes.map(n=>n.id))
   for (const c of visibleMappings) {
     const alias=aliasId(c.server,c.upstream,c.original,c.exposed),original=originalId(c.upstream,c.original)
@@ -105,13 +106,25 @@ export default function ConnectionFlow(props:Props) {
     setScopes(scopes.slice(0,-1));setSelected(undefined)
   }
 
+  const exploreServer=(id:string)=>{
+    if(!id){reset();return}
+    const node=graph.nodes.find(n=>n.id===id)
+    if(!node)return
+    clearHighlight();setScopes([{column:node.column,ids:[node.id],label:node.label}]);setToolScopes([]);setToolQuery('');setExpanded(node.id);setSelected(node.id)
+  }
+  const routes=props.relationships.filter(r=>r.kind==='upstream'&&visibleRelationships.has(r.id)&&(!tool||r.capabilities.some(c=>c.kind==='tool'&&matchesTool({server:r.server,upstream:r.to,original:c.original},tool))))
+
   return <section aria-label="Connection flow" className="overflow-hidden rounded-card border border-line bg-surface shadow-card">
     <div className="flex flex-wrap justify-between items-start gap-4 border-b border-line p-5 sm:px-6">
-      <div className="flex gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><Network className="size-5"/></div><div><h2 className="font-semibold">{expanded?'Tool routing':'Configuration flow'}</h2><p className="mt-1 text-xs text-ink-muted">{graph.nodes.length} nodes · {graph.edges.length} connections. {scopes.length?'Focused neighborhood':'All configured connections'}.</p></div></div>
-      <button className={btn} onClick={reset}><Maximize2 className="size-3.5"/>Reset to overview</button>
+      <div className="flex min-w-0 gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><Network className="size-5"/></div><div><h2 className="font-semibold">{expanded?'Tool routing':'Configuration flow'}</h2><p className="mt-1 text-xs text-ink-muted">{graph.nodes.length} nodes · {graph.edges.length} connections. {scopes.length?'Focused neighborhood':'All configured connections'}.</p></div></div>
+      <div className="flex flex-wrap gap-2"><button className={btn} aria-pressed={largeCanvas} onClick={()=>setLargeCanvas(value=>!value)}><Maximize2 className="size-3.5"/>{largeCanvas?'Standard canvas':'Expand canvas'}</button><button className={btn} onClick={reset}><Maximize2 className="size-3.5"/>Reset to overview</button></div>
+    </div>
+    <div className="grid items-end gap-4 border-b border-line bg-canvas/50 px-5 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div><p className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium"><SlidersHorizontal className="size-3.5"/>Explore configuration</p><p className="text-xs leading-relaxed text-ink-muted">Select a virtual or upstream server to unfold tool mappings. Grouped nodes expand in place; breadcrumbs keep your position.</p></div>
+      <label className="min-w-0 text-xs font-medium">Explore server<select className={`${input} mt-2`} value={expanded??''} onChange={e=>exploreServer(e.target.value)}><option value="">All configured connections</option><optgroup label="Virtual MCP servers">{graph.nodes.filter(n=>n.column===1).map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</optgroup><optgroup label="Upstream MCP servers">{graph.nodes.filter(n=>n.column===2).map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</optgroup></select></label>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-6 bg-canvas/50">
-      <nav aria-label="Flow drill-down" className="flex flex-wrap items-center gap-2 text-xs"><button className="font-medium text-accent-700" onClick={reset}>All connections</button>{scopes.map((s,i)=><span className="inline-flex items-center gap-2" key={i}><ChevronRight className="size-3 text-ink-muted"/><button onClick={()=>{clearHighlight();setScopes(scopes.slice(0,i+1));setExpanded(s.column!==0 && s.ids.length===1?s.ids[0]:undefined);setToolQuery('');setToolScopes([]);setSelected(undefined)}}>{s.label}</button></span>)}{toolScopes.map((s,i)=><span className="inline-flex items-center gap-2" key={`tool-${i}`}><ChevronRight className="size-3 text-ink-muted"/><button onClick={()=>{clearHighlight();setToolScopes(toolScopes.slice(0,i+1))}}>{s.label}</button></span>)}</nav>
+      <nav aria-label="Flow drill-down" className="flex flex-wrap items-center gap-2 text-xs"><button className="rounded-md border border-line bg-surface px-2 py-1 font-medium text-accent-700" onClick={reset}>All connections</button>{scopes.map((s,i)=><span className="inline-flex items-center gap-2" key={i}><ChevronRight className="size-3 text-ink-muted"/><button className="max-w-64 truncate rounded-md border border-line bg-surface px-2 py-1 text-accent-700" title={s.label} onClick={()=>{clearHighlight();setScopes(scopes.slice(0,i+1));setExpanded(s.column!==0 && s.ids.length===1?s.ids[0]:undefined);setToolQuery('');setToolScopes([]);setSelected(undefined)}}>{s.label}</button></span>)}{toolScopes.map((s,i)=><span className="inline-flex items-center gap-2" key={`tool-${i}`}><ChevronRight className="size-3 text-ink-muted"/><button className="max-w-64 truncate rounded-md border border-line bg-surface px-2 py-1 text-accent-700" title={s.label} onClick={()=>{clearHighlight();setToolScopes(toolScopes.slice(0,i+1))}}>{s.label}</button></span>)}</nav>
       {(scopes.length>0 || expanded) && <button className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted" onClick={back}><ArrowLeft className="size-3"/>Back one level</button>}
     </div>
     {expanded && <div className="flex flex-wrap justify-between items-center gap-3 border-b border-line px-5 py-4 sm:px-6">
@@ -123,7 +136,7 @@ export default function ConnectionFlow(props:Props) {
       {inspect && <Link className="inline-flex items-center gap-1 text-xs font-medium text-accent-700" to={inspect.href}>Open configuration<ArrowUpRight className="size-3"/></Link>}
     </div>
     {tool && <div role="status" className="mx-5 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-accent-500/20 bg-accent-50 px-3 py-2 text-xs sm:mx-6"><span className="font-medium">Tracing {tool.upstream} / {tool.original}{tool.server?` through ${tool.server}`:' through all virtual servers'}</span><button className="text-accent-700 underline" onClick={clearHighlight}>Clear tool highlight</button></div>}
-    <div className="overflow-auto max-h-[680px] p-4" tabIndex={0} aria-label="Scrollable configuration diagram">
+    <div className="m-4 overflow-auto rounded-xl border border-line bg-canvas/40 p-3 sm:m-5" style={{maxHeight:largeCanvas?960:680}} tabIndex={0} aria-label="Scrollable configuration diagram">
       <svg width="100%" viewBox={`0 0 ${canvasWidth} ${contentHeight+80}`} style={{minWidth:880}} role="group" aria-label={expanded?'Identities through exposed tools to upstream definitions':'Identities to virtual servers to upstreams'}>
         <defs><pattern id="flow-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".7" fill="currentColor" opacity=".08"/></pattern>{links.map((e,i)=><linearGradient key={i} id={`ribbon-${i}`} gradientUnits="userSpaceOnUse" x1={positions.get(e.from)!.x+nodeWidth} x2={positions.get(e.to)!.x} y1={ports.get(JSON.stringify([e.from,e.to]))!.from} y2={ports.get(JSON.stringify([e.from,e.to]))!.to}><stop offset="0%" stopColor={colors[positions.get(e.from)!.column]}/><stop offset="100%" stopColor={colors[positions.get(e.to)!.column]}/></linearGradient>)}</defs>
         <rect width={canvasWidth} height={contentHeight+80} fill="url(#flow-grid)" rx="12"/>
@@ -147,8 +160,9 @@ export default function ConnectionFlow(props:Props) {
         })}
       </svg>
     </div>
+    {expanded && props.onInspect && routes.length>0 && <details className="mx-5 mb-5 rounded-xl border border-line bg-canvas/50 sm:mx-6"><summary className="cursor-pointer px-4 py-3 text-xs font-medium">Connection details · {routes.length} upstream {routes.length===1?'route':'routes'}</summary><div className="flex max-h-56 flex-wrap gap-2 overflow-auto border-t border-line p-4">{routes.map(r=><button key={r.id} className={btn} aria-label={`View connection ${r.from} to ${r.to}`} onClick={()=>props.onInspect?.(r)}><span className="min-w-0 break-all text-xs">{r.from} → {r.to}</span><ArrowUpRight className="size-3.5 shrink-0"/></button>)}</div></details>}
     {expanded && visibleMappings.length===0 && <p className="px-6 pb-5 text-sm text-ink-muted">No matching configured tool mappings. Catalog-only routes remain visible.</p>}
     {graph.nodes.length===0 && <p className="px-6 pb-5 text-sm text-ink-muted">No configured identities or servers.</p>}
-    <div className="border-t border-line px-5 py-3 sm:px-6 text-[11px] text-ink-muted flex flex-wrap gap-x-5 gap-y-1"><span>Width = configured tool selections</span><span>Dashed = zero tools / catalog access</span><span>Conditional, disabled, denied and missing mappings remain visible.</span><span>Configuration only · counts repeat across identity grants</span></div>
+    <div className="border-t border-line px-5 py-3 sm:px-6 text-[11px] text-ink-muted flex flex-wrap gap-x-5 gap-y-1"><span className="font-medium">Width = configured tool selections</span><span>Dashed = zero tools / catalog access</span><span>Conditional, disabled, denied and missing mappings remain visible.</span><span>Configuration only · counts repeat across identity grants</span></div>
   </section>
 }

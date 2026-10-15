@@ -28,11 +28,14 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, X } from 'lucide-react'
+import { Fingerprint, GripVertical, Layers, ListChecks, Plus, Search, ShieldCheck, SlidersHorizontal, Wrench, X } from 'lucide-react'
 import clsx from 'clsx'
 import { api, ApiError, type PiiConfig, type PolicyMode, type ToolPolicy, type Tool, type ToolSelection, type Upstream, type VirtualServer } from '../api'
 
-import { btn, input, primary } from '../styles'
+import { btn, input } from '../styles'
+
+import { ServerPanel, SummaryTile } from '../connections/ServerPanels'
+import EditorSaveBar from '../connections/EditorSaveBar'
 
 const key = (s: ToolSelection) => `${s.upstream}\u0000${s.tool}`
 const slugify = (s: string) =>
@@ -107,6 +110,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(initialSelection ? null : blank, d => d ? d.isNew ? 'new' : d.slug : null)
   const [problems, setProblems] = useState<string[]>([])
   const [filter, setFilter] = useState('')
+  const [toolUpstream,setToolUpstream] = useState('')
   const { busy, run } = useOperation()
 
   const { load, loading, readError } = useSources(() => [source('Virtual servers', api.listVirtualServers, setServers),
@@ -168,7 +172,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const save = async () => {
     let savedSlug: string | undefined
     await run(async () => {
-      if (!draft) return
+      if (!draft || !canEdit || dupes.size) return
       setProblems([])
       try {
         await api.putVirtualServer(draft.slug, {
@@ -201,11 +205,12 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   useInitialSelection(initialSelection, servers, item => openDraft(fromServer(item)))
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div><h1 className="text-2xl font-semibold">{initialSelection ? 'Edit virtual server' : 'New virtual server'}</h1><p className="mt-1 text-sm text-ink-muted">Compose capabilities and configure access protection.</p></div>
-        <div className="flex gap-2"><button disabled={busy} className={btn} onClick={() => {if(onCancel) onCancel(); else setDraft(null)}}>Cancel</button><button className={primary} disabled={!canEdit || busy || !draft?.name || !draft.slug || dupes.size > 0} onClick={save}>Save</button></div>
+        <Link className={btn} to={initialSelection?serverPath(initialSelection):'/virtual-servers'}>{initialSelection?'View saved configuration':'Back to virtual servers'}</Link>
       </header>
+      {draft && <EditorSaveBar status={`${draft.isNew?'New unsaved draft':`Editing draft of saved version ${draft.version}`}. ${dirty?'Unsaved changes':'No unsaved changes'}. Changes apply only after Save.`} detail={dupes.size?'Resolve duplicate exposed tool names before saving.':!draft.name||!draft.slug?'Enter a name and identifier before saving.':'Review capability selections and access protection before saving.'} busy={busy} disabled={!canEdit||!draft.name||!draft.slug||dupes.size>0} onSave={()=>void save()} onCancel={()=>{if(onCancel)onCancel();else setDraft(null)}}/>}
       {draft && <StaleRecovery message={problems.join('; ')} reload={async () => {
         const latest = (await api.listVirtualServers()).find(item => item.slug === draft.slug)
         if (!latest) throw new Error('This item was deleted. Return to the list and refresh.')
@@ -216,10 +221,10 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
       {saved && <p role="status" className="mt-3 text-green-700">{saved}</p>}
       <div className="mt-6">
         {draft ? (
-          <div className="rounded-card border border-line bg-surface p-6 shadow-card">
-            <p role="status" className="mb-4 text-sm text-ink-muted">{draft.isNew ? 'New unsaved draft' : `Editing draft of saved version ${draft.version}`}. {dirty ? 'Unsaved changes' : 'No unsaved changes'}. Changes apply only after Save.</p>
-            {onCancel && !draft.isNew && <Link className="mb-4 inline-block text-sm text-accent-700 underline" to={serverPath(draft.slug)}>View saved configuration</Link>}
-            <fieldset disabled={!canEdit || busy} className="min-w-0 border-0 p-0 m-0">
+          <div className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-3"><SummaryTile label="Selected tools" value={draft.tools.length} detail="Explicit tool selections in this draft" icon={Wrench}/><SummaryTile label="Resources & prompts" value={draft.catalog.length} detail="Resources, templates and prompt selections" icon={ListChecks}/><SummaryTile label="Authentication" value={draft.authRequired?'Required':'Anonymous'} detail="Draft client access requirement" icon={Fingerprint}/></div>
+            <fieldset disabled={!canEdit || busy} className="min-w-0 space-y-6 border-0 p-0 m-0">
+            <ServerPanel title="Server identity" description="Name, stable identifier and client access settings" icon={Layers}><div className="space-y-4 p-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label className="text-sm font-medium">
                 Name
@@ -238,7 +243,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
               <label className="flex items-end gap-2 pb-2 text-sm">
                 <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })} /> Enabled
               </label>
-              <label className="sm:col-span-3 flex items-center gap-2 text-sm">
+              <label className="sm:col-span-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-canvas p-3 text-sm">
                 <input type="checkbox" checked={draft.authRequired} onChange={(e) => setDraft({ ...draft, authRequired: e.target.checked })} />
                 Require an agent key
                 {!draft.authRequired && <span className="text-xs text-amber-700">Anyone who can reach the data plane can call these tools.</span>}
@@ -250,23 +255,21 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             </label>
             {endpointPath && (
               <div className="mt-4 flex items-center gap-2 rounded-lg bg-canvas px-3 py-2 text-xs">
-                <code className="flex-1 truncate">{endpoint ?? endpointPath}</code>
+                <code className="min-w-0 flex-1 break-all">{endpoint ?? endpointPath}</code>
                 <CopyButton label="Copy endpoint" value={endpoint} />
               </div>
             )}
 
             {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to configure the public gateway URL; the path above is not a complete connection URL.</p>}
-            <section className="mt-6 rounded border border-line p-4"><h3 className="font-semibold">Client feature permissions</h3><p className="text-xs text-ink-muted">Also requires client negotiation. The MCP client controls approval; sampling uses the client’s model access. Roots never expose gateway files.</p>{(['sampling','roots','elicitation'] as const).map(feature=><label key={feature} className="mr-4 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>{feature}</label>)}</section>
- <CatalogPicker upstreams={upstreams} value={draft.catalog} savedCatalog={servers.find((s) => s.slug === draft.slug)?.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
- <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <section>
-                <div className="mb-2 flex flex-wrap gap-2 items-center justify-between">
-                  <h3 className="text-sm font-semibold">Available tools</h3>
-                  <input className="w-40 rounded-lg border border-line px-2 py-1 text-xs" aria-label="Filter tools" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
-                </div>
-                <div className="max-h-[420px] space-y-4 overflow-y-auto rounded-lg border border-line p-3">
-                  {upstreams.map((u) => {
-                    const tools = (catalog[u.slug] ?? []).filter((t) => t.name.toLowerCase().includes(filter.toLowerCase()))
+            </div></ServerPanel>
+            <ServerPanel title="Client feature permissions" description="Requires client negotiation and client approval. Roots never expose gateway files." icon={Fingerprint}><div className="grid gap-3 p-5 sm:grid-cols-3">{(['sampling','roots','elicitation'] as const).map(feature=><label key={feature} className="flex items-center gap-2 rounded-lg border border-line bg-canvas p-3 text-sm"><input type="checkbox" checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>{feature}</label>)}</div></ServerPanel>
+<div><h2 className="text-lg font-semibold tracking-tight">Capability composition</h2><p className="mt-1 text-sm text-ink-muted">Select tools, resources, templates and prompts from stored upstream discovery.</p></div>
+ <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <ServerPanel title="Available tools" description="Add tools from stored upstream discovery; selection is explicit" icon={Wrench}>
+                <div className="space-y-3 border-b border-line p-5"><label className="block text-xs font-medium">Filter tools<div className="relative mt-2"><Search className="absolute left-3 top-2.5 size-4 text-ink-muted"/><input className={`${input} pl-9`} aria-label="Filter tools" placeholder="Search tools or descriptions" value={filter} onChange={e=>setFilter(e.target.value)}/></div></label><label className="block text-xs font-medium">Tool upstream<select className={`${input} mt-2`} value={toolUpstream} onChange={e=>setToolUpstream(e.target.value)}><option value="">All upstreams</option>{upstreams.map(u=><option key={u.slug} value={u.slug}>{u.name}</option>)}</select></label></div>
+                <div className="max-h-[560px] space-y-4 overflow-y-auto p-5">
+                  {upstreams.filter(u=>!toolUpstream||u.slug===toolUpstream).map((u) => {
+                    const tools = (catalog[u.slug] ?? []).filter((t) => `${t.name} ${t.description??''}`.toLowerCase().includes(filter.trim().toLowerCase()))
                     return (
                       <div key={u.slug}>
                         <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">{u.name}</div>
@@ -287,17 +290,16 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                             </button>
                           )
                         })}
-                        {tools.length === 0 && <div className="px-2 text-xs text-ink-muted">No tools. Refresh this upstream first.</div>}
+                        {tools.length === 0 && <div className="px-2 text-xs text-ink-muted">{filter?'No matching tools. Try another search.':'No tools. Refresh this upstream first.'}</div>}
                       </div>
                     )
                   })}
                   {upstreams.length === 0 && <div className="text-xs text-ink-muted">Register an upstream first.</div>}
                 </div>
-              </section>
+              </ServerPanel>
 
-              <section>
-                <h3 className="mb-2 text-sm font-semibold">Exposed tools ({draft.tools.length})</h3>
-                <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-lg border border-dashed border-line p-3">
+              <ServerPanel title={`Exposed tools (${draft.tools.length})`} description="Set client-facing aliases, descriptions and policy overrides. Drag or use the keyboard to reorder." icon={ListChecks}>
+                <div className="max-h-[720px] space-y-3 overflow-y-auto p-5">
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                     <SortableContext items={draft.tools.map(key)} strategy={verticalListSortingStrategy}>
                       {draft.tools.map((t) => (
@@ -307,37 +309,37 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                   </DndContext>
                   {draft.tools.length === 0 && <div className="py-8 text-center text-xs text-ink-muted">Pick tools from the left.</div>}
                 </div>
-              </section>
+              </ServerPanel>
             </div>
 
-            <section className="mt-6 rounded-lg border border-line p-4">
-              <h3 className="text-sm font-semibold">Rate limit</h3>
-              <label className="mt-2 flex items-center gap-2 text-sm">
+ <CatalogPicker upstreams={upstreams} value={draft.catalog} savedCatalog={servers.find((s) => s.slug === draft.slug)?.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
+
+            <div className="grid items-start gap-6 xl:grid-cols-2"><ServerPanel title="Rate limit" description="Bound tool calls across client identities" icon={SlidersHorizontal}><div className="p-5">
+              <label className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                 Tool calls per minute for this server
-                <input type="number" min={1} placeholder="unlimited" className="w-32 rounded-lg border border-line px-2 py-1 text-sm" value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} />
+                <input type="number" min={1} placeholder="unlimited" className={`${input} max-w-40`} value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} />
               </label>
               <p className="mt-1 text-xs text-ink-muted">Shared by all agents. Each agent key can have its own limit too. Excess calls get HTTP 429.</p>
-            </section>
+            </div></ServerPanel>
 
-            <section className="mt-4 rounded-lg border border-line p-4">
-              <h3 className="text-sm font-semibold">Tool policy</h3>
-              <label className="mt-2 flex items-center gap-2 text-sm">
+            <ServerPanel title="Tool policy" description="Default behavior for tools without an override" icon={ShieldCheck}><div className="p-5">
+              <label className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                 Default for tools without a rule
-                <select className="rounded-lg border border-line px-2 py-1 text-sm" value={draft.policy.default} onChange={(e) => setDraft({ ...draft, policy: { ...draft.policy, default: e.target.value as PolicyMode } })}>
+                <select className={`${input} max-w-48`} value={draft.policy.default} onChange={(e) => setDraft({ ...draft, policy: { ...draft.policy, default: e.target.value as PolicyMode } })}>
                   {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </label>
               <p className="mt-1 text-xs text-ink-muted">Read-only lets through only tools whose upstream declares <code>readOnlyHint</code>. Set per-tool rules in the list above.</p>
-            </section>
+            </div></ServerPanel></div>
 
-            <section className="mt-4 rounded-lg border border-line p-4">
-              <h3 className="text-sm font-semibold">PII masking</h3>
-              <label className="mt-2 flex items-center gap-2 text-sm">
+            <ServerPanel title="PII masking" description="Mask sensitive data in tool results and optionally in upstream arguments" icon={ShieldCheck}><div className="p-5">
+              <label className="mt-2 flex flex-wrap items-center gap-3 text-sm">
                 <input type="checkbox" checked={draft.pii.enabled} onChange={(e) => setPii({ enabled: e.target.checked })} />
                 Mask sensitive data in tool results
               </label>
               {draft.pii.enabled && (
                 <div className="mt-3 space-y-3">
+                  <p className="text-xs text-ink-muted">Leaving detectors unselected uses all built-in detectors.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {DETECTORS.map(([id, label]) => (
                       <label key={id} className="flex items-center gap-2 text-sm">
@@ -356,9 +358,9 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                   </label>
                   <div className="space-y-2">
                     {draft.pii.customRules.map((r, i) => (
-                      <div key={i} className="flex gap-2">
-                        <input className={input} placeholder="Name" value={r.name} onChange={(e) => setPii({ customRules: draft.pii.customRules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                        <input className={clsx(input, 'font-mono')} placeholder="Regex (RE2)" value={r.pattern} onChange={(e) => setPii({ customRules: draft.pii.customRules.map((x, j) => (j === i ? { ...x, pattern: e.target.value } : x)) })} />
+                      <div key={i} className="flex flex-wrap gap-2">
+                        <input aria-label={`Custom rule ${i+1} name`} className={input} placeholder="Name" value={r.name} onChange={(e) => setPii({ customRules: draft.pii.customRules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+                        <input aria-label={`Custom rule ${i+1} pattern`} className={clsx(input, 'font-mono')} placeholder="Regex (RE2)" value={r.pattern} onChange={(e) => setPii({ customRules: draft.pii.customRules.map((x, j) => (j === i ? { ...x, pattern: e.target.value } : x)) })} />
                         <button aria-label="Remove rule" onClick={() => setPii({ customRules: draft.pii.customRules.filter((_, j) => j !== i) })}><X className="size-4 text-ink-muted" /></button>
                       </div>
                     ))}
@@ -368,10 +370,10 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                   </div>
                 </div>
               )}
-            </section>
+            </div></ServerPanel>
 
             {problems.length > 0 && (
-              <ul className="mt-4 list-disc rounded-lg bg-red-50 py-2 pl-7 pr-3 text-sm text-red-700">
+              <ul role="alert" className="mt-4 list-disc rounded-lg bg-red-50 py-2 pl-7 pr-3 text-sm text-red-700">
                 {problems.map((p, i) => <li key={i}>{p}</li>)}
               </ul>
             )}
@@ -393,45 +395,17 @@ function Row({ id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, drift, o
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={clsx('flex items-center gap-2 rounded-lg border bg-surface px-2 py-2', dup ? 'border-red-300' : 'border-line')}
+      className={clsx('rounded-xl border bg-canvas p-4', dup ? 'border-red-300' : 'border-line')}
     >
-      <button className="cursor-grab touch-none text-ink-muted" aria-label={`Reorder ${t.upstream}/${t.tool}`} {...attributes} {...listeners}>
-        <GripVertical className="size-4" />
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs text-ink-muted">{t.upstream} / {t.tool}</div>
-        <input
-          className="w-full bg-transparent text-sm font-medium outline-none placeholder:text-ink"
-          aria-label={`Alias for ${t.upstream}/${t.tool}`}
-          placeholder={`${t.upstream}__${t.tool}`}
-          value={t.alias ?? ''}
-          onChange={(e) => onAlias(e.target.value)}
-        />
-        <input
-          className="w-full bg-transparent text-xs text-ink-muted outline-none placeholder:text-ink-muted/70"
-          aria-label={`Description for ${t.upstream}/${t.tool}`}
-          placeholder={upstreamDesc ? `Description: ${upstreamDesc}` : 'Description (upstream text)'}
-          title={t.description ? `Override. Upstream: ${upstreamDesc}` : 'Type to override the description agents see'}
-          value={t.description ?? ''}
-          onChange={(e) => onDescription(e.target.value)}
-        />
-        {drift && (
-          <div className="text-xs text-amber-700" title={upstreamDesc}>
-            Upstream description changed since this override was written — save to accept.
-          </div>
-        )}
-        {dup && <div className="text-xs text-red-600">Duplicate exposed name</div>}
+      <div className="flex items-start gap-2"><button className="cursor-grab touch-none rounded-lg border border-line bg-surface p-1.5 text-ink-muted" aria-label={`Reorder ${t.upstream}/${t.tool}`} {...attributes} {...listeners}><GripVertical className="size-4" /></button><p className="min-w-0 flex-1 break-all pt-1 text-xs font-medium text-ink-muted">{t.upstream} / {t.tool}</p><button className={btn} aria-label="Remove" onClick={onRemove}><X className="size-3.5 text-ink-muted"/></button></div>
+      <div className="mt-3 space-y-3">
+        <label className="block text-xs font-medium">Exposed alias<input className={`${input} mt-2`} aria-label={`Alias for ${t.upstream}/${t.tool}`} placeholder={`${t.upstream}__${t.tool}`} value={t.alias??''} onChange={e=>onAlias(e.target.value)}/></label>
+        <label className="block text-xs font-medium">Description override<input className={`${input} mt-2 text-xs`} aria-label={`Description for ${t.upstream}/${t.tool}`} placeholder={upstreamDesc||'Use upstream description'} title={t.description?`Override. Upstream: ${upstreamDesc}`:'Type to override the description agents see'} value={t.description??''} onChange={e=>onDescription(e.target.value)}/></label>
+        <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs font-medium">Tool policy<select aria-label="Policy" className={clsx(input,'mt-2',mode==='deny'&&'border-red-300 text-red-700')} value={mode} onChange={e=>onMode(e.target.value as PolicyMode)}>{MODES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><span className="pb-2 text-xs text-ink-muted">{inherited?'Uses default':'Override'}</span></div>
+        {mode==='read_only'&&!readOnlyHint&&<p className="text-xs text-amber-700">Blocked: upstream does not declare readOnlyHint.</p>}
+        {drift&&<p className="text-xs text-amber-700" title={upstreamDesc}>Upstream description changed since this override was written — save to accept.</p>}
+        {dup&&<p className="text-xs text-red-600">Duplicate exposed name</p>}
       </div>
-      <select
-        aria-label="Policy"
-        className={clsx('rounded-lg border px-1.5 py-1 text-xs', mode === 'deny' ? 'border-red-300 text-red-700' : 'border-line', inherited && 'text-ink-muted')}
-        value={mode}
-        onChange={(e) => onMode(e.target.value as PolicyMode)}
-      >
-        {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-      {mode === 'read_only' && !readOnlyHint && <span className="text-xs text-amber-700" title="Upstream does not declare readOnlyHint, so this tool is blocked">blocked</span>}
-      <button aria-label="Remove" onClick={onRemove}><X className="size-4 text-ink-muted" /></button>
     </div>
   )
 }

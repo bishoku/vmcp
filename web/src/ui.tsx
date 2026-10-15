@@ -33,7 +33,7 @@ export function ErrorBox({ children }: { children: ReactNode }) {
 
 
 
-export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean }) {
+export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false, size = 'standard' }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean; size?: 'standard' | 'wide' }) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
   useLayoutEffect(() => {
@@ -61,8 +61,8 @@ export function Modal({ title, children, onClose, variant = 'modal', busy = fals
       }}>
       <div className={clsx('flex h-full w-full', variant === 'drawer' ? 'justify-end' : 'items-center justify-center p-4')}
         onClick={e => { if (e.target === e.currentTarget) if (!busy) onClose?.() }}>
-        <section className={clsx('overflow-y-auto border border-line bg-surface p-6 shadow-card',
-          variant === 'drawer' ? 'h-full w-full max-w-[420px]' : 'max-h-full w-full max-w-lg rounded-card')}>
+        <section className={clsx('overflow-y-auto border border-line shadow-card', size === 'wide' ? 'bg-canvas p-4 sm:p-6' : 'bg-surface p-6',
+          variant === 'drawer' ? `h-full w-full ${size === 'wide' ? 'max-w-2xl' : 'max-w-[420px]'}` : `max-h-full w-full ${size === 'wide' ? 'max-w-4xl' : 'max-w-lg'} rounded-card`)}>
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 id={titleId} className="text-lg font-semibold">{title}</h2>
             {onClose && <button type="button" className={btn} aria-label="Close" disabled={busy} onClick={onClose}><X className="size-4" /></button>}

@@ -44,3 +44,15 @@ test('search filters available choices without losing selections or reporting th
  fireEvent.change(screen.getByLabelText('Search catalog'),{target:{value:'review'}})
  expect(screen.getByRole('option',{name:'alpha · prompt · review'})).toBeTruthy()
 })
+
+test('catalog kind filtering changes available choices without changing selected objects',async()=>{
+ vi.spyOn(api,'listCatalog').mockResolvedValue({resources:[{uri:'doc://public'}],resourceTemplates:[{uriTemplate:'doc://{name}'}],prompts:[{name:'review'}],capabilities:{}})
+ const onChange=vi.fn()
+ render(<CatalogPicker upstreams={[{slug:'alpha'}] as Upstream[]} value={[{upstream:'alpha',kind:'resource',name:'doc://public'}]} onChange={onChange}/>)
+ await screen.findByRole('option',{name:'alpha · prompt · review'})
+ fireEvent.change(screen.getByLabelText('Catalog kind'),{target:{value:'template'}})
+ expect(screen.getByRole('option',{name:'alpha · template · doc://{name}'})).toBeTruthy()
+ expect(screen.queryByRole('option',{name:'alpha · prompt · review'})).toBeNull()
+ expect(screen.getByText('alpha · resource · doc://public')).toBeTruthy()
+ expect(onChange).not.toHaveBeenCalled()
+})

@@ -109,3 +109,38 @@ test('server selection unfolds aliases and upstream definitions in the Sankey, w
  expect(within(flow).queryByText('Upstream definitions')).toBeNull()
  expect(api.listAudit).not.toHaveBeenCalled()
 })
+
+test('direct server exploration keeps tool drill-down and opens route details without leaving the Sankey',async()=>{
+ HTMLDialogElement.prototype.showModal=function(){this.open=true}
+ HTMLDialogElement.prototype.close=function(){this.open=false}
+ open();await screen.findByText('Configured relationships (3)')
+ const flow=screen.getByRole('region',{name:'Connection flow'})
+ fireEvent.change(within(flow).getByLabelText('Explore server'),{target:{value:'["server","demo"]'}})
+ expect(within(flow).getByRole('button',{name:'Trace alias demo / lookup'})).toBeTruthy()
+ fireEvent.click(within(flow).getByRole('button',{name:'Expand canvas'}))
+ expect(within(flow).getByRole('button',{name:'Standard canvas'}).getAttribute('aria-pressed')).toBe('true')
+ fireEvent.click(within(flow).getByText('Connection details · 1 upstream route'))
+ fireEvent.click(within(flow).getByRole('button',{name:'View connection demo to alpha'}))
+ const dialog=screen.getByRole('dialog',{name:'demo → alpha'})
+ expect(within(dialog).getByRole('region',{name:'Selected capability mappings'})).toBeTruthy()
+ fireEvent.change(within(dialog).getByLabelText('Mapping kind'),{target:{value:'resource'}})
+ expect(within(dialog).getByText('doc://team')).toBeTruthy()
+ expect(within(dialog).queryByText('Missing object')).toBeNull()
+ fireEvent.change(within(dialog).getByLabelText('Search mappings'),{target:{value:'not found'}})
+ expect(within(dialog).getByText('No matching mappings. Adjust your search or kind.')).toBeTruthy()
+ fireEvent.click(within(dialog).getByRole('button',{name:'Close'}))
+ expect(within(flow).getByRole('button',{name:'Trace alias demo / lookup'})).toBeTruthy()
+ expect(api.listAudit).not.toHaveBeenCalled()
+})
+
+test('relationship kind filtering is independent of diagram scope and clear restores all relationships',async()=>{
+ open();await screen.findByText('Configured relationships (3)')
+ fireEvent.change(screen.getByLabelText('Relationship kind'),{target:{value:'binding'}})
+ expect(screen.getByText('Configured relationships (1)')).toBeTruthy()
+ const table=screen.getByRole('table')
+ expect(within(table).getByRole('link',{name:'team-jwt'})).toBeTruthy()
+ const flow=screen.getByRole('region',{name:'Connection flow'})
+ expect(within(flow).getAllByTestId('flow-ribbon')).toHaveLength(3)
+ fireEvent.click(screen.getByRole('button',{name:'Clear relationship filters'}))
+ expect(screen.getByText('Configured relationships (3)')).toBeTruthy()
+})

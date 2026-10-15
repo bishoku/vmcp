@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { render } from '../test-utils'
@@ -78,4 +78,53 @@ test('upstream transport selection offers only HTTP endpoint transports',async()
   const options=screen.getAllByRole('option')
     .map(option=>(option as HTMLOptionElement).value)
   expect(options).toEqual(['streamable_http','sse'])
+})
+
+
+test('stored credential testing remains explicit and separate from edited testing',async()=>{
+ const stored=vi.spyOn(api,'testStoredConnection').mockResolvedValue({ok:true,toolCount:1})
+ const edited=vi.spyOn(api,'testConnection').mockResolvedValue({ok:true})
+ const refresh=vi.spyOn(api,'refreshTools')
+ open();await screen.findByRole('region',{name:'Connection verification'})
+ expect(stored).not.toHaveBeenCalled();expect(edited).not.toHaveBeenCalled();expect(refresh).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByRole('button',{name:'Test stored credentials'}))
+ await screen.findByText('Connected · 1 tools')
+ expect(stored).toHaveBeenCalledWith('alpha');expect(edited).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
+ fireEvent.click(screen.getByRole('button',{name:'Test edited connection'}))
+ await waitFor(()=>expect(edited).toHaveBeenCalledWith(expect.objectContaining({url:upstream.url,transport:upstream.transport,headers:{}})))
+})
+
+test('discovery filtering and partial reloads retain successful snapshots without changing drafts',async()=>{
+ vi.mocked(api.listCatalog).mockResolvedValue({resources:[{uri:'doc://team',description:'Team docs'}],resourceTemplates:[],prompts:[{name:'review'}],capabilities:{}})
+ open();await screen.findByText('doc://team')
+ fireEvent.click(screen.getByRole('button',{name:'Resources (1)'}))
+ const table=screen.getByRole('table',{name:'Stored upstream capabilities'})
+ expect(within(table).getByText('doc://team')).toBeTruthy()
+ expect(within(table).queryByText('lookup')).toBeNull()
+ fireEvent.change(screen.getByLabelText('Search discovered capabilities'),{target:{value:'missing'}})
+ expect(screen.getByText('No matching capabilities')).toBeTruthy()
+ fireEvent.change(screen.getByLabelText('Search discovered capabilities'),{target:{value:''}})
+ fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
+ fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Draft'}})
+ vi.mocked(api.listCatalog).mockRejectedValueOnce(new Error('Catalog unavailable'))
+ fireEvent.click(screen.getByRole('button',{name:'Reload discovery snapshots'}))
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Catalog unavailable'))
+ expect(screen.getByText('doc://team')).toBeTruthy()
+ expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Draft')
+ expect(api.patchUpstream).not.toHaveBeenCalled()
+})
+
+test('saving a name change preserves stored secrets by omitting write-only replacements',async()=>{
+ vi.mocked(api.listUpstreams).mockResolvedValue([{...upstream,headerNames:['Authorization'],tls:{...upstream.tls,hasClientKey:true},auth:{type:'oauth_client_credentials',hasClientSecret:true,clientId:'test-client',tokenUrl:'https://idp.example/token'}}])
+ open();await screen.findByLabelText('Name')
+ fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
+ fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Updated'}})
+ fireEvent.click(screen.getByRole('button',{name:'Save'}))
+ await waitFor(()=>expect(api.patchUpstream).toHaveBeenCalled())
+ const [,payload,version]=vi.mocked(api.patchUpstream).mock.calls[0]
+ expect(version).toBe(2)
+ expect(payload.headers).toBeUndefined()
+ expect(payload.tls?.clientKeyPem).toBeUndefined()
+ expect(payload.auth && 'clientSecret' in payload.auth).toBe(false)
 })

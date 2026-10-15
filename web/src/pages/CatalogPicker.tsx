@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api, type Catalog, type CatalogSelection, type Upstream } from '../api'
+import { BookOpen, Search } from 'lucide-react'
+import { ServerPanel } from '../connections/ServerPanels'
 import { input, btn } from '../styles'
 
 export default function CatalogPicker({upstreams, value, savedCatalog, onChange}: {upstreams:Upstream[];value:CatalogSelection[];savedCatalog?:(CatalogSelection & {descriptionDrift?:boolean;upstreamDescription?:string})[];onChange:(value:CatalogSelection[])=>void}) {
  const [search,setSearch]=useState('')
+ const [kind,setKind]=useState('')
  const [catalogs,setCatalogs]=useState<Record<string,Catalog>>({})
  const [error,setError]=useState('')
  const [loading,setLoading]=useState(false)
@@ -27,26 +30,24 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
   const catalog=catalogs[u.slug];if(!catalog)return []
   return ([['resource',catalog.resources,'uri'],['template',catalog.resourceTemplates,'uriTemplate'],['prompt',catalog.prompts,'name']] as const).flatMap(([kind,objects,key])=>objects.map(o=>({upstream:u.slug,kind,name:String(o[key]),description:String(o.description??'')})))
  })
- return <section className="mt-6 rounded-lg border border-line p-4">
-  <h3 className="font-semibold">Resources and prompts</h3>
-  <p className="mt-1 text-xs text-ink-muted">Select objects explicitly. Selecting tools does not grant resource or prompt access. Refresh the upstream to discover changes.</p>
+ return <ServerPanel title="Resources and prompts" description="Select objects explicitly. Tool selections do not grant resource or prompt access." icon={BookOpen} footer="Choices use stored discovery. Refresh the upstream to discover changes."><div className="space-y-5 p-5">
   {loading && <p role="status">Loading catalogs…</p>}
   {error && <div role="alert" className="text-red-700">{error} <button className={btn} onClick={()=>setAttempt(a=>a+1)}>Retry catalogs</button></div>}
   {!loading && !error && choices.length===0 && <p className="text-sm text-ink-muted">No resources or prompts discovered.</p>}
-  <input aria-label="Search catalog" placeholder="Search by upstream, kind, name or description" className={input+' mt-3'} value={search} onChange={e=>setSearch(e.target.value)}/>
+  <div className="grid gap-4 sm:grid-cols-[2fr_1fr]"><label className="block text-xs font-medium">Search catalog<div className="relative mt-2"><Search className="absolute left-3 top-2.5 size-4 text-ink-muted"/><input aria-label="Search catalog" placeholder="Upstream, name or description" className={input+' pl-9'} value={search} onChange={e=>setSearch(e.target.value)}/></div></label><label className="block text-xs font-medium">Catalog kind<select className={input+' mt-2'} value={kind} onChange={e=>setKind(e.target.value)}><option value="">All kinds</option><option value="resource">Resources</option><option value="template">Templates</option><option value="prompt">Prompts</option></select></label></div>
   {search && !choices.some(c=>Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())) && <p role="status">No catalog matches. Try another search or refresh upstream discovery.</p>}
   <label className="mt-3 block text-sm">Add a resource, template or prompt
    <select aria-label="Add catalog object" className={input} value="" onChange={e=>{const choice=choices.find(c=>identity(c)===e.target.value);if(choice)onChange([...value,{upstream:choice.upstream,kind:choice.kind,name:choice.name}])}}>
     <option value="">Choose a discovered object</option>
-    {choices.filter(c=>Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())).filter(c=>!value.some(v=>identity(v)===identity(c))).map(c=><option key={identity(c)} value={identity(c)}>{c.upstream} · {c.kind} · {c.name}</option>)}
+    {choices.filter(c=>(!kind||c.kind===kind)&&Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())).filter(c=>!value.some(v=>identity(v)===identity(c))).map(c=><option key={identity(c)} value={identity(c)}>{c.upstream} · {c.kind} · {c.name}</option>)}
    </select>
   </label>
-  <div className="mt-3 space-y-3">{value.map((selection,index)=>{
+  <div><p className="mb-3 text-xs font-semibold">Selected catalog objects ({value.length})</p><div className="max-h-[560px] space-y-3 overflow-y-auto">{value.map((selection,index)=>{
    const discovered=choices.find(c=>identity(c)===identity(selection))
    const saved=savedCatalog?.find(c=>identity(c)===identity(selection))
    const patch=(p:Partial<CatalogSelection>)=>onChange(value.map((s,i)=>i===index?{...s,...p}:s))
-   return <div key={identity(selection)} className="rounded border border-line p-3">
-    <div className="break-all text-sm">{selection.upstream} · {selection.kind} · {selection.name}</div>
+   return <div key={identity(selection)} className="rounded-xl border border-line bg-canvas p-4">
+    <div className="break-all text-xs font-medium">{selection.upstream} · {selection.kind} · {selection.name}</div>
     {!discovered && catalogs[selection.upstream] && <p className="text-xs text-amber-700">Missing from upstream discovery; this selection is not exposed.</p>}
     {selection.description && discovered && <p className="text-xs text-ink-muted">Current upstream description: {discovered.description}</p>}
     {saved?.descriptionDrift && <p className="text-xs text-amber-700" title={saved.upstreamDescription}>Upstream description changed since this override was written — save to accept.</p>}
@@ -54,6 +55,6 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
     <label className="mt-2 block text-xs">Description override<input aria-label={`Description ${selection.name}`} className={input} value={selection.description??''} onChange={e=>patch({description:e.target.value})}/></label>
     <button className={btn+' mt-2'} onClick={()=>onChange(value.filter((_,i)=>i!==index))}>Remove selection</button>
    </div>
-  })}</div>
- </section>
+  })}{!value.length&&<p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-ink-muted">Choose a discovered object to expose it to clients.</p>}</div></div></div>
+ </ServerPanel>
 }

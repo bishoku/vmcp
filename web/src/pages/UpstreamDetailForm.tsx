@@ -2,12 +2,16 @@ import { source, useSources } from '../requests'
 import { useCapabilities } from '../interaction'
 import { useOperation, useUnsaved } from '../interaction'
 import { useEffect, useState, type ChangeEvent } from 'react'
-import { CheckCircle2, X, XCircle } from 'lucide-react'
+import { Activity, Cable, CheckCircle2, ChevronRight, Code2, Fingerprint, KeyRound, Layers3, Pencil, PlugZap, ShieldCheck, Wrench, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { StaleRecovery } from '../ui'
+import { ErrorBox, Pill, StaleRecovery } from '../ui'
 import { api, ApiError, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
-import { btn, input } from '../styles'
+import EditorSaveBar from '../connections/EditorSaveBar'
+import UpstreamDiscovery from '../connections/UpstreamDiscovery'
+import { DetailRow, ServerPanel, SummaryTile } from '../connections/ServerPanels'
+import { fmt } from '../format'
+import { btn, input, primary } from '../styles'
 
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : String(e))
 
@@ -149,20 +153,29 @@ export default function UpstreamDetailForm({
     }
   })
 
-  return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-      <header className="flex flex-wrap items-start justify-between gap-4"><div><button className="text-sm text-accent-700 underline" onClick={close}>Back to upstreams</button><h1 className="mt-2 text-2xl font-semibold">{upstream ? upstream.name : 'New upstream'}</h1><p className="mt-1 text-sm text-ink-muted">{upstream ? `${upstream.slug} · Saved version ${upstream.version}` : 'Register a physical MCP server'}</p><p role="status" className="mt-2 text-sm text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : 'Read-only configuration. Choose Edit to make changes.'}</p></div><div className="flex gap-2">
-        {!editing && canEdit && <button className={btn} onClick={() => setEditing(true)}>Edit upstream</button>}
-        {editing && <><button className={btn} disabled={busy} onClick={() => upstream ? unsaved.guard(() => {unsaved.clean(); setEditing(false); onReload(upstream)}) : close()}>Cancel</button><button className={btn} disabled={!editable || busy || !url || (!upstream && !slug)} onClick={save}>Save</button></>}
-      </div></header>
-      <section className="rounded-card border border-line bg-surface p-6 shadow-card">
-        <StaleRecovery message={err} reload={async()=>{
-          const latest=(await api.listUpstreams()).find(item=>item.slug===upstream?.slug)
-          if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
-          unsaved.clean();onReload(latest)
-        }}/>
-        {upstream && <button className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button>}
-        <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 p-0 m-0">
+  return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+    <header className="space-y-5">
+      <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight className="size-3"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
+      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 className="size-6"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="break-words text-2xl font-semibold tracking-tight">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <span className="rounded-md border border-line bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-muted">v{upstream.version}</span>}</div><p className="mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
+      <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil className="size-3.5"/>Edit upstream</button>}</div></div>
+      <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
+    </header>
+    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||!url||(!upstream&&!slug)||!!(newName||newValue)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
+    {err && <ErrorBox>{err}</ErrorBox>}
+    <StaleRecovery message={err} reload={async()=>{
+      const latest=(await api.listUpstreams()).find(item=>item.slug===upstream?.slug)
+      if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
+      unsaved.clean();onReload(latest)
+    }}/>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryTile label="Transport" value={transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
+      <SummaryTile label="Authentication" value={authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
+      <SummaryTile label="Discovered tools" value={upstream?.toolCount ?? '—'} detail={upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
+      <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
+    </div>
+    <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
+        <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 p-5 m-0">
           {!upstream && (
             <label className="block text-sm font-medium">
               Slug
@@ -181,18 +194,6 @@ export default function UpstreamDetailForm({
             Fallback URLs <span className="font-normal text-ink-muted">(optional, one per line, tried in order)</span>
             <textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} />
           </label>
-          {upstream && upstream.health?.nodes.length > 0 && (
-            <div className="rounded-lg border border-line p-3 text-xs">
-              <div className="mb-1 font-medium text-sm">Health by node</div>
-              {upstream.health.nodes.map((n) => (
-                <div key={n.node} className="flex items-center justify-between gap-2 py-0.5" title={n.error ?? n.url}>
-                  <span className="truncate">{n.node}</span>
-                  <span className="text-ink-muted">{n.latencyMs} ms · breaker {n.breaker.replace('_', ' ')}</span>
-                  <span className={n.state === 'healthy' ? 'text-green-700' : 'text-red-700'}>{n.state}</span>
-                </div>
-              ))}
-            </div>
-          )}
           <label className="block text-sm font-medium">
             Transport
             <select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
@@ -200,18 +201,41 @@ export default function UpstreamDetailForm({
               <option value="sse">Legacy SSE</option>
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled
           </label>
 
-          <details className="rounded-lg border border-line p-3" open={!!(caPem || serverName || clientCert)}>
+        </fieldset>
+      </ServerPanel>
+      <div className="min-w-0 space-y-6">
+        <ServerPanel title="Connection verification" description="Explicit tests for saved or edited settings" icon={PlugZap} footer="A test checks the gateway-to-upstream connection. It does not verify a client’s access to virtual servers.">
+          <div className="space-y-4 p-5">
+            {upstream && <div><button className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{setTest(await api.testStoredConnection(upstream.slug))}catch(e){setErr(errMsg(e))}})}>Test stored credentials</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
+            {editing && <div className={upstream?'border-t border-line pt-4':''}><button className={btn} disabled={!editable || busy || !url} onClick={runTest}>Test edited connection</button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
+            {!canEdit && <p className="text-xs text-ink-muted">Connection tests require editor access.</p>}
+            {busy && <p className="text-xs text-ink-muted">An operation is in progress…</p>}
+            {test && <div role="status" className={clsx('flex items-start gap-2 rounded-lg border p-3 text-xs leading-relaxed',test.ok?'border-green-200 bg-green-50 text-green-700':'border-red-200 bg-red-50 text-red-700')}>{test.ok?<CheckCircle2 className="mt-0.5 size-4 shrink-0"/>:<XCircle className="mt-0.5 size-4 shrink-0"/>}<span>{test.ok?`Connected${test.toolCount!=null?` · ${test.toolCount} tools`:''}`:test.error ?? 'Connection failed'}</span></div>}
+          </div>
+        </ServerPanel>
+        {upstream && <ServerPanel title="Recorded node health" description="Last received health and discovery observations" icon={Activity} footer="Stored observations may be stale. Use an explicit connection test to check connectivity.">
+          <dl className="divide-y divide-line px-5"><DetailRow label="Health"><Pill status={upstream.enabled?upstream.health?.state ?? 'unknown':'disabled'}/></DetailRow><DetailRow label="Last discovery">{fmt(upstream.lastRefreshAt)}</DetailRow></dl>
+          {upstream.lastRefreshError && <p className="mx-5 mb-4 break-words rounded-lg bg-red-50 p-3 text-xs text-red-700">{upstream.lastRefreshError}</p>}
+          <div className="divide-y divide-line border-t border-line">{(upstream.health?.nodes ?? []).map(node=><details key={node.node} className="px-5 py-4"><summary className="cursor-pointer text-xs"><span className="font-medium">{node.node}</span><span className="ml-2 text-ink-muted">{node.state} · {node.latencyMs} ms</span></summary><dl className="mt-2 divide-y divide-line"><DetailRow label="Checked">{fmt(node.checkedAt)}</DetailRow><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="URL"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error && <p className="mt-2 break-words text-xs text-red-700">{node.error}</p>}</details>)}{!upstream.health?.nodes?.length && <p className="px-5 py-5 text-xs text-ink-muted">No node health observations available.</p>}</div>
+        </ServerPanel>}
+      </div>
+    </div>
+    <div><h2 className="text-lg font-semibold tracking-tight">Security & credentials</h2><p className="mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
+    <div className="grid items-start gap-6 xl:grid-cols-2">
+      <ServerPanel title="Transport security" description="Custom trust and mutual TLS settings" icon={ShieldCheck}>
+        <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
+          <>{!editing && !(caPem || serverName || clientCert) && <p className="mb-3 text-xs leading-relaxed text-ink-muted">Uses system trust. No custom CA, server name or client certificate is configured.</p>}<details className="min-w-0" open={!!(caPem || serverName || clientCert)}>
             <summary className="cursor-pointer text-sm font-medium">TLS (custom CA, server name, mTLS)</summary>
             <div className="mt-3 space-y-3">
               <label className="block text-sm font-medium">
                 CA certificate(s) <span className="font-normal text-ink-muted">(PEM; trusted only for this upstream)</span>
                 <textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={4} value={caPem} onChange={(e) => setCaPem(e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" />
               </label>
-              <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setCaPem)} className="text-xs" aria-label="Upload CA PEM" />
+              <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setCaPem)} className="max-w-full text-xs" aria-label="Upload CA PEM" />
               {upstream && (upstream.tls?.caCerts?.length ?? 0) > 0 && caPem === upstream.tls.caPem && (
                 <ul className="text-xs text-ink-muted">
                   {upstream.tls.caCerts.map((c, i) => (
@@ -230,7 +254,7 @@ export default function UpstreamDetailForm({
                 Client certificate <span className="font-normal text-ink-muted">(optional, mTLS)</span>
                 <textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={3} value={clientCert} onChange={(e) => setClientCert(e.target.value)} />
               </label>
-              <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setClientCert)} className="text-xs" aria-label="Upload client certificate" />
+              <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setClientCert)} className="max-w-full text-xs" aria-label="Upload client certificate" />
               <label className="block text-sm font-medium">
                 Client key <span className="font-normal text-ink-muted">(write-only)</span>
                 <textarea
@@ -243,9 +267,13 @@ export default function UpstreamDetailForm({
               </label>
               <p className="text-xs text-ink-muted">Certificate verification can't be disabled. Using the self-signed server certificate as the CA is fine.</p>
             </div>
-          </details>
+          </details></>
 
-          <details className="rounded-lg border border-line p-3" open={authType === 'oauth_client_credentials'}>
+        </fieldset>
+      </ServerPanel>
+      <ServerPanel title="OAuth authentication" description="Token endpoint and client credentials" icon={Fingerprint}>
+        <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
+          <details className="min-w-0" open={authType === 'oauth_client_credentials'}>
             <summary className="cursor-pointer text-sm font-medium">OAuth 2.0 Client Credentials</summary>
             <div className="mt-3 space-y-3">
               <label className="flex items-center gap-2 text-sm font-medium">
@@ -311,14 +339,20 @@ export default function UpstreamDetailForm({
             </div>
           </details>
 
+        </fieldset>
+      </ServerPanel>
+    </div>
+    <ServerPanel title="Request headers" description="Stored values remain masked; only explicit changes are sent" icon={Code2} footer="Header values are write-only. Replacing or removing a header takes effect after Save.">
+      {editing ? (
+      <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
           <div>
-            <div className="mb-2 text-sm font-medium">Headers (write-only)</div>
+
             <div className="space-y-2">
               {existing
                 .filter((h) => !removed.includes(h))
                 .map((h) => (
-                  <div key={h} className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 truncate rounded-lg bg-canvas px-3 py-2">
+                  <div key={h} className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate rounded-lg bg-canvas px-3 py-2">
                       {h} <span className="text-ink-muted">{replaced[h] !== undefined ? '(new value)' : '••••••••'}</span>
                     </span>
                     <button
@@ -335,55 +369,20 @@ export default function UpstreamDetailForm({
                     </button>
                   </div>
                 ))}
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input className={input} aria-label="New header name" placeholder="Header" value={newName} onChange={(e) => setNewName(e.target.value)} />
                 <input className={input} type="password" aria-label="New header value" placeholder="Value" value={newValue} onChange={(e) => setNewValue(e.target.value)} />
-                <button className={btn} onClick={addHeader}>
+                <button className={btn} disabled={!newName.trim()} onClick={addHeader}>
                   Add
                 </button>
               </div>
             </div>
           </div>
 
-          <button className={clsx(btn, 'w-full')} disabled={busy || !url} onClick={runTest}>
-            Test edited connection
-          </button>
-        </fieldset>
-          {test && (
-            <div className={clsx('flex items-start gap-2 text-sm', test.ok ? 'text-green-700' : 'text-red-700')}>
-              {test.ok ? <CheckCircle2 className="size-4 shrink-0" /> : <XCircle className="size-4 shrink-0" />}
-              {test.ok ? `Connected${test.toolCount != null ? ` · ${test.toolCount} tools` : ''}` : (test.error ?? 'Connection failed')}
-            </div>
-          )}
-          {upstream && (
-            <p className="text-xs text-ink-muted">
-              The test only uses headers entered here; stored header values can't be read back.
-            </p>
-          )}
-
-          {upstream && (
-            <div>
-              {discoveryLoading && <p role="status">Loading discovery snapshots…</p>}
-              {discoveryError && <p role="alert" className="text-sm text-red-700">{discoveryError}</p>}
-              <button className={btn} onClick={()=>loadDiscovery()} disabled={discoveryLoading}>Reload discovery snapshots</button>
-              <p className="my-2 text-xs text-ink-muted">Reload reads stored discovery only. Use Refresh capabilities in the upstream list to discover changes.</p>
-              <div className="mb-2 text-sm font-medium">Discovered tools ({tools.length})</div>
-              <ul className="max-h-60 divide-y divide-line overflow-y-auto rounded-lg border border-line">
-                {tools.map((t) => (
-                  <li key={t.name} className="px-3 py-2">
-                    <div className="text-sm font-medium">{t.name}</div>
-                    <div className="truncate text-xs text-ink-muted">{t.description}</div>
-                  </li>
-                ))}
-                {tools.length === 0 && <li className="px-3 py-4 text-center text-xs text-ink-muted">Refresh tools to discover them.</li>}
-              </ul>
-              {catalog && ([['Resources',catalog.resources ?? [],'uri'],['Templates',catalog.resourceTemplates ?? [],'uriTemplate'],['Prompts',catalog.prompts ?? [],'name']] as const).map(([label,objects,key])=><section key={label} className="mt-4"><h3 className="text-sm font-medium">{label} ({objects.length})</h3><ul className="max-h-48 overflow-y-auto text-sm">{objects.map((object,index)=><li className="break-all border-b border-line py-2" key={index}>{String(object[key])}<p className="text-xs text-ink-muted">{String(object.description ?? '')}</p></li>)}</ul>{objects.length===0 && <p className="text-xs text-ink-muted">None discovered.</p>}</section>)}
-            </div>
-          )}
-
-
-        {err && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
-      </section>
-    </div>
-  )
+      </fieldset>
+      ) : <div className="divide-y divide-line px-5">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<p className="py-5 text-xs text-ink-muted">No request headers configured.</p>}</div>}
+    </ServerPanel>
+    {editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 p-5 text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
+    {upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
+  </div>
 }

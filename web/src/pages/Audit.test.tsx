@@ -1,6 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render as renderUI, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import Audit from './Audit'
+const render=(ui:ReactNode)=>renderUI(<MemoryRouter>{ui}</MemoryRouter>)
 import { api, type AuditEvent } from '../api'
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 const event=(id:number,tool:string)=>({id,tool,time:'2026-10-11T12:00:00Z',status:'ok',durationMs:1,virtualServer:'demo'}) as AuditEvent
@@ -36,4 +39,43 @@ test('groups only operation IDs, keeps raw access and never infers failure from 
  expect(screen.getAllByText('uncorrelated')).toHaveLength(2)
  fireEvent.click(screen.getByText('Raw events'));expect(screen.getAllByText('paired')).toHaveLength(2)
  expect(screen.getByLabelText('Operation ID').getAttribute('value')).toBe('pair')
+})
+
+
+test('correlation filters preserve supported request and stage fields and clear together',async()=>{
+ const list=vi.spyOn(api,'listAudit').mockResolvedValue({items:[]})
+ render(<Audit initialQuery={{requestId:'request-1',stage:'admission',from:'2026-10-11T00:00:00Z',incomplete:'true'}}/>)
+ await waitFor(()=>expect(list).toHaveBeenCalled())
+ expect(screen.getByLabelText('Request ID').getAttribute('value')).toBe('request-1')
+ expect((screen.getByLabelText('Stage') as HTMLSelectElement).value).toBe('admission')
+ fireEvent.change(screen.getByLabelText('Request ID'),{target:{value:'request-2'}})
+ await waitFor(()=>expect(list).toHaveBeenLastCalledWith(expect.objectContaining({requestId:'request-2',stage:'admission',incomplete:'true',from:'2026-10-11T00:00:00Z'}),expect.any(AbortSignal)))
+ fireEvent.click(screen.getByRole('button',{name:'Clear all filters'}))
+ await waitFor(()=>expect(list).toHaveBeenLastCalledWith({},expect.any(AbortSignal)))
+ expect((screen.getByLabelText('Incomplete operations only') as HTMLInputElement).checked).toBe(false)
+})
+
+test('a failed refresh retains records and clearly identifies the read failure',async()=>{
+ vi.spyOn(api,'listAudit').mockResolvedValueOnce({items:[event(1,'retained')]}).mockRejectedValueOnce(new Error('Audit storage unavailable'))
+ render(<Audit/>);await screen.findByText('retained')
+ fireEvent.click(screen.getByRole('button',{name:'Refresh'}))
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('previous successful query'))
+ expect(screen.getByText('retained')).toBeTruthy()
+ expect(screen.queryByText('No events match.')).toBeNull()
+})
+
+test('details retain raw records and operation links without mixing correlation IDs',async()=>{
+ Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true}})
+ Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false}})
+ try{
+  vi.spyOn(api,'listAudit').mockResolvedValue({items:[{...event(2,'lookup'),operationId:'pair',requestId:'request-out',traceId:'trace-out',stage:'outcome',status:'error',reason:'Upstream timeout'},{...event(1,'lookup'),operationId:'pair',requestId:'request-in',traceId:'trace-in',stage:'admission',status:'started'}]})
+  render(<Audit/>)
+  fireEvent.click(await screen.findByRole('button',{name:'Details'}))
+  const dialog=screen.getByRole('dialog',{name:'Audit details'})
+  expect(within(dialog).getByRole('link',{name:'Open operation'}).getAttribute('href')).toBe('/audit?operationId=pair')
+  expect(within(dialog).getAllByRole('button',{name:'Copy request ID'})).toHaveLength(2)
+  expect(within(dialog).getAllByRole('button',{name:'Copy trace ID'})).toHaveLength(2)
+  expect([...dialog.querySelectorAll('pre')].map(pre=>JSON.parse(pre.textContent!).stage)).toEqual(['outcome','admission'])
+  expect(within(dialog).getByText('Upstream timeout')).toBeTruthy()
+ }finally{cleanup();Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');Reflect.deleteProperty(HTMLDialogElement.prototype,'close')}
 })

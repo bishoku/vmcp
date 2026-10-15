@@ -23,7 +23,7 @@ for (const width of [375,768,1440]) test(`populated management layouts at ${widt
   return r.fulfill({json})
  })
  for(const path of ['/connections','/setup','/virtual-servers/demo/connect','/virtual-servers?inspect=demo','/upstreams?inspect=alpha','/identities?inspect=team-jwt','/agent-keys','/settings']) {
-  await page.goto(path);await expect(page.getByRole('navigation')).toBeVisible()
+  await page.goto(path);await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
   await page.waitForTimeout(100)
   expect(await page.locator('main').evaluate(el=>el.scrollWidth<=el.clientWidth),path).toBe(true)
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),path).toBe(true)
