@@ -18,6 +18,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/controlplane"
 	"github.com/bishoku/vmcp/core/internal/fixture"
+	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/bishoku/vmcp/core/internal/testdb"
@@ -500,4 +501,63 @@ func TestRateLimitFields(t *testing.T) {
 	if out["rateLimitPerMinute"] != nil {
 		t.Fatalf("null must clear the limit: %v", out)
 	}
+}
+
+func TestLongCapabilityDescriptionOverrides(t *testing.T) {
+	a := setup(t)
+	a.expect(201, "POST", "/api/v1/upstreams", a.upstream())
+	a.expect(200, "POST", "/api/v1/upstreams/fx/refresh-tools", nil)
+	database := &store.Store{Pool: a.pool}
+	if err := database.Do(context.Background(), func(tx *store.Tx) error {
+		return tx.ReplaceCatalog(context.Background(), "fx", mcp.Catalog{
+			Resources: []mcp.CatalogObject{mcp.CatalogObject{}.With("uri", "doc://guide").With("name", "Guide").With("description", "Resource source")},
+			Templates: []mcp.CatalogObject{mcp.CatalogObject{}.With("uriTemplate", "doc://{id}").With("name", "Template").With("description", "Template source")},
+			Prompts:   []mcp.CatalogObject{mcp.CatalogObject{}.With("name", "review").With("description", "Prompt source")},
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Exactly 20,000 code points; UTF-8 bytes and UTF-16 units exceed that count.
+	text := strings.Repeat("ş🙂", 9999) + "\n "
+	tools := []map[string]string{{"upstream": "fx", "tool": "echo", "alias": "say", "description": text}}
+	catalog := []map[string]string{
+		{"upstream": "fx", "kind": "resource", "name": "doc://guide", "description": text},
+		{"upstream": "fx", "kind": "template", "name": "doc://{id}", "description": text},
+		{"upstream": "fx", "kind": "prompt", "name": "review", "description": text},
+	}
+	a.expect(201, "POST", "/api/v1/virtual-servers", map[string]any{"slug": "long", "name": "Long descriptions", "tools": tools, "catalog": catalog})
+	assertDescriptions := func(want string) {
+		t.Helper()
+		_, out := a.expect(200, "GET", "/api/v1/virtual-servers/long", nil)
+		for _, family := range []string{"tools", "catalog"} {
+			for _, raw := range out[family].([]any) {
+				actual, _ := raw.(map[string]any)["description"].(string)
+				if actual != want {
+					t.Fatalf("%s description changed during round trip", family)
+				}
+			}
+		}
+	}
+	assertDescriptions(text)
+	tools[0]["description"] = text + "x"
+	_, out := a.expect(422, "PATCH", "/api/v1/virtual-servers/long", map[string]any{"tools": tools})
+	if !strings.Contains(toJSON(out), "/tools/0/description") {
+		t.Fatalf("missing tool field error: %v", out)
+	}
+	for i := range catalog {
+		catalog[i]["description"] = text + "x"
+		_, out = a.expect(422, "PATCH", "/api/v1/virtual-servers/long", map[string]any{"catalog": catalog})
+		if !strings.Contains(toJSON(out), fmt.Sprintf("/catalog/%d/description", i)) {
+			t.Fatalf("missing catalog field error: %v", out)
+		}
+		catalog[i]["description"] = text
+	}
+	// Rejected updates leave every saved selection intact.
+	assertDescriptions(text)
+	tools[0]["description"] = ""
+	for i := range catalog {
+		catalog[i]["description"] = ""
+	}
+	a.expect(200, "PATCH", "/api/v1/virtual-servers/long", map[string]any{"tools": tools, "catalog": catalog})
+	assertDescriptions("")
 }

@@ -1,3 +1,5 @@
+import { catalogExposedName } from '../connections/model'
+import DescriptionOverride from '../DescriptionOverride'
 import { filterItem } from '../search-filters'
 import { SearchField, ActiveFilters, ResultCount } from '../SearchControls'
 import Select from '../Select'
@@ -62,10 +64,8 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
    return <div key={identity(selection)} className="surface-inset p-4">
     <div className="break-all text-xs font-medium">{selection.upstream} · {selection.kind} · {selection.name}</div>
     {!discovered && catalogs[selection.upstream] && <p className="text-xs text-amber-700">Missing from upstream discovery; this selection is not exposed.</p>}
-    {selection.description && discovered && <p className="text-xs text-ink-muted">Current upstream description: {discovered.description}</p>}
-    {saved?.descriptionDrift && <p tabIndex={0} className="text-xs text-amber-700" data-tooltip={saved.upstreamDescription}>Upstream description changed since this override was written — save to accept.</p>}
     {selection.kind!=='template' && <FormField name={`catalog.${index}.alias`} label="Alias" className="mt-2" hint="Optional. Leave empty to keep the upstream name."><input aria-label={`Alias ${selection.name}`} className={input} value={selection.alias??''} onChange={e=>patch({alias:e.target.value})}/></FormField>}
-    <FormField name={`catalog.${index}.description`} label="Description override" className="mt-2" hint="Optional. Leave empty to keep the upstream description."><input aria-label={`Description ${selection.name}`} className={input} value={selection.description??''} onChange={e=>patch({description:e.target.value})}/></FormField>
+    <DescriptionOverride name={`catalog.${index}.description`} identity={`${selection.upstream}/${selection.kind}/${selection.name}`} exposedName={catalogExposedName(selection)} value={selection.description ?? ''} upstream={discovered?.description ?? saved?.upstreamDescription ?? ''} drift={saved?.descriptionDrift} onChange={description => patch({description})}/>
     <button className={btn+' action-danger-outline mt-2'} onClick={()=>onChange(value.filter((_,i)=>i!==index))}>Remove selection</button>
    </div>
   })}{value.length>selectionLimit&&<LoadMore shown={Math.min(selectionLimit,value.length)} total={value.length} noun="objects" label="Show 50 more selected objects" onLoad={()=>setSelectionLimit(n=>n+50)}/>}{!value.length&&<p className="rounded-lg border border-dashed border-line panel-body text-center text-xs text-ink-muted">Choose a discovered object to expose it to clients.</p>}</div></div></div>

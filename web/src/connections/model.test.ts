@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { capabilityCounts, capabilitiesOf, connectionSettings, filterRelationships, keyState, relationships } from './model'
+import { capabilityCounts, capabilitiesOf, catalogExposedName, connectionSettings, filterRelationships, keyState, relationships } from './model'
 import { binding, key, server, upstream } from './fixtures'
 
 test('flow keeps distinct grants and groups selected capabilities by upstream with aliases and policy',()=>{
@@ -49,4 +49,12 @@ test('filters include friendly server and upstream names as well as slugs',()=>{
  const edges=relationships([{...server,name:'Finance gateway'}],[{...upstream,name:'Customer database'}],[key],[])
  expect(filterRelationships(edges,'finance gateway')).toHaveLength(2)
  expect(filterRelationships(edges,'customer database')).toHaveLength(1)
+})
+
+test('catalog agent names match prompt aliases and resource/template URI composition',()=>{
+ expect(catalogExposedName({upstream:'alpha',kind:'prompt',name:'review'})).toBe('alpha__review')
+ expect(catalogExposedName({upstream:'alpha',kind:'prompt',name:'review',alias:'approved'})).toBe('approved')
+ expect(catalogExposedName({upstream:'alpha',kind:'template',name:'doc://{id}'})).toBe('vmcp://alpha/template/doc://{id}')
+ expect(catalogExposedName({upstream:'alpha',kind:'resource',name:'doc://guide',alias:'team'})).toBe('vmcp://alpha/alias/team')
+ expect(catalogExposedName({upstream:'alpha',kind:'resource',name:'doc://ş🙂'})).toBe('vmcp://alpha/resource/ZG9jOi8vxZ_wn5mC')
 })

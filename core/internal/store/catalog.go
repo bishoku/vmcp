@@ -160,8 +160,11 @@ func (t *Tx) writeCatalogSelections(ctx context.Context, id string, sels []Catal
 		if c.Kind != "resource" && c.Kind != "template" && c.Kind != "prompt" {
 			return apierror.Validation([]apierror.FieldError{{Field: field + "/kind", Code: apierror.CodeValidationFailed, Message: "must be resource, template or prompt"}})
 		}
-		if (c.Kind == "template" && c.Alias != "") || c.Name == "" || len(c.Name) > 4096 || len(c.Description) > 10000 || len(c.Alias) > 128 || (c.Alias != "" && strings.ContainsAny(c.Alias, " /?#{}")) {
+		if (c.Kind == "template" && c.Alias != "") || c.Name == "" || len(c.Name) > 4096 || len(c.Alias) > 128 || (c.Alias != "" && strings.ContainsAny(c.Alias, " /?#{}")) {
 			return apierror.Validation([]apierror.FieldError{{Field: field, Code: apierror.CodeValidationFailed, Message: "invalid catalog identity or alias"}})
+		}
+		if errs := validateCapabilityDescription(field+"/description", c.Description); len(errs) > 0 {
+			return apierror.Validation(errs)
 		}
 		exposed := c.Kind + ":" + config.CatalogName(c.Upstream, c.Kind, c.Name, c.Alias)
 		if seen[exposed] {

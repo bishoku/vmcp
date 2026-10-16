@@ -2004,7 +2004,7 @@ components:
           $ref: "#/components/schemas/ToolName"
         description:
           type: string
-          maxLength: 2000
+          maxLength: 20000
           description: |
             Replaces the upstream description in `tools/list` of this virtual server only. Empty or
             omitted uses the upstream text. Saving an unchanged selection acknowledges drift.
@@ -2021,7 +2021,7 @@ components:
           $ref: "#/components/schemas/ToolName"
         description:
           type: string
-          maxLength: 2000
+          maxLength: 20000
           description: |
             Replaces the upstream description in `tools/list` of this virtual server only. Empty or
             omitted uses the upstream text. Saving an unchanged selection acknowledges drift.
@@ -2830,7 +2830,7 @@ components:
           maxLength: 128
         description:
           type: string
-          maxLength: 10000
+          maxLength: 20000
     ResolvedCatalogSelection:
       type: object
       additionalProperties: false
@@ -2860,7 +2860,7 @@ components:
           maxLength: 128
         description:
           type: string
-          maxLength: 10000
+          maxLength: 20000
         exposedName:
           type: string
         orphaned:

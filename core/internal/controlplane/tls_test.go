@@ -243,5 +243,5 @@ func TestToolDescriptionOverrideDrift(t *testing.T) {
 		t.Fatalf("override not cleared: %v", tl)
 	}
 	// Too long.
-	a.expect(422, "PUT", "/api/v1/virtual-servers/vs", sel(strings.Repeat("x", 2001)))
+	a.expect(422, "PUT", "/api/v1/virtual-servers/vs", sel(strings.Repeat("x", 20001)))
 }

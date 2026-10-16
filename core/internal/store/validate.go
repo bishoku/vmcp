@@ -9,12 +9,22 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/pii"
 	"github.com/bishoku/vmcp/core/internal/policy"
 )
+
+const MaxCapabilityDescriptionLength = 20000
+
+func validateCapabilityDescription(field, description string) []apierror.FieldError {
+	if utf8.RuneCountInString(description) > MaxCapabilityDescriptionLength {
+		return []apierror.FieldError{vf(field, "must be at most 20000 characters")}
+	}
+	return nil
+}
 
 var (
 	slugRE       = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
@@ -110,9 +120,7 @@ func ValidateVirtualServerInput(in VirtualServerInput) []apierror.FieldError {
 		if s.Alias != "" && (len(s.Alias) > 128 || !toolNameRE.MatchString(s.Alias)) {
 			errs = append(errs, vf(p+"/alias", "must be 1-128 characters of letters, digits, '_', '.' or '-'"))
 		}
-		if len(s.Description) > 2000 {
-			errs = append(errs, vf(p+"/description", "must be at most 2000 characters"))
-		}
+		errs = append(errs, validateCapabilityDescription(p+"/description", s.Description)...)
 	}
 	return errs
 }

@@ -16,7 +16,7 @@ export function ErrorBox({ children, title='Unable to complete this request', on
 
 
 
-export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false, size = 'standard', description, tone, initialFocus, returnFocus }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean; size?: 'standard' | 'wide'; description?:string; tone?:'danger'|'warning'; initialFocus?:string; returnFocus?:HTMLElement|null }) {
+export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false, size = 'standard', description, tone, initialFocus, returnFocus, footer }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean; size?: 'standard' | 'wide'; description?:string; tone?:'danger'|'warning'; initialFocus?:string; returnFocus?:HTMLElement|null; footer?: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
   const dismiss = useMotionDismiss(ref, onClose, variant === 'drawer' ? 'drawer' : 'dialog')
   const titleId = useId()
@@ -51,6 +51,7 @@ export function Modal({ title, children, onClose, variant = 'modal', busy = fals
             {onClose && <button type="button" className={`${btn} shrink-0`} aria-label="Close" disabled={busy} onClick={dismiss}><X aria-hidden="true" className="icon-control" /></button>}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"><fieldset disabled={busy || readOnly} className="min-w-0 border-0 m-0 panel-body">{children}</fieldset></div>
+          {footer && <fieldset disabled={busy || readOnly} className="m-0 min-w-0 shrink-0 border-0 border-t border-line bg-surface panel-footer">{footer}</fieldset>}
         </section>
       </div>
     </dialog>

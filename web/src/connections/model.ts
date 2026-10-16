@@ -1,7 +1,15 @@
-import type { AgentKey, IdentityBinding, Upstream, VirtualServer } from '../api'
+import type { AgentKey, CatalogSelection, IdentityBinding, Upstream, VirtualServer } from '../api'
 
 export const serverPath = (slug: string, view = 'overview') => `/virtual-servers/${encodeURIComponent(slug)}/${view}`
 export const editorPath = (page: string, slug: string) => page === 'upstreams' || page === 'virtual-servers' ? `/${page}/${encodeURIComponent(slug)}` : `/${page}?inspect=${encodeURIComponent(slug)}`
+export function catalogExposedName(selection: CatalogSelection): string {
+  const {upstream, kind, name, alias} = selection
+  if (kind === 'prompt') return alias || `${upstream}__${name}`
+  if (kind === 'template') return `vmcp://${upstream}/template/${name}`
+  if (alias) return `vmcp://${upstream}/alias/${alias}`
+  const encoded = btoa(Array.from(new TextEncoder().encode(name), byte => String.fromCharCode(byte)).join('')).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  return `vmcp://${upstream}/resource/${encoded}`
+}
 export interface Capability {
   kind: 'tool' | 'resource' | 'template' | 'prompt'
   original: string
@@ -9,15 +17,18 @@ export interface Capability {
   upstream: string
   policy: string
   missing: boolean
+  description?: string
+  upstreamDescription?: string
+  descriptionDrift?: boolean
 }
 export function capabilitiesOf(server: VirtualServer): Capability[] {
   return [
     ...server.tools.map(tool => ({ kind: 'tool' as const, original: tool.tool,
       exposed: tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`, upstream: tool.upstream,
-      policy: server.policy?.tools?.[tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`] ?? server.policy?.default ?? 'allow', missing: tool.orphaned })),
+      policy: server.policy?.tools?.[tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`] ?? server.policy?.default ?? 'allow', missing: tool.orphaned, description: tool.description, upstreamDescription: tool.upstreamDescription, descriptionDrift: tool.descriptionDrift })),
     ...(server.catalog ?? []).map(object => ({kind: object.kind, original: object.name,
       exposed: object.exposedName || object.alias || object.name, upstream: object.upstream,
-      policy: 'Selected catalog access', missing: object.orphaned})),
+      policy: 'Selected catalog access', missing: object.orphaned, description: object.description, upstreamDescription: object.upstreamDescription, descriptionDrift: object.descriptionDrift})),
   ]
 }
 export function capabilityCounts(server: VirtualServer) {

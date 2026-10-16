@@ -30,7 +30,7 @@ can be described differently elsewhere, which helps agents choose between look-a
 - Reads return `upstreamDescription` (current upstream text) and `descriptionDrift`: `true` when the upstream text
   changed after the override was written. The UI shows the upstream text and a warning. Saving the selection again
   acknowledges the change (even a repeated apply of the same document does).
-- At most 2000 characters. Only the description is overridden; input schemas are passed through unchanged.
+- At most 20,000 Unicode characters (also applies to resource, template and prompt description overrides). Only the description is overridden; input schemas are passed through unchanged.
 
 ## Ordering and the UI
 
@@ -68,3 +68,18 @@ disabled upstream are skipped.
   "rateLimitPerMinute": 120
 }
 ```
+
+### Editing long descriptions
+
+Selected capabilities show a compact description summary. **Edit description** opens
+an editor with the full plain text, the current upstream source, and an agent view
+of the effective description and exposed name. Line breaks and spacing are preserved.
+The agent view previews configuration before any configured PII masking.
+
+**Apply to draft** updates the virtual server form only; use the existing server
+save action to publish changes. Cancel leaves the form unchanged. **Use upstream
+description** clears the override in the editor; apply and save to publish that
+change. Upstream descriptions are read-only and are not limited by the override
+editor's 20,000-character limit. The existing 1 MiB control-plane request budget
+still applies to the complete server update. Capabilities on the detail page can be inspected
+without entering edit mode.

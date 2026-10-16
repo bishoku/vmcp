@@ -696,8 +696,9 @@ func TestDescriptionOverride(t *testing.T) {
 		SELECT id, 'other', 'Other', false FROM tenants WHERE slug='default'`)
 	e.exec(t, `INSERT INTO virtual_server_tools (virtual_server_id, upstream_id, tool_name)
 		SELECT v.id, u.id, 'echo' FROM virtual_servers v, upstreams u WHERE v.slug='other' AND u.slug='alpha'`)
-	e.exec(t, `UPDATE virtual_server_tools SET description = 'Say something to the user'
-		WHERE alias = 'say'`)
+	longDescription := strings.Repeat("ş🙂", 9999) + "\n "
+	e.exec(t, `UPDATE virtual_server_tools SET description = $1
+		WHERE alias = 'say'`, longDescription)
 
 	desc := func(url, name string) string {
 		t.Helper()
@@ -719,7 +720,7 @@ func TestDescriptionOverride(t *testing.T) {
 	}
 	other := strings.TrimSuffix(e.gwURL, "/agent") + "/other"
 	deadline := time.Now().Add(5 * time.Second)
-	for desc(e.gwURL, "say") != "Say something to the user" {
+	for desc(e.gwURL, "say") != longDescription {
 		if time.Now().After(deadline) {
 			t.Fatal("override never propagated")
 		}

@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestUpstreamTransportHTTPOnly(t *testing.T) {
 	for _, transport := range []string{"streamable_http", "sse", "process", "file", ""} {
@@ -22,5 +25,20 @@ func TestUpstreamTransportHTTPOnly(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCapabilityDescriptionUnicodeLimit(t *testing.T) {
+	for _, text := range []string{"", "first line\n  indented\n", strings.Repeat("a", 20000), strings.Repeat("ş", 20000), strings.Repeat("🙂", 20000)} {
+		in := VirtualServerInput{Name: "Descriptions", Tools: []ToolSelection{{Upstream: "alpha", Tool: "echo", Description: text}}}
+		if errs := ValidateVirtualServerInput(in); len(errs) != 0 {
+			t.Fatalf("valid description rejected: %v", errs)
+		}
+	}
+	for _, character := range []string{"a", "ş", "🙂"} {
+		errs := ValidateVirtualServerInput(VirtualServerInput{Name: "Descriptions", Tools: []ToolSelection{{Upstream: "alpha", Tool: "echo", Description: strings.Repeat(character, 20001)}}})
+		if len(errs) != 1 || errs[0].Field != "/tools/0/description" {
+			t.Fatalf("missing field-specific limit error: %v", errs)
+		}
 	}
 }
