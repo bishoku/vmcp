@@ -43,4 +43,4 @@ vmcp_acceptance_test_flags=()
 if [[ "${VMCP_ACCEPTANCE_RACE:-0}" == "1" ]]; then
   vmcp_acceptance_test_flags+=(-race)
 fi
-go test "${vmcp_acceptance_test_flags[@]}" -count=1 -timeout=20m -run '^TestScaleAcceptance$' -v ./internal/e2e 2>&1 | tee "$VMCP_ACCEPTANCE_OUTPUT/run.log"
+go test -tags=acceptance "${vmcp_acceptance_test_flags[@]}" -count=1 -timeout=20m -run '^TestScaleAcceptance$' -v ./internal/e2e 2>&1 | tee "$VMCP_ACCEPTANCE_OUTPUT/run.log"

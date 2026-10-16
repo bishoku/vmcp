@@ -16,8 +16,11 @@ The wrapper renders the human report automatically after cleanup. To render it a
 python3 benchmark/acceptance/report.py /absolute/output/directory/report.json
 ```
 
-The suite has an explicit opt-in; ordinary `go test ./...` skips it. Child binaries
-are not race-instrumented for performance measurements. A short functional smoke
+The suite uses the `acceptance` build tag; ordinary `go test ./...` excludes it,
+so the release gate still rejects every skipped mandatory test. The wrapper enables
+the tag and the required `VMCP_RUN_ACCEPTANCE=1` opt-in; selecting the tag without
+opting in fails immediately. Child binaries are not race-instrumented for
+performance measurements. A short functional smoke
 run (capacity gates disabled; result/audit consistency gates remain enabled):
 
 ```sh

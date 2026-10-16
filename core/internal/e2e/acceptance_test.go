@@ -1,3 +1,5 @@
+//go:build acceptance
+
 package e2e
 
 import (
@@ -185,7 +187,7 @@ func acceptanceResources(samples []acceptanceSample) map[string]any {
 
 func TestScaleAcceptance(t *testing.T) {
 	if os.Getenv("VMCP_RUN_ACCEPTANCE") != "1" {
-		t.Skip("opt-in destructive fault drill against only its own child processes")
+		t.Fatal("acceptance fault drill requires explicit opt-in; run scripts/acceptance-core.sh")
 	}
 	binary := os.Getenv("VMCP_ACCEPTANCE_BINARY")
 	output := os.Getenv("VMCP_ACCEPTANCE_OUTPUT")
