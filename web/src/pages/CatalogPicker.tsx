@@ -42,7 +42,7 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
  })
  const available=choices.filter(c=>!value.some(v=>identity(v)===identity(c)))
  const matching=choices.filter(c=>(!kind||c.kind===kind)&&Object.values(c).join(' ').toLowerCase().includes(search.toLowerCase())).filter(c=>!value.some(v=>identity(v)===identity(c)))
- return <ServerPanel headingLevel={3} title="Resources and prompts" description="Select objects explicitly. Tool selections do not grant resource or prompt access." icon={BookOpen} footer="Choices use stored discovery. Refresh the upstream to discover changes."><div className="space-y-5 p-5">
+ return <ServerPanel headingLevel={3} title="Resources and prompts" description="Select objects explicitly. Tool selections do not grant resource or prompt access." icon={BookOpen} footer="Choices use stored discovery. Refresh the upstream to discover changes."><div className="layout-stack panel-body">
   {loading && <LoadingState label="Loading catalogs…" compact/>}
   {error && <ErrorBox title="Some catalogs could not be loaded" onRetry={()=>setAttempt(a=>a+1)} retryLabel="Retry catalogs" busy={loading}>{error}</ErrorBox>}
   {!loading && !error && choices.length===0 && <EmptyState title="No resources or prompts discovered." description="Refresh discovery from the upstream configuration to find available catalog objects." compact/>}
@@ -59,7 +59,7 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
    const discovered=choices.find(c=>identity(c)===identity(selection))
    const saved=savedCatalog?.find(c=>identity(c)===identity(selection))
    const patch=(p:Partial<CatalogSelection>)=>onChange(value.map((s,i)=>i===index?{...s,...p}:s))
-   return <div key={identity(selection)} className="rounded-xl border border-line bg-canvas p-4">
+   return <div key={identity(selection)} className="surface-inset p-4">
     <div className="break-all text-xs font-medium">{selection.upstream} · {selection.kind} · {selection.name}</div>
     {!discovered && catalogs[selection.upstream] && <p className="text-xs text-amber-700">Missing from upstream discovery; this selection is not exposed.</p>}
     {selection.description && discovered && <p className="text-xs text-ink-muted">Current upstream description: {discovered.description}</p>}
@@ -68,6 +68,6 @@ export default function CatalogPicker({upstreams, value, savedCatalog, onChange}
     <FormField name={`catalog.${index}.description`} label="Description override" className="mt-2" hint="Optional. Leave empty to keep the upstream description."><input aria-label={`Description ${selection.name}`} className={input} value={selection.description??''} onChange={e=>patch({description:e.target.value})}/></FormField>
     <button className={btn+' action-danger-outline mt-2'} onClick={()=>onChange(value.filter((_,i)=>i!==index))}>Remove selection</button>
    </div>
-  })}{value.length>selectionLimit&&<LoadMore shown={Math.min(selectionLimit,value.length)} total={value.length} noun="objects" label="Show 50 more selected objects" onLoad={()=>setSelectionLimit(n=>n+50)}/>}{!value.length&&<p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-ink-muted">Choose a discovered object to expose it to clients.</p>}</div></div></div>
+  })}{value.length>selectionLimit&&<LoadMore shown={Math.min(selectionLimit,value.length)} total={value.length} noun="objects" label="Show 50 more selected objects" onLoad={()=>setSelectionLimit(n=>n+50)}/>}{!value.length&&<p className="rounded-lg border border-dashed border-line panel-body text-center text-xs text-ink-muted">Choose a discovered object to expose it to clients.</p>}</div></div></div>
  </ServerPanel>
 }

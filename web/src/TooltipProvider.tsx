@@ -115,5 +115,5 @@ export default function TooltipProvider({ children }: { children: ReactNode }) {
     }
   }, [tip, id])
   const host = tip?.anchor.closest('dialog[open]') ?? document.body
-  return <>{children}{tip && createPortal(<div ref={popup} id={id} role="tooltip" popover="manual" style={{ visibility: 'hidden' }} className="fixed inset-auto z-[100] m-0 max-h-[min(20rem,calc(100dvh-1.5rem))] w-max max-w-[min(20rem,calc(100vw-1.5rem))] overflow-auto rounded-xl border border-slate-700 bg-ink px-3.5 py-3 text-xs leading-relaxed text-white shadow-lg"><div className="flex items-start gap-2"><Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-accent-100"/><p className="min-w-0 whitespace-pre-wrap break-words">{tip.content}</p></div></div>, host)}</>
+  return <>{children}{tip && createPortal(<div ref={popup} id={id} role="tooltip" popover="manual" style={{ visibility: 'hidden' }} className="motion-popup fixed inset-auto z-[100] m-0 max-h-[min(20rem,calc(100dvh-1.5rem))] w-max max-w-[min(20rem,calc(100vw-1.5rem))] overflow-auto rounded-xl border border-slate-700 bg-ink px-3.5 py-3 text-xs leading-relaxed text-white shadow-popup"><div className="flex items-start gap-2"><Info aria-hidden="true" className="mt-0.5 icon-inline shrink-0 text-accent-100"/><p className="min-w-0 whitespace-pre-wrap break-words">{tip.content}</p></div></div>, host)}</>
 }

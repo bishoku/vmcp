@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, Info, AlertTriangle, X } from 'lucide-react'
+import { useMotionDismiss } from './useMotionDismiss'
 import { NotificationContext, type Notification } from './notifications'
 
 type Entry = Notification & { id: number }
 function Toast({ notice, dismiss }: { notice: Entry; dismiss: (id: number) => void }) {
+  const ref=useRef<HTMLDivElement>(null)
+  const close=useMotionDismiss(ref,()=>dismiss(notice.id))
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [hidden, setHidden] = useState(document.hidden)
@@ -17,16 +20,16 @@ function Toast({ notice, dismiss }: { notice: Entry; dismiss: (id: number) => vo
   useEffect(() => {
     if (hovered || focused || hidden || notice.duration === 0) return
     const start = Date.now()
-    const timer = setTimeout(() => dismiss(notice.id), remaining.current)
+    const timer = setTimeout(close, remaining.current)
     return () => { clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (Date.now() - start)) }
-  }, [hovered, focused, hidden, notice.id, notice.duration, dismiss])
+  }, [hovered, focused, hidden, notice.id, notice.duration, close])
   const tone = notice.tone ?? 'success'
   const Icon = tone === 'warning' ? AlertTriangle : tone === 'info' ? Info : Check
   const color = tone === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-700' : tone === 'info' ? 'border-accent-100 bg-accent-50 text-accent-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  return <div data-testid="toast" className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-ink shadow-lg" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocusCapture={() => setFocused(true)} onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false) }}>
-    <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl border ${color}`}><Icon className="size-4"/></span>
+  return <div ref={ref} data-testid="toast" className="motion-popup pointer-events-auto flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-ink shadow-lg" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocusCapture={() => setFocused(true)} onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false) }}>
+    <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl border ${color}`}><Icon aria-hidden="true" className="icon-control"/></span>
     <div role="status" aria-atomic="true" className="min-w-0 flex-1 pt-0.5"><p className="break-words text-sm font-semibold tracking-tight">{notice.title}</p>{notice.description && <p className="mt-1 break-words text-xs leading-relaxed text-ink-muted">{notice.description}</p>}</div>
-    <button type="button" aria-label={`Dismiss notification: ${notice.title}`} className="action-button action-ghost action-icon shrink-0" onClick={() => dismiss(notice.id)}><X aria-hidden="true" className="size-4"/></button>
+    <button type="button" aria-label={`Dismiss notification: ${notice.title}`} className="action-button action-ghost action-icon shrink-0" onClick={close}><X aria-hidden="true" className="icon-control"/></button>
   </div>
 }
 

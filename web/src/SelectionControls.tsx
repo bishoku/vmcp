@@ -27,7 +27,7 @@ function Choice({ label, description, end, field, error, variant = 'card', indet
       <span className="min-w-0 flex-1"><span id={`${id}-label`} className="block text-xs font-medium text-ink">{label}</span>{description && <span id={`${id}-description`} className="mt-1.5 block text-xs font-normal leading-relaxed text-ink-muted">{description}</span>}</span>
       {end && <span className="shrink-0">{end}</span>}
     </label>
-    {errors.length > 0 && <div id={`${id}-error`} className="flex items-start gap-1.5 px-3 pb-3 text-xs leading-relaxed text-red-700"><AlertCircle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0"/><div>{errors.map((issue, i) => <p key={i}>{issue.message}</p>)}</div></div>}
+    {errors.length > 0 && <div id={`${id}-error`} className="flex items-start gap-1.5 px-3 pb-3 text-xs leading-relaxed text-red-700"><AlertCircle aria-hidden="true" className="mt-0.5 icon-inline shrink-0"/><div>{errors.map((issue, i) => <p key={i}>{issue.message}</p>)}</div></div>}
   </div>
 }
 export function Checkbox(props: ChoiceProps) { return <Choice {...props} kind="checkbox"/> }
@@ -38,7 +38,7 @@ export function RadioGroup({ label, value, onChange, options, disabled = false, 
   return <fieldset role="radiogroup" aria-label={label} aria-invalid={error ? true : undefined} aria-describedby={[description ? `${id}-description` : '', error ? `${id}-error` : ''].filter(Boolean).join(' ') || undefined} disabled={disabled} className={`m-0 min-w-0 border-0 p-0 ${className}`}>
     {description && <p id={`${id}-description`} className="mb-2 text-xs leading-relaxed text-ink-muted">{description}</p>}
     <div className="choice-radio-group">{options.map(option => <label key={option.value} className="choice-radio-label"><input className="choice-input choice-radio" type="radio" name={id} value={option.value} checked={option.value === value} disabled={option.disabled} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-error` : undefined} onChange={event => { if (event.target.checked) onChange(option.value) }}/><span className="min-w-0 break-words text-xs font-medium">{option.label}</span></label>)}</div>
-    {error && <p id={`${id}-error`} className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-red-700"><AlertCircle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0"/>{error}</p>}
+    {error && <p id={`${id}-error`} className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-red-700"><AlertCircle aria-hidden="true" className="mt-0.5 icon-inline shrink-0"/>{error}</p>}
   </fieldset>
 }
 

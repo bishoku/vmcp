@@ -168,11 +168,11 @@ export default function UpstreamDetailForm({
     }
   })
 
-  return <FormScope validation={validation}><div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
-    <header className="space-y-5">
-      <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight className="size-3"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
-      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 className="size-6"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
-      <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil className="size-3.5"/>Edit upstream</button>}</div></div>
+  return <FormScope validation={validation}><div className="page-layout">
+    <header className="layout-stack">
+      <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight aria-hidden="true" className="icon-inline"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
+      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 aria-hidden="true" className="icon-hero"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
+      <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
     {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
@@ -189,9 +189,9 @@ export default function UpstreamDetailForm({
       <SummaryTile label="Discovered tools" value={upstream?.toolCount ?? '—'} detail={upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
       <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
     </div>
-    <div className="grid items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
+    <div className="grid items-start layout-grid xl:grid-cols-[1.4fr_1fr]">
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
-        <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 p-5 m-0">
+        <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 panel-body m-0">
           {!upstream && (
             <FormField name="slug" label="Slug" required hint="Stable identifier: lowercase letters, numbers and hyphens, up to 63 characters."><input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" /></FormField>
           )}
@@ -206,27 +206,27 @@ export default function UpstreamDetailForm({
 
         </fieldset>
       </ServerPanel>
-      <div className="min-w-0 space-y-6">
+      <div className="min-w-0 layout-stack">
         <ServerPanel title="Connection verification" description="Explicit tests for saved or edited settings" icon={PlugZap} footer="A test checks the gateway-to-upstream connection. It does not verify a client’s access to virtual servers.">
-          <div className="space-y-4 p-5">
+          <div className="space-y-4 panel-body">
             {upstream && <div><Button loading={busy} className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
             {editing && <div className={upstream?'border-t border-line pt-4':''}><Button loading={busy} className={btn} disabled={!editable || busy || !url} onClick={runTest}>Test edited connection</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
             {!canEdit && <p className="text-xs text-ink-muted">Connection tests require editor access.</p>}
             {busy && <p className="text-xs text-ink-muted">An operation is in progress…</p>}
-            {test && <div role="status" className={clsx('flex items-start gap-2 rounded-lg border p-3 text-xs leading-relaxed',test.ok?'border-green-200 bg-green-50 text-green-700':'border-red-200 bg-red-50 text-red-700')}>{test.ok?<CheckCircle2 className="mt-0.5 size-4 shrink-0"/>:<XCircle className="mt-0.5 size-4 shrink-0"/>}<span>{test.ok?`Connected${test.toolCount!=null?` · ${test.toolCount} tools`:''}`:test.error ?? 'Connection failed'}</span></div>}
+            {test && <div role="status" className={clsx('flex items-start gap-2 rounded-lg border p-3 text-xs leading-relaxed',test.ok?'border-green-200 bg-green-50 text-green-700':'border-red-200 bg-red-50 text-red-700')}>{test.ok?<CheckCircle2 aria-hidden="true" className="mt-0.5 icon-control shrink-0"/>:<XCircle aria-hidden="true" className="mt-0.5 icon-control shrink-0"/>}<span>{test.ok?`Connected${test.toolCount!=null?` · ${test.toolCount} tools`:''}`:test.error ?? 'Connection failed'}</span></div>}
           </div>
         </ServerPanel>
         {upstream && <ServerPanel title="Recorded node health" description="Last received health and discovery observations" icon={Activity} footer="Stored observations may be stale. Use an explicit connection test to check connectivity.">
-          <dl className="divide-y divide-line px-5"><DetailRow label="Health"><Pill status={upstream.enabled?upstream.health?.state ?? 'unknown':'disabled'}/></DetailRow><DetailRow label="Last discovery">{fmt(upstream.lastRefreshAt)}</DetailRow></dl>
+          <dl className="divide-y divide-line panel-inset"><DetailRow label="Health"><Pill status={upstream.enabled?upstream.health?.state ?? 'unknown':'disabled'}/></DetailRow><DetailRow label="Last discovery">{fmt(upstream.lastRefreshAt)}</DetailRow></dl>
           {upstream.lastRefreshError && <p className="mx-5 mb-4 break-words rounded-lg bg-red-50 p-3 text-xs text-red-700">{upstream.lastRefreshError}</p>}
-          <div className="divide-y divide-line border-t border-line">{(upstream.health?.nodes ?? []).map(node=><details key={node.node} className="px-5 py-4"><summary className="cursor-pointer text-xs"><span className="font-medium">{node.node}</span><span className="ml-2 text-ink-muted">{node.state} · {node.latencyMs} ms</span></summary><dl className="mt-2 divide-y divide-line"><DetailRow label="Checked">{fmt(node.checkedAt)}</DetailRow><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="URL"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error && <p className="mt-2 break-words text-xs text-red-700">{node.error}</p>}</details>)}{!upstream.health?.nodes?.length && <EmptyState title="No node health observations available." compact/>}</div>
+          <div className="divide-y divide-line border-t border-line">{(upstream.health?.nodes ?? []).map(node=><details key={node.node} className="panel-inset py-4"><summary className="cursor-pointer text-xs"><span className="font-medium">{node.node}</span><span className="ml-2 text-ink-muted">{node.state} · {node.latencyMs} ms</span></summary><dl className="mt-2 divide-y divide-line"><DetailRow label="Checked">{fmt(node.checkedAt)}</DetailRow><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="URL"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error && <p className="mt-2 break-words text-xs text-red-700">{node.error}</p>}</details>)}{!upstream.health?.nodes?.length && <EmptyState title="No node health observations available." compact/>}</div>
         </ServerPanel>}
       </div>
     </div>
     <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
-    <div className="grid items-start gap-6 xl:grid-cols-2">
+    <div className="grid items-start layout-grid xl:grid-cols-2">
       <ServerPanel title="Transport security" description="Custom trust and mutual TLS settings" icon={ShieldCheck}>
-        <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
+        <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
           <>{!editing && !(caPem || serverName || clientCert) && <p className="mb-3 text-xs leading-relaxed text-ink-muted">Uses system trust. No custom CA, server name or client certificate is configured.</p>}<details className="min-w-0" open={!!(caPem || serverName || clientCert)}>
             <summary className="cursor-pointer text-sm font-medium">TLS (custom CA, server name, mTLS)</summary>
             <div className="mt-3 space-y-3">
@@ -259,7 +259,7 @@ export default function UpstreamDetailForm({
         </fieldset>
       </ServerPanel>
       <ServerPanel title="OAuth authentication" description="Token endpoint and client credentials" icon={Fingerprint}>
-        <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
+        <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
           <details className="min-w-0" open={authType === 'oauth_client_credentials'}>
             <summary className="cursor-pointer text-sm font-medium">OAuth 2.0 Client Credentials</summary>
             <div className="mt-3 space-y-3">
@@ -309,7 +309,7 @@ export default function UpstreamDetailForm({
     </div>
     <ServerPanel title="Request headers" description="Stored values remain masked; only explicit changes are sent" icon={Code2} footer="Header values are write-only. Replacing or removing a header takes effect after Save.">
       {editing ? (
-      <fieldset disabled={!editable || busy} className="min-w-0 border-0 p-5 m-0">
+      <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
           <div>
 
             <div className="space-y-2">
@@ -317,7 +317,7 @@ export default function UpstreamDetailForm({
                 .filter((h) => !removed.includes(h))
                 .map((h) => (
                   <div key={h} className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate rounded-lg bg-canvas px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate surface-inset px-3 py-2">
                       {h} <span className="text-ink-muted">{replaced[h] !== undefined ? '(new value)' : '••••••••'}</span>
                     </span>
                     <button
@@ -329,7 +329,7 @@ export default function UpstreamDetailForm({
                       Replace
                     </button>
                     <button className={`${btn} action-danger-outline action-icon`} aria-label="Remove header" onClick={() => setRemoved((r) => [...r, h])}>
-                      <X className="size-3.5" />
+                      <X aria-hidden="true" className="icon-inline" />
                     </button>
                   </div>
                 ))}
@@ -344,10 +344,10 @@ export default function UpstreamDetailForm({
           </div>
 
       </fieldset>
-      ) : <div className="divide-y divide-line px-5">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
+      ) : <div className="divide-y divide-line panel-inset">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
     </ServerPanel>
-    {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="space-y-5"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
-    {editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 p-5 text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
+    {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="layout-stack"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
+    {editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
     {upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
   </div></FormScope>
 }
