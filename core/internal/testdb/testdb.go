@@ -18,7 +18,7 @@ import (
 // returns its URL. The test is skipped when the variable is not set. The database
 // is dropped when the test finishes (after any pool opened by the test is closed,
 // as cleanups run last-in-first-out).
-func New(t *testing.T) string {
+func New(t testing.TB) string {
 	t.Helper()
 	base := os.Getenv("VMCP_TEST_DATABASE_URL")
 	if base == "" {

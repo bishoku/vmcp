@@ -285,6 +285,9 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	if err := loadVirtualCatalog(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}
+	for slug, vs := range snap.VirtualServers {
+		snap.VirtualServers[slug] = vs.WithPreparedMetadata()
+	}
 	if err := loadAgentKeys(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}

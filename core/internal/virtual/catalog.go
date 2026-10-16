@@ -11,7 +11,6 @@ import (
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/bishoku/vmcp/core/internal/upstream"
-	"github.com/yosida95/uritemplate/v3"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,31 +18,7 @@ import (
 )
 
 func catalogRoute(vs config.VirtualServer, kind, exposed string, expand bool) (config.VirtualCatalogObject, string, bool) {
-	if len(exposed) > 8192 {
-		return config.VirtualCatalogObject{}, "", false
-	}
-	for _, o := range vs.Catalog {
-		if o.Kind == kind && o.Exposed == exposed {
-			return o, o.Original, true
-		}
-	}
-	if expand && kind == "resource" {
-		for _, o := range vs.Catalog {
-			if o.Kind != "template" {
-				continue
-			}
-			prefix := strings.TrimSuffix(o.Exposed, o.Original)
-			if !strings.HasPrefix(exposed, prefix) {
-				continue
-			}
-			original := strings.TrimPrefix(exposed, prefix)
-			tpl, err := uritemplate.New(o.Original)
-			if err == nil && tpl.Regexp().MatchString(original) {
-				return o, original, true
-			}
-		}
-	}
-	return config.VirtualCatalogObject{}, "", false
+	return vs.CatalogRoute(kind, exposed, expand)
 }
 func (h *Handler) listCatalog(w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, revision int64, kind, field string) {
 	if (kind == "prompt" && vs.CatalogCapabilities().Prompts == nil) || (kind != "prompt" && vs.CatalogCapabilities().Resources == nil) {
@@ -71,29 +46,10 @@ func (h *Handler) listCatalog(w http.ResponseWriter, msg *mcp.Message, vs config
 			return
 		}
 	}
-	objects := vs.CatalogList(kind)
-	if vs.PII != nil {
-		for i, o := range objects {
-			raw, _ := json.Marshal(o)
-			masked, _, err := vs.PII.MaskJSON(raw)
-			if err != nil {
-				writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "catalog metadata cannot be inspected"))
-				return
-			}
-			var safe mcp.CatalogObject
-			if json.Unmarshal(masked, &safe) != nil {
-				return
-			}
-			key := "uri"
-			if kind == "template" {
-				key = "uriTemplate"
-			}
-			if kind == "prompt" {
-				key = "name"
-			}
-			safe[key] = o[key]
-			objects[i] = safe
-		}
+	objects, err := vs.ListedCatalog(kind)
+	if err != nil {
+		writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "catalog metadata cannot be inspected"))
+		return
 	}
 	if offset > len(objects) {
 		writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid cursor"))
@@ -131,25 +87,10 @@ func (h *Handler) listTools(w http.ResponseWriter, msg *mcp.Message, vs config.V
 		return
 	}
 	end := min(offset+200, len(vs.Tools))
-	tools := make([]mcp.Tool, 0, end-offset)
-	for _, vt := range vs.Tools[offset:end] {
-		tool := vt.Tool
-		if vs.PII != nil {
-			raw, _ := json.Marshal(tool)
-			masked, _, err := vs.PII.MaskJSON(raw)
-			if err != nil {
-				writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "tool metadata cannot be inspected"))
-				return
-			}
-			var safe mcp.Tool
-			if json.Unmarshal(masked, &safe) != nil {
-				writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "tool metadata cannot be inspected"))
-				return
-			}
-			safe.Name = vt.Tool.Name
-			tool = safe
-		}
-		tools = append(tools, tool)
+	tools, err := vs.ListedTools(offset, end)
+	if err != nil {
+		writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "tool metadata cannot be inspected"))
+		return
 	}
 	res := mcp.ListToolsResult{Tools: tools}
 	if end < len(vs.Tools) {

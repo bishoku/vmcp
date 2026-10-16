@@ -38,6 +38,18 @@ func (v VirtualServer) CatalogList(kind string) []mcp.CatalogObject {
 	return out
 }
 func (v VirtualServer) CatalogCapabilities() mcp.ServerCapabilities {
+	if v.prepared != nil {
+		caps := v.prepared.capabilities
+		if caps.Resources != nil {
+			copy := *caps.Resources
+			caps.Resources = &copy
+		}
+		if caps.Prompts != nil {
+			copy := *caps.Prompts
+			caps.Prompts = &copy
+		}
+		return caps
+	}
 	caps := mcp.ServerCapabilities{}
 	for _, o := range v.Catalog {
 		switch o.Kind {

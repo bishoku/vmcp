@@ -40,14 +40,14 @@ type env struct {
 	pool   *pgxpool.Pool
 }
 
-func (e *env) exec(t *testing.T, q string, args ...any) {
+func (e *env) exec(t testing.TB, q string, args ...any) {
 	t.Helper()
 	if _, err := e.syncer.Pool.Exec(e.ctx, q, args...); err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}
 }
 
-func setup(t *testing.T) *env {
+func setup(t testing.TB) *env {
 	t.Helper()
 	url := testdb.New(t)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -96,6 +96,7 @@ type VirtualServer struct {
 	// Blocked maps exposed names of tools hidden by policy to the reason.
 	Blocked   map[string]string
 	toolIndex map[string]int
+	prepared  *preparedCatalog
 }
 
 // WithToolIndex returns a copy of v with an O(1) tool lookup index built from Tools.

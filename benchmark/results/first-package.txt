@@ -1,0 +1,134 @@
+First optimization package — local synthetic measurements, 2026-10-16
+Go 1.27.2; Darwin arm64; Apple M5 Max; local Docker PostgreSQL 17.
+Three repetitions. Config/audit/preparation: 300ms. Before/after metrics and calls: 1s.
+No race instrumentation. These are not production or multi-node capacity claims.
+
+Summary (median of three):
+  64-event audit transaction: sequential 20.007 ms; pipeline 5.578 ms.
+  10k-resource exact lookup: linear 23.767 us; indexed 16.50 ns.
+  Masked 200-tool page: fallback 1.113 ms / ~969 KB; prepared 2.615 us / 32 KB.
+  2k-series continuous-scrape contention: before 160.966 us/op; after 470.7 ns/op.
+  Calls, larger inventory: p95 before 10.97 ms; after 7.931 ms.
+  Calls, larger inventory: p99 before 12.08 ms; after 9.077 ms.
+  SQL statements remain ~4.5/call; improvement is batching/wire/CPU cost.
+  Metadata prep (10k tools + 10k resources): ~80 ms, ~72 MB allocated, ~11.3 MB retained.
+
+Audit pipelining allocates more: ~167 KB versus ~40 KB per 64-event batch.
+Catalog metadata cache-hit nanoseconds exclude HTTP serialization; do not interpret as API latency.
+
+## catalog and audit: sequential reference / prepared or pipelined
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/config
+cpu: Apple M5 Max
+BenchmarkPreparedCatalog/objects=100/prepared=false/lookup-18  	 1359079	       263.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/lookup-18  	 1417958	       257.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/lookup-18  	 1352908	       265.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/metadata-18         	    1281	    287568 ns/op	  219268 B/op	    5506 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/metadata-18         	    1288	    298697 ns/op	  219489 B/op	    5506 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/metadata-18         	    1101	    288568 ns/op	  219172 B/op	    5506 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/tool-page-18        	     592	    601976 ns/op	  489712 B/op	    9507 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/tool-page-18        	     585	    598648 ns/op	  489215 B/op	    9507 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=false/tool-page-18        	     596	    592655 ns/op	  489623 B/op	    9507 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/lookup-18            	19707488	        18.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/lookup-18            	20134321	        18.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/lookup-18            	19832707	        18.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/metadata-18          	44785404	         8.215 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/metadata-18          	44052415	         8.231 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/metadata-18          	41137567	         8.368 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/tool-page-18         	  139603	      2611 ns/op	   16384 B/op	       1 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/tool-page-18         	  118680	      2600 ns/op	   16384 B/op	       1 allocs/op
+BenchmarkPreparedCatalog/objects=100/prepared=true/tool-page-18         	  149709	      2180 ns/op	   16384 B/op	       1 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/lookup-18         	   15181	     23751 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/lookup-18         	   15108	     23830 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/lookup-18         	   15088	     23767 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/metadata-18       	      12	  27374812 ns/op	22017757 B/op	  550230 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/metadata-18       	      12	  27295844 ns/op	22041495 B/op	  550239 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/metadata-18       	      13	  28825846 ns/op	22041473 B/op	  550240 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/tool-page-18      	     306	   1156879 ns/op	  968533 B/op	   19006 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/tool-page-18      	     320	   1113392 ns/op	  969663 B/op	   19007 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=false/tool-page-18      	     332	   1112357 ns/op	  967827 B/op	   19005 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/lookup-18          	21296996	        16.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/lookup-18          	21641389	        16.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/lookup-18          	21660757	        16.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/metadata-18        	45187579	         7.958 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/metadata-18        	45775318	         7.815 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/metadata-18        	45734611	         7.826 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/tool-page-18       	  139725	      2548 ns/op	   32768 B/op	       1 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/tool-page-18       	  140847	      2640 ns/op	   32768 B/op	       1 allocs/op
+BenchmarkPreparedCatalog/objects=10000/prepared=true/tool-page-18       	  137548	      2615 ns/op	   32768 B/op	       1 allocs/op
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/audit
+cpu: Apple M5 Max
+BenchmarkAuditBatch/events=8/pipeline=false-18         	      98	   4082487 ns/op	    6084 B/op	      95 allocs/op
+BenchmarkAuditBatch/events=8/pipeline=false-18         	     103	   3611105 ns/op	    5104 B/op	      93 allocs/op
+BenchmarkAuditBatch/events=8/pipeline=false-18         	      88	   3572991 ns/op	    5080 B/op	      93 allocs/op
+BenchmarkAuditBatch/events=8/pipeline=true-18          	     252	   1446800 ns/op	   14955 B/op	     164 allocs/op
+BenchmarkAuditBatch/events=8/pipeline=true-18          	     248	   1443605 ns/op	   14955 B/op	     164 allocs/op
+BenchmarkAuditBatch/events=8/pipeline=true-18          	     243	   1478162 ns/op	   14956 B/op	     164 allocs/op
+BenchmarkAuditBatch/events=64/pipeline=false-18        	      19	  20007197 ns/op	   40034 B/op	     709 allocs/op
+BenchmarkAuditBatch/events=64/pipeline=false-18        	      16	  21192052 ns/op	   40023 B/op	     709 allocs/op
+BenchmarkAuditBatch/events=64/pipeline=false-18        	      16	  19701768 ns/op	   40024 B/op	     709 allocs/op
+BenchmarkAuditBatch/events=64/pipeline=true-18         	      74	   5578190 ns/op	  166975 B/op	    1183 allocs/op
+BenchmarkAuditBatch/events=64/pipeline=true-18         	      66	   6419831 ns/op	  166977 B/op	    1183 allocs/op
+BenchmarkAuditBatch/events=64/pipeline=true-18         	      64	   5181770 ns/op	  166938 B/op	    1183 allocs/op
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/telemetry
+cpu: Apple M5 Max
+BenchmarkOperationsWithScrapes-18    	  638632	       481.0 ns/op	    1784 B/op	       8 allocs/op
+BenchmarkOperationsWithScrapes-18    	  735540	       500.6 ns/op	    1796 B/op	       8 allocs/op
+BenchmarkOperationsWithScrapes-18    	  675465	       478.9 ns/op	    1820 B/op	       9 allocs/op
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/e2e
+cpu: Apple M5 Max
+
+## before c12a4e5: identical metrics and call harness
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/telemetry
+cpu: Apple M5 Max
+BenchmarkOperationsWithScrapes-18    	    7300	    148090 ns/op	  727456 B/op	    2939 allocs/op
+BenchmarkOperationsWithScrapes-18    	    7638	    160966 ns/op	  833205 B/op	    3366 allocs/op
+BenchmarkOperationsWithScrapes-18    	    7417	    170124 ns/op	  880737 B/op	    3558 allocs/op
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/e2e
+cpu: Apple M5 Max
+BenchmarkPersistentToolCalls/upstreams=1/servers=1/tools-per-server=100-18 1020	   1111181 ns/op	         1.503 db-acquires/call	        10.68 p95-ms	        11.63 p99-ms	         4.507 sql/call	   39942 B/op	     523 allocs/op
+BenchmarkPersistentToolCalls/upstreams=1/servers=1/tools-per-server=100-18 987	   1135044 ns/op	         1.504 db-acquires/call	        11.05 p95-ms	        12.35 p99-ms	         4.509 sql/call	   40075 B/op	     523 allocs/op
+BenchmarkPersistentToolCalls/upstreams=1/servers=1/tools-per-server=100-18 1089	   1124506 ns/op	         1.502 db-acquires/call	        11.07 p95-ms	        13.34 p99-ms	         4.505 sql/call	   39320 B/op	     522 allocs/op
+BenchmarkPersistentToolCalls/upstreams=100/servers=100/tools-per-server=100-18 1012	   1203518 ns/op	         1.503 db-acquires/call	        13.15 p95-ms	        16.42 p99-ms	         4.507 sql/call	   38912 B/op	     521 allocs/op
+BenchmarkPersistentToolCalls/upstreams=100/servers=100/tools-per-server=100-18 1060	   1123339 ns/op	         1.503 db-acquires/call	        10.75 p95-ms	        11.54 p99-ms	         4.507 sql/call	   38510 B/op	     521 allocs/op
+BenchmarkPersistentToolCalls/upstreams=100/servers=100/tools-per-server=100-18 1006	   1139969 ns/op	         1.503 db-acquires/call	        10.97 p95-ms	        12.08 p99-ms	         4.507 sql/call	   38780 B/op	     521 allocs/op
+
+## after: metrics and persistent calls
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/telemetry
+cpu: Apple M5 Max
+BenchmarkOperationsWithScrapes-18    	 2449124	       473.8 ns/op	    1786 B/op	       8 allocs/op
+BenchmarkOperationsWithScrapes-18    	 2525869	       467.2 ns/op	    1786 B/op	       8 allocs/op
+BenchmarkOperationsWithScrapes-18    	 2564629	       470.7 ns/op	    1777 B/op	       8 allocs/op
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/e2e
+cpu: Apple M5 Max
+BenchmarkPersistentToolCalls/upstreams=1/servers=1/tools-per-server=100-18 1401	    763791 ns/op	         1.502 db-acquires/call	         8.000 max-inflight	         8.093 p95-ms	         9.387 p99-ms	         4.506 sql/call	   46060 B/op	     536 allocs/op
+BenchmarkPersistentToolCalls/upstreams=1/servers=1/tools-per-server=100-18 1436	    788048 ns/op	         1.502 db-acquires/call	         8.000 max-inflight	         8.636 p95-ms	         9.688 p99-ms	         4.505 sql/call	   43330 B/op	     533 allocs/op
+BenchmarkPersistentToolCalls/upstreams=1/servers=1/tools-per-server=100-18 1444	    748560 ns/op	         1.502 db-acquires/call	         8.000 max-inflight	         7.663 p95-ms	         8.695 p99-ms	         4.505 sql/call	   41564 B/op	     535 allocs/op
+BenchmarkPersistentToolCalls/upstreams=100/servers=100/tools-per-server=100-18 1468	    773005 ns/op	         1.502 db-acquires/call	         8.000 max-inflight	         8.291 p95-ms	         9.526 p99-ms	         4.505 sql/call	   42012 B/op	     531 allocs/op
+BenchmarkPersistentToolCalls/upstreams=100/servers=100/tools-per-server=100-18 1645	    772089 ns/op	         1.502 db-acquires/call	         8.000 max-inflight	         7.926 p95-ms	         8.651 p99-ms	         4.503 sql/call	   41062 B/op	     534 allocs/op
+BenchmarkPersistentToolCalls/upstreams=100/servers=100/tools-per-server=100-18 1548	    753577 ns/op	         1.502 db-acquires/call	         8.000 max-inflight	         7.931 p95-ms	         9.077 p99-ms	         4.505 sql/call	   41662 B/op	     532 allocs/op
+
+## one-time metadata preparation
+goos: darwin
+goarch: arm64
+pkg: github.com/bishoku/vmcp/core/internal/config
+cpu: Apple M5 Max
+BenchmarkPrepareSnapshotMetadata-18    	       4	  79267010 ns/op	  11292344 retained-bytes/snapshot	72143564 B/op	 1500795 allocs/op
+BenchmarkPrepareSnapshotMetadata-18    	       4	  80340375 ns/op	  11274856 retained-bytes/snapshot	72223718 B/op	 1500864 allocs/op
+BenchmarkPrepareSnapshotMetadata-18    	       4	  86654552 ns/op	  11275456 retained-bytes/snapshot	72192816 B/op	 1500817 allocs/op
+

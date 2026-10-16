@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -127,16 +128,25 @@ type Sink interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-func Insert(ctx context.Context, q Sink, e Event) error {
-	e, err := Prepare(e)
-	if err != nil {
-		return err
-	}
-	_, err = q.Exec(ctx, `INSERT INTO audit_events
+const insertSQL = `INSERT INTO audit_events
  (event_id,operation_id,request_id,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,
  ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions)
  VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
- ON CONFLICT(event_id) DO NOTHING`, e.EventID, nullable(e.OperationID), nullable(e.RequestID), e.TraceID, e.SchemaVersion, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.Revision, e.Stage, e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject), nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions)
+ ON CONFLICT(event_id) DO NOTHING`
+
+func insertArgs(e Event) ([]any, error) {
+	e, err := Prepare(e)
+	if err != nil {
+		return nil, err
+	}
+	return []any{e.EventID, nullable(e.OperationID), nullable(e.RequestID), e.TraceID, e.SchemaVersion, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.Revision, e.Stage, e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject), nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions}, nil
+}
+func Insert(ctx context.Context, q Sink, e Event) error {
+	args, err := insertArgs(e)
+	if err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, insertSQL, args...)
 	return err
 }
 
@@ -284,6 +294,7 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 		return err
 	}
 	var fallbackRev int64
+	statements := &pgx.Batch{}
 	for _, r := range batch {
 		e := r.event
 		if e.Revision == 0 {
@@ -294,9 +305,21 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 			}
 			e.Revision = fallbackRev
 		}
-		if err = Insert(ctx, tx, e); err != nil {
+		args, err := insertArgs(e)
+		if err != nil {
 			return err
 		}
+		statements.Queue(insertSQL, args...)
+	}
+	results := tx.SendBatch(ctx, statements)
+	for range batch {
+		if _, err := results.Exec(); err != nil {
+			_ = results.Close()
+			return err
+		}
+	}
+	if err := results.Close(); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

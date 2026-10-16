@@ -1,0 +1,12 @@
+Validation, 2026-10-16
+
+Full isolated acceptance: PASS (632.53s).
+Race-instrumented functional smoke: PASS (30.43s).
+Go regression suite: go test -race -count=1 ./...; 428 test/subtest passes.
+PostgreSQL, Redis and pinned TypeScript SDK interoperability enabled.
+Three skips: optional Kafka and RabbitMQ external broker integration tests
+(services unavailable), plus the opt-in acceptance test in the normal suite
+(executed separately above).
+Go vet: PASS. Shell syntax and Python renderer compilation: PASS.
+Temporary acceptance Compose projects: removed. Child processes: terminated.
+Application production code: unchanged by this acceptance-test task.
