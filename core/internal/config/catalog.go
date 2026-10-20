@@ -7,6 +7,7 @@ import (
 )
 
 type VirtualCatalogObject struct {
+	Local      *LocalContent
 	UpstreamID string
 	Kind       string
 	Original   string

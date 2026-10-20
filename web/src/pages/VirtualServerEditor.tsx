@@ -1,3 +1,6 @@
+import GuidanceEditor from '../GuidanceEditor'
+import { normalizeGuidance } from '../guidance'
+import type { Guidance } from '../api'
 import DescriptionOverride from '../DescriptionOverride'
 import { filterItem } from '../search-filters'
 import { SearchField, ActiveFilters, ResultCount } from '../SearchControls'
@@ -52,6 +55,7 @@ const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
 interface Draft {
+ guidance:Guidance
  version?: number
   isNew: boolean
   slug: string
@@ -77,8 +81,9 @@ const DETECTORS = [
   ['us_ssn', 'US SSN'],
 ]
 
-const blank: Draft = { isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
+const blank: Draft = { guidance:normalizeGuidance(), isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
 const fromServer = (v: VirtualServer): Draft => ({
+ guidance:normalizeGuidance(v.guidance),
   isNew: false,
   version:v.version,
  slug: v.slug,
@@ -127,7 +132,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const [exposedLimit,setExposedLimit]=useState(50)
   const { busy, run } = useOperation()
 
-  const { load, loading, readError } = useSources(() => [source('Virtual servers', api.listVirtualServers, setServers),
+  const { load, loading, readError } = useSources(() => [source('Virtual servers', async signal => { const items=await api.listVirtualServers(signal); const selected=items.find(v=>v.slug===initialSelection); if(selected?.hasGuidance){const full=await api.getVirtualServer(selected.slug,signal); return items.map(v=>v.slug===full.slug?full:v)} return items }, setServers),
     {name:'Upstreams',load:async signal=>{
       const us=await api.listUpstreams(signal)
       if(signal.aborted)return
@@ -198,7 +203,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
           policy: cleanPolicy(draft),
           rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
           tools: draft.tools,
-   catalog:draft.catalog,clientFeatures:draft.clientFeatures,
+   catalog:draft.catalog,clientFeatures:draft.clientFeatures,guidance:draft.guidance,
         },draft.version)
         notify({title:'Virtual server saved',description:draft.name})
         setSaved(`Saved ${draft.name}. Refreshing the saved configuration.`)
@@ -226,7 +231,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
       {draft && <EditorSaveBar status={`${draft.isNew?'New unsaved draft':`Editing draft of saved version ${draft.version}`}. ${dirty?'Unsaved changes':'No unsaved changes'}. Changes apply only after Save.`} detail={dupes.size?'Resolve duplicate exposed tool names before saving.':!draft.name||!draft.slug?'Enter a name and identifier before saving.':'Review capability selections and access protection before saving.'} busy={busy} disabled={!canEdit||dupes.size>0} onSave={()=>void save()} onCancel={()=>{if(onCancel)onCancel();else setDraft(null)}}/>}
       <FormErrors validation={validation}/>
       {draft && <StaleRecovery message={problems.join('; ')} reload={async () => {
-        const latest = (await api.listVirtualServers()).find(item => item.slug === draft.slug)
+        const latest = await api.getVirtualServer(draft.slug)
         if (!latest) throw new Error('This item was deleted. Return to the list and refresh.')
         resetDraft(fromServer(latest)); validation.reset()
       }} />}
@@ -315,6 +320,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             </div>
 
  <CatalogPicker upstreams={upstreams} value={draft.catalog} savedCatalog={servers.find((s) => s.slug === draft.slug)?.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
+ <GuidanceEditor value={draft.guidance} tools={draft.tools} upstreams={upstreams} onChange={guidance=>setDraft({...draft,guidance})}/>
 
             <div className="grid items-start layout-grid xl:grid-cols-2"><ServerPanel title="Rate limit" description="Bound tool calls across client identities" icon={SlidersHorizontal}><div className="panel-body">
               <FormField name="rateLimitPerMinute" label="Rate limit" help="Server and credential limits can both apply. Empty means this configuration does not add a rate limit." hint="Optional. 1–1,000,000 calls per minute; empty means unlimited."><input type="number" min={1} placeholder="unlimited" className={`${input} max-w-40`} value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} /></FormField>

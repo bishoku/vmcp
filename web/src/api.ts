@@ -229,8 +229,15 @@ export interface AuditQuery {
 
 export interface ClientFeatures {sampling:boolean;roots:boolean;elicitation:boolean}
 export interface CatalogSelection {upstream:string;kind:'resource'|'template'|'prompt';name:string;alias?:string;description?:string}
-export interface Catalog {resources:Record<string,unknown>[];resourceTemplates:Record<string,unknown>[];prompts:Record<string,unknown>[];capabilities:Record<string,unknown>}
+export interface Catalog {instructions?:string;resources:Record<string,unknown>[];resourceTemplates:Record<string,unknown>[];prompts:Record<string,unknown>[];capabilities:Record<string,unknown>}
+export interface GuidanceResource {name:string;title:string;description:string;enabled:boolean;mimeType:'text/plain'|'text/markdown';text:string}
+export interface GuidanceArgument {name:string;description:string;required:boolean}
+export interface GuidanceMessage {role:'user'|'assistant';text:string}
+export interface GuidancePrompt {name:string;title:string;description:string;enabled:boolean;arguments:GuidanceArgument[];messages:GuidanceMessage[]}
+export interface Guidance {instructions:string;resources:GuidanceResource[];prompts:GuidancePrompt[];upstreamInstructions:string[];toolReferences:{key:string;upstream:string;tool:string}[]}
 export interface VirtualServer {
+ guidance?:Guidance
+ hasGuidance?:boolean
   version: number
   slug: string
   name: string
@@ -355,11 +362,12 @@ export const api = {
     request<RefreshResult>('POST', `/upstreams/${encodeURIComponent(slug)}/refresh-tools`),
   testConnection: (input: { url: string; transport: string; headers?: Record<string, string>; tls?: UpstreamTLSInput; auth?: UpstreamAuthInput }) =>
     request<ConnectionTestResult>('POST', '/connection-tests', input),
+  getVirtualServer: (slug:string,signal?:AbortSignal)=>request<VirtualServer>('GET',`/virtual-servers/${encodeURIComponent(slug)}`,undefined,undefined,signal),
   listVirtualServers: async (signal?: AbortSignal) =>
     listAll<VirtualServer>('/virtual-servers', signal),
   putVirtualServer: (
     slug: string,
-    v: { name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
+    v: { guidance?:Guidance; name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
     version?: number,
   ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v, version),
   deleteVirtualServer: (slug: string, version?: number) =>

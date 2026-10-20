@@ -67,6 +67,7 @@ func probe(ctx context.Context, url, transport string, headers map[string]string
 	if err != nil {
 		return nil, err
 	}
+	catalog.Instructions = init.Instructions
 	return &probeResult{Catalog: catalog,
 		Tools:           tools,
 		ServerName:      init.ServerInfo.Name,

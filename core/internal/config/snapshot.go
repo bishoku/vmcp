@@ -56,9 +56,10 @@ func (b Binding) Principal() string { return "oauth:" + b.Slug }
 
 // Upstream is a physical MCP server. Headers are already decrypted.
 type Upstream struct {
-	ID   string
-	Slug string
-	URL  string
+	Instructions string
+	ID           string
+	Slug         string
+	URL          string
 	// FallbackURLs are tried in order when URL does not answer.
 	FallbackURLs []string
 	Headers      map[string]string
@@ -83,6 +84,8 @@ func (u Upstream) WithPrecomputedFingerprint() Upstream {
 
 // VirtualServer is an agent-facing endpoint exposing a filtered set of upstream tools.
 type VirtualServer struct {
+	Guidance       Guidance
+	Instructions   string
 	Slug           string
 	Name           string
 	ClientFeatures ClientFeatures

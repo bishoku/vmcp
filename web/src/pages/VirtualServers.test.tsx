@@ -17,6 +17,7 @@ const server: VirtualServer = {
 }
 beforeEach(() => {
   vi.spyOn(api, 'listVirtualServers').mockResolvedValue([server])
+  vi.spyOn(api, 'getVirtualServer').mockResolvedValue(server)
   vi.spyOn(api, 'listUpstreams').mockResolvedValue([{ slug: 'alpha', name: 'Alpha' }] as Upstream[])
   vi.spyOn(api, 'listTools').mockResolvedValue([{ name: 'one' }, { name: 'two' }])
   vi.spyOn(api, 'listCatalog').mockResolvedValue({ resources: [], resourceTemplates: [], prompts: [], capabilities: {} })
@@ -87,7 +88,7 @@ test('failed stale save retains edits until explicit reload, then uses the lates
  fireEvent.click(screen.getByRole('button',{name:'Save'}))
  const reload=await screen.findByText('Reload latest and discard draft')
  expect((screen.getByLabelText('Alias for alpha/one') as HTMLInputElement).value).toBe('unsaved-alias')
- vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,version:8}])
+ vi.mocked(api.getVirtualServer).mockResolvedValue({...server,version:8})
  fireEvent.click(reload)
  await waitFor(()=>expect((screen.getByLabelText('Alias for alpha/one') as HTMLInputElement).value).toBe('first'))
  expect(confirm).toHaveBeenCalledTimes(1)
@@ -132,4 +133,14 @@ test('tool upstream and description filters keep exposed tools and their policie
  expect(screen.getByRole('button',{name:/one.*Find customer records/})).toBeTruthy()
  const [,body]=await save()
  expect(body.policy?.tools).toEqual({first:'deny',second:'read_only'})
+})
+
+test('loads full guidance before editing and preserves it on unrelated saves',async()=>{
+ const guidance={instructions:'Keep this guide',resources:[{name:'guide',title:'Guide',description:'',text:'Long reference material',mimeType:'text/plain' as const,enabled:true}],prompts:[],toolReferences:[],upstreamInstructions:[]}
+ vi.mocked(api.listVirtualServers).mockResolvedValue([{...server,hasGuidance:true}])
+ vi.mocked(api.getVirtualServer).mockResolvedValue({...server,hasGuidance:true,guidance})
+ await open()
+ expect(api.getVirtualServer).toHaveBeenCalledWith('demo',expect.any(AbortSignal))
+ const [,body]=await save()
+ expect(body.guidance).toEqual(guidance)
 })

@@ -122,7 +122,7 @@ func ValidateVirtualServerInput(in VirtualServerInput) []apierror.FieldError {
 		}
 		errs = append(errs, validateCapabilityDescription(p+"/description", s.Description)...)
 	}
-	return errs
+	return append(errs, validateGuidance(in)...)
 }
 
 // jsonEqual compares two JSON documents structurally.

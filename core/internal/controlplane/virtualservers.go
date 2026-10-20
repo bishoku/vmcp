@@ -11,6 +11,7 @@ import (
 )
 
 type virtualServerWire struct {
+	Guidance       *config.Guidance         `json:"guidance"`
 	Slug           string                   `json:"slug"`
 	Name           *string                  `json:"name"`
 	Description    *string                  `json:"description"`
@@ -25,7 +26,7 @@ type virtualServerWire struct {
 }
 
 func (w *virtualServerWire) input() (store.VirtualServerInput, []apierror.FieldError) {
-	in := store.VirtualServerInput{Enabled: true, AuthRequired: true, Tools: w.Tools, Catalog: w.Catalog}
+	in := store.VirtualServerInput{Guidance: w.Guidance, Enabled: true, AuthRequired: true, Tools: w.Tools, Catalog: w.Catalog}
 	if w.ClientFeatures != nil {
 		in.ClientFeatures = *w.ClientFeatures
 	}
@@ -55,6 +56,7 @@ func (w *virtualServerWire) input() (store.VirtualServerInput, []apierror.FieldE
 }
 
 type virtualServerPatchWire struct {
+	Guidance       *config.GuidancePatch     `json:"guidance"`
 	Name           *string                   `json:"name"`
 	Description    *string                   `json:"description"`
 	Enabled        *bool                     `json:"enabled"`
@@ -75,6 +77,9 @@ func (s *Server) listVirtualServers(w http.ResponseWriter, r *http.Request) erro
 	items, more, err := s.Store.Reader().ListVirtualServers(r.Context(), after, limit, enabled)
 	if err != nil {
 		return err
+	}
+	for i := range items {
+		items[i].Guidance = nil
 	}
 	var next *string
 	if more {
@@ -177,7 +182,7 @@ func (s *Server) patchVirtualServer(w http.ResponseWriter, r *http.Request) erro
 	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
 		v, err = tx.PatchVirtualServer(r.Context(), slug, store.VirtualServerPatch{
-			Name: body.Name, Description: body.Description, Enabled: body.Enabled, AuthRequired: body.AuthRequired, PII: body.PII, Policy: body.Policy, RateLimitSet: body.RateLimit.Set, RateLimit: body.RateLimit.Value, Tools: body.Tools, Catalog: body.Catalog, ClientFeatures: body.ClientFeatures,
+			Guidance: body.Guidance, Name: body.Name, Description: body.Description, Enabled: body.Enabled, AuthRequired: body.AuthRequired, PII: body.PII, Policy: body.Policy, RateLimitSet: body.RateLimit.Set, RateLimit: body.RateLimit.Value, Tools: body.Tools, Catalog: body.Catalog, ClientFeatures: body.ClientFeatures,
 		}, ifMatch)
 		if err != nil {
 			return err

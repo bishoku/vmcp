@@ -55,7 +55,7 @@ func (t *Tx) ReplaceCatalog(ctx context.Context, slug string, catalog mcp.Catalo
 	}
 	var old mcp.ServerCapabilities
 	_ = json.Unmarshal(oldCaps, &old)
-	if reflect.DeepEqual(current.Resources, catalog.Resources) && reflect.DeepEqual(current.Templates, catalog.Templates) && reflect.DeepEqual(current.Prompts, catalog.Prompts) && reflect.DeepEqual(old, catalog.Capabilities) {
+	if current.Instructions == catalog.Instructions && reflect.DeepEqual(current.Resources, catalog.Resources) && reflect.DeepEqual(current.Templates, catalog.Templates) && reflect.DeepEqual(current.Prompts, catalog.Prompts) && reflect.DeepEqual(old, catalog.Capabilities) {
 		return nil
 	}
 	if _, err := t.q.Exec(ctx, `DELETE FROM upstream_catalog WHERE upstream_id=$1`, id); err != nil {
@@ -85,13 +85,13 @@ func (t *Tx) ReplaceCatalog(ctx context.Context, slug string, catalog mcp.Catalo
 			return err
 		}
 	}
-	_, err = t.q.Exec(ctx, `UPDATE upstreams SET mcp_capabilities=$2 WHERE id=$1`, id, caps)
+	_, err = t.q.Exec(ctx, `UPDATE upstreams SET mcp_capabilities=$2, discovered_instructions=$3 WHERE id=$1`, id, caps, catalog.Instructions)
 	return err
 }
 func (t *Tx) ListCatalog(ctx context.Context, slug string) (mcp.Catalog, error) {
 	out := mcp.Catalog{Resources: []mcp.CatalogObject{}, Templates: []mcp.CatalogObject{}, Prompts: []mcp.CatalogObject{}}
 	var raw []byte
-	if err := t.q.QueryRow(ctx, `SELECT mcp_capabilities FROM upstreams WHERE tenant_id=`+tenantSQL+` AND slug=$1`, slug).Scan(&raw); err != nil {
+	if err := t.q.QueryRow(ctx, `SELECT mcp_capabilities, discovered_instructions FROM upstreams WHERE tenant_id=`+tenantSQL+` AND slug=$1`, slug).Scan(&raw, &out.Instructions); err != nil {
 		return out, err
 	}
 	if err := json.Unmarshal(raw, &out.Capabilities); err != nil {

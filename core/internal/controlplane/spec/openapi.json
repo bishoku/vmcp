@@ -3599,6 +3599,9 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "guidance": {
+            "$ref": "#/components/schemas/Guidance"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -3655,6 +3658,9 @@
       "VirtualServerCreate": {
         "type": "object",
         "properties": {
+          "guidance": {
+            "$ref": "#/components/schemas/Guidance"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -3720,6 +3726,9 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "guidance": {
+            "$ref": "#/components/schemas/GuidancePatch"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -3781,6 +3790,14 @@
           "updatedAt"
         ],
         "properties": {
+          "hasGuidance": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Whether authored guidance exists. Full guidance is returned by the individual GET; omitted from inventory lists."
+          },
+          "guidance": {
+            "$ref": "#/components/schemas/Guidance"
+          },
           "slug": {
             "$ref": "#/components/schemas/Slug"
           },
@@ -5080,6 +5097,10 @@
           "capabilities"
         ],
         "properties": {
+          "instructions": {
+            "type": "string",
+            "description": "Cached upstream initialization instructions; published only when explicitly selected by a virtual server."
+          },
           "resources": {
             "type": "array",
             "items": {
@@ -5118,6 +5139,209 @@
           "elicitation": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "Guidance": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Additive virtual-server guidance, limited to 512 KiB. Omission on PUT preserves saved guidance; an empty object clears it. Tool tokens use {{tool:key}}; prompt messages also accept {{arg:name}}. Templates perform literal substitution only. Arrays may be null in responses for empty configuration.",
+        "properties": {
+          "instructions": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "resources": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/LocalResource"
+            }
+          },
+          "prompts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/LocalPrompt"
+            }
+          },
+          "upstreamInstructions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/Slug"
+            }
+          },
+          "toolReferences": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/GuidanceToolReference"
+            }
+          }
+        }
+      },
+      "GuidancePatch": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Guidance"
+          }
+        ],
+        "description": "Only supplied non-null members are replaced. Omitted/null members are preserved; empty arrays clear collections and an empty string clears instructions."
+      },
+      "GuidanceToolReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "upstream",
+          "tool"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+          },
+          "upstream": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "tool": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "LocalResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "mimeType"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "text/plain",
+              "text/markdown"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000
+          }
+        }
+      },
+      "LocalPrompt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "messages"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "arguments": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/GuidanceArgument"
+            }
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "Message text must total at most 20000 characters.",
+            "items": {
+              "$ref": "#/components/schemas/GuidanceMessage"
+            }
+          }
+        }
+      },
+      "GuidanceArgument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "GuidanceMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000
           }
         }
       }

@@ -139,7 +139,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	rows, err := tx.Query(ctx, `
 		SELECT u.id::text, u.slug, u.url, u.fallback_urls, u.transport, u.encrypted_headers,
 		       u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key,
-		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret
+		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.discovered_instructions
 		FROM upstreams u JOIN tenants t ON t.id = u.tenant_id
 		WHERE t.slug = $1 AND u.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -151,7 +151,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 		var oc oauthtoken.Config
 		if err := rows.Scan(&u.ID, &u.Slug, &u.URL, &u.FallbackURLs, &u.Transport, &enc,
 			&u.TLS.CAPEM, &u.TLS.ServerName, &u.TLS.ClientCertPEM, &encKey,
-			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth); err != nil {
+			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &u.Instructions); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -187,7 +187,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	}
 
 	rows, err = tx.Query(ctx, `
-		SELECT v.id::text, v.slug, v.name, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute
+		SELECT v.id::text, v.slug, v.name, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.guidance
 		FROM virtual_servers v JOIN tenants t ON t.id = v.tenant_id
 		WHERE t.slug = $1 AND v.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -198,9 +198,13 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	for rows.Next() {
 		var id string
 		var v config.VirtualServer
-		var piiRaw, polRaw, features []byte
+		var piiRaw, polRaw, features, guidance []byte
 		var rl *int
-		if err := rows.Scan(&id, &v.Slug, &v.Name, &v.AuthRequired, &piiRaw, &polRaw, &features, &rl); err != nil {
+		if err := rows.Scan(&id, &v.Slug, &v.Name, &v.AuthRequired, &piiRaw, &polRaw, &features, &rl, &guidance); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := json.Unmarshal(guidance, &v.Guidance); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -286,7 +290,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 		return nil, err
 	}
 	for slug, vs := range snap.VirtualServers {
-		snap.VirtualServers[slug] = vs.WithPreparedMetadata()
+		snap.VirtualServers[slug] = vs.WithGuidance(snap.Upstreams).WithPreparedMetadata()
 	}
 	if err := loadAgentKeys(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err

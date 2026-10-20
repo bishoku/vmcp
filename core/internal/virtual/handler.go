@@ -385,6 +385,7 @@ func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mc
 		caps.Prompts.ListChanged = h.Delivery != nil
 	}
 	h.reply(w, msg.ID, mcp.InitializeResult{
+		Instructions:    vs.Instructions,
 		ProtocolVersion: version,
 		Capabilities:    caps,
 		ServerInfo:      mcp.Implementation{Name: "vmcp:" + vs.Slug, Version: "0.1.0"},

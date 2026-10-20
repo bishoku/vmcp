@@ -78,3 +78,41 @@ test('read-only inspection shows the full long upstream source without applying 
   expect(screen.queryByRole('alert')).toBeNull()
   expect(screen.queryByRole('button', {name:'Apply to draft'})).toBeNull()
 })
+
+test('desktop comparison uses unapplied edits and does not mutate the parent draft', () => {
+  vi.stubGlobal('matchMedia', () => ({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()}))
+  try {
+    const change=vi.fn();render(<Field change={change}/>);open()
+    const text='Instructions:\n  changed spacing\n<literal> & text\nNew line'
+    fireEvent.change(screen.getByRole('textbox'), {target:{value:text}})
+    fireEvent.click(screen.getByRole('button', {name:'Compare'}))
+    const comparison=screen.getByRole('region', {name:'Description comparison'})
+    expect(comparison.textContent).toContain('1 removed · 2 added lines')
+    expect(comparison.textContent).toContain('changed spacing')
+    expect(change).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', {name:'Edit override'}))
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(text)
+  } finally { vi.unstubAllGlobals() }
+})
+
+test('mobile description views do not offer comparison', () => {
+  vi.stubGlobal('matchMedia', () => ({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}))
+  try {
+    render(<Field/>);open()
+    expect(screen.queryByRole('button', {name:'Compare'})).toBeNull()
+    expect(screen.getByRole('button', {name:'Agent view'})).toBeTruthy()
+  } finally { vi.unstubAllGlobals() }
+})
+
+test('read-only comparison treats an empty override as inheritance rather than deleting the source', () => {
+  vi.stubGlobal('matchMedia', () => ({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()}))
+  try {
+    render(<DescriptionOverride name="catalog.0.description" identity="alpha/review" exposedName="alpha__review" value="" upstream={original}/>)
+    fireEvent.click(screen.getByRole('button', {name:'Inspect description for alpha/review'}))
+    fireEvent.click(screen.getByRole('button', {name:'Compare'}))
+    const comparison=screen.getByRole('region', {name:'Description comparison'})
+    expect(within(comparison).getByRole('status').textContent).toBe('No differences')
+    expect(comparison.textContent).toContain('inherits the upstream description')
+    expect(screen.queryByRole('button', {name:'Apply to draft'})).toBeNull()
+  } finally { vi.unstubAllGlobals() }
+})

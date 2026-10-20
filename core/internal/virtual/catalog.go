@@ -219,12 +219,16 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 		}
 	}
 	up, ok := snap.Upstreams[object.UpstreamID]
-	if !ok {
+	if !ok && object.Local == nil {
 		fail(mcp.CodeInternalError, "upstream unavailable")
 		return
 	}
 	if _, limited := h.rateLimited(ctx, vs, snap, sess.keySlug); limited {
 		fail(codeRateLimited, "rate limit exceeded")
+		return
+	}
+	if object.Local != nil && msg.Method != "resources/read" && msg.Method != "prompts/get" {
+		fail(mcp.CodeMethodNotFound, "local capability operation unavailable")
 		return
 	}
 	if completion && !object.Complete {
@@ -279,7 +283,11 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 		}
 	}
 	var result json.RawMessage
-	if msg.Method == "resources/subscribe" || msg.Method == "resources/unsubscribe" {
+	if object.Local != nil {
+		if err = checkAuthorization(ctx); err == nil {
+			result, err = localCatalogResult(object, msg.Method, params)
+		}
+	} else if msg.Method == "resources/subscribe" || msg.Method == "resources/unsubscribe" {
 		err = h.subscription(ctx, sess, object, exposed, original, snap.Revision, msg.Method == "resources/subscribe")
 		result = json.RawMessage(`{}`)
 	} else {

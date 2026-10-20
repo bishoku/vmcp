@@ -11,6 +11,7 @@ export function catalogExposedName(selection: CatalogSelection): string {
   return `vmcp://${upstream}/resource/${encoded}`
 }
 export interface Capability {
+  source?: 'local'
   kind: 'tool' | 'resource' | 'template' | 'prompt'
   original: string
   exposed: string

@@ -64,6 +64,7 @@ func (o CatalogObject) With(key, value string) CatalogObject {
 }
 
 type Catalog struct {
+	Instructions string             `json:"instructions"`
 	Resources    []CatalogObject    `json:"resources"`
 	Templates    []CatalogObject    `json:"resourceTemplates"`
 	Prompts      []CatalogObject    `json:"prompts"`

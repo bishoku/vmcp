@@ -107,6 +107,20 @@ for (const width of [1280, 390]) {
   await expect(dialog.getByLabel('Description override',{exact:true})).toHaveValue('Find a customer record')
   const text='Instructions:\n  preserve indentation\n'+ 'Uzun açıklama 🙂\n'.repeat(500)
   await dialog.getByLabel('Description override',{exact:true}).fill(text)
+  if (width >= 1024) {
+   await dialog.getByRole('button',{name:'Compare',exact:true}).click()
+   await expect(dialog.getByRole('region',{name:'Description comparison'})).toContainText('removed')
+   await expect(dialog.getByRole('columnheader',{name:/Upstream/})).toBeVisible()
+   await expect(dialog.getByRole('button',{name:'Apply to draft'})).toBeInViewport()
+   await page.screenshot({path:test.info().outputPath('description-comparison-desktop.png'),animations:'disabled'})
+   await page.setViewportSize({width:390,height:900})
+   await expect(dialog.getByRole('button',{name:'Compare',exact:true})).toHaveCount(0)
+   await expect(dialog.getByRole('region',{name:'Description comparison'})).toHaveCount(0)
+   await expect(dialog.getByRole('button',{name:'Agent view'})).toHaveAttribute('aria-pressed','true')
+   await page.setViewportSize({width,height:900})
+  } else {
+   await expect(dialog.getByRole('button',{name:'Compare',exact:true})).toHaveCount(0)
+  }
   await dialog.getByRole('button',{name:'Upstream',exact:true}).click()
   await expect(dialog.getByRole('region',{name:'Upstream description'})).toContainText('Find a customer record')
   await dialog.getByRole('button',{name:'Agent view'}).click()
