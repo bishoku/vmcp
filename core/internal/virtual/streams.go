@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -325,10 +326,7 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request, sess *Sess
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	controller := http.NewResponseController(w)
-	_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	fmt.Fprint(w, ": connected\n\n")
-	if controller.Flush() != nil {
+	if writeStreamEvent(w, ": connected\n\n", 10*time.Second) != nil {
 		return
 	}
 	duration := 65 * time.Second
@@ -383,11 +381,7 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request, sess *Sess
 			return
 		}
 		for _, event := range events {
-			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			if _, err := fmt.Fprintf(w, "id: %s\nevent: message\ndata: %s\n\n", event.ID, strings.TrimSpace(string(event.Payload))); err != nil {
-				return
-			}
-			if controller.Flush() != nil {
+			if writeStreamEvent(w, fmt.Sprintf("id: %s\nevent: message\ndata: %s\n\n", event.ID, strings.TrimSpace(string(event.Payload))), 10*time.Second) != nil {
 				return
 			}
 			seq = event.Seq
@@ -404,6 +398,18 @@ func (h *Handler) serveStream(w http.ResponseWriter, r *http.Request, sess *Sess
 		case <-wake:
 		}
 	}
+}
+
+// Bound each write, not the idle time between SSE events. Leaving an expired
+// deadline on an idle stream aborts HTTP chunk completion and confuses proxies.
+func writeStreamEvent(w http.ResponseWriter, event string, timeout time.Duration) error {
+	controller := http.NewResponseController(w)
+	_ = controller.SetWriteDeadline(time.Now().Add(timeout))
+	defer controller.SetWriteDeadline(time.Time{})
+	if _, err := io.WriteString(w, event); err != nil {
+		return err
+	}
+	return controller.Flush()
 }
 
 func (h *Handler) deliveryInput(w http.ResponseWriter, r *http.Request, sess *Session, msg *mcp.Message, vs config.VirtualServer) bool {

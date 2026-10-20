@@ -22,7 +22,7 @@ test('name collisions preserve existing tools and changing source invalidates th
 test('already configured method/path stays unchanged and cancel respects dirty confirmation',async()=>{
  const close=vi.fn(),apply=vi.fn(),confirm=vi.spyOn(window,'confirm').mockReturnValue(false)
  render(<RESTImportDialog existing={[operation]} onApply={apply} onClose={close}/>);await analyze();expect((screen.getByRole('checkbox',{name:'GET /orders'}) as HTMLInputElement).disabled).toBe(true)
- fireEvent.click(screen.getByRole('button',{name:'Cancel'}));await waitFor(()=>expect(confirm).toHaveBeenCalled());expect(close).not.toHaveBeenCalled();confirm.mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Cancel'}));await waitFor(()=>expect(close).toHaveBeenCalled());expect(apply).not.toHaveBeenCalled()
+ fireEvent.click(screen.getByRole('button',{name:'Cancel import'}));await waitFor(()=>expect(confirm).toHaveBeenCalled());expect(close).not.toHaveBeenCalled();confirm.mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Cancel import'}));await waitFor(()=>expect(close).toHaveBeenCalled());expect(apply).not.toHaveBeenCalled()
 })
 test('large inventories render incrementally and refuse selection beyond the upstream limit',async()=>{
  vi.mocked(api.importREST).mockResolvedValue({...result,operations:Array.from({length:250},(_,n)=>({...result.operations[0],id:`GET /orders/${n}`,path:`/orders/${n}`,operation:{...operation,name:`lookup_${n}`,path:`/orders/${n}`}}))})

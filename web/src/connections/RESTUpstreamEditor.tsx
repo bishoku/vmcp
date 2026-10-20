@@ -1,26 +1,79 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { inferSchema, mergeExample, objectSchema } from './schema-editor'
 import RESTImportDialog from './RESTImportDialog'
-import { Cable, KeyRound, Wrench } from 'lucide-react'
+import RESTOperationEditor from './RESTOperationEditor'
+import RESTToolPreview from './RESTToolPreview'
+import { Cable, KeyRound } from 'lucide-react'
 import { api, type RESTAuth, type RESTConfig, type RESTOperation, type Upstream } from '../api'
 import { ServerPanel } from './ServerPanels'
 import { FormField } from '../FormField'
-import GuidanceTextField from '../GuidanceTextField'
 import Select from '../Select'
 import { Switch } from '../SelectionControls'
-import { ErrorBox, Modal } from '../ui'
+import { ErrorBox } from '../ui'
 import { btn, input, primary } from '../styles'
-import { discardConfirmation, useConfirm } from '../confirmation'
-import { useCapabilities, useOperation, useUnsaved } from '../interaction'
+import { useConfirm } from '../confirmation'
+import { useCapabilities, useOperation } from '../interaction'
 
 const newOperation = (): RESTOperation => ({name:'',description:'',enabled:true,method:'GET',path:'/',parameters:[],readOnly:false})
 const json = (value:unknown) => value === undefined ? '' : JSON.stringify(value,null,2)
 
-export default function RESTUpstreamEditor({value,onChange,upstream}:{value:RESTConfig;onChange?:(v:RESTConfig)=>void;upstream:Upstream|null}) {
- const [selected,setSelected]=useState<number|null>(null)
+export default function RESTUpstreamEditor({value,onChange,upstream,onInvalidChange}:{value:RESTConfig;onChange?:(v:RESTConfig)=>void;upstream:Upstream|null;onInvalidChange?:(invalid:boolean)=>void}) {
+ const [selected,setSelected]=useState(0)
  const [importing,setImporting]=useState(false)
+ const [query,setQuery]=useState('')
+ const [invalid,setInvalid]=useState(false)
+ const [editorRevision,setEditorRevision]=useState(0)
+ const [mobilePanel,setMobilePanel]=useState<'editor'|'preview'>('editor')
+ const [importPreview,setImportPreview]=useState<RESTOperation>()
+ const confirm=useConfirm()
+ useEffect(()=>{onInvalidChange?.(invalid||importing);return()=>onInvalidChange?.(false)},[invalid,importing,onInvalidChange])
+ const navigate=async(action:()=>void)=>{if(!invalid||await confirm({title:'Discard invalid field changes?',description:'Valid changes stay in the upstream draft. Unfinished JSON or status edits for this operation will be discarded.',confirmLabel:'Discard invalid changes',tone:'warning'})){if(invalid)setEditorRevision(revision=>revision+1);setInvalid(false);setMobilePanel('editor');action()}}
+ const operation=value.operations[selected]
+ return <section aria-label="REST to MCP workspace" className="layout-stack min-w-0">
+   <div className="flex flex-wrap items-start justify-between gap-4">
+     <div><h2 className="section-title">REST → MCP workspace</h2><p className="section-description mt-1 text-sm text-ink-muted">Import an API or build a request. See its MCP tool definition as you edit.</p></div>
+     {onChange&&<div className="flex flex-wrap gap-2">
+       <button className={primary} disabled={value.operations.length>=200||importing} onClick={()=>void navigate(()=>{setImportPreview(undefined);setImporting(true)})}>Import OpenAPI / Swagger</button>
+       <button className={btn} disabled={value.operations.length>=200||importing} onClick={()=>void navigate(()=>{onChange({...value,operations:[...value.operations,newOperation()]});setSelected(value.operations.length);setQuery('')})}>Add operation</button>
+     </div>}
+   </div>
+   <p role="status" className="text-xs text-ink-muted">{upstream?'Saved catalog':'Upstream draft'} · {value.operations.filter(op=>op.enabled).length} enabled tools · {onChange?'Save validates and updates the catalog.':'Select tools in a virtual server to expose them to agents.'}</p>
+   <div role="group" aria-label="Workspace view" className="flex gap-2 xl:hidden">
+     <button className={btn} aria-pressed={mobilePanel==='editor'} onClick={()=>setMobilePanel('editor')}>Editor</button>
+     <button className={btn} aria-pressed={mobilePanel==='preview'} onClick={()=>setMobilePanel('preview')}>MCP preview</button>
+   </div>
+   <div className="grid items-start gap-4 xl:grid-cols-[minmax(11rem,0.65fr)_minmax(0,1.6fr)_minmax(0,1fr)]">
+     <nav aria-label="REST operations" className="surface-card min-w-0 p-3 layout-stack">
+       <FormField name="rest.search" label="Find an operation"><input className={input} placeholder="Name, method or path" value={query} onChange={event=>setQuery(event.target.value)}/></FormField>
+       <div className="max-h-72 overflow-auto xl:max-h-[42rem] layout-stack">
+         {value.operations.map((op,i)=>({op,i})).filter(({op})=>`${op.name} ${op.method} ${op.path}`.toLowerCase().includes(query.toLowerCase())).map(({op,i})=><button key={i} aria-label={`${op.name||'Untitled tool'} ${op.method} ${op.path}`} className={`rounded-lg border p-3 text-left ${i===selected&&!importing?'border-accent-500 bg-accent-50':'border-line hover:bg-canvas'}`} aria-current={i===selected&&!importing?'true':undefined} disabled={importing} onClick={()=>void navigate(()=>setSelected(i))}>
+           <span className="block break-all text-sm font-medium">{op.name||'Untitled tool'}</span><span className="mt-1 block break-all font-mono text-xs text-ink-muted">{op.method} {op.path}</span><span className="mt-1 block text-xs text-ink-muted">{op.enabled?'Included in catalog':'Disabled'}</span>
+         </button>)}
+         {value.operations.length===0&&<p className="text-xs text-ink-muted">Start with an OpenAPI / Swagger file, or add a request manually.</p>}
+         {!!value.operations.length&&!value.operations.some(op=>`${op.name} ${op.method} ${op.path}`.toLowerCase().includes(query.toLowerCase()))&&<p className="text-xs text-ink-muted">No operations match your search.</p>}
+       </div>
+     </nav>
+     <div className={`layout-stack min-w-0 ${mobilePanel==='editor'?'':'hidden xl:flex'}`}>
+       {importing&&onChange?<RESTImportDialog inline existing={value.operations} onPreview={setImportPreview} onClose={()=>setImporting(false)} onApply={operations=>{onChange({...value,operations:[...value.operations,...operations]});setSelected(value.operations.length);setQuery('');setImporting(false)}}/>:operation?<>
+         <RESTOperationEditor key={`${selected}-${editorRevision}`} operation={operation} index={selected} names={value.operations.map(op=>op.name)} onInvalidChange={setInvalid} onChange={onChange?op=>onChange({...value,operations:value.operations.map((old,i)=>i===selected?op:old)}):undefined}/>
+         {onChange&&<button className={`${btn} action-danger-outline self-start`} onClick={async()=>{if(await confirm({title:'Remove operation?',description:'After Save, virtual servers selecting this tool will no longer be able to call it.',confirmLabel:'Remove operation',tone:'danger'})){onChange({...value,operations:value.operations.filter((_,i)=>i!==selected)});setSelected(0);setEditorRevision(revision=>revision+1);setInvalid(false)}}}>Remove operation</button>}
+       </>:<div className="surface-card p-6 layout-stack"><h3 className="text-base font-semibold">Turn your first request into a tool</h3><p className="text-sm text-ink-muted">Import OpenAPI to select existing endpoints, or add an operation and enter its method and path. Path parameters are created automatically.</p></div>}
+     </div>
+     <div className={`min-w-0 xl:sticky xl:top-24 ${mobilePanel==='preview'?'':'hidden xl:block'}`}><RESTToolPreview operation={importing?importPreview:operation} invalid={invalid}/></div>
+   </div>
+   {upstream&&<RESTTest key={upstream.version} upstream={upstream} onUseResponse={onChange&&!invalid&&!importing?(name,result)=>{
+     const position=value.operations.findIndex(op=>op.name===name)
+     if(position<0)return
+     onChange({...value,operations:value.operations.map((op,i)=>i===position?{...op,responseSchema:mergeExample(op.responseSchema,inferSchema(result))}:op)})
+     setSelected(position);setEditorRevision(v=>v+1);setMobilePanel('editor')
+   }:undefined} draftNames={value.operations.map(op=>op.name)}/>}
+   {!upstream&&<p className="text-xs text-ink-muted">Save the upstream to execute a test request and generate a response schema from its result.</p>}
+ </section>
+}
+
+export function RESTConnectionSettings({value,onChange}:{value:RESTConfig;onChange?:(v:RESTConfig)=>void}) {
  const set=(patch:Partial<RESTConfig>)=>onChange?.({...value,...patch})
  const auth=(patch:Partial<RESTAuth>)=>set({auth:{...value.auth,...patch}})
- const confirm=useConfirm()
  return <>
  <ServerPanel title="REST authentication" description="Service credentials are encrypted and never returned by the API" icon={KeyRound}>
  <fieldset disabled={!onChange} className="panel-body layout-stack min-w-0">
@@ -46,74 +99,28 @@ export default function RESTUpstreamEditor({value,onChange,upstream}:{value:REST
  <Switch label="Allow unencrypted HTTP" checked={value.allowInsecureHttp} onChange={e=>set({allowInsecureHttp:e.target.checked})}/>
  <p className="text-xs text-ink-muted">HTTPS is the default. The HTTP exception also applies to the token endpoint; use it only in trusted development environments. Network access rules still apply.</p>
  </fieldset></ServerPanel>
- <ServerPanel title="REST operations" description="Each enabled operation becomes a selectable MCP tool after Save" icon={Wrench}>
- <div className="panel-body layout-stack">
- {value.operations.length===0&&<p className="text-sm text-ink-muted">No operations configured. Add a request and its response schema to publish a tool.</p>}
- {value.operations.map((op,i)=><div key={i} className="surface-inset flex flex-wrap items-center gap-3 p-3"><div className="min-w-0 flex-1"><p className="break-all text-sm font-medium">{op.name} <span className="text-xs text-ink-muted">{op.enabled?'Enabled':'Disabled'}</span></p><p className="break-all font-mono text-xs text-ink-muted">{op.method} {op.path}</p><p className="line-clamp-2 text-xs text-ink-muted">{op.description}</p></div><button className={btn} onClick={()=>setSelected(i)}>{onChange?'Edit operation':'View operation'}</button>{onChange&&<button className={`${btn} action-danger-outline`} onClick={async()=>{if(await confirm({title:'Remove operation?',description:'After Save, virtual servers selecting this tool will no longer be able to call it.',confirmLabel:'Remove operation',tone:'danger'}))set({operations:value.operations.filter((_,n)=>n!==i)})}}>Remove</button>}</div>)}
- {onChange&&<button className={`${btn} self-start`} disabled={value.operations.length>=200} onClick={()=>setImporting(true)}>Import OpenAPI / Swagger</button>}
- {onChange&&<button className={`${btn} self-start`} disabled={value.operations.length>=200} onClick={()=>setSelected(value.operations.length)}>Add operation</button>}
- <p className="text-xs text-ink-muted">Saving prepares the tool catalog without contacting the REST service. Select these tools in a virtual server as usual.</p>
- </div></ServerPanel>
- {importing&&onChange&&<RESTImportDialog existing={value.operations} onClose={()=>setImporting(false)} onApply={operations=>{set({operations:[...value.operations,...operations]});setImporting(false)}}/>}
- {selected!==null&&<OperationEditor key={selected} operation={value.operations[selected]??newOperation()} editable={!!onChange} onClose={()=>setSelected(null)} onApply={op=>{const ops=[...value.operations];ops[selected]=op;set({operations:ops});setSelected(null)}}/>}
- {upstream&&!onChange&&<RESTTest upstream={upstream}/>}
  </>
 }
 
-function OperationEditor({operation,editable,onClose,onApply}:{operation:RESTOperation;editable:boolean;onClose:()=>void;onApply:(op:RESTOperation)=>void}) {
- const [draft,setDraft]=useState(operation)
- const [parameters,setParameters]=useState(json(operation.parameters))
- const [body,setBody]=useState(json(operation.bodySchema))
- const [response,setResponse]=useState(json(operation.responseSchema))
- const [headers,setHeaders]=useState(json(operation.headers))
- const [fields,setFields]=useState((operation.responseFields??[]).join(', '))
- const [statuses,setStatuses]=useState((operation.successStatuses??[]).join(', '))
- const [error,setError]=useState('')
- useUnsaved({draft,parameters,body,response,headers,fields,statuses})
- const confirm=useConfirm()
- const dirty=json(draft)!==json(operation)||parameters!==json(operation.parameters)||body!==json(operation.bodySchema)||response!==json(operation.responseSchema)||headers!==json(operation.headers)||fields!==(operation.responseFields??[]).join(', ')||statuses!==(operation.successStatuses??[]).join(', ')
- const close=async()=>{if(!editable||!dirty||await confirm(discardConfirmation))onClose()}
- const set=(patch:Partial<RESTOperation>)=>setDraft({...draft,...patch})
- const apply=()=>{try{
- if(!/^[A-Za-z0-9_.-]{1,128}$/.test(draft.name))throw Error('Use a tool name of 1–128 letters, numbers, dots, underscores or hyphens.')
- if(!draft.path.startsWith('/')||draft.path.startsWith('//'))throw Error('Use a relative operation path beginning with one slash.')
- const parsed=JSON.parse(parameters);if(!Array.isArray(parsed))throw Error('Parameters must be a JSON array.')
- const parsedHeaders=headers.trim()?JSON.parse(headers):undefined;if(parsedHeaders&&(typeof parsedHeaders!=='object'||Array.isArray(parsedHeaders)||Object.values(parsedHeaders).some(v=>typeof v!=='string')))throw Error('Headers must be a JSON object with string values.')
- const codes=statuses.split(/[\s,]+/).filter(Boolean).map(Number);if(codes.some(n=>!Number.isInteger(n)||n<200||n>299))throw Error('Success statuses must be HTTP codes from 200 to 299.')
- onApply({...draft,parameters:parsed,bodySchema:body.trim()?JSON.parse(body):undefined,responseSchema:response.trim()?JSON.parse(response):undefined,headers:parsedHeaders,responseFields:fields.split(/[\s,]+/).filter(Boolean),successStatuses:codes})
- }catch(e){setError(e instanceof Error?e.message:'Invalid JSON')}}
- return <Modal title={editable?'Edit REST operation':'REST operation'} description="Changes stay in the upstream draft until Save." onClose={()=>void close()} size="wide" footer={<><button className={btn} onClick={()=>void close()}>{editable?'Cancel':'Close'}</button>{editable&&<button className={primary} onClick={apply}>Use operation</button>}</>}>
- <div className="layout-stack">{error&&<ErrorBox>{error}</ErrorBox>}
- <fieldset disabled={!editable} className="layout-stack min-w-0">
- <FormField name="operation.name" label="Tool name" required><input className={input} value={draft.name} onChange={e=>set({name:e.target.value})}/></FormField>
- <div className="grid gap-4 sm:grid-cols-2"><FormField name="operation.method" label="HTTP method"><Select className={input} value={draft.method} onChange={e=>set({method:e.target.value as RESTOperation['method'],readOnly:false})}>{['GET','POST','PUT','PATCH','DELETE'].map(m=><option key={m}>{m}</option>)}</Select></FormField><FormField name="operation.path" label="Operation path" required hint="Appended to the base URL; e.g. /orders/{id}"><input className={input} value={draft.path} onChange={e=>set({path:e.target.value})}/></FormField></div>
- <Switch label="Publish operation" checked={draft.enabled} onChange={e=>set({enabled:e.target.checked})}/><Switch label="Read-only operation" disabled={draft.method!=='GET'} checked={draft.readOnly} onChange={e=>set({readOnly:e.target.checked})}/>
- </fieldset>
- <GuidanceTextField name="operation.description" label="Tool description" value={draft.description} onChange={editable?v=>set({description:v}):undefined}/>
- <p className="text-xs text-ink-muted">Parameters are an array of name, in (path or query), required and schema. Example: {`[{"name":"id","in":"path","required":true,"schema":{"type":"string"}}]`}. Use inline JSON schemas; references are not supported.</p>
- <GuidanceTextField name="operation.parameters" label="Request parameters" limit={65536} value={parameters} onChange={editable?setParameters:undefined}/>
- <GuidanceTextField name="operation.body" label="Request body schema" limit={65536} value={body} onChange={editable?setBody:undefined}/>
- <p className="text-xs text-ink-muted">A body schema adds a required “body” tool argument. GET operations cannot have a body.</p>
- <GuidanceTextField name="operation.response" label="Response schema" limit={65536} value={response} onChange={editable?setResponse:undefined}/>
- <fieldset disabled={!editable} className="layout-stack min-w-0"><FormField name="operation.fields" label="Response fields" hint="Optional comma-separated top-level fields from an object response schema."><input className={input} value={fields} onChange={e=>setFields(e.target.value)}/></FormField><FormField name="operation.statuses" label="Success statuses" hint="Optional comma-separated 2xx codes. Empty accepts all 2xx responses."><input className={input} value={statuses} onChange={e=>setStatuses(e.target.value)}/></FormField>
- <FormField name="operation.headers" label="Operation headers (JSON)" hint={`Write-only. Leave blank to preserve stored headers; {} clears them. Stored names: ${(operation.headerNames??[]).join(', ')||'none'}.`}><textarea className={`${input} font-mono`} rows={4} value={headers} onChange={e=>setHeaders(e.target.value)}/></FormField></fieldset>
- </div></Modal>
-}
-
-function RESTTest({upstream}:{upstream:Upstream}) {
+function RESTTest({upstream,onUseResponse,draftNames}:{upstream:Upstream;onUseResponse?:(name:string,value:unknown)=>void;draftNames:string[]}) {
  const [operation,setOperation]=useState(upstream.rest?.operations.find(o=>o.enabled)?.name??'')
+ const [sample,setSample]=useState<{operation:string;value:unknown}>()
  const [args,setArgs]=useState('{}'),[result,setResult]=useState(''),[error,setError]=useState('')
  const {manageTokens:admin,edit}=useCapabilities(),{busy,run}=useOperation(),confirm=useConfirm()
- const perform=(action:'preview'|'test')=>run(async()=>{setError('');setResult('');try{
+ const perform=(action:'preview'|'test')=>run(async()=>{setError('');setResult('');setSample(undefined);try{
  const parsed=JSON.parse(args)
  if(action==='test'&&!await confirm({title:'Execute REST operation?',description:'This sends a real request using saved credentials and may change data in the REST service. It will not be retried or impersonate an agent.',confirmLabel:'Execute request',tone:'warning'}))return
- setResult(json(await api.restOperation(upstream.slug,action,operation,parsed,upstream.version)))
+ const response=await api.restOperation(upstream.slug,action,operation,parsed,upstream.version)
+ setResult(json(response))
+ const envelope=objectSchema(response),structured=objectSchema(envelope.structuredContent)
+ if(action==='test'&&!envelope.isError&&Object.hasOwn(structured,'result'))setSample({operation,value:structured.result})
  }catch(e){setError(e instanceof Error?e.message:'Request failed')}})
  return <ServerPanel title="Operation preview & test" description="Uses the saved configuration; preview never sends a request" icon={Cable}><div className="panel-body layout-stack">
- <FormField name="rest.test.operation" label="Operation"><Select className={input} value={operation} onChange={e=>{setOperation(e.target.value);setResult('')}}>{upstream.rest?.operations.filter(o=>o.enabled).map(o=><option key={o.name}>{o.name}</option>)}</Select></FormField>
+ <FormField name="rest.test.operation" label="Operation"><Select className={input} value={operation} onChange={e=>{setOperation(e.target.value);setResult('');setSample(undefined)}}>{upstream.rest?.operations.filter(o=>o.enabled).map(o=><option key={o.name}>{o.name}</option>)}</Select></FormField>
  <FormField name="rest.test.arguments" label="Tool arguments (JSON)"><textarea className={`${input} font-mono`} rows={5} value={args} onChange={e=>setArgs(e.target.value)}/></FormField>
  <div className="flex flex-wrap gap-2"><button className={btn} disabled={!edit||busy||!operation} onClick={()=>void perform('preview')}>Preview request</button><button className={btn} disabled={!admin||busy||!operation||!upstream.enabled||upstream.rest?.requireIdentity} onClick={()=>void perform('test')}>Execute test request</button></div>
  <p className="text-xs text-ink-muted">Execution requires admin access and an enabled upstream. Identity-required operations must be tested through an authenticated MCP client.</p>
+ {sample&&<><p className="text-xs text-ink-muted">Generate from the saved operation’s returned result (including any saved field projection). Existing schema rules are preserved. Edit the upstream to apply it to the draft.</p><button className={btn} disabled={!onUseResponse||busy||!draftNames.includes(sample.operation)} onClick={()=>{try{onUseResponse?.(sample.operation,sample.value);setSample(undefined)}catch(e){setError((e as Error).message)}}}>Use test response as schema</button></>}
  {error&&<ErrorBox>{error}</ErrorBox>}{result&&<pre className="surface-inset whitespace-pre-wrap break-all p-3 text-xs" aria-label="REST operation result">{result}</pre>}
  </div></ServerPanel>
 }

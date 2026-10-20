@@ -32,7 +32,7 @@ func FromEnv() (*Policy, error) {
 	for _, entry := range split(os.Getenv("VMCP_EGRESS_ALLOW_CIDRS")) {
 		prefix, err := netip.ParsePrefix(entry)
 		if err != nil || prefix.Addr().Is4In6() {
-			return nil, fmt.Errorf("invalid VMCP_EGRESS_ALLOW_CIDRS entry %q", entry)
+			return nil, fmt.Errorf("%w: invalid VMCP_EGRESS_ALLOW_CIDRS entry %q", ErrInvalidPolicy, entry)
 		}
 		p.prefixes = append(p.prefixes, prefix.Masked())
 	}
@@ -43,7 +43,7 @@ func FromEnv() (*Policy, error) {
 			continue
 		}
 		if strings.ContainsAny(host, "/:@*% ") || strings.HasSuffix(host, ".") {
-			return nil, fmt.Errorf("invalid VMCP_EGRESS_ALLOW_HOSTS entry %q", host)
+			return nil, fmt.Errorf("%w: invalid VMCP_EGRESS_ALLOW_HOSTS entry %q", ErrInvalidPolicy, host)
 		}
 		p.hosts[host] = true
 	}
@@ -81,24 +81,24 @@ func (p *Policy) checkHost(host string) error {
 		host = ip.Unmap().String()
 	}
 	if len(p.hosts) > 0 && !p.hosts[strings.ToLower(host)] {
-		return errors.New("egress host is not allowed")
+		return ErrHostNotAllowed
 	}
 	return nil
 }
 func (p *Policy) checkAddr(ip netip.Addr) error {
 	ip = ip.Unmap()
 	if ip.Is6() && netip.MustParsePrefix("::/96").Contains(ip) && !ip.IsLoopback() {
-		return errors.New("egress transition destination is prohibited")
+		return ErrDestinationProhibited
 	}
 	// Never permit metadata, unspecified, multicast, broadcast or reserved ranges,
 	// even if an operator accidentally supplies an overly broad allow CIDR.
 	for _, prefix := range prohibited {
 		if prefix.Contains(ip) {
-			return errors.New("egress destination is prohibited")
+			return ErrDestinationProhibited
 		}
 	}
 	if (!ip.IsGlobalUnicast() && !ip.IsLoopback()) || ip.Zone() != "" || ip.IsLinkLocalUnicast() || ip == netip.MustParseAddr("100.100.100.200") || ip == netip.MustParseAddr("fd00:ec2::254") || ip == netip.MustParseAddr("168.63.129.16") || (ip.Is4() && (netip.MustParsePrefix("0.0.0.0/8").Contains(ip) || netip.MustParsePrefix("240.0.0.0/4").Contains(ip))) {
-		return errors.New("egress destination is prohibited")
+		return ErrDestinationProhibited
 	}
 	restricted := ip.IsPrivate() || ip.IsLoopback() || netip.MustParsePrefix("100.64.0.0/10").Contains(ip)
 	if restricted {
@@ -107,7 +107,7 @@ func (p *Policy) checkAddr(ip netip.Addr) error {
 				return nil
 			}
 		}
-		return errors.New("private or loopback egress requires an allowed CIDR")
+		return ErrPrivateDestination
 	}
 	return nil
 }
@@ -129,7 +129,7 @@ func (p *Policy) DialContext(ctx context.Context, network, address string) (net.
 		}
 	}
 	if len(ips) == 0 {
-		return nil, errors.New("egress destination has no addresses")
+		return nil, ErrNoAddresses
 	}
 	// Validate every answer before dialing any, then dial the checked IP directly.
 	for _, ip := range ips {
@@ -196,7 +196,7 @@ func Client(base *http.Client) *http.Client {
 		tr, ok = http.DefaultTransport.(*http.Transport)
 	}
 	if !ok {
-		client.Transport = reject{errors.New("egress policy requires a standard HTTP transport")}
+		client.Transport = reject{ErrUnsupportedTransport}
 		return &client
 	}
 	key := os.Getenv("VMCP_EGRESS_ALLOW_CIDRS") + "\x00" + os.Getenv("VMCP_EGRESS_ALLOW_HOSTS")

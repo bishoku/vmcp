@@ -159,7 +159,7 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	}
 	hc, err := tl.Client()
 	if err != nil {
-		return nil, errors.New("REST TLS configuration is invalid")
+		return nil, &ExecutionError{Stage: "tls_configuration", cause: err}
 	}
 	client := netpolicy.Client(hc)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -170,7 +170,7 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errors.New("REST request failed or timed out; operation may have completed")
+		return nil, &ExecutionError{Stage: "request", cause: err}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == 401 && tokenSource != nil {

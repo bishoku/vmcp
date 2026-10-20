@@ -69,12 +69,48 @@ REST operations participate in the same virtual-server selection, aliases, descr
 overrides, tool policies, approvals, rate limits, PII handling and durable audit flow.
 Local virtual-server guidance can refer to them like other tools.
 
-In the saved detail page, **Edit upstream** exposes REST authentication, request controls
-and operations. Each enabled operation defines a tool name, description (up to 20,000
-characters), method, path and schemas. Operation and long-text dialogs update the draft;
-only the main **Save** publishes it. Saving never calls the REST service. The tool catalog
-and configuration are updated in one transaction. Disabling/removing an operation makes
-existing selections orphaned and unavailable after configuration propagation.
+In the saved detail page, **Edit upstream** opens the **REST → MCP workspace**.
+Select an operation on the left, edit its request and tool information in the center,
+and inspect the live **MCP preview** on the right. On narrower screens, use **Editor**
+and **MCP preview** to switch views. Import and operation editing stay on the same page.
+
+Each enabled operation defines a tool name, description (up to 20,000 characters),
+method, path and schemas. Entering `/orders/{id}` automatically creates a required path
+parameter. Visual parameter rows edit names, scalar types, descriptions and required
+flags; **Add query parameter** adds filters or options. Existing imported schema
+constraints are preserved. **Advanced · body, response & headers** exposes parameter
+JSON editing, inline JSON schemas, response field selection, success statuses and
+write-only operation headers.
+Invalid JSON must be corrected or explicitly discarded before switching operations.
+
+**Connection & authentication** contains the base URL, identifier, service credentials
+and request controls. **Advanced connection settings** contains TLS and shared headers.
+Edits update the upstream draft; only the main **Save** updates the saved catalog.
+Saving never calls the REST service. The tool catalog and configuration are updated
+in one transaction. Select tools separately in a virtual server to expose them to agents.
+Disabling/removing an operation makes existing selections orphaned and unavailable
+after configuration propagation.
+
+The live MCP preview contains input/output schemas (including the `result` wrapper)
+and tool annotations, but no authentication or request-header values. It is a local
+draft preview, not a service test or a substitute for save-time backend validation.
+Real request previews and execution tests still use the saved configuration.
+
+### Diagnosing REST connection failures
+
+Data-plane `upstream call failed` logs include a safe `reason`, `detail`, execution
+`stage`, `duration_ms`, `virtual_server`, `request_id` and `trace_id`. For example,
+`egress_host_not_allowed` means the destination must be included in
+`VMCP_EGRESS_ALLOW_HOSTS`. When that variable is nonempty, public hosts also require
+an explicit entry. Private/loopback addresses additionally require an allowed CIDR.
+Retain existing host entries when adding a service, and recreate containers after
+changing their environment; restarting an existing container does not update it.
+
+Other reasons distinguish DNS failure, timeout, certificate verification failure,
+connection refusal/reset and prohibited destinations. Diagnostics never log the
+raw transport error, request URL/query, headers, arguments or response body.
+Agent-facing transport errors remain generic. A successful HTTP status on the
+MCP POST does not imply a successful tool call; inspect its JSON-RPC result/error.
 
 ### Requests and responses
 
@@ -192,7 +228,9 @@ remain enforced.
 In a REST upstream draft, choose **Import OpenAPI / Swagger** and upload a local
 JSON/YAML file or paste its contents. **Analyze definition** lists the operations;
 nothing is selected, saved or executed automatically. Search by method, path, tag
-or tool name, select the operations to publish, and choose **Add to draft**. Review
+or tool name, select the operations to include, and choose **Add to draft**. Selecting
+an operation or choosing its **Preview** action displays its MCP definition in the
+workspace preview panel. Review
 or edit the imported operations, then use the upstream's main **Save** action.
 Canceling the import or upstream draft does not change saved configuration.
 
@@ -241,3 +279,44 @@ needed beyond REST upstream migration 28.
 Format references: [OpenAPI 3.0](https://spec.openapis.org/oas/v3.0.4.html),
 [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0.html),
 [Swagger 2.0](https://spec.openapis.org/oas/v2.0.html).
+
+### Build REST schemas visually
+
+The REST workspace includes visual request-body and response schema editors.
+Paste example JSON and choose **Generate request body schema** or **Generate
+response schema**, then edit types, descriptions and required fields. Objects
+expand into nested fields; arrays expose their item schema. GET operations do
+not show a request-body editor. Example values remain local and are not saved
+with the upstream.
+
+Inferred fields start optional. Null values, empty arrays and mixed-type arrays
+need an explicit type choice. Examples supplement existing definitions without
+replacing imported constraints, required fields or scalar types. Closed objects
+(`additionalProperties: false`) do not gain fields from examples. Complex schema
+sections remain available through the advanced JSON editor; constrained types
+are locked in the visual editor to avoid silently dropping imported rules.
+
+For a saved upstream, **Execute test request** uses the saved configuration and
+credentials, even while editing a draft. After a successful test, **Use test
+response as schema** adds schema information to the matching draft operation.
+It uses the returned result, including any saved response-field projection, not
+the MCP envelope. Failed results cannot be used. Save the draft to publish the
+schema. New operations must first be saved before they can be tested; execution
+still requires administrator access and explicit confirmation.
+
+### Select the fields returned to agents
+
+Use **Fields returned to the agent** below the response schema editor. **Full
+response** keeps the original response, including undeclared fields. **Selected
+fields only** starts with the declared top-level properties; uncheck those the
+agent should not receive. Keep at least one selection. Selecting an object or
+array returns its entire contents; nested property selection is not supported.
+
+The MCP preview immediately reflects the selected properties and their required
+flags. Save applies the same projection to both structured and text tool output;
+unselected and undeclared properties are omitted. The original response schema
+remains intact and validates the upstream response before projection. Optional
+selected properties absent from the response remain absent; null values are
+preserved. If a selected property is removed from the schema, resolve the
+selection error before saving. Choosing all declared fields still filters out
+undeclared fields, unlike **Full response**.

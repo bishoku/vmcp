@@ -1,5 +1,5 @@
 import Button from '../Button'
-import RESTUpstreamEditor from '../connections/RESTUpstreamEditor'
+import RESTUpstreamEditor, { RESTConnectionSettings } from '../connections/RESTUpstreamEditor'
 import { emptyREST } from '../connections/rest-config'
 import { TagBadge } from '../Badge'
 import { Switch } from '../SelectionControls'
@@ -43,6 +43,7 @@ export default function UpstreamDetailForm({
   const [slug, setSlug] = useState(upstream?.slug ?? '')
   const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
   const [rest,setRest]=useState(upstream?.rest??emptyREST())
+  const [restBlocked,setRestBlocked]=useState(false)
   const [name, setName] = useState(upstream?.name ?? '')
   const [url, setUrl] = useState(upstream?.url ?? '')
   const [fallbacks, setFallbacks] = useState((upstream?.fallbackUrls ?? []).join('\n'))
@@ -97,7 +98,7 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
-  const unsaved = useUnsaved({kind,rest,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
+  const unsaved = useUnsaved({kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
@@ -124,7 +125,7 @@ export default function UpstreamDetailForm({
   const save = async () => {
     let saved: Upstream | undefined
     await run(async () => {
-      if (!editable) return
+      if (!editable || (kind==='rest' && restBlocked)) return
       setErr('')
       if(!validation.check({slug:upstream?undefined:slugError(slug),name:upstream?requiredText(name,'Name',120):name.length>120?'Use 120 characters or fewer.':undefined,url:urlError(url),fallbackUrls:kind==='rest'?undefined:fallbackUrls().length>5?'Use up to five fallback URLs.':fallbackUrls().some(value=>urlError(value))?'Each fallback must be an absolute HTTP or HTTPS URL without credentials or fragments.':undefined,'auth.tokenUrl':kind==='mcp'&&authType==='oauth_client_credentials'?urlError(tokenUrl):undefined,'auth.clientId':kind==='mcp'&&authType==='oauth_client_credentials'?requiredText(clientId,'Client ID'):undefined,headers:newName||newValue?'Add or clear the pending header before saving.':undefined}))return
       try {
@@ -179,7 +180,7 @@ export default function UpstreamDetailForm({
       <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
-    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
+    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={kind==='rest'&&restBlocked?'Finish or cancel the import, and resolve editor errors before saving.':newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||(kind==='rest'&&restBlocked)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
     {err && <ErrorBox>{err}</ErrorBox>}
     <FormErrors validation={validation}/>
     <StaleRecovery message={[err,...validation.issues.map(issue=>issue.message)].join('; ')} reload={async()=>{
@@ -187,12 +188,16 @@ export default function UpstreamDetailForm({
       if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
       unsaved.clean();onReload(latest)
     }}/>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryTile label="Transport" value={kind==='rest'?'REST API':transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
-      <SummaryTile label="Authentication" value={kind==='rest'?rest.auth.type:authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
-      <SummaryTile label={kind==='rest'?'Configured tools':'Discovered tools'} value={upstream?.toolCount ?? '—'} detail={kind==='rest'?'Enabled REST operations':upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
-      <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail={kind==='rest'?'REST services are not automatically probed':'Stored observation · not a live check'} icon={Activity}/>
-    </div>
+    {kind==='mcp'&&<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryTile label="Transport" value={transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
+      <SummaryTile label="Authentication" value={authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
+      <SummaryTile label="Discovered tools" value={upstream?.toolCount ?? '—'} detail={upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
+      <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
+    </div>}
+    {kind==='rest'&&<RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/>}
+    <details open={kind==='mcp'||undefined} className="min-w-0">
+    <summary className={kind==='rest'?'cursor-pointer surface-card p-4 text-sm font-semibold':'hidden'}>Connection & authentication · {url||'Base URL required'}{!upstream&&!slug?' · Identifier required':''}</summary>
+    <div className="layout-stack mt-4">
     <div className="grid items-start layout-grid xl:grid-cols-[1.4fr_1fr]">
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
         <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 panel-body m-0">
@@ -201,7 +206,7 @@ export default function UpstreamDetailForm({
           )}
           <FormField name="kind" label="Upstream type" hint="Type cannot change after creation."><Select className={input} disabled={!!upstream} value={kind} onChange={e=>setKind(e.target.value as 'mcp'|'rest')}><option value="mcp">MCP server</option><option value="rest">REST API</option></Select></FormField>
           <FormField name="name" label="Name" hint="Display name, up to 120 characters. New upstreams use the slug if left empty."><input className={clsx(input, 'mt-1')} value={name} onChange={(e) => setName(e.target.value)} /></FormField>
-          <FormField name="url" label="URL" required hint="Absolute HTTP or HTTPS endpoint, without credentials or a fragment."><input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://host/mcp" /></FormField>
+          <FormField name="url" label="URL" required hint={kind==='rest'?'Base URL of your REST service. Operation paths are appended to it.':'Absolute HTTP or HTTPS endpoint, without credentials or a fragment.'}><input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={kind==='rest'?'https://api.example.com/v1':'https://host/mcp'} /></FormField>
           {kind==='mcp'&&<><FormField name="fallbackUrls" label="Fallback URLs" hint="Optional. Up to five distinct URLs, one per line, tried in order."><textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} /></FormField>
           <FormField name="transport" label="Transport" required help="Choose the protocol implemented by this MCP endpoint. Changing this setting does not automatically test or discover the server." hint="Choose the protocol supported by the upstream."><Select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
               <option value="streamable_http">Streamable HTTP</option>
@@ -228,6 +233,11 @@ export default function UpstreamDetailForm({
         </ServerPanel>}
       </div>}
     </div>
+    {kind==='rest'&&<RESTConnectionSettings value={rest} onChange={editable&&!busy?setRest:undefined}/>}
+    </div></details>
+    <details open={kind==='mcp'||undefined} className="min-w-0">
+    <summary className={kind==='rest'?'cursor-pointer surface-card p-4 text-sm font-semibold':'hidden'}>Advanced connection settings · TLS & shared headers</summary>
+    <div className="layout-stack mt-4">
     <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
     <div className="grid items-start layout-grid xl:grid-cols-2">
       <ServerPanel title="Transport security" description="Custom trust and mutual TLS settings" icon={ShieldCheck}>
@@ -312,7 +322,7 @@ export default function UpstreamDetailForm({
         </fieldset>
       </ServerPanel>}
     </div>
-    {kind==='rest'&&<RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={editing?null:upstream}/>}
+
     <ServerPanel title="Request headers" description="Stored values remain masked; only explicit changes are sent" icon={Code2} footer="Header values are write-only. Replacing or removing a header takes effect after Save.">
       {editing ? (
       <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
@@ -352,6 +362,7 @@ export default function UpstreamDetailForm({
       </fieldset>
       ) : <div className="divide-y divide-line panel-inset">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
     </ServerPanel>
+    </div></details>
     {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="layout-stack"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
     {kind==='mcp' && editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
     {kind==='mcp' && upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}

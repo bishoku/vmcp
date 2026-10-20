@@ -5,7 +5,7 @@ x-common-env: &common-env
   VMCP_MASTER_KEY: OsOj5XCz4oi+W3+L3o0am9uZGfYkNmsXHMu5uCDEP04=
   VMCP_TENANT_ID: default
   VMCP_EGRESS_ALLOW_CIDRS: ${VMCP_DEMO_SUBNET:-172.30.42.0/24}
-  VMCP_EGRESS_ALLOW_HOSTS: keycloak,mcp-calculator,mcp-knowledge,mcp-support
+  VMCP_EGRESS_ALLOW_HOSTS: keycloak,mcp-calculator,mcp-knowledge,mcp-support,httpbin.org
 
 x-data-plane: &data-plane
   image: vmcp-demo/data-plane:local

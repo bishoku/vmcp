@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { api, ApiError, type RESTImportResult, type RESTOperation } from '../api'
 import { FormField } from '../FormField'
 import { Checkbox } from '../SelectionControls'
@@ -11,14 +11,14 @@ import { btn, input, primary } from '../styles'
 const maxBytes=2*1024*1024
 const size=(text:string)=>new TextEncoder().encode(text).length
 /** Appends only selected operations; the enclosing upstream draft owns persistence. */
-export default function RESTImportDialog({existing,onApply,onClose}:{existing:RESTOperation[];onApply:(operations:RESTOperation[])=>void;onClose:()=>void}) {
+export default function RESTImportDialog({existing,onApply,onClose,inline=false,onPreview}:{existing:RESTOperation[];onApply:(operations:RESTOperation[])=>void;onClose:()=>void;inline?:boolean;onPreview?:(operation:RESTOperation|undefined)=>void}) {
  const [document,setDocument]=useState(''),[result,setResult]=useState<RESTImportResult|null>(null)
  const [selected,setSelected]=useState<string[]>([]),[query,setQuery]=useState(''),[error,setError]=useState(''),[limit,setLimit]=useState(50)
  const {busy,run}=useOperation(),confirm=useConfirm()
  useUnsaved({document,selected})
  const close=async()=>{if(!busy&&(!document||await confirm(discardConfirmation)))onClose()}
- const editDocument=(value:string)=>{setDocument(value);setResult(null);setSelected([]);setError('');setLimit(50)}
- const analyze=()=>run(async()=>{setError('');setResult(null);setSelected([]);try{
+ const editDocument=(value:string)=>{setDocument(value);setResult(null);setSelected([]);setError('');setLimit(50);onPreview?.(undefined)}
+ const analyze=()=>run(async()=>{setError('');setResult(null);setSelected([]);onPreview?.(undefined);try{
  if(size(document)>maxBytes)throw Error('Use a document of 2 MiB or less.')
  setResult(await api.importREST(document))
  }catch(e){setError(e instanceof ApiError&&e.errors.length?e.errors.map(issue=>issue.message).join(' '):e instanceof Error?e.message:'Unable to analyze this document.')}})
@@ -41,7 +41,7 @@ export default function RESTImportDialog({existing,onApply,onClose}:{existing:RE
  // Selection is append-only: no imported name can replace stored secrets/overrides.
  onApply(chosen)
  }
- return <Modal title="Import OpenAPI / Swagger" size="wide" busy={busy} onClose={()=>void close()} description="Analyze a definition, select operations, then add them to your upstream draft." footer={<><button className={btn} disabled={busy} onClick={()=>void close()}>Cancel</button><button className={primary} disabled={busy||!selected.length||selected.length>capacity} onClick={apply}>Add {selected.length} to draft</button></>}>
+ return <ImportContainer inline={inline} busy={busy} onClose={()=>void close()} footer={<><button className={btn} disabled={busy} onClick={()=>void close()}>Cancel import</button><button className={primary} disabled={busy||!selected.length||selected.length>capacity} onClick={apply}>Add {selected.length} to draft</button></>}>
  <div className="layout-stack">
  <p className="text-xs leading-relaxed text-ink-muted">JSON or YAML · OpenAPI 3.0/3.1 or Swagger 2.0 · up to 2 MiB. Local references are expanded. URLs and external references are never fetched.</p>
  <FormField name="import.file" label="Definition file" hint="Loading a file only fills the definition below."><input type="file" accept=".json,.yaml,.yml,application/json,application/yaml,text/yaml" disabled={busy} className="w-full min-w-0 text-xs" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;void run(async()=>{setResult(null);setSelected([]);try{if(file.size>maxBytes)throw Error('Use a file of 2 MiB or less.');editDocument(new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer()))}catch(err){setError(err instanceof Error?err.message:'Unable to read this file.')}})}}/></FormField>
@@ -54,18 +54,27 @@ export default function RESTImportDialog({existing,onApply,onClose}:{existing:RE
  <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-xs text-ink-muted">{shown.length} of {candidates.length} operations · {selected.length} selected · {Math.max(0,capacity)} slots available</p><div className="flex flex-wrap gap-2"><button className={btn} disabled={!available.length} onClick={()=>{const ids=[...new Set([...selected,...available.map(o=>o.id)])];if(ids.length>capacity){setError(`Only ${Math.max(0,capacity)} slots remain. Narrow the search or select fewer operations.`);return}setSelected(ids);setError('')}}>Select available results</button><button className={btn} disabled={!selected.length} onClick={()=>setSelected([])}>Clear selection</button></div></div>
  <div className="layout-stack">{shown.slice(0,limit).map(candidate=>{
  const checked=selected.includes(candidate.id),disabled=!candidate.operation||candidate.errors.length>0||candidate.already||(!checked&&selected.length>=capacity)
- return <div key={candidate.id} className="surface-inset p-3 layout-stack"><Checkbox className="break-all" label={candidate.id} checked={checked} disabled={disabled} description={candidate.summary||candidate.tags.join(' · ')} onChange={e=>setSelected(ids=>e.target.checked?[...ids,candidate.id]:ids.filter(id=>id!==candidate.id))}/>
+ return <div key={candidate.id} className="surface-inset p-3 layout-stack"><Checkbox className="break-all" label={candidate.id} checked={checked} disabled={disabled} description={candidate.summary||candidate.tags.join(' · ')} onChange={e=>{setSelected(ids=>e.target.checked?[...ids,candidate.id]:ids.filter(id=>id!==candidate.id));onPreview?.(candidate.operation)}}/>
  {candidate.operation&&<p className="break-all font-mono text-xs text-ink-muted">Tool: {candidate.operation.name}{candidate.renamed?' · renamed to preserve an existing tool':''}</p>}
  {candidate.already&&<p className="text-xs text-ink-muted">Already configured. Edit the existing operation to change it.</p>}
  {candidate.errors.map((reason,i)=><p key={i} className="break-words text-xs text-red-700">Unavailable: {reason}</p>)}
  {candidate.warnings.map((warning,i)=><p key={i} className="break-words text-xs text-amber-800">{warning}</p>)}
- {candidate.operation&&<OperationPreview operation={candidate.operation}/>}
+ {candidate.operation&&(onPreview?<button className={`${btn} self-start`} onClick={()=>onPreview(candidate.operation)}>Preview {candidate.operation.name}</button>:<OperationPreview operation={candidate.operation}/>)}
  </div>
  })}{shown.length===0&&<p className="text-sm text-ink-muted">No operations match this search.</p>}</div>
  <>{shown.length>limit&&<button className={`${btn} self-start`} onClick={()=>setLimit(n=>n+50)}>Show more operations</button>}</>
  <p className="text-xs leading-relaxed text-ink-muted">Adding operations only changes the draft. Review tool names, descriptions and request/response schemas in the operation editor, then use the main Save action to publish them. Existing operations and security settings are preserved.</p>
  </>}
- </div></Modal>
+ </div></ImportContainer>
+}
+
+function ImportContainer({inline,busy,onClose,footer,children}:{inline:boolean;busy:boolean;onClose:()=>void;footer:ReactNode;children:ReactNode}) {
+ const description='Analyze a definition, select operations, then add them to your upstream draft.'
+ if(!inline)return <Modal title="Import OpenAPI / Swagger" size="wide" busy={busy} onClose={onClose} description={description} footer={footer}>{children}</Modal>
+ return <section aria-label="Import OpenAPI / Swagger" className="surface-card min-w-0">
+   <div className="panel-header border-b border-line"><h3 className="panel-title">Import OpenAPI / Swagger</h3><p className="panel-description">{description}</p></div>
+   <div className="panel-body">{children}</div><div className="panel-footer border-t border-line flex flex-wrap justify-end gap-2">{footer}</div>
+ </section>
 }
 
 function OperationPreview({operation}:{operation:RESTOperation}) {

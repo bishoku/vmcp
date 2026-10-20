@@ -21,6 +21,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
 	"github.com/bishoku/vmcp/core/internal/resilience"
@@ -516,7 +517,9 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			return
 		}
 	}
+	callStarted := time.Now()
 	result, err := h.callResilient(ctx, sess, up, vt, args)
+	callDuration := time.Since(callStarted)
 	if err != nil {
 		if errors.Is(err, errAuthorizationChanged) {
 			_ = finish("denied", "authorization changed before dispatch")
@@ -560,7 +563,19 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
 			return
 		}
-		h.Log.Error("upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName, "category", "transport_failure")
+		reason, detail := netpolicy.Diagnostic(err)
+		stage := "upstream_call"
+		var restErr *restapi.ExecutionError
+		if errors.As(err, &restErr) {
+			stage = restErr.Stage
+			if stage == "tls_configuration" {
+				reason, detail = "tls_configuration_invalid", "Check the upstream CA and client certificate configuration."
+			}
+		}
+		h.Log.Error("upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName,
+			"category", "transport_failure", "reason", reason, "detail", detail, "stage", stage,
+			"virtual_server", vs.Slug, "request_id", ev.RequestID, "trace_id", ev.TraceID,
+			"duration_ms", callDuration.Milliseconds())
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream unavailable"))
 		return
 	}
