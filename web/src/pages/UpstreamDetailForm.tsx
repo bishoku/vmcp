@@ -1,4 +1,6 @@
 import Button from '../Button'
+import RESTUpstreamEditor from '../connections/RESTUpstreamEditor'
+import { emptyREST } from '../connections/rest-config'
 import { TagBadge } from '../Badge'
 import { Switch } from '../SelectionControls'
 import Select from '../Select'
@@ -39,6 +41,8 @@ export default function UpstreamDetailForm({
   const [editing, setEditing] = useState(!upstream)
   const editable = canEdit && editing
   const [slug, setSlug] = useState(upstream?.slug ?? '')
+  const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
+  const [rest,setRest]=useState(upstream?.rest??emptyREST())
   const [name, setName] = useState(upstream?.name ?? '')
   const [url, setUrl] = useState(upstream?.url ?? '')
   const [fallbacks, setFallbacks] = useState((upstream?.fallbackUrls ?? []).join('\n'))
@@ -93,7 +97,7 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
-  const unsaved = useUnsaved({slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
+  const unsaved = useUnsaved({kind,rest,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
@@ -122,7 +126,7 @@ export default function UpstreamDetailForm({
     await run(async () => {
       if (!editable) return
       setErr('')
-      if(!validation.check({slug:upstream?undefined:slugError(slug),name:upstream?requiredText(name,'Name',120):name.length>120?'Use 120 characters or fewer.':undefined,url:urlError(url),fallbackUrls:fallbackUrls().length>5?'Use up to five fallback URLs.':fallbackUrls().some(value=>urlError(value))?'Each fallback must be an absolute HTTP or HTTPS URL without credentials or fragments.':undefined,'auth.tokenUrl':authType==='oauth_client_credentials'?urlError(tokenUrl):undefined,'auth.clientId':authType==='oauth_client_credentials'?requiredText(clientId,'Client ID'):undefined,headers:newName||newValue?'Add or clear the pending header before saving.':undefined}))return
+      if(!validation.check({slug:upstream?undefined:slugError(slug),name:upstream?requiredText(name,'Name',120):name.length>120?'Use 120 characters or fewer.':undefined,url:urlError(url),fallbackUrls:kind==='rest'?undefined:fallbackUrls().length>5?'Use up to five fallback URLs.':fallbackUrls().some(value=>urlError(value))?'Each fallback must be an absolute HTTP or HTTPS URL without credentials or fragments.':undefined,'auth.tokenUrl':kind==='mcp'&&authType==='oauth_client_credentials'?urlError(tokenUrl):undefined,'auth.clientId':kind==='mcp'&&authType==='oauth_client_credentials'?requiredText(clientId,'Client ID'):undefined,headers:newName||newValue?'Add or clear the pending header before saving.':undefined}))return
       try {
         const headers: Record<string, string | null> = { ...replaced }
         removed.forEach((h) => (headers[h] = null))
@@ -130,23 +134,23 @@ export default function UpstreamDetailForm({
           saved = await api.patchUpstream(upstream.slug, {
             name,
             url,
-            fallbackUrls: fallbackUrls(),
+            fallbackUrls: kind==='rest'?[]:fallbackUrls(),
             transport,
             enabled,
             tls: tlsInput(),
-            auth: authInput(),
+            ...(kind==='rest'?{kind,rest}:{kind,auth:authInput()}),
             ...(Object.keys(headers).length && { headers }),
           },upstream.version)
         } else {
           saved = await api.createUpstream(slug, {
             name: name || slug,
             url,
-            fallbackUrls: fallbackUrls(),
+            fallbackUrls: kind==='rest'?[]:fallbackUrls(),
             transport,
             enabled,
             headers: replaced,
             tls: tlsInput(),
-            auth: authInput(),
+            ...(kind==='rest'?{kind,rest}:{kind,auth:authInput()}),
           })
         }
         unsaved.clean()
@@ -171,7 +175,7 @@ export default function UpstreamDetailForm({
   return <FormScope validation={validation}><div className="page-layout">
     <header className="layout-stack">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight aria-hidden="true" className="icon-inline"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
-      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 aria-hidden="true" className="icon-hero"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream MCP server for your virtual endpoints.'}</p></div></div>
+      <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 aria-hidden="true" className="icon-hero"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream service for your virtual endpoints.'}</p></div></div>
       <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
@@ -184,10 +188,10 @@ export default function UpstreamDetailForm({
       unsaved.clean();onReload(latest)
     }}/>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryTile label="Transport" value={transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
-      <SummaryTile label="Authentication" value={authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
-      <SummaryTile label="Discovered tools" value={upstream?.toolCount ?? '—'} detail={upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
-      <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
+      <SummaryTile label="Transport" value={kind==='rest'?'REST API':transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
+      <SummaryTile label="Authentication" value={kind==='rest'?rest.auth.type:authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
+      <SummaryTile label={kind==='rest'?'Configured tools':'Discovered tools'} value={upstream?.toolCount ?? '—'} detail={kind==='rest'?'Enabled REST operations':upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
+      <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail={kind==='rest'?'REST services are not automatically probed':'Stored observation · not a live check'} icon={Activity}/>
     </div>
     <div className="grid items-start layout-grid xl:grid-cols-[1.4fr_1fr]">
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
@@ -195,18 +199,19 @@ export default function UpstreamDetailForm({
           {!upstream && (
             <FormField name="slug" label="Slug" required hint="Stable identifier: lowercase letters, numbers and hyphens, up to 63 characters."><input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" /></FormField>
           )}
+          <FormField name="kind" label="Upstream type" hint="Type cannot change after creation."><Select className={input} disabled={!!upstream} value={kind} onChange={e=>setKind(e.target.value as 'mcp'|'rest')}><option value="mcp">MCP server</option><option value="rest">REST API</option></Select></FormField>
           <FormField name="name" label="Name" hint="Display name, up to 120 characters. New upstreams use the slug if left empty."><input className={clsx(input, 'mt-1')} value={name} onChange={(e) => setName(e.target.value)} /></FormField>
           <FormField name="url" label="URL" required hint="Absolute HTTP or HTTPS endpoint, without credentials or a fragment."><input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://host/mcp" /></FormField>
-          <FormField name="fallbackUrls" label="Fallback URLs" hint="Optional. Up to five distinct URLs, one per line, tried in order."><textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} /></FormField>
+          {kind==='mcp'&&<><FormField name="fallbackUrls" label="Fallback URLs" hint="Optional. Up to five distinct URLs, one per line, tried in order."><textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} /></FormField>
           <FormField name="transport" label="Transport" required help="Choose the protocol implemented by this MCP endpoint. Changing this setting does not automatically test or discover the server." hint="Choose the protocol supported by the upstream."><Select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
               <option value="streamable_http">Streamable HTTP</option>
               <option value="sse">Legacy SSE</option>
-            </Select></FormField>
+            </Select></FormField></>}
           <Switch label="Enabled" field="enabled" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>
 
         </fieldset>
       </ServerPanel>
-      <div className="min-w-0 layout-stack">
+      {kind==='mcp'&&<div className="min-w-0 layout-stack">
         <ServerPanel title="Connection verification" description="Explicit tests for saved or edited settings" icon={PlugZap} footer="A test checks the gateway-to-upstream connection. It does not verify a client’s access to virtual servers.">
           <div className="space-y-4 panel-body">
             {upstream && <div><Button loading={busy} className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
@@ -221,7 +226,7 @@ export default function UpstreamDetailForm({
           {upstream.lastRefreshError && <p className="mx-5 mb-4 break-words rounded-lg bg-red-50 p-3 text-xs text-red-700">{upstream.lastRefreshError}</p>}
           <div className="divide-y divide-line border-t border-line">{(upstream.health?.nodes ?? []).map(node=><details key={node.node} className="panel-inset py-4"><summary className="cursor-pointer text-xs"><span className="font-medium">{node.node}</span><span className="ml-2 text-ink-muted">{node.state} · {node.latencyMs} ms</span></summary><dl className="mt-2 divide-y divide-line"><DetailRow label="Checked">{fmt(node.checkedAt)}</DetailRow><DetailRow label="Circuit breaker">{node.breaker.replaceAll('_',' ')}</DetailRow><DetailRow label="URL"><span className="break-all font-mono">{node.url}</span></DetailRow></dl>{node.error && <p className="mt-2 break-words text-xs text-red-700">{node.error}</p>}</details>)}{!upstream.health?.nodes?.length && <EmptyState title="No node health observations available." compact/>}</div>
         </ServerPanel>}
-      </div>
+      </div>}
     </div>
     <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
     <div className="grid items-start layout-grid xl:grid-cols-2">
@@ -258,7 +263,7 @@ export default function UpstreamDetailForm({
 
         </fieldset>
       </ServerPanel>
-      <ServerPanel title="OAuth authentication" description="Token endpoint and client credentials" icon={Fingerprint}>
+      {kind==='mcp'&&<ServerPanel title="OAuth authentication" description="Token endpoint and client credentials" icon={Fingerprint}>
         <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
           <details className="min-w-0" open={authType === 'oauth_client_credentials'}>
             <summary className="cursor-pointer text-sm font-medium">OAuth 2.0 Client Credentials</summary>
@@ -305,8 +310,9 @@ export default function UpstreamDetailForm({
           </details>
 
         </fieldset>
-      </ServerPanel>
+      </ServerPanel>}
     </div>
+    {kind==='rest'&&<RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={editing?null:upstream}/>}
     <ServerPanel title="Request headers" description="Stored values remain masked; only explicit changes are sent" icon={Code2} footer="Header values are write-only. Replacing or removing a header takes effect after Save.">
       {editing ? (
       <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
@@ -347,7 +353,7 @@ export default function UpstreamDetailForm({
       ) : <div className="divide-y divide-line panel-inset">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
     </ServerPanel>
     {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="layout-stack"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
-    {editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
-    {upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
+    {kind==='mcp' && editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
+    {kind==='mcp' && upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
   </div></FormScope>
 }

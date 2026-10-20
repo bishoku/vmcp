@@ -9,6 +9,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
+	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
 
@@ -56,10 +57,15 @@ func (b Binding) Principal() string { return "oauth:" + b.Slug }
 
 // Upstream is a physical MCP server. Headers are already decrypted.
 type Upstream struct {
-	Instructions string
-	ID           string
-	Slug         string
-	URL          string
+	Kind   string
+	Tenant string
+	REST   *restapi.Compiled
+	// RESTSourceHash identifies decrypted source bytes for immutable schema reuse.
+	RESTSourceHash [32]byte `json:"-"`
+	Instructions   string
+	ID             string
+	Slug           string
+	URL            string
 	// FallbackURLs are tried in order when URL does not answer.
 	FallbackURLs []string
 	Headers      map[string]string

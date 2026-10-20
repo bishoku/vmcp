@@ -39,8 +39,8 @@ export VMCP_RUN_ACCEPTANCE=1
 cd "$vmcp_acceptance_root/core"
 go build -o "$VMCP_ACCEPTANCE_BINARY" ./cmd/data-plane
 # The child node processes are built without race instrumentation for valid timings.
-vmcp_acceptance_test_flags=()
+vmcp_acceptance_test_flags=(go test -tags=acceptance)
 if [[ "${VMCP_ACCEPTANCE_RACE:-0}" == "1" ]]; then
   vmcp_acceptance_test_flags+=(-race)
 fi
-go test -tags=acceptance "${vmcp_acceptance_test_flags[@]}" -count=1 -timeout=20m -run '^TestScaleAcceptance$' -v ./internal/e2e 2>&1 | tee "$VMCP_ACCEPTANCE_OUTPUT/run.log"
+"${vmcp_acceptance_test_flags[@]}" -count=1 -timeout=20m -run '^TestScaleAcceptance$' -v ./internal/e2e 2>&1 | tee "$VMCP_ACCEPTANCE_OUTPUT/run.log"

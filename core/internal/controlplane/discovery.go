@@ -32,7 +32,7 @@ func (s *Server) RunDiscovery(ctx context.Context) {
 			return
 		case <-tick.C:
 			bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
-			_, _ = s.Store.Pool.Exec(bounded, `INSERT INTO mcp_discovery_requests(upstream_id) SELECT id FROM upstreams WHERE enabled AND (last_refresh_at IS NULL OR last_refresh_at<now()-interval '30 seconds') ON CONFLICT(upstream_id) DO NOTHING`)
+			_ = s.enqueueDiscovery(bounded)
 			cancel()
 		}
 	}
@@ -63,12 +63,17 @@ func (s *Server) discoverOne(parent context.Context) {
 	if err != nil {
 		return
 	}
+	conn, connErr := s.Store.Reader().UpstreamConnInfo(ctx, slug)
+	if connErr == nil && conn.Kind == "rest" {
+		_, _ = s.Store.Pool.Exec(ctx, `DELETE FROM mcp_discovery_requests WHERE upstream_id=$1::uuid`, id)
+		return
+	}
 	recorder := audit.NewDurable(s.Store.Pool, s.Log)
 	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "discovery", Action: "upstream.discovery", Method: "upstream.discovery", Target: slug, Revision: revision})
 	if err != nil {
 		return
 	}
-	conn, err := s.Store.Reader().UpstreamConnInfo(ctx, slug)
+	err = connErr
 	if err == nil {
 		probeCtx, probeCancel := context.WithTimeout(ctx, 55*time.Second)
 		result, probeErr := probeAny(probeCtx, append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS, conn.OAuth)
@@ -110,4 +115,12 @@ func (s *Server) discoverOne(parent context.Context) {
 	} else {
 		_, _ = s.Store.Pool.Exec(completion, `UPDATE mcp_discovery_requests SET lease_owner=NULL,lease_until=now()+interval '5 seconds' WHERE upstream_id=$1 AND lease_owner=$2`, id, owner)
 	}
+}
+
+func (s *Server) enqueueDiscovery(ctx context.Context) error {
+	_, err := s.Store.Pool.Exec(ctx, `INSERT INTO mcp_discovery_requests(upstream_id)
+ SELECT u.id FROM upstreams u LEFT JOIN upstream_status status ON status.upstream_id=u.id
+ WHERE u.kind='mcp' AND u.enabled AND (status.last_refresh_at IS NULL OR status.last_refresh_at<now()-interval '30 seconds')
+ ON CONFLICT(upstream_id) DO NOTHING`)
+	return err
 }

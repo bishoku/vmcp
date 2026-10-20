@@ -24,6 +24,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
 	"github.com/bishoku/vmcp/core/internal/resilience"
+	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/bishoku/vmcp/core/internal/upstream"
 )
@@ -633,7 +634,7 @@ func idempotent(annotations json.RawMessage) bool {
 func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Upstream, vt config.VirtualTool, args json.RawMessage) (json.RawMessage, error) {
 	br := h.Breakers.Get(up.ID)
 	attempts := 1
-	if idempotent(vt.Tool.Annotations) {
+	if up.REST == nil && idempotent(vt.Tool.Annotations) {
 		attempts = 2
 		ctx = oauthtoken.WithReplaySafe(ctx)
 	}
@@ -653,7 +654,13 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 		if br != nil && !br.Allow() {
 			return nil, errCircuitOpen
 		}
-		res, err = h.callUpstream(ctx, sess, up, vt.UpstreamName, args)
+		if up.REST != nil {
+			done := h.Metrics.BeginOperation(telemetry.Operation{Family: "upstream_requests", Upstream: up.Slug, Method: mcp.MethodToolsCall, Tool: vt.UpstreamName})
+			res, err = up.REST.Execute(ctx, up.URL, vt.UpstreamName, args, up.Headers, up.TLS, restapi.Identity{Type: sess.owner.Mode, ID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Subject: sess.owner.Subject, Tenant: up.Tenant, VirtualServer: sess.slug}, func() error { return checkAuthorization(ctx) })
+			done(operationOutcome(ctx, res, err))
+		} else {
+			res, err = h.callUpstream(ctx, sess, up, vt.UpstreamName, args)
+		}
 		if errors.Is(err, errAuthorizationChanged) {
 			return res, err
 		}

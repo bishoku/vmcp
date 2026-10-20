@@ -83,6 +83,9 @@ func (s *Server) refreshTools(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if conn.Kind == "rest" {
+		return apierror.Validation([]apierror.FieldError{storeRestError("REST tools are published from saved operations; discovery is not applicable")})
+	}
 	now := time.Now().UTC()
 	res, err := probeAny(r.Context(), append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS, conn.OAuth)
 	if err != nil {
@@ -166,9 +169,16 @@ func (s *Server) storedConnectionTest(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
+	if conn.Kind == "rest" {
+		return apierror.Validation([]apierror.FieldError{storeRestError("Use an explicit saved REST operation test")})
+	}
 	result, err := probeAny(r.Context(), append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS, conn.OAuth)
 	if err != nil {
 		return writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Upstream connection or authentication failed"})
 	}
 	return writeJSON(w, http.StatusOK, map[string]any{"ok": true, "toolCount": len(result.Tools), "latencyMs": result.Latency.Milliseconds(), "protocolVersion": result.ProtocolVersion})
+}
+
+func storeRestError(message string) apierror.FieldError {
+	return apierror.FieldError{Field: "/rest", Code: apierror.CodeValidationFailed, Message: message}
 }

@@ -23,7 +23,7 @@ export default function ConnectionSetup() {
   const hasKey = inventory.keys.some(k=>k.virtualServers.includes(slug) && keyState(k)==='active')
   const hasBinding = inventory.bindings.some(b=>b.enabled && b.virtualServers.includes(slug))
   const steps = [
-    {title:'Register upstreams',description:'Add physical MCP servers and their transport, credentials and TLS settings.',href:'/upstreams',status:inventory.upstreams.length?'Upstreams registered':'Registration needed'},
+    {title:'Register upstreams',description:'Add MCP servers or REST APIs with their credentials and TLS settings.',href:'/upstreams',status:inventory.upstreams.length?'Upstreams registered':'Registration needed'},
     {title:'Test connectivity',description:'Open an upstream and deliberately test its stored credentials. This checks the gateway-to-upstream hop only.',href:upstreams[0]?editorPath('upstreams',upstreams[0].slug):'/upstreams',status:'Explicit test required; not inferred from configuration'},
     {title:'Discover capabilities',description:'Refresh each upstream to discover tools, resources, templates and prompts. Check discovery errors before composing.',href:'/upstreams',status:referenced.size > 0 && upstreams.length === referenced.size && upstreams.every(u=>u.lastRefreshAt && !u.lastRefreshError)?'Referenced upstreams have discovery snapshots':'Discovery needed or not yet known'},
     {title:'Compose a virtual MCP server',description:'Select capabilities explicitly, set aliases, authentication and protection, then save the draft.',href:server?editorPath('virtual-servers',slug):'/virtual-servers',status:server?`${capabilityCounts(server)} selected`:'Choose or create a virtual server'},

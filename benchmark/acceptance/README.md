@@ -102,3 +102,21 @@ Configuration overrides: `VMCP_ACCEPTANCE_SERVERS` (1–1000),
 `VMCP_ACCEPTANCE_PG_PORT` and `VMCP_ACCEPTANCE_REDIS_PORT`. Keep all generated
 services local; run only synthetic tools. A failing SLO returns a non-zero exit
 status **after saving report.json**, with evidence retained for diagnosis.
+
+## REST upstream profile
+
+```sh
+VMCP_ACCEPTANCE_REST=1 ./scripts/acceptance-core.sh
+```
+
+Uses the same gates, isolation and two production node processes. Defaults to 300
+REST upstreams, 300 virtual servers, 200 operations per upstream (60,000 tools),
+600 sessions and 64 keys. Resource catalogs are omitted for REST. Calls are POSTs
+with validated JSON bodies and responses, including existing PII masking checks.
+The fixture checks every execution nonce for duplicates. A 30-second
+`config-refresh` phase at steady load updates metadata and requires both nodes to
+observe the new snapshot within 25 seconds; propagation time is recorded in
+`DataPlaneConfiguration.rest_refresh_ms`. This phase uses the normal steady SLO.
+The test seeds bulk inventory directly to isolate runtime capacity; it does not
+measure UI/import throughput or bulk REST save transactions. Synthetic local
+services do not establish performance of real external APIs or identity providers.

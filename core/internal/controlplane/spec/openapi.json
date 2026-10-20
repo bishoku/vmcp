@@ -2696,6 +2696,184 @@
           }
         }
       }
+    },
+    "/api/v1/upstreams/{slug}/rest/preview": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Upstreams"
+        ],
+        "operationId": "previewRESTOperation",
+        "summary": "Preview a saved REST operation without sending it",
+        "description": "Validates arguments and returns the prepared URL/body with masked header values. No network access or impersonation. Editor or admin required.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRF"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RESTOperationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prepared request with redacted headers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RESTPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuditUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/upstreams/{slug}/rest/test": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Slug"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Upstreams"
+        ],
+        "operationId": "testRESTOperation",
+        "summary": "Execute a saved REST operation once (admin only)",
+        "description": "Real operation with possible side effects. Requires admin, enabled upstream and matching If-Match. Never impersonates an agent; identity-required operations must be tested through MCP. No retries. Errors are sanitized MCP tool results.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRF"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RESTOperationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MCP tool result; isError indicates REST failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuditUnavailable"
+          }
+        }
+      }
+    },
+    "/api/v1/rest-imports": {
+      "post": {
+        "tags": [
+          "Upstreams"
+        ],
+        "operationId": "previewRESTImport",
+        "summary": "Analyze OpenAPI/Swagger operations without saving or contacting a service",
+        "description": "Editor/admin only. Upload document contents as a string. Returns selectable REST operation definitions and per-operation compatibility warnings/errors. Use existing upstream CRUD with the explicitly selected operations to save; existing REST validation, credentials, ETags and audit controls still apply. No credentials, headers, TLS settings or agent identity forwarding are imported. Unsupported media, methods, serialization, external or recursive references are not silently converted.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRF"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RESTImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis preview; configuration remains unchanged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RESTImportResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuditUnavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2941,6 +3119,17 @@
           },
           "auth": {
             "$ref": "#/components/schemas/UpstreamAuthInput"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "rest"
+            ],
+            "description": "Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update."
+          },
+          "rest": {
+            "$ref": "#/components/schemas/RESTConfig"
           }
         }
       },
@@ -2986,6 +3175,17 @@
           },
           "slug": {
             "$ref": "#/components/schemas/Slug"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "rest"
+            ],
+            "description": "Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update."
+          },
+          "rest": {
+            "$ref": "#/components/schemas/RESTConfig"
           }
         },
         "required": [
@@ -3057,6 +3257,17 @@
           },
           "auth": {
             "$ref": "#/components/schemas/UpstreamAuthPatch"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "rest"
+            ],
+            "description": "Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update."
+          },
+          "rest": {
+            "$ref": "#/components/schemas/RESTConfig"
           }
         }
       },
@@ -3330,6 +3541,17 @@
             "type": "integer",
             "minimum": 1,
             "readOnly": true
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "rest"
+            ],
+            "description": "Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update."
+          },
+          "rest": {
+            "$ref": "#/components/schemas/RESTConfig"
           }
         }
       },
@@ -5342,6 +5564,356 @@
           "text": {
             "type": "string",
             "maxLength": 20000
+          }
+        }
+      },
+      "RESTAuth": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "basic",
+              "bearer",
+              "oauth2"
+            ],
+            "default": "none"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "token": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "tokenUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "audience": {
+            "type": "string"
+          },
+          "tokenAuthMethod": {
+            "type": "string",
+            "enum": [
+              "client_secret_basic",
+              "client_secret_post"
+            ],
+            "default": "client_secret_basic"
+          },
+          "hasPassword": {
+            "type": "boolean",
+            "readOnly": true
+          },
+          "hasToken": {
+            "type": "boolean",
+            "readOnly": true
+          },
+          "hasClientSecret": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "description": "Omitted or empty credentials preserve stored secrets when the auth type is unchanged. Change type to none to clear authentication. HTTPS is required unless allowInsecureHttp is enabled. OAuth token endpoint uses system TLS trust."
+      },
+      "RESTParameter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/ToolName"
+          },
+          "in": {
+            "type": "string",
+            "enum": [
+              "path",
+              "query"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "schema": {
+            "type": "object",
+            "description": "Inline JSON Schema with scalar type string, number, integer or boolean. Path parameters are always required."
+          }
+        },
+        "required": [
+          "name",
+          "in",
+          "schema"
+        ]
+      },
+      "RESTOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/ToolName"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Appended to base URL. Starts with one slash; no query, fragments, escapes or traversal segments."
+          },
+          "parameters": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/RESTParameter"
+            }
+          },
+          "bodySchema": {
+            "description": "Optional inline JSON Schema. Adds required body argument; forbidden for GET."
+          },
+          "responseSchema": {
+            "description": "Optional inline JSON Schema validated before response field projection. No schema references supported."
+          },
+          "responseFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "successStatuses": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 200,
+              "maximum": 299
+            }
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "writeOnly": true,
+            "description": "Encrypted write-only operation headers. Omit to preserve by operation name; empty object clears. Override common headers case-insensitively. Reserved headers are rejected."
+          },
+          "headerNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Only GET may be marked read-only. Defaults false."
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "method",
+          "path"
+        ]
+      },
+      "RESTConfig": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/RESTAuth"
+          },
+          "forwardIdentity": {
+            "type": "boolean"
+          },
+          "requireIdentity": {
+            "type": "boolean"
+          },
+          "allowInsecureHttp": {
+            "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 120,
+            "default": 30
+          },
+          "operations": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/RESTOperation"
+            }
+          }
+        },
+        "description": "REST configuration (max 512 KiB). When supplied this block replaces configuration, preserving omitted secrets and per-operation headers. Omit the entire block to retain it. Agent identity is derived only from authenticated sessions; requireIdentity also requires forwardIdentity. No redirects, fallbacks or automatic operation retries."
+      },
+      "RESTOperationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "$ref": "#/components/schemas/ToolName"
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "operation",
+          "arguments"
+        ]
+      },
+      "RESTPreview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "body": {}
+        }
+      },
+      "RESTImportOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "method",
+          "path",
+          "summary",
+          "tags",
+          "warnings",
+          "errors"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "operation": {
+            "$ref": "#/components/schemas/RESTOperation"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Unsupported operations remain visible with errors and no operation. Import never selects or publishes operations."
+      },
+      "RESTImportResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "version",
+          "servers",
+          "warnings",
+          "operations"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "operations": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "$ref": "#/components/schemas/RESTImportOperation"
+            }
+          }
+        },
+        "description": "Preview limited to 8 MiB. Server declarations are informational only; connection/security settings are never applied. Local references are expanded into inline schemas; external/cyclic references are rejected per operation."
+      },
+      "RESTImportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "document"
+        ],
+        "properties": {
+          "document": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2097152,
+            "description": "Complete UTF-8 JSON/YAML document, at most 2 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams."
           }
         }
       }

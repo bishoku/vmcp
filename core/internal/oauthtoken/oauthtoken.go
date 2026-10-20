@@ -25,6 +25,7 @@ import (
 
 // Config describes how to obtain a token. ClientSecret is never logged or exported.
 type Config struct {
+	AuthStyle    string
 	TokenURL     string
 	ClientID     string
 	ClientSecret string
@@ -75,6 +76,12 @@ func New(c Config, hc *http.Client) *Source {
 	}
 	cc := clientcredentials.Config{ClientID: c.ClientID, ClientSecret: c.ClientSecret, TokenURL: c.TokenURL, Scopes: c.Scopes,
 		AuthStyle: oauth2.AuthStyleAutoDetect}
+	if c.AuthStyle == "client_secret_basic" {
+		cc.AuthStyle = oauth2.AuthStyleInHeader
+	}
+	if c.AuthStyle == "client_secret_post" {
+		cc.AuthStyle = oauth2.AuthStyleInParams
+	}
 	if c.Audience != "" {
 		cc.EndpointParams = url.Values{"audience": {c.Audience}}
 	}
@@ -153,7 +160,7 @@ var (
 // keyed by a hash of the whole config, so changing the secret or scopes yields a fresh token.
 func configKey(c Config) string {
 	h := sha256.New()
-	for _, p := range []string{c.TokenURL, c.ClientID, c.ClientSecret, c.Audience} {
+	for _, p := range []string{c.TokenURL, c.ClientID, c.ClientSecret, c.Audience, c.AuthStyle} {
 		fmt.Fprintf(h, "%d:%s|", len(p), p)
 	}
 	for _, p := range c.Scopes {

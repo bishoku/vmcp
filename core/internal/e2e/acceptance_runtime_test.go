@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/bishoku/vmcp/core/internal/testdb"
@@ -34,7 +35,7 @@ import (
 
 type acceptanceProfile struct {
 	Servers, Tools, Resources, Sessions, SteadyRPS, BurstRPS, Workers int
-	Smoke                                                             bool
+	REST, Smoke                                                       bool
 }
 
 func acceptanceNumber(name string, fallback, minValue, maxValue int) int {
@@ -74,14 +75,33 @@ func acceptanceSeed(t *testing.T, p acceptanceProfile, fixtures []*httptest.Serv
 		if err != nil {
 			t.Fatal(err)
 		}
-		rows[i] = []any{id, tenant, fmt.Sprintf("accept-up-%04d", i), fmt.Sprintf("Synthetic upstream %d", i), fixtures[i%len(fixtures)].URL + fmt.Sprintf("/up-%04d", i), "streamable_http", headers}
+		kind := "mcp"
+		var encrypted []byte
+		if p.REST {
+			kind = "rest"
+			raw, _ := json.Marshal(acceptanceRESTConfig(p.Tools))
+			encrypted, err = box.SealBound(raw, id, "upstream.rest_config")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		rows[i] = []any{id, tenant, fmt.Sprintf("accept-up-%04d", i), fmt.Sprintf("Synthetic upstream %d", i), fixtures[i%len(fixtures)].URL + fmt.Sprintf("/up-%04d", i), "streamable_http", headers, kind, encrypted}
 	}
-	if _, err = pool.CopyFrom(ctx, pgx.Identifier{"upstreams"}, []string{"id", "tenant_id", "slug", "name", "url", "transport", "encrypted_headers"}, pgx.CopyFromRows(rows)); err != nil {
+	if _, err = pool.CopyFrom(ctx, pgx.Identifier{"upstreams"}, []string{"id", "tenant_id", "slug", "name", "url", "transport", "encrypted_headers", "kind", "encrypted_rest_config"}, pgx.CopyFromRows(rows)); err != nil {
 		t.Fatal(err)
 	}
 	tools := make([]any, p.Tools)
 	for i := range tools {
 		tools[i] = acceptanceTool(i)
+	}
+	if p.REST {
+		compiled, err := restapi.Compile("http://127.0.0.1", acceptanceRESTConfig(p.Tools), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range tools {
+			tools[i] = compiled.Tools[i]
+		}
 	}
 	definitions, _ := json.Marshal(tools)
 	execSQL := func(q string, args ...any) {

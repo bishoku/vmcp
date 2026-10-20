@@ -20,6 +20,7 @@ import (
 )
 
 type acceptanceFixture struct {
+	rest       bool
 	tools      int
 	resources  int
 	sessions   sync.Map
@@ -29,6 +30,10 @@ type acceptanceFixture struct {
 }
 
 func (f *acceptanceFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if f.rest {
+		f.serveREST(w, r)
+		return
+	}
 	if r.Method == http.MethodDelete {
 		f.sessions.Delete(r.Header.Get("Mcp-Session-Id"))
 		w.WriteHeader(204)
@@ -137,6 +142,7 @@ type acceptanceClient struct {
 	url, session, token string
 	http                *http.Client
 	server              int
+	rest                bool
 }
 type acceptanceResponse struct {
 	result          json.RawMessage

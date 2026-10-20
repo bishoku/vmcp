@@ -15,11 +15,14 @@ import (
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
+	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
 )
 
 // Upstream is the API read model of a physical MCP server. Header values are never exposed.
 type Upstream struct {
+	Kind             string          `json:"kind"`
+	REST             *restapi.Config `json:"rest,omitempty"`
 	Slug             string          `json:"slug"`
 	Name             string          `json:"name"`
 	Description      string          `json:"description"`
@@ -41,6 +44,8 @@ type Upstream struct {
 
 // UpstreamInput is the writable part of an upstream.
 type UpstreamInput struct {
+	Kind         string
+	REST         *restapi.Config
 	Name         string
 	Description  string
 	URL          string
@@ -71,6 +76,8 @@ type TLSPatch struct {
 
 // UpstreamPatch is a JSON merge patch. A nil header value deletes that header.
 type UpstreamPatch struct {
+	Kind                              *string
+	REST                              *restapi.Config
 	Name, Description, URL, Transport *string
 	FallbackURLs                      *[]string
 	Enabled                           *bool
@@ -81,6 +88,10 @@ type UpstreamPatch struct {
 
 // UpstreamConn is what the control plane needs to connect to an upstream.
 type UpstreamConn struct {
+	Version      int64
+	Enabled      bool
+	Kind         string
+	REST         *restapi.Config
 	URL          string
 	FallbackURLs []string
 	Transport    string
@@ -91,6 +102,7 @@ type UpstreamConn struct {
 }
 
 type upstreamRow struct {
+	rest *restapi.Config
 	Upstream
 	id      string
 	headers map[string]string
@@ -106,7 +118,7 @@ const upstreamSelect = `
 	       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret,
 	       (SELECT COALESCE(jsonb_agg(jsonb_build_object('node', h.node, 'state', h.state, 'breaker', h.breaker,
 	           'url', h.url, 'latencyMs', h.latency_ms, 'error', h.error, 'checkedAt', h.checked_at)), '[]'::jsonb)
-	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes')
+	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.kind,u.encrypted_rest_config
 	FROM upstreams u LEFT JOIN upstream_status s ON s.upstream_id = u.id
 	WHERE u.tenant_id = ` + tenantSQL
 
@@ -116,11 +128,11 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 	var r upstreamRow
 	var enc []byte
 	var count int64
-	var nodes, encKey, encOAuth []byte
+	var nodes, encKey, encOAuth, encREST []byte
 	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.URL, &r.Transport, &r.Enabled, &enc,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &count, &r.LastRefreshAt, &r.LastRefreshError, &r.FallbackURLs,
 		&r.tls.CAPEM, &r.tls.ServerName, &r.tls.ClientCertPEM, &encKey,
-		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes); err != nil {
+		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Kind, &encREST); err != nil {
 		return nil, err
 	}
 	if len(encKey) > 0 {
@@ -136,6 +148,18 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 			return nil, fmt.Errorf("decrypt oauth client secret of upstream %q: %w", r.Slug, err)
 		}
 		r.oauth.ClientSecret = string(k)
+	}
+	if len(encREST) > 0 {
+		raw, err := t.box.OpenBound(encREST, r.id, "upstream.rest_config")
+		if err != nil {
+			return nil, err
+		}
+		var rest restapi.Config
+		if err = json.Unmarshal(raw, &rest); err != nil {
+			return nil, err
+		}
+		r.rest = &rest
+		r.REST = rest.Public()
 	}
 	r.Auth = r.oauth.Info()
 	r.TLS = r.tls.Info()
@@ -222,12 +246,12 @@ func (t *Tx) UpstreamConnInfo(ctx context.Context, slug string) (*UpstreamConn, 
 	if err != nil {
 		return nil, err
 	}
-	return &UpstreamConn{URL: r.URL, FallbackURLs: r.FallbackURLs, Transport: r.Transport, Headers: r.headers, TLS: r.tls, OAuth: r.oauthPtr(), ToolCount: r.ToolCount}, nil
+	return &UpstreamConn{Version: r.Version, Enabled: r.Enabled, Kind: r.Kind, REST: r.rest, URL: r.URL, FallbackURLs: r.FallbackURLs, Transport: r.Transport, Headers: r.headers, TLS: r.tls, OAuth: r.oauthPtr(), ToolCount: r.ToolCount}, nil
 }
 
 // PutUpstream creates or replaces an upstream. With createOnly an existing slug is a 409.
 // ifMatch, when set, must equal the current version.
-func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifMatch *int64, createOnly bool) (*Upstream, Outcome, error) {
+func (t *Tx) putUpstreamConnection(ctx context.Context, slug string, in UpstreamInput, ifMatch *int64, createOnly bool) (*Upstream, Outcome, error) {
 	t.auditTarget("upstream", slug)
 	if len(in.FallbackURLs) == 0 {
 		in.FallbackURLs = []string{}
@@ -432,7 +456,7 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	if err != nil {
 		return nil, err
 	}
-	in := UpstreamInput{Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
+	in := UpstreamInput{Kind: cur.Kind, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
 	if p.FallbackURLs != nil {
 		in.FallbackURLs = *p.FallbackURLs
 	}
@@ -444,6 +468,12 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	}
 	if p.URL != nil {
 		in.URL = *p.URL
+	}
+	if p.Kind != nil {
+		in.Kind = *p.Kind
+	}
+	if p.REST != nil {
+		in.REST = p.REST
 	}
 	if p.Transport != nil {
 		in.Transport = *p.Transport

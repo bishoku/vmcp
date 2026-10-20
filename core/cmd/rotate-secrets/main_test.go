@@ -30,6 +30,11 @@ func TestRestartableRotationPreservesBoundRecords(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO upstreams(id,tenant_id,slug,name,url,transport,encrypted_headers) SELECT $1,id,'rotate','Rotate','https://example.com','streamable_http',$2 FROM tenants WHERE slug='default'`, id, encrypted); err != nil {
 		t.Fatal(err)
 	}
+	restSecret := []byte(`{"auth":{"type":"bearer","token":"rest-private"}}`)
+	restCiphertext, _ := legacy.SealBound(restSecret, id, "upstream.rest_config")
+	if _, err := pool.Exec(ctx, `UPDATE upstreams SET encrypted_rest_config=$2 WHERE id=$1`, id, restCiphertext); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("VMCP_DATABASE_URL", url)
 	t.Setenv("VMCP_MASTER_KEY", newKey)
 	t.Setenv("VMCP_KEY_ID", "new")
@@ -48,6 +53,15 @@ func TestRestartableRotationPreservesBoundRecords(t *testing.T) {
 	restored, _ := secrets.NewKeyring("new", map[string]string{"new": newKey}, false)
 	if headers, err := restored.OpenHeadersBound(ciphertext, id); err != nil || headers["Authorization"] != "opaque" {
 		t.Fatal("restore failed", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT encrypted_rest_config FROM upstreams WHERE id=$1`, id).Scan(&restCiphertext); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := restored.OpenBound(restCiphertext, id, "upstream.rest_config"); err != nil || string(value) != string(restSecret) {
+		t.Fatal("REST secret rotation failed", err)
+	}
+	if _, err := restored.OpenBound(restCiphertext, "other", "upstream.rest_config"); err == nil {
+		t.Fatal("REST secret transplanted")
 	}
 	if _, err := restored.OpenHeadersBound(ciphertext, "other"); err == nil {
 		t.Fatal("rotated ciphertext transplanted")

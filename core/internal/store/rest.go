@@ -1,0 +1,96 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/restapi"
+)
+
+// PutUpstream shares the existing transactional connection write and publishes REST
+// tool definitions atomically with the encrypted operation configuration.
+func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifMatch *int64, createOnly bool) (*Upstream, Outcome, error) {
+	current, err := t.getUpstream(ctx, slug, true)
+	var notFound *apierror.Error
+	if err != nil && (!errors.As(err, &notFound) || notFound.Code != apierror.CodeNotFound) {
+		return nil, "", err
+	}
+	kind := in.Kind
+	if kind == "" {
+		kind = "mcp"
+		if current != nil {
+			kind = current.Kind
+		}
+	}
+	if kind != "mcp" && kind != "rest" {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/kind", "must be mcp or rest")})
+	}
+	if current != nil && kind != current.Kind {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/kind", "upstream kind is immutable; create a separate upstream")})
+	}
+	var rest *restapi.Config
+	var compiled *restapi.Compiled
+	if kind == "rest" {
+		var previous *restapi.Config
+		if current != nil {
+			previous = current.rest
+		}
+		rest = restapi.Resolve(in.REST, previous)
+		headers := in.Headers
+		if headers == nil && current != nil {
+			headers = current.headers
+		}
+		if rest == nil {
+			return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest", "REST configuration is required")})
+		}
+		if len(in.FallbackURLs) > 0 || (in.OAuth != nil && !in.OAuth.IsZero()) || (current != nil && !current.oauth.IsZero()) {
+			return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest", "REST uses its own auth configuration and does not support fallback URLs")})
+		}
+		compiled, err = restapi.Compile(in.URL, *rest, headers)
+		if err != nil {
+			return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest", err.Error())})
+		}
+	} else if in.REST != nil {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest", "REST operations require a REST upstream")})
+	}
+	result, outcome, err := t.putUpstreamConnection(ctx, slug, in, ifMatch, createOnly)
+	if err != nil {
+		return nil, "", err
+	}
+	if kind != "rest" {
+		return result, outcome, nil
+	}
+	oldRaw, _ := json.Marshal(func() *restapi.Config {
+		if current != nil {
+			return current.rest
+		}
+		return nil
+	}())
+	raw, _ := json.Marshal(rest)
+	if current == nil || !jsonEqual(oldRaw, raw) {
+		var id string
+		if err := t.q.QueryRow(ctx, `SELECT id::text FROM upstreams WHERE tenant_id=`+tenantSQL+` AND slug=$1`, slug).Scan(&id); err != nil {
+			return nil, "", err
+		}
+		encrypted, err := t.box.SealBound(raw, id, "upstream.rest_config")
+		if err != nil {
+			return nil, "", err
+		}
+		bump := 0
+		if outcome == Unchanged {
+			bump = 1
+			outcome = Updated
+		}
+		if _, err = t.q.Exec(ctx, `UPDATE upstreams SET kind='rest',encrypted_rest_config=$2,version=version+$3,updated_at=now() WHERE id=$1::uuid`, id, encrypted, bump); err != nil {
+			return nil, "", err
+		}
+	}
+	if _, err = t.ReplaceTools(ctx, slug, compiled.Tools, time.Now().UTC()); err != nil {
+		return nil, "", err
+	}
+	result, err = t.GetUpstream(ctx, slug)
+	return result, outcome, err
+}

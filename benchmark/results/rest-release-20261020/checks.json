@@ -1,0 +1,32 @@
+{
+  "go_race": {
+    "passed": 500,
+    "skipped": 0,
+    "packages": 42
+  },
+  "web_unit": 179,
+  "browser": 120,
+  "helm_chart": 10,
+  "quickstart": 9,
+  "release_helpers": 8,
+  "go_vet": "passed",
+  "go_build_commands": "passed",
+  "web_lint": "passed",
+  "web_build": "passed",
+  "openapi": "passed",
+  "govulncheck": "No vulnerabilities found",
+  "docker_builds": [
+    "data-plane",
+    "control-plane",
+    "migrate",
+    "web"
+  ],
+  "not_executed": [
+    "live Kubernetes installation/upgrade smoke",
+    "published artifact verification",
+    "container scans for images other than data-plane"
+  ],
+  "data_plane_image_high_critical_vulnerabilities": 0,
+  "mcp_acceptance_smoke_race": "passed",
+  "rest_acceptance_smoke_race": "passed"
+}

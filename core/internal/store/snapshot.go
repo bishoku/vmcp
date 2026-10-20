@@ -17,6 +17,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
 	"github.com/bishoku/vmcp/core/internal/policy"
+	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 )
 
@@ -118,6 +119,14 @@ func Revision(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
 // LoadSnapshot builds a consistent snapshot of the default tenant's enabled config.
 // It runs in one repeatable-read transaction so revision and content always agree.
 func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*config.Snapshot, error) {
+	return LoadSnapshotWithPrevious(ctx, pool, box, nil)
+}
+
+// LoadSnapshotWithPrevious reuses immutable REST schemas only when their complete
+// source, base URL and common headers match. Fresh database reads and bound secret
+// decryption still happen before reuse; authorization and revision checks are unchanged.
+// Retention is bounded by the current/previous snapshots, with no global schema cache.
+func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box, previous *config.Snapshot) (*config.Snapshot, error) {
 	boxTag := sha256.Sum256([]byte(fmt.Sprintf("%p", box)))
 	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -139,7 +148,7 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	rows, err := tx.Query(ctx, `
 		SELECT u.id::text, u.slug, u.url, u.fallback_urls, u.transport, u.encrypted_headers,
 		       u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key,
-		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.discovered_instructions
+		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.discovered_instructions,u.kind,u.encrypted_rest_config,u.tenant_id::text
 		FROM upstreams u JOIN tenants t ON t.id = u.tenant_id
 		WHERE t.slug = $1 AND u.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -147,11 +156,11 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 	}
 	for rows.Next() {
 		var u config.Upstream
-		var enc, encKey, encOAuth []byte
+		var enc, encKey, encOAuth, encREST []byte
 		var oc oauthtoken.Config
 		if err := rows.Scan(&u.ID, &u.Slug, &u.URL, &u.FallbackURLs, &u.Transport, &enc,
 			&u.TLS.CAPEM, &u.TLS.ServerName, &u.TLS.ClientCertPEM, &encKey,
-			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &u.Instructions); err != nil {
+			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &u.Instructions, &u.Kind, &encREST, &u.Tenant); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -177,6 +186,33 @@ func LoadSnapshot(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) (*c
 				oc.ClientSecret = k
 			}
 			u.OAuth = &oc
+		}
+		if u.Kind == "rest" {
+			raw, err := cachedOpenBound(box, boxTag, encREST, u.ID, "upstream.rest_config")
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+			var rest restapi.Config
+			if err = json.Unmarshal([]byte(raw), &rest); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			u.RESTSourceHash = sha256.Sum256([]byte(raw))
+			if previous != nil {
+				old := previous.Upstreams[u.ID]
+				if old.REST != nil && old.Tenant == u.Tenant && old.RESTSourceHash == u.RESTSourceHash && old.URL == u.URL && maps.Equal(old.Headers, u.Headers) {
+					u.REST = old.REST
+				}
+			}
+			if u.REST == nil {
+				u.REST, err = restapi.Compile(u.URL, rest, u.Headers)
+			}
+			if err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("compile REST upstream %s: %w", u.Slug, err)
+			}
+			u.OAuth = rest.Auth.OAuth()
 		}
 		snap.Upstreams[u.ID] = u.WithPrecomputedFingerprint()
 		upstreamSlugs[u.ID] = u.Slug

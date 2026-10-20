@@ -198,7 +198,13 @@ func (s *Syncer) refresh(ctx context.Context) {
 	}
 	load := s.load
 	if load == nil {
-		load = func(ctx context.Context) (*config.Snapshot, error) { return store.LoadSnapshot(ctx, s.Pool, s.Box) }
+		load = func(ctx context.Context) (*config.Snapshot, error) {
+			var previous *config.Snapshot
+			if cur != nil {
+				previous = cur.snapshot
+			}
+			return store.LoadSnapshotWithPrevious(ctx, s.Pool, s.Box, previous)
+		}
 	}
 	snap, err := load(ctx)
 	if err != nil {

@@ -75,7 +75,7 @@ test('creating an upstream opens its saved read-only detail page',async()=>{
 test('upstream transport selection offers only HTTP endpoint transports',async()=>{
   open();await screen.findByLabelText('Name')
   fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
-  const options=screen.getAllByRole('option')
+  const options=within(screen.getByLabelText('Transport')).getAllByRole('option')
     .map(option=>(option as HTMLOptionElement).value)
   expect(options).toEqual(['streamable_http','sse'])
 })

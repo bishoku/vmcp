@@ -198,6 +198,11 @@ func TestScaleAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := acceptanceProfile{Servers: acceptanceNumber("VMCP_ACCEPTANCE_SERVERS", 300, 1, 1000), Tools: acceptanceNumber("VMCP_ACCEPTANCE_TOOLS", 300, 1, 1000), Resources: acceptanceNumber("VMCP_ACCEPTANCE_RESOURCES", 100, 0, 1000), SteadyRPS: acceptanceNumber("VMCP_ACCEPTANCE_RPS", 200, 1, 2000), BurstRPS: acceptanceNumber("VMCP_ACCEPTANCE_BURST_RPS", 600, 1, 5000), Workers: 128, Smoke: os.Getenv("VMCP_ACCEPTANCE_SMOKE") == "1"}
+	profile.REST = os.Getenv("VMCP_ACCEPTANCE_REST") == "1"
+	if profile.REST {
+		profile.Tools = acceptanceNumber("VMCP_ACCEPTANCE_TOOLS", 200, 1, 200)
+		profile.Resources = 0
+	}
 	profile.Sessions = profile.Servers * 2
 	started := time.Now()
 	report := acceptanceReport{StartedUTC: started.UTC().Format(time.RFC3339), Profile: profile, GoVersion: runtime.Version(), HostOS: runtime.GOOS, HostArch: runtime.GOARCH, Functional: map[string]any{}, DataPlaneConfiguration: map[string]any{"nodes": 2, "gomaxprocs_each": 2, "go_soft_memory_limit_each": "768MiB", "db_pool_max_each": 64, "db_acquire_timeout": "2s", "audit": "strict", "redis_failure_policy": "strict", "health_interval": "30s"}, ProxyPolicy: "test round-robin proxy; passive 10s failure cooldown; no request retries; not the production ingress", Thresholds: map[string]any{"steady_success_percent": 99.9, "steady_min_target_completion_percent": 95, "steady_p95_ms": 250, "steady_p99_ms": 1000, "burst_min_target_completion_percent": 80, "burst_min_success_percent": 80, "burst_max_p99_ms": 10000, "fault_phase_min_success_percent": 99, "fault_transition_grace_seconds": 10, "post_fault_max_errors_percent": 0.1, "per_node_max_rss_bytes": int64(1536 << 20), "soak_max_rss_growth_percent": 20}}
@@ -220,7 +225,7 @@ func TestScaleAcceptance(t *testing.T) {
 	}()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	fixture := &acceptanceFixture{tools: profile.Tools, resources: profile.Resources}
+	fixture := &acceptanceFixture{tools: profile.Tools, resources: profile.Resources, rest: profile.REST}
 	fixtures := make([]*httptest.Server, 16)
 	for i := range fixtures {
 		fixtures[i] = httptest.NewServer(fixture)
@@ -242,7 +247,7 @@ func TestScaleAcceptance(t *testing.T) {
 	t.Logf("Initializing %d cross-node persistent sessions", len(clients))
 	for i := range clients {
 		server := i % profile.Servers
-		c := &acceptanceClient{url: balancer.URL + fmt.Sprintf("/mcp/v1/virtual/accept-vs-%04d", server), token: tokens[i%len(tokens)], http: httpClient, server: server}
+		c := &acceptanceClient{url: balancer.URL + fmt.Sprintf("/mcp/v1/virtual/accept-vs-%04d", server), token: tokens[i%len(tokens)], http: httpClient, server: server, rest: profile.REST}
 		if response := c.request(ctx, mcp.MethodInitialize, map[string]any{"protocolVersion": mcp.SupportedVersions[0], "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "acceptance-driver", "version": "1"}}, -1); response.err != nil {
 			t.Fatal(response.err)
 		}
@@ -316,6 +321,43 @@ func TestScaleAcceptance(t *testing.T) {
 		run("steady", profile.SteadyRPS, 90, nil, 0)
 		run("spike", profile.BurstRPS, 20, nil, 0)
 		run("recovery", profile.SteadyRPS, 45, nil, 0)
+		if profile.REST {
+			run("config-refresh", profile.SteadyRPS, 30, func() {
+				began := time.Now()
+				refreshCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+				defer cancel()
+				_, updateErr := pool.Exec(refreshCtx, `UPDATE virtual_servers SET name=name||' refreshed' WHERE slug='accept-vs-0000'`)
+				var revision int64
+				if updateErr == nil {
+					updateErr = pool.QueryRow(refreshCtx, `SELECT revision FROM config_revision`).Scan(&revision)
+				}
+				ok := false
+				for updateErr == nil && refreshCtx.Err() == nil {
+					ok = true
+					for _, node := range nodes {
+						resp, err := httpClient.Get(node.url + "/metrics")
+						if err != nil {
+							ok = false
+							break
+						}
+						raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+						resp.Body.Close()
+						if err != nil || acceptanceMetricValues(string(raw))["vmcp_snapshot_revision"] < float64(revision) {
+							ok = false
+						}
+					}
+					if ok {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				report.Functional["configuration_refresh_under_rest_load"] = ok
+				report.DataPlaneConfiguration["rest_refresh_ms"] = time.Since(began).Milliseconds()
+				if !ok {
+					report.Failures = append(report.Failures, "REST configuration refresh did not reach both nodes")
+				}
+			}, 5)
+		}
 		run("node-loss", profile.SteadyRPS, 90, nodes[0].kill, 20)
 		nodes[0].start(t)
 		run("node-rejoin", profile.SteadyRPS, 60, nil, 0)

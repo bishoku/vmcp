@@ -43,6 +43,7 @@ func run() error {
 		{"upstreams", "encrypted_headers", "upstream.headers"},
 		{"upstreams", "encrypted_client_key", "upstream.client_key"},
 		{"upstreams", "encrypted_oauth_secret", "upstream.oauth_secret"},
+		{"upstreams", "encrypted_rest_config", "upstream.rest_config"},
 		{"mcp_events", "payload", "mcp.event"},
 		{"mcp_pending_requests", "response", "mcp.response"},
 	}

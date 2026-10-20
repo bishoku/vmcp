@@ -4,6 +4,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -54,6 +55,9 @@ func (c *Checker) CheckOnce(ctx context.Context) {
 	var wg sync.WaitGroup
 	slots := make(chan struct{}, 16)
 	for _, up := range c.Snap.Snapshot().Upstreams {
+		if up.REST != nil {
+			continue
+		}
 		select {
 		case slots <- struct{}{}:
 		case <-ctx.Done():
@@ -103,6 +107,9 @@ func (c *Checker) check(ctx context.Context, up config.Upstream) {
 
 // Probe connects to the upstream (trying its URLs in order) and returns the URL that answered.
 func Probe(ctx context.Context, up config.Upstream) (url string, took time.Duration, err error) {
+	if up.Kind == "rest" || up.REST != nil {
+		return up.URL, 0, errors.New("REST upstreams require explicit operation tests")
+	}
 	urls := append([]string{up.URL}, up.FallbackURLs...)
 	for _, u := range urls {
 		start := time.Now()

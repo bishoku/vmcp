@@ -47,7 +47,11 @@ type acceptancePhase struct {
 func (a *acceptanceTracker) call(ctx context.Context, c *acceptanceClient, tool int) (acceptanceResponse, bool) {
 	id := a.seq.Add(1)
 	nonce := fmt.Sprintf("accept-%d", id)
-	response := c.request(ctx, "tools/call", map[string]any{"name": fmt.Sprintf("tool-%03d", tool), "arguments": map[string]string{"call_id": nonce, "message": "agent@example.com"}}, id)
+	var args any = map[string]string{"call_id": nonce, "message": "agent@example.com"}
+	if c.rest {
+		args = map[string]any{"body": args}
+	}
+	response := c.request(ctx, "tools/call", map[string]any{"name": fmt.Sprintf("tool-%03d", tool), "arguments": args}, id)
 	valid := false
 	if response.err == nil {
 		var result struct {
@@ -56,7 +60,15 @@ func (a *acceptanceTracker) call(ctx context.Context, c *acceptanceClient, tool 
 		}
 		if json.Unmarshal(response.result, &result) == nil && !result.IsError && len(result.Content) == 1 {
 			var value map[string]string
-			if json.Unmarshal([]byte(result.Content[0].Text), &value) == nil {
+			text := []byte(result.Content[0].Text)
+			if c.rest {
+				var wrapped struct {
+					Result json.RawMessage `json:"result"`
+				}
+				_ = json.Unmarshal(text, &wrapped)
+				text = wrapped.Result
+			}
+			if json.Unmarshal(text, &value) == nil {
 				expected := "agent@example.com"
 				if c.server%10 == 0 {
 					expected = "[REDACTED:EMAIL]"

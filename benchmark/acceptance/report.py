@@ -43,6 +43,8 @@ def render(source):
     lines = ['# Ölçek ve dayanıklılık kabul testi', '', f"Başlangıç: {report.get('StartedUTC', '')}. Sonuç: **{'GEÇTİ' if report.get('Pass') else 'BULGU VAR / KABUL EŞİKLERİ KARŞILANMADI'}**.", '']
     if smoke:
         lines += ['Bu kısa koşu yalnızca test düzeneğinin fonksiyonel doğrulamasıdır; kapasite kabulü değildir.', '']
+    if profile.get('REST'):
+        lines += ['Profil: **REST upstream**. Kaydedilmiş JSON operasyonları, request/response şema doğrulaması ve mevcut MCP istemci yolu kullanıldı.', f"Trafik altında iki node'a snapshot yayılımı: **{report.get('DataPlaneConfiguration', {}).get('rest_refresh_ms', 'ölçülmedi')} ms**.", '']
     lines += [f"Envanter: {profile['Servers']} upstream, {profile['Servers']} virtual server, {profile['Servers']*profile['Tools']:,} tool tanımı/seçimi, {profile['Servers']*profile['Resources']:,} resource tanımı/seçimi; {profile['Sessions']} kalıcı session, 64 yapılandırılmış agent key.", '', 'İki ayrı gerçek data-plane süreci; her birinde GOMAXPROCS=2, 768 MiB Go yumuşak bellek limiti ve 64 bağlantılık DB pool. Ayrı PostgreSQL 17 konteyneri 2 CPU / 2 GiB; ayrı Redis konteyneri 0,5 CPU / 256 MiB. Ana uygulama ortamına dokunulmadı.', '', f"{profile['Servers']} mantıksal upstream adresi 16 sentetik HTTP fixture dinleyicisine dağıtılır. Tool yanıtı 5 ms geciktirilir. Her yanıtta doğru upstream rotası, tool adı, çağrı nonce’u ve PII maskesi doğrulanır. Bu gerçek upstream servislerinin kapasite veya ağ gecikmesi testi değildir.", '', 'Test proxy’si round-robin dağıtır, arızalı node için 10 saniyelik pasif bekleme uygular ve POST isteğini başka node’a tekrar göndermez. Üretim ingress’i/nginx bu koşunun parçası değildir. Node kaybı SIGKILL ile yapılır; PostgreSQL HA/failover kapsam dışıdır.', '', '## Aşamalar', '', '| Aşama | Hedef çağrı/s | Başarılı çağrı/s | Başarı % | p95 ms | p99 ms | Hata | Gönderilemeyen | Eşik |', '|---|---:|---:|---:|---:|---:|---:|---:|---|']
     throughput, target, errors, markers = [], [], [], []
     offset = 0
@@ -55,7 +57,7 @@ def render(source):
             target.append((x, p['target_rps'] if b['second'] < p['PlannedSeconds'] else 0))
             errors.append((x, b['Errors'] + b['Dropped']))
         if p.get('fault_second') is not None:
-            markers.append((offset+p['fault_second'], 'Node kapanışı'))
+            markers.append((offset+p['fault_second'], 'Konfigürasyon güncellemesi' if p['name'] == 'config-refresh' else 'Node kapanışı'))
         if p['name'] == 'node-rejoin':
             markers.append((offset, 'Node geri dönüşü'))
         offset += p['ElapsedSeconds']
@@ -93,7 +95,7 @@ def render(source):
             lines += [f"Node kapanışından sonra {c['incomplete_operations']} çağrının audit outcome’u yoktur. Bu kayıt hatalı istemci isteğiyle eşleşir; yürütme sonucu belirsizdir. Başarılı sayılmadı ve otomatik tekrar yürütülmedi. İş açısından yan etkili gerçek tool kullanımlarında bu belirsizlik ayrıca uzlaştırılmalıdır.", '']
     if failures:
         lines += ['## Kabul bulguları', ''] + [f'- {f}' for f in failures] + ['']
-    lines += ['## Tekrarlanabilirlik', '', f"Kaynak HEAD: `{report.get('SourceRevision','')}`; çalışma ağacındaki değişiklikleri içeren gerçek binary SHA-256: `{report.get('BinarySHA256','')}`.", f"{report.get('GoVersion','')}, {report.get('HostOS','')}/{report.get('HostArch','')}. Ham örnekler ve sayaçlar: [report.json](report.json).", '', '```sh', './scripts/acceptance-core.sh', '```', '']
+    lines += ['## Tekrarlanabilirlik', '', f"Kaynak HEAD: `{report.get('SourceRevision','')}`; çalışma ağacındaki değişiklikleri içeren gerçek binary SHA-256: `{report.get('BinarySHA256','')}`.", f"{report.get('GoVersion','')}, {report.get('HostOS','')}/{report.get('HostArch','')}. Ham örnekler ve sayaçlar: [report.json](report.json).", '', '```sh', ('VMCP_ACCEPTANCE_REST=1 ' if profile.get('REST') else '') + './scripts/acceptance-core.sh', '```', '']
     (root/'report.md').write_text('\n'.join(lines), encoding='utf-8')
     return root/'report.md'
 

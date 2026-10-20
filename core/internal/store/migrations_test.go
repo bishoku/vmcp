@@ -282,3 +282,46 @@ func TestHTTPOnlyMigrationPreservesUnsupportedConfigurations(t *testing.T) {
 		t.Fatalf("HTTP configuration lost: %q %v", transport, err)
 	}
 }
+
+func TestRESTMigrationPreservesExistingMCP(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 27); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO upstreams(tenant_id,slug,name,url,transport,encrypted_headers) SELECT id,'before-rest','Existing MCP','https://example.com/mcp','streamable_http',decode('010203','hex') FROM tenants WHERE slug='default'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var kind, endpoint, secret string
+	var restNull bool
+	if err := db.QueryRowContext(ctx, `SELECT kind,url,encode(encrypted_headers,'hex'),encrypted_rest_config IS NULL FROM upstreams WHERE slug='before-rest'`).Scan(&kind, &endpoint, &secret, &restNull); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "mcp" || endpoint != "https://example.com/mcp" || secret != "010203" || !restNull {
+		t.Fatal("upgrade changed existing MCP configuration")
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE upstreams SET kind='unknown' WHERE slug='before-rest'`); err == nil {
+		t.Fatal("invalid kind accepted")
+	}
+	// Rollback is supported before REST configuration is created; REST data would be lost.
+	if err := goose.DownToContext(ctx, db, ".", 27); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT kind,encode(encrypted_headers,'hex') FROM upstreams WHERE slug='before-rest'`).Scan(&kind, &secret); err != nil || kind != "mcp" || secret != "010203" {
+		t.Fatalf("MCP rollback/upgrade failed: %v", err)
+	}
+}

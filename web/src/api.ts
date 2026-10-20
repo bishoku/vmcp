@@ -56,7 +56,30 @@ export interface UpstreamAuthInput {
   audience?: string
 }
 
+export interface RESTImportOperation {
+ id:string; method:string; path:string; summary:string; tags:string[]
+ operation?:RESTOperation; warnings:string[]; errors:string[]
+}
+export interface RESTImportResult { title:string; version:string; servers:string[]; warnings:string[]; operations:RESTImportOperation[] }
+export interface RESTAuth {
+ type: 'none' | 'basic' | 'bearer' | 'oauth2'
+ username?: string; password?: string; token?: string; tokenUrl?: string; clientId?: string; clientSecret?: string
+ scopes?: string[]; audience?: string; tokenAuthMethod?: 'client_secret_basic' | 'client_secret_post'
+ hasPassword?: boolean; hasToken?: boolean; hasClientSecret?: boolean
+}
+export interface RESTOperation {
+ name: string; description: string; enabled: boolean; method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE'; path: string
+ parameters: {name:string; in:'path'|'query'; required:boolean; schema:Record<string,unknown>}[]
+ bodySchema?: unknown; responseSchema?: unknown; responseFields?: string[]; successStatuses?: number[]
+ headers?: Record<string,string>; headerNames?:string[]; readOnly:boolean
+}
+export interface RESTConfig {
+ auth: RESTAuth; forwardIdentity:boolean; requireIdentity:boolean; allowInsecureHttp:boolean; timeoutSeconds:number; operations:RESTOperation[]
+}
+
 export interface Upstream {
+  kind?: "mcp" | "rest"
+  rest?: RESTConfig
   version: number
   slug: string
   name: string
@@ -75,6 +98,8 @@ export interface Upstream {
 }
 
 export interface UpstreamInput {
+  kind?: "mcp" | "rest"
+  rest?: RESTConfig
   name: string
   description?: string
   url: string
@@ -346,6 +371,8 @@ export const api = {
   exportConfig: () => request<ConfigDocument>('GET','/export'),
   applyConfig: (document: ConfigDocument, dryRun = true, prune = false, revision?:number) => request<ApplyResult>('POST',`/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),
   testStoredConnection: (slug:string) => request<ConnectionTestResult>('POST',`/upstreams/${encodeURIComponent(slug)}/connection-test`),
+  importREST: (document:string) => request<RESTImportResult>('POST','/rest-imports',{document}),
+  restOperation: (slug:string, action:'preview'|'test', operation:string, args:unknown, version:number) => request<unknown>('POST', `/upstreams/${encodeURIComponent(slug)}/rest/${action}`, {operation,arguments:args},version),
   me: () => request<Me>('GET', '/me'),
   info: (signal?: AbortSignal) => request<{ version: string; configRevision: number; tenantId?: string }>('GET', '/info', undefined, undefined, signal),
   listUpstreams: async (signal?: AbortSignal) => listAll<Upstream>('/upstreams', signal),
