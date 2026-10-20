@@ -86,7 +86,12 @@ jobs:
         run: |
           set -euo pipefail
           chart=$(basename release-assets/vmcp-*.tgz)
-          cat > release-notes.md <<EOF
+          : > release-notes.md
+          if [[ -f "source/release-notes/$VERSION.md" ]]; then
+            cat "source/release-notes/$VERSION.md" >> release-notes.md
+            printf '\n' >> release-notes.md
+          fi
+          cat >> release-notes.md <<EOF
           vMCP $VERSION images are available on Docker Hub under [barishoku](https://hub.docker.com/u/barishoku), for Linux AMD64 and ARM64.
 
           CI and all nine image publications passed before this release was prepared.
