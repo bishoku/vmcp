@@ -44,6 +44,8 @@ test('audit operation details are keyboard accessible and preserve both raw stag
  const details=page.getByRole('button',{name:'Details',exact:true});await expect(details).toHaveCount(1)
  await details.focus();await page.keyboard.press('Enter')
  const drawer=page.getByRole('dialog',{name:'Audit details'});await expect(drawer).toBeVisible()
+ const context=drawer.getByText('Technical context & raw events · 2',{exact:true})
+ await context.focus();await page.keyboard.press('Enter')
  await expect(drawer.getByRole('button',{name:'Copy operation ID'})).toBeVisible()
  await expect(drawer.getByRole('link',{name:'Open operation'})).toHaveAttribute('href','/audit?operationId=op-123')
  await expect(drawer.locator('pre')).toHaveCount(2)
