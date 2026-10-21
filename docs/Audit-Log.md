@@ -18,6 +18,14 @@ By default, administrative mutations and their identifier-only audit records com
 
 `GET /api/v1/audit-events` supports filters and cursor pagination. Use `incomplete=true` for admissions without outcomes; this includes currently running calls. The Audit UI exposes this filter. `GET /api/v1/audit-status` reports durability counters and the persisted incomplete backlog.
 
+The **Operations** view groups a tool call and its explicitly linked upstream
+operations using `parentOperationId`. The parent tool outcome supplies the row's
+status and duration; upstream attempts keep their own operation IDs and remain
+individually inspectable in Details and **Raw events**. Shared request/trace IDs
+alone never merge operations. Grouping applies to loaded records: filters or
+pagination can omit the parent/outcome. A child outcome does not prove that the
+parent completed; load more records or open the parent operation to investigate.
+
 `VMCP_AUDIT_RETENTION_DAYS` defaults to 90; `0` keeps everything. Incomplete operations are preserved until reconciliation; completed operation pairs are retained through the outcome cutoff. Explicit `best_effort` data-plane mode can lose queued events on overflow, prolonged shutdown failure or crash and does not provide complete coverage.
 
 See [Audit durability](AUDIT_DURABILITY.md) for exact acknowledgement guarantees, outage and shutdown behavior, reconciliation, migration/rollback requirements and SIEM limitations. See [audit operations](AUDIT_OPERATIONS.md) for the separate
@@ -122,3 +130,11 @@ Apply migration 29 and role grants before deploying the new binaries. Keep captu
 disabled until every writer/exporter is updated; older writers do not implement
 these policies. Rollback drops payloads, settings and frozen envelopes: archive
 and coordinate a maintenance window before downgrading.
+
+The audit detail view opens in a wide modal (full screen on mobile). Select a
+logical operation step to inspect its request and response side by side. The
+summary uses the root outcome and its duration, not the sum of child durations.
+Explicit parent IDs identify child relationships; incomplete selections remain
+marked as incomplete. Technical context and every raw record are available in
+an expandable section. Payloads are loaded on demand by administrators, with
+capture-disabled, redacted, expired, and retrieval-error states kept distinct.

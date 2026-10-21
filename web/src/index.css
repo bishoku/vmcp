@@ -401,3 +401,10 @@ body:has(dialog[open]) #main-content { overflow-y: hidden; }
   :is(a[href], button, input:not(.choice-input), select, textarea, summary, [tabindex]:not(.choice-input)):focus-visible,
   .choice-field:has(input:focus-visible), .choice-radio-label:has(input:focus-visible) { outline-color: Highlight; }
 }
+
+/* Audit investigations need room for the flow and paired payloads. */
+.audit-modal-frame { max-width: 1400px; width: 94vw; }
+@media (max-width: 639px) {
+  .modal-placement:has(.audit-modal-frame) { padding: 0; }
+  .audit-modal-frame { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}

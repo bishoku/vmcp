@@ -304,6 +304,63 @@ the MCP envelope. Failed results cannot be used. Save the draft to publish the
 schema. New operations must first be saved before they can be tested; execution
 still requires administrator access and explicit confirmation.
 
+### Diagnose REST request-body mapping
+
+The request-body schema describes the **HTTP body**, not the complete MCP
+arguments object. The tool exposes that schema under a required `body` argument.
+For example, if the order service expects this JSON:
+
+```json
+{"order":{"items":[{"productId":"SKU-1","quantity":2}]}}
+```
+
+the MCP call uses:
+
+```json
+{
+  "name": "orders__create_order",
+  "arguments": {
+    "body": {"order":{"items":[{"productId":"SKU-1","quantity":2}]}}
+  }
+}
+```
+
+Use the actual exposed tool name from `tools/list`. vMCP validates the arguments,
+takes `arguments.body`, and JSON-encodes that value as the HTTP request body.
+It does not send the outer `body` wrapper, flatten nested objects, rename keys,
+convert strings into numbers, or insert schema defaults. Objects, arrays, null,
+false, zero, and empty arrays retain their JSON types. If the service expects
+`{"items":[...]}` instead, omit the `order` level from both the example schema
+and `arguments.body`. A body that is itself an array is also supported.
+
+Path and query parameters are separate top-level MCP arguments. For example,
+`{"id":"ORD-42","notify":false,"body":{"order":{"items":[]}}}` can become
+`PUT /orders/ORD-42?notify=false` with only `{"order":{"items":[]}}` in the body.
+Path/query parameters support scalar types; JSON body fields support nested types.
+
+Virtual-server **PII argument masking** is a separate step before REST validation
+and dispatch: when enabled, it intentionally replaces matching argument values.
+This can make customer/product identifiers invalid for the service. Saved-upstream
+preview does not apply a virtual server's PII policy. Audit payload masking only
+changes recorded evidence and does not change the request sent upstream.
+
+| Observation | Interpretation |
+| --- | --- |
+| `arguments do not match the operation input schema` | Rejected before HTTP dispatch. Check the required `body` wrapper, exact field names, types, and nested `required` constraints against `tools/list`. The current message does not identify the failing field. |
+| `REST service returned HTTP 400/422` | The request reached the service, which rejected it. Example-inferred fields are optional until marked required; missing business fields can pass the gateway's schema. |
+| `REST service returned HTTP 201` | The endpoint responded with 201, but the configured success-status list excluded it. An empty list accepts all 2xx responses. The operation may already have succeeded. |
+| `REST response does not match the configured schema` | The request was sent; response validation failed. Configure the schema for the raw service response, not the MCP result envelope. A 204 response is validated as null. |
+| `REST service returned invalid JSON` | The request was sent, but a non-204 response was not valid JSON, including an empty 201 response. The operation may already have succeeded. |
+
+Use **Preview request** on the saved upstream with the same MCP arguments to
+inspect the URL and body without executing the operation. Save draft schema
+changes first, and refresh the client's `tools/list` after configuration updates.
+With upstream audit capture enabled, inspect the request and response records
+to compare the constructed body and HTTP status; captured data is masked and
+bounded, not a byte-for-byte substitute for the service's own request trace.
+Do not blindly retry a create operation after a response-validation failure:
+verify whether the service created the order first.
+
 ### Select the fields returned to agents
 
 Use **Fields returned to the agent** below the response schema editor. **Full

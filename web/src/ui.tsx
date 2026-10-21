@@ -16,7 +16,7 @@ export function ErrorBox({ children, title='Unable to complete this request', on
 
 
 
-export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false, size = 'standard', description, tone, initialFocus, returnFocus, footer }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean; size?: 'standard' | 'wide'; description?:string; tone?:'danger'|'warning'; initialFocus?:string; returnFocus?:HTMLElement|null; footer?: ReactNode }) {
+export function Modal({ title, children, onClose, variant = 'modal', busy = false, readOnly = false, size = 'standard', description, tone, initialFocus, returnFocus, footer }: { title: string; children: ReactNode; onClose?: () => void; variant?: 'modal' | 'drawer'; busy?: boolean; readOnly?: boolean; size?: 'standard' | 'wide' | 'audit'; description?:string; tone?:'danger'|'warning'; initialFocus?:string; returnFocus?:HTMLElement|null; footer?: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
   const dismiss = useMotionDismiss(ref, onClose, variant === 'drawer' ? 'drawer' : 'dialog')
   const titleId = useId()
@@ -45,7 +45,7 @@ export function Modal({ title, children, onClose, variant = 'modal', busy = fals
       <div className={clsx('flex h-full w-full', variant === 'drawer' ? 'justify-end' : 'modal-placement items-center justify-center')}
         onClick={e => { if (e.target === e.currentTarget) if (!busy) dismiss() }}>
         <section className={clsx('flex min-h-0 flex-col overflow-hidden',
-          variant === 'drawer' ? `surface-drawer h-full w-full ${size === 'wide' ? 'max-w-2xl' : 'max-w-[420px]'}` : `surface-dialog modal-frame w-full ${size === 'wide' ? 'max-w-4xl' : 'max-w-lg'}`)}>
+          variant === 'drawer' ? `surface-drawer h-full w-full ${size === 'wide' ? 'max-w-2xl' : 'max-w-[420px]'}` : `surface-dialog modal-frame w-full ${size === 'audit' ? 'audit-modal-frame' : size === 'wide' ? 'max-w-4xl' : 'max-w-lg'}`)}>
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line bg-surface panel-header">
             <div className="flex min-w-0 items-start gap-3"><div aria-hidden="true" className={clsx('grid size-9 shrink-0 place-items-center rounded-xl border',tone==='danger'?'border-red-200 bg-red-50 text-red-700':tone==='warning'?'border-amber-200 bg-amber-50 text-amber-700':'border-accent-100 bg-accent-50 text-accent-700')}><Icon aria-hidden="true" className="icon-control"/></div><div className="min-w-0 pt-1"><h2 id={titleId} className="dialog-title">{title}</h2>{description&&<p id={descriptionId} className="supporting-copy mt-2 whitespace-pre-line text-ink-muted">{description}</p>}</div></div>
             {onClose && <button type="button" className={`${btn} shrink-0`} aria-label="Close" disabled={busy} onClick={dismiss}><X aria-hidden="true" className="icon-control" /></button>}

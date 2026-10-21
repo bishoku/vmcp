@@ -7,11 +7,24 @@ import { upstream } from './fixtures'
 import RESTUpstreamEditor, { RESTConnectionSettings } from './RESTUpstreamEditor'
 import { emptyREST } from './rest-config'
 import { RoleContext } from '../interaction'
+import orderFixture from './testdata/order-mapping.json'
 HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','')}
 HTMLDialogElement.prototype.close=function(){this.removeAttribute('open')}
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 const config:RESTConfig={...emptyREST(),auth:{type:'basic',username:'service',hasPassword:true},operations:[{name:'lookup',description:'Look up an order',enabled:true,method:'GET',path:'/orders',parameters:[],readOnly:true,headerNames:['X-Key']}]}
 function Draft(){const [value,setValue]=useState(config);return <><RESTConnectionSettings value={value} onChange={setValue}/><RESTUpstreamEditor value={value} onChange={setValue} upstream={null}/></>}
+test('generating an order body keeps nested items under the MCP body argument',()=>{
+ render(<Draft/>)
+ fireEvent.change(screen.getByLabelText('HTTP method'),{target:{value:'POST'}})
+ fireEvent.change(screen.getByLabelText('Request body example JSON'),{target:{value:JSON.stringify(orderFixture.body)}})
+ fireEvent.click(screen.getByRole('button',{name:'Generate request body schema'}))
+ let tool=JSON.parse(screen.getByLabelText('MCP tool definition').textContent!)
+ expect(tool.inputSchema.properties.body).toEqual(orderFixture.bodySchema)
+ expect(tool.inputSchema.required).toEqual(['body'])
+ fireEvent.click(screen.getByLabelText('Request body.order.items[].quantity required'))
+ tool=JSON.parse(screen.getByLabelText('MCP tool definition').textContent!)
+ expect(tool.inputSchema.properties.body.properties.order.properties.items.items.required).toEqual(['quantity'])
+})
 test('operation edits remain local and omitted credentials stay masked',async()=>{
  const save=vi.spyOn(api,'patchUpstream');render(<Draft/>);expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe('')
  fireEvent.change(screen.getByLabelText('Tool name'),{target:{value:'find_order'}})

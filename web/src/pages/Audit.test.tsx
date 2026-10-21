@@ -41,6 +41,43 @@ test('groups only operation IDs, keeps raw access and never infers failure from 
  expect(screen.getByLabelText('Operation ID').getAttribute('value')).toBe('pair')
 })
 
+test('operations combine upstream attempts under the tool outcome while raw events remain separate',async()=>{
+ vi.spyOn(api,'listAudit').mockResolvedValue({items:[
+  {...event(6,'createOrder'),operationId:'retry',parentOperationId:'tool',stage:'outcome',status:'error',durationMs:5,reason:'first attempt failed'},
+  {...event(5,'createOrder'),operationId:'retry',parentOperationId:'tool',stage:'admission',status:'started'},
+  {...event(4,'createOrder'),operationId:'upstream',parentOperationId:'tool',stage:'outcome',durationMs:10},
+  {...event(3,'createOrder'),operationId:'upstream',parentOperationId:'tool',stage:'admission',status:'started'},
+  {...event(2,'createOrder'),operationId:'tool',stage:'outcome',durationMs:50},
+  {...event(1,'createOrder'),operationId:'tool',stage:'admission',status:'started'},
+ ]})
+ render(<Audit/>)
+ await screen.findByText('createOrder')
+ expect(screen.getAllByRole('button',{name:'Details'})).toHaveLength(1)
+ expect(screen.getByText('6 records')).toBeTruthy()
+ expect(screen.getByText('50 ms')).toBeTruthy()
+ expect(screen.queryByText('first attempt failed')).toBeNull()
+ fireEvent.click(screen.getByText('Raw events'))
+ expect(screen.getAllByRole('button',{name:'Details'})).toHaveLength(6)
+ expect(screen.getByText('first attempt failed')).toBeTruthy()
+})
+
+test('loading parent records merges into the existing child group and resolves its missing outcome',async()=>{
+ vi.spyOn(api,'listAudit').mockResolvedValueOnce({items:[
+  {...event(3,'createOrder'),operationId:'child',parentOperationId:'tool',stage:'outcome',durationMs:10},
+ ],nextCursor:'parent-page'}).mockResolvedValueOnce({items:[
+  {...event(2,'createOrder'),operationId:'tool',stage:'outcome',durationMs:50},
+  {...event(1,'createOrder'),operationId:'tool',stage:'admission',status:'started'},
+ ]})
+ render(<Audit/>)
+ await screen.findByText('outcome not loaded')
+ expect(screen.queryByText('10 ms')).toBeNull()
+ fireEvent.click(screen.getByRole('button',{name:'Load more'}))
+ await screen.findByText('50 ms')
+ expect(screen.queryByText('outcome not loaded')).toBeNull()
+ expect(screen.getAllByRole('button',{name:'Details'})).toHaveLength(1)
+ expect(screen.getByText('3 records')).toBeTruthy()
+})
+
 
 test('correlation filters preserve supported request and stage fields and clear together',async()=>{
  const list=vi.spyOn(api,'listAudit').mockResolvedValue({items:[]})
@@ -76,6 +113,6 @@ test('details retain raw records and operation links without mixing correlation 
   expect(within(dialog).getAllByRole('button',{name:'Copy request ID'})).toHaveLength(2)
   expect(within(dialog).getAllByRole('button',{name:'Copy trace ID'})).toHaveLength(2)
   expect([...dialog.querySelectorAll('pre')].map(pre=>JSON.parse(pre.textContent!).stage)).toEqual(['outcome','admission'])
-  expect(within(dialog).getByText('Upstream timeout')).toBeTruthy()
+  expect(within(dialog).getByRole('region',{name:'Operation summary'}).textContent).toContain('Upstream timeout')
  }finally{cleanup();Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');Reflect.deleteProperty(HTMLDialogElement.prototype,'close')}
 })

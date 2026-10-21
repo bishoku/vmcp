@@ -1,0 +1,47 @@
+{
+  "body": {
+    "order": {
+      "customerId": "CUST-42",
+      "items": [
+        { "productId": "SKU-1", "quantity": 2 },
+        { "productId": "SKU-2", "quantity": 3 }
+      ],
+      "shipping": { "address": { "city": "İstanbul", "lines": ["Birinci sokak", "No: 2"] } },
+      "gift": false,
+      "discount": 0,
+      "note": null,
+      "tags": []
+    }
+  },
+  "bodySchema": {
+    "type": "object",
+    "properties": {
+      "order": {
+        "type": "object",
+        "properties": {
+          "customerId": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "productId": { "type": "string" }, "quantity": { "type": "integer" } }
+            }
+          },
+          "shipping": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "type": "object",
+                "properties": { "city": { "type": "string" }, "lines": { "type": "array", "items": { "type": "string" } } }
+              }
+            }
+          },
+          "gift": { "type": "boolean" },
+          "discount": { "type": "integer" },
+          "note": {},
+          "tags": { "type": "array", "items": {} }
+        }
+      }
+    }
+  }
+}

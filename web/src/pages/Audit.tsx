@@ -11,6 +11,7 @@ import { api, type AuditEvent, type AuditQuery } from '../api'
 import { ArrowUpRight, Clock3, FileClock, Layers3, ListFilter, RefreshCw, Search } from 'lucide-react'
 import AuditFilters from '../connections/AuditFilters'
 import AuditDetails from '../connections/AuditDetails'
+import { auditOperationSummary, groupAuditOperations } from '../connections/audit-operations'
 import { ServerPanel, SummaryTile } from '../connections/ServerPanels'
 import { btn } from '../styles'
 import { fmt } from '../format'
@@ -65,23 +66,21 @@ export default function Audit({ initialServer, initialOperation, initialQuery }:
   // datetime-local has no zone; interpret it in the browser's zone.
   const when = (k: 'from' | 'to', v: string) => set(k, v ? parseLocalDateTime(v)?.toISOString() ?? v : '')
 
-  const groups = new Map<string, AuditEvent[]>()
-  for (const event of items) {
-    const key = raw ? `event:${event.id}` : event.operationId ? `operation:${event.operationId}` : `event:${event.id}`
-    groups.set(key, [...(groups.get(key) ?? []), event])
-  }
-  const rows=[...groups.values()].map(events=>({events,event:events.find(event=>event.stage==='outcome')??events[0],missing:!raw&&events.some(event=>event.stage==='admission')&&!events.some(event=>event.stage==='outcome')}))
-  const sorting=useTableSort(rows,{Time:r=>Date.parse(r.event.time),'Virtual server':r=>r.event.virtualServer,Identity:r=>r.event.agentKey||r.event.actorId,'Tool / action':r=>r.event.tool||r.event.action||r.event.method,Status:r=>r.missing?'outcome not loaded':r.event.status,Redacted:r=>r.event.redactions??0,Duration:r=>r.event.stage==='outcome'?r.event.durationMs:null})
+  const operations = groupAuditOperations(items)
+  const groups = raw ? items.map(event => [event]) : operations
+  const rows=groups.map(events=>{
+    const summary = auditOperationSummary(events)
+    return {...summary, events, missing: !raw && summary.missing}
+  })
+  const sorting=useTableSort(rows,{Time:r=>Date.parse(r.event.time),'Virtual server':r=>r.event.virtualServer,Identity:r=>r.event.agentKey||r.event.actorId,'Tool / action':r=>r.event.tool||r.event.action||r.event.method,Status:r=>r.missing?'outcome not loaded':r.event.status,Redacted:r=>r.event.redactions??0,Duration:r=>!r.missing&&r.event.stage==='outcome'?r.event.durationMs:null})
   const filterLink = `/audit?${new URLSearchParams(Object.entries(filters).filter((entry): entry is [string,string]=>typeof entry[1]==='string'))}`
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const operationGroups=new Map<string,AuditEvent[]>()
-  for(const event of items){const id=event.operationId?`operation:${event.operationId}`:`event:${event.id}`;operationGroups.set(id,[...(operationGroups.get(id) ?? []),event])}
-  const missingGroups=[...operationGroups.values()].filter(events=>events.some(e=>e.stage==='admission') && !events.some(e=>e.stage==='outcome')).length
+  const missingGroups=operations.filter(events=>auditOperationSummary(events).incomplete).length
   const filterCount=Object.entries(filters).filter(([key,value])=>key!=='cursor' && value).length
   const reset=()=>{setItems([]);setNext(null);setChecked('');setLoading(true);setFilters({})}
   return <div className="page-layout">
     <header className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><FileClock aria-hidden="true" className="icon-feature"/></span><div><h1 className="page-title">Audit Log</h1><p className="page-description mt-1 text-sm text-ink-muted">Investigate tool calls and administrative operations from stored events.</p></div></div><Button loading={loading} className={btn} disabled={loading} onClick={()=>void load(filters,false)}><RefreshCw aria-hidden="true" className={`icon-inline ${loading?'motion-spin':''}`}/>Refresh</Button></header>
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4"><SummaryTile label="Loaded records" value={items.length} detail="Stored events in the current query" icon={FileClock}/><SummaryTile label="Displayed rows" value={groups.size} detail={raw?'Individual raw stored events':'Grouped by exact operation ID, where present'} icon={Layers3}/><SummaryTile label="Outcome not loaded" value={missingGroups} detail="Loaded groups with admission only · not failures" icon={Clock3}/><SummaryTile label="Last successful read" value={<span className="text-sm font-medium">{checked || 'Not loaded yet'}</span>} detail={error?'Latest query failed; displayed data may be older':loading?'Reading stored events…':'Manual refresh · no live subscription'} icon={RefreshCw}/></div>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4"><SummaryTile label="Loaded records" value={items.length} detail="Stored events in the current query" icon={FileClock}/><SummaryTile label="Displayed rows" value={groups.length} detail={raw?'Individual raw stored events':'Tool calls with explicitly linked upstream operations'} icon={Layers3}/><SummaryTile label="Outcome not loaded" value={missingGroups} detail="Loaded groups with missing outcomes · not failures" icon={Clock3}/><SummaryTile label="Last successful read" value={<span className="text-sm font-medium">{checked || 'Not loaded yet'}</span>} detail={error?'Latest query failed; displayed data may be older':loading?'Reading stored events…':'Manual refresh · no live subscription'} icon={RefreshCw}/></div>
     <AuditFilters filters={filters} set={set} when={when} reset={reset} link={new URL(filterLink,window.location.origin).href} zone={zone}/>
     {error && <ErrorBox title="Audit events could not be loaded" onRetry={()=>load(filters,false)} busy={loading}>{error} Displayed events may be from the previous successful query.</ErrorBox>}
     <ServerPanel title="Stored activity" description={`${items.length} loaded records · ${filterCount} active filters`} icon={ListFilter}>
@@ -95,14 +94,14 @@ export default function Audit({ initialServer, initialOperation, initialQuery }:
             <td className="max-w-48 px-4 py-4"><p className="break-all text-xs font-medium">{e.agentKey || e.actorId || '—'}</p>{e.subject && <p className="mt-1 break-all font-mono text-[11px] text-ink-muted">sub: {e.subject}</p>}{e.actorType && <p className="mt-1 text-[11px] text-ink-muted">{e.actorType}</p>}</td>
             <td className="max-w-60 px-4 py-4"><p className="break-all text-xs font-medium">{e.tool || e.action || e.method || '—'}</p><p className="mt-1 break-all text-[11px] text-ink-muted">{e.stage || 'event'}{e.upstream?` · ${e.upstream}`:e.target?` · ${e.target}`:''}</p></td>
             <td className="max-w-64 px-4 py-4"><Pill status={missing?'outcome not loaded':e.status}/>{e.reason && <p className="mt-2 break-words text-xs leading-relaxed text-ink-muted">{e.reason}</p>}</td>
-            <td className="px-4 py-4 text-xs tabular-nums">{e.redactions?<Badge tone="info">{e.redactions}</Badge>:'—'}</td><td className="whitespace-nowrap px-4 py-4 text-xs tabular-nums text-ink-muted">{e.stage==='outcome'?`${e.durationMs} ms`:'—'}</td>
+            <td className="px-4 py-4 text-xs tabular-nums">{e.redactions?<Badge tone="info">{e.redactions}</Badge>:'—'}</td><td className="whitespace-nowrap px-4 py-4 text-xs tabular-nums text-ink-muted">{!missing&&e.stage==='outcome'?`${e.durationMs} ms`:'—'}</td>
           </tr>
         })}</DataTable>:!loading && <EmptyState icon={Search} title={Object.keys(auditDateErrors(filters)).length?'Choose a valid date range':error?'Audit events unavailable':'No events match.'} description={Object.keys(auditDateErrors(filters)).length?'Correct the highlighted dates to load stored events.':error?'Refresh to retry loading stored events.':'Adjust filters or refresh to read saved activity. No matching records does not prove that the endpoint is unused.'}/>}
 
       </div>
       <LoadMore shown={items.length} hasMore={!!next} busy={loading} label="Load more" onLoad={()=>{if(next)void load({...filters,cursor:next},true)}}/>
     </ServerPanel>
-    <p className="text-xs leading-relaxed text-ink-muted">Filters and pagination can split operations. An admission without a loaded outcome may be pending, outside this page or filter, or unavailable; it does not confirm failure. Shared request or trace IDs do not establish an operation relationship. Payloads are never stored.</p>
+    <p className="text-xs leading-relaxed text-ink-muted">Filters and pagination can split operations. An admission without a loaded outcome may be pending, outside this page or filter, or unavailable; it does not confirm failure. Shared request or trace IDs do not establish an operation relationship. Payload capture follows the recorded audit policy.</p>
     {selected && <AuditDetails events={selected} zone={zone} close={()=>setSelected(null)}/>}
   </div>
 }

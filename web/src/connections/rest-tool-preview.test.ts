@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import type { RESTOperation } from '../api'
 import { pathParameters, restToolPreview } from './rest-tool-preview'
+import { inferSchema } from './schema-editor'
+import orderFixture from './testdata/order-mapping.json'
 
 const operation: RESTOperation = {
   name: 'create_order', description: 'Create an order', method: 'POST', path: '/orders/{id}',
@@ -32,4 +34,15 @@ test('path editing retains imported constraints and query parameters, and dedupl
     operation.parameters[0], { name: 'item', in: 'path', required: true, schema: { type: 'string' } }, query,
   ])
   expect(pathParameters('/orders', [...operation.parameters, query])).toEqual([query])
+})
+
+test('nested order example produces the body schema exercised by the virtual MCP HTTP test', () => {
+  const bodySchema = inferSchema(orderFixture.body)
+  expect(bodySchema).toEqual(orderFixture.bodySchema)
+  const tool = restToolPreview({ ...operation, path: '/orders', parameters: [], bodySchema })
+  expect(tool.inputSchema).toEqual({
+    type: 'object', properties: { body: orderFixture.bodySchema }, required: ['body'], additionalProperties: false,
+  })
+  // Inferring types does not infer the upstream's business-required fields.
+  expect(orderFixture.bodySchema.properties.order.properties.items.items).not.toHaveProperty('required')
 })

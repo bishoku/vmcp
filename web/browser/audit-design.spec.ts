@@ -5,6 +5,39 @@ const base={eventId:'event-1',operationId:'operation-123',requestId:'request-123
 const outcome={...base,eventId:'event-2',id:6,stage:'outcome',status:'error',reason:'Upstream timeout',durationMs:250,redactions:2}
 const pending={...base,eventId:'event-3',id:4,operationId:'operation-pending',requestId:'request-pending',tool:'search'}
 const mutation={...base,eventId:'event-4',id:3,operationId:null,requestId:null,traceId:'mutation-trace',stage:'mutation',status:'ok',actorType:'admin_token',actorId:'admin-console',agentKey:null,subject:null,virtualServer:'',tool:null,action:'upstream.update',method:'',target:'upstream/alpha',durationMs:0}
+
+for (const width of [390, 1440]) test(`tool and upstream calls share one operation at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:900})
+ const events=[
+  {...outcome,id:4,eventId:'child-out',operationId:'upstream-op',parentOperationId:'operation-123',boundary:'upstream',status:'ok',reason:null,durationMs:10},
+  {...base,id:3,eventId:'child-in',operationId:'upstream-op',parentOperationId:'operation-123',boundary:'upstream'},
+  {...outcome,id:2,eventId:'parent-out',boundary:'virtual'},
+  {...base,id:1,eventId:'parent-in',boundary:'virtual'},
+ ]
+ await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
+ await page.route('**/api/v1/**',route=>{
+  const path=new URL(route.request().url()).pathname
+  if(path.endsWith('/me'))return route.fulfill({json:{name:'Reviewer',role:'viewer'}})
+  return route.fulfill({json:{items:path.endsWith('/audit-events')?events:[]}})
+ })
+ await page.goto('/audit')
+ const details=page.getByRole('button',{name:'Details',exact:true})
+ await expect(details).toHaveCount(1)
+ await expect(page.getByText('4 records',{exact:true})).toBeVisible()
+ await expect(page.getByText('250 ms',{exact:true})).toBeVisible()
+ await expect(page.getByText('Upstream timeout',{exact:true})).toBeVisible()
+ await details.click()
+ const drawer=page.getByRole('dialog',{name:'Audit details'})
+ await drawer.getByText('Technical context & raw events · 4',{exact:true}).click()
+ await expect(drawer.getByRole('link',{name:'Open operation'})).toHaveAttribute('href','/audit?operationId=operation-123')
+ await expect(drawer.locator('pre')).toHaveCount(4)
+ await expect(drawer.getByText('Parent operation ID',{exact:true})).toHaveCount(2)
+ await drawer.getByRole('link',{name:'Open operation'}).click()
+ await expect(details).toHaveCount(1)
+ await page.getByRole('radio',{name:'Raw events',exact:true}).click()
+ await expect(details).toHaveCount(4)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})
 async function login(page:Page){
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
@@ -36,6 +69,7 @@ test('audit filters list and drawer share responsive panels and operation links 
  const details=page.getByRole('button',{name:'Details',exact:true}).first()
  await details.focus();await page.keyboard.press('Enter')
  const drawer=page.getByRole('dialog',{name:'Audit details',exact:true})
+ await drawer.getByText('Technical context & raw events · 2',{exact:true}).click()
  await expect(drawer.getByRole('region',{name:'Event context'})).toBeVisible()
  await expect(drawer.getByRole('button',{name:'Copy operation ID'})).toBeVisible()
  await expect(drawer.locator('pre')).toHaveCount(2)
@@ -95,4 +129,53 @@ test('correlation filters copy exact query state and clear without losing the vi
  await expect(page.getByLabel('Request ID',{exact:true})).toHaveValue('')
  await expect(page.getByLabel('Stage',{exact:true})).toHaveValue('')
  await expect(page.getByRole('radio',{name:'Raw events',exact:true})).toBeChecked()
+})
+
+for (const role of ['admin','viewer']) test(`audit modal keeps payloads scoped to selected step for ${role}`,async({page})=>{
+ const fetched:string[]=[]
+ const events=[
+  {...outcome,id:4,eventId:'child-out',operationId:'child',parentOperationId:'operation-123',boundary:'upstream',direction:'response',upstream:'orders-rest',payloadState:'stored'},
+  {...base,id:3,eventId:'child-in',operationId:'child',parentOperationId:'operation-123',boundary:'upstream',direction:'request',upstream:'orders-rest',payloadState:'stored'},
+  {...outcome,id:2,eventId:'root-out',boundary:'virtual',direction:'response',payloadState:'stored'},
+  {...base,id:1,eventId:'root-in',boundary:'virtual',direction:'request',payloadState:'redacted'},
+ ]
+ await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
+ await page.route('**/api/v1/**',route=>{
+  const path=new URL(route.request().url()).pathname
+  if(path.endsWith('/me'))return route.fulfill({json:{name:'Tester',role}})
+  if(path.endsWith('/payload')){fetched.push(path);return route.fulfill({json:path.includes('child-out')?{state:'expired'}:{state:'redacted',content:{source:path,order:{items:[{productId:'SKU-1',quantity:2}]}}}})}
+  return route.fulfill({json:{items:path.endsWith('/audit-events')?events:[]}})
+ })
+ await page.setViewportSize({width:1440,height:900})
+ await page.goto('/audit');await page.getByRole('button',{name:'Details',exact:true}).click()
+ const dialog=page.getByRole('dialog',{name:'Audit details'})
+ const frame=dialog.locator('.audit-modal-frame')
+ expect((await frame.boundingBox())!.width).toBeGreaterThan(1200)
+ const request=dialog.getByRole('region',{name:'Request payload',exact:true})
+ const response=dialog.getByRole('region',{name:'Response payload',exact:true})
+ expect(fetched).toHaveLength(0)
+ if(role==='admin'){
+  await request.getByRole('button',{name:'Load audit payload'}).click()
+  await expect(request.locator('pre')).toContainText('root-in')
+ }
+ await dialog.getByRole('button',{name:/Linked child operation/}).click()
+ await expect(request.locator('pre')).toHaveCount(0)
+ if(role==='admin'){
+  await request.getByRole('button',{name:'Load audit payload'}).click()
+  await expect(request.locator('pre')).toContainText('child-in')
+  await response.getByRole('button',{name:'Load audit payload'}).click()
+  await expect(response.getByRole('status')).toHaveText('expired')
+  await expect(response.locator('pre')).toHaveCount(0)
+  expect(fetched).toHaveLength(3)
+ }else{
+  await expect(dialog.getByRole('button',{name:'Load audit payload'})).toHaveCount(0)
+  expect(fetched).toHaveLength(0)
+ }
+ await page.screenshot({path:test.info().outputPath('audit-flow-desktop.png')})
+ await page.setViewportSize({width:390,height:844})
+ expect((await frame.boundingBox())!.width).toBe(390)
+ expect(await frame.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)
+ await page.screenshot({path:test.info().outputPath('audit-flow-mobile.png')})
+ await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible()
+ await expect(page.getByRole('button',{name:'Details',exact:true})).toBeFocused()
 })
