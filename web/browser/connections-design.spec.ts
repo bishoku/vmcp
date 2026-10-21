@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
 
@@ -5,6 +6,8 @@ test('premium connection flow retains drill-down tracing and route details acros
  const requests:string[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname;requests.push(path)
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role:'viewer'}})
   const other={...server,slug:'research',name:'Research workspace',tools:[{...server.tools[0],tool:'search',exposedName:'search'}],catalog:[]}

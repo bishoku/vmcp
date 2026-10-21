@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 )
@@ -99,7 +100,18 @@ func (c *Client) CallTool(ctx context.Context, name string, args json.RawMessage
 
 // Call sends a request and returns the raw JSON-RPC result.
 // A JSON-RPC error from the upstream is returned as *mcp.Error.
-func (c *Client) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (c *Client) Call(ctx context.Context, method string, params any) (auditResult json.RawMessage, auditErr error) {
+	complete, auditStartErr := audit.Observe(ctx, method, params)
+	if auditStartErr != nil {
+		return nil, auditStartErr
+	}
+	defer func() {
+		if err := complete(auditResult, auditErr); err != nil {
+			auditResult = nil
+			auditErr = err
+		}
+	}()
+
 	id := mcp.NewIntID(c.nextID.Add(1))
 	defer cancelRequest(ctx, method, id, c.Send)
 	req, err := mcp.NewRequest(id, method, params)

@@ -60,13 +60,22 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 	}
 	if e, ok := audit.Transaction(ctx); ok {
 		// An audit failure rolls the entire configuration transaction back.
-		if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit=on`); err != nil {
-			return err
+		if e.Mode != "relax" {
+			if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit=on`); err != nil {
+				return err
+			}
 		}
 		e.Time = time.Now().UTC()
 		e.Stage = "mutation"
 		e.Status = "ok"
 		e.EventID = ""
+		e.Direction = ""
+		e.RawPayload = nil
+		e.Ciphertext = nil
+		e.PayloadState = "disabled"
+		e.PayloadOriginalBytes = 0
+		e.PayloadStoredBytes = 0
+		e.PayloadRedactions = 0
 		if err := tx.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&e.Revision); err != nil {
 			return err
 		}
@@ -74,12 +83,28 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 		if len(targets) == 0 {
 			targets = []string{e.Target}
 		}
+		var deferredEvents []audit.Event
 		for _, target := range targets {
 			e.Target = target
+			if e.Mode == "relax" {
+				deferredEvents = append(deferredEvents, e)
+				continue
+			}
 			if err := audit.Insert(ctx, tx, e); err != nil {
 				audit.ReportTransactionFailure(ctx, err)
 				return apierror.New(503, "audit_unavailable", "Audit unavailable", "configuration transaction rolled back because audit persistence failed")
 			}
+		}
+		if len(deferredEvents) > 0 {
+			if err := tx.Commit(ctx); err != nil {
+				return err
+			}
+			if runtime := audit.RuntimeFrom(ctx); runtime != nil {
+				for _, event := range deferredEvents {
+					_ = runtime.Mutation(context.WithoutCancel(ctx), event, nil)
+				}
+			}
+			return nil
 		}
 	}
 	return tx.Commit(ctx)

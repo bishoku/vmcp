@@ -1,9 +1,12 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { upstream, server, key } from '../src/connections/fixtures'
 test.use({viewport:{width:1280,height:1000}})
 async function setup(page:Page){
  const writes:string[]=[]
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const req=route.request(),path=new URL(req.url()).pathname
   if(['POST','PATCH','PUT','DELETE'].includes(req.method()))writes.push(path)
   const json=path.endsWith('/me')?{name:'Tester',role:'admin'}:path.endsWith('/info')?{version:'test',configRevision:1}:path.endsWith('/upstreams')?{items:[upstream]}:path.endsWith('/virtual-servers')?{items:[server]}:path.endsWith('/agent-keys')?{items:[key]}:path.endsWith('/catalog')?{resources:[],resourceTemplates:[],prompts:[]}:{items:[]}

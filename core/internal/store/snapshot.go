@@ -334,6 +334,10 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 	if err := loadBindings(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}
+	snap.Audit, err = loadAuditSettings(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 	return snap, nil
 }
 

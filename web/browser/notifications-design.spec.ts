@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { upstream } from '../src/connections/fixtures'
 
@@ -5,6 +6,8 @@ test.use({viewport:{width:1280,height:900}})
 async function setup(page:Page,fail=false){
  let saved={...upstream}
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const req=route.request(),path=new URL(req.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{name:'Tester',role:'admin'}})
   if(req.method()==='PATCH'){

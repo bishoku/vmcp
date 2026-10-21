@@ -173,7 +173,7 @@ func TestBestEffortShutdownFailureExplicitlyAccountsForPending(t *testing.T) {
 	cancel()
 	go w.run(ctx)
 	<-w.Done()
-	if w.Stats().Pending != 0 || w.Dropped() != 3 || w.Stats().FailedWrites == 0 || w.Stats().DeadLetters != 3 {
+	if w.Stats().Pending != 0 || w.Stats().PendingBytes != 0 || w.Dropped() != 3 || w.Stats().FailedWrites == 0 || w.Stats().DeadLetters != 3 {
 		t.Fatalf("shutdown hid failed batch: %+v", w.Stats())
 	}
 }
@@ -208,4 +208,3 @@ func TestWriterIsolatesPoisonPillEvent(t *testing.T) {
 		t.Fatalf("poison pill not isolated: saved=%v stats=%+v", saved, w.Stats())
 	}
 }
-

@@ -90,6 +90,12 @@ func Prepare(e Event) (Event, error) {
 	if e.Time.IsZero() {
 		e.Time = time.Now().UTC()
 	}
+	if e.Mode == "" {
+		e.Mode = "strict"
+	}
+	if e.PayloadState == "" {
+		e.PayloadState = "disabled"
+	}
 	if e.SchemaVersion == 0 {
 		e.SchemaVersion = 1
 	}
@@ -130,8 +136,8 @@ type Sink interface {
 
 const insertSQL = `INSERT INTO audit_events
  (event_id,operation_id,request_id,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,
- ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions)
- VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+ ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions)
+ VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::uuid,$31,$32,$33,$34)
  ON CONFLICT(event_id) DO NOTHING`
 
 func insertArgs(e Event) ([]any, error) {
@@ -139,14 +145,24 @@ func insertArgs(e Event) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []any{e.EventID, nullable(e.OperationID), nullable(e.RequestID), e.TraceID, e.SchemaVersion, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.Revision, e.Stage, e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject), nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions}, nil
+	return []any{e.EventID, nullable(e.OperationID), nullable(e.RequestID), e.TraceID, e.SchemaVersion, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.Revision, e.Stage, e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject), nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions, e.Mode, e.PolicyRevision, e.Scope, e.Boundary, e.Direction, nullable(e.ParentOperationID), e.PayloadState, e.PayloadOriginalBytes, e.PayloadStoredBytes, e.PayloadRedactions}, nil
 }
 func Insert(ctx context.Context, q Sink, e Event) error {
+	e, err := Prepare(e)
+	if err != nil {
+		return err
+	}
 	args, err := insertArgs(e)
 	if err != nil {
 		return err
 	}
 	_, err = q.Exec(ctx, insertSQL, args...)
+	if err != nil {
+		return err
+	}
+	if len(e.Ciphertext) > 0 {
+		_, err = q.Exec(ctx, `INSERT INTO audit_payloads(event_id,ciphertext,expires_at) VALUES($1::uuid,$2,$3) ON CONFLICT(event_id) DO NOTHING`, e.EventID, e.Ciphertext, e.PayloadExpiresAt)
+	}
 	return err
 }
 
@@ -184,6 +200,8 @@ func transient(err error) bool {
 
 // Counters describe process-local failures. Durable incomplete operations are queried separately.
 type Counters struct {
+	PolicyRevision          int64   `json:"policyRevision"`
+	PendingBytes            int64   `json:"pendingBytes"`
 	Mode                    string  `json:"mode"`
 	BlockedAdmissions       int64   `json:"blockedAdmissions"`
 	FailedWrites            int64   `json:"failedWrites"`
@@ -193,8 +211,9 @@ type Counters struct {
 	OldestPendingAgeSeconds float64 `json:"oldestPendingAgeSeconds"`
 }
 type persistReq struct {
-	event Event
-	done  chan error
+	event    Event
+	reserved int64
+	done     chan error
 }
 
 type Durable struct {
@@ -205,18 +224,26 @@ type Durable struct {
 	batchMu               sync.Mutex
 	flushing              bool
 	pendingBatch          []*persistReq
+	queuedBytes           atomic.Int64
 }
 
 func NewDurable(pool *pgxpool.Pool, log *slog.Logger) *Durable { return &Durable{Pool: pool, Log: log} }
 func (d *Durable) Stats() Counters {
-	return Counters{Mode: "strict", BlockedAdmissions: d.blocked.Load(), FailedWrites: d.failed.Load(), DeadLetters: d.dead.Load()}
+	return Counters{Mode: "strict", PendingBytes: d.queuedBytes.Load(), BlockedAdmissions: d.blocked.Load(), FailedWrites: d.failed.Load(), DeadLetters: d.dead.Load()}
 }
 
 func (d *Durable) groupPersist(ctx context.Context, e Event) error {
 	if len(batchFromTest(d)) == 0 && d.Pool == nil {
 		return Persist(ctx, d.Pool, e)
 	}
-	req := &persistReq{event: e, done: make(chan error, 1)}
+	size := int64(len(e.Ciphertext) + 4096)
+	if d.queuedBytes.Add(size) > 32<<20 {
+		d.queuedBytes.Add(-size)
+		return errors.New("strict audit queue capacity exceeded")
+	}
+	e.RawPayload = nil
+	e.Policy = nil
+	req := &persistReq{event: e, done: make(chan error, 1), reserved: size}
 	d.batchMu.Lock()
 	d.pendingBatch = append(d.pendingBatch, req)
 	if d.flushing {
@@ -262,6 +289,7 @@ func (d *Durable) flushPendingBatches() {
 			bctx, cancel := context.WithTimeout(context.Background(), WriteTimeout)
 			err := Persist(bctx, d.Pool, batch[0].event)
 			cancel()
+			d.queuedBytes.Add(-batch[0].reserved)
 			batch[0].done <- err
 			continue
 		}
@@ -271,6 +299,7 @@ func (d *Durable) flushPendingBatches() {
 		cancel()
 		if err == nil {
 			for _, r := range batch {
+				d.queuedBytes.Add(-r.reserved)
 				r.done <- nil
 			}
 			continue
@@ -278,7 +307,9 @@ func (d *Durable) flushPendingBatches() {
 		// Fall back to individual persistence so a single bad event cannot fail valid peers.
 		for _, r := range batch {
 			ictx, icancel := context.WithTimeout(context.Background(), WriteTimeout)
-			r.done <- Persist(ictx, d.Pool, r.event)
+			persistErr := Persist(ictx, d.Pool, r.event)
+			d.queuedBytes.Add(-r.reserved)
+			r.done <- persistErr
 			icancel()
 		}
 	}
@@ -310,9 +341,12 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 			return err
 		}
 		statements.Queue(insertSQL, args...)
+		if len(e.Ciphertext) > 0 {
+			statements.Queue(`INSERT INTO audit_payloads(event_id,ciphertext,expires_at) VALUES($1::uuid,$2,$3) ON CONFLICT(event_id) DO NOTHING`, e.EventID, e.Ciphertext, e.PayloadExpiresAt)
+		}
 	}
 	results := tx.SendBatch(ctx, statements)
-	for range batch {
+	for range statements.Len() {
 		if _, err := results.Exec(); err != nil {
 			_ = results.Close()
 			return err
@@ -382,10 +416,7 @@ func (d *Durable) Complete(ctx context.Context, e Event) error {
 	}
 	e.Stage = "outcome"
 	// Stable outcome identity makes retries across recorder/process instances idempotent.
-	digest := sha256.Sum256([]byte("vmcp.audit.outcome:" + e.OperationID))
-	digest[6] = (digest[6] & 15) | 128
-	digest[8] = (digest[8] & 63) | 128
-	e.EventID = fmt.Sprintf("%x-%x-%x-%x-%x", digest[:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16])
+	e.EventID = OutcomeID(e.OperationID)
 	e.Time = time.Now().UTC()
 	e, err := Prepare(e)
 	if err != nil {
@@ -475,4 +506,11 @@ func (d *Durable) ReportWriteFailure(err error) {
 	if !transient(err) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 		d.dead.Add(1)
 	}
+}
+
+func OutcomeID(operation string) string {
+	digest := sha256.Sum256([]byte("vmcp.audit.outcome:" + operation))
+	digest[6] = (digest[6] & 15) | 128
+	digest[8] = (digest[8] & 63) | 128
+	return fmt.Sprintf("%x-%x-%x-%x-%x", digest[:4], digest[4:6], digest[6:8], digest[8:10], digest[10:16])
 }

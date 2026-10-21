@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 import { upstream } from '../src/connections/fixtures'
 const definition='openapi: 3.1.0\ninfo: {title: Orders}\npaths: {}'
@@ -9,6 +10,8 @@ for(const width of [1280,390])test(`OpenAPI import stays in draft and preserves 
  let saved={...upstream,kind:'rest',headerNames:['X-API-Key'],rest:{auth:{type:'basic',username:'service',hasPassword:true},forwardIdentity:true,requireIdentity:true,allowInsecureHttp:false,timeoutSeconds:30,operations:[existing]}}
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ if(new URL(r.request().url()).pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
+
   const request=r.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return r.fulfill({status:request.headers().authorization?200:401,json:{role:'admin',name:'Tester'}})
   if(path.endsWith('/rest-imports')){expect(request.postDataJSON()).toEqual({document:definition});analyzed++;return r.fulfill({json:{title:'Orders',version:'3.1.0',servers:['https://orders.example'],warnings:['Authentication and headers are preserved.'],operations:[{id:'GET /orders',method:'GET',path:'/orders',summary:'List orders',tags:['orders'],operation:imported,warnings:[],errors:[]},{id:'POST /upload',method:'POST',path:'/upload',summary:'Upload files',tags:[],warnings:[],errors:['Multipart is unsupported']}]}})}

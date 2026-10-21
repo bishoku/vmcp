@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 import { upstream } from '../src/connections/fixtures'
 for(const width of [1280,390])test(`REST upstream draft and explicit preview at ${width}px`,async({page})=>{
@@ -6,6 +7,8 @@ for(const width of [1280,390])test(`REST upstream draft and explicit preview at 
  let saved:Record<string,unknown>|null=null
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ if(new URL(r.request().url()).pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
+
  const req=r.request(),path=new URL(req.url()).pathname
  if(path.endsWith('/me'))return r.fulfill({status:req.headers().authorization?200:401,json:{role:'admin',name:'Tester'}})
  if(path.endsWith('/upstreams')&&req.method()==='POST'){writes.push(req.postDataJSON());saved={...upstream,...req.postDataJSON(),version:1};return r.fulfill({status:201,json:saved})}

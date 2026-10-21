@@ -1,8 +1,9 @@
+import { auditSettings } from './audit-fixtures'
 import {expect,test} from '@playwright/test'
 for (const width of [375,768,1440]) test(`navigation and audit at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900})
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
- await page.route('**/api/v1/**',r=>r.fulfill({json:r.request().url().endsWith('/me') ? {name:'Reviewer',role:'viewer'} : {items:[]}}))
+ await page.route('**/api/v1/**',r=>new URL(r.request().url()).pathname.endsWith('/audit-settings')?r.fulfill({json:auditSettings}):r.fulfill({json:r.request().url().endsWith('/me') ? {name:'Reviewer',role:'viewer'} : {items:[]}}))
  await page.goto('/audit?operationId=example');await expect(page).toHaveTitle(/vMCP/)
  await expect(page.getByRole('navigation',{name:'Main navigation'})).toBeVisible()
  await expect(page.getByLabel('Operation ID',{exact:true})).toHaveValue('example')
@@ -18,6 +19,8 @@ for (const width of [375,768,1440]) test(`populated management layouts at ${widt
  await page.setViewportSize({width,height:1000})
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ if(new URL(r.request().url()).pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
+
   const path=new URL(r.request().url()).pathname
   const json=path.endsWith('/me')?{name:'Admin',role:'admin'}:path.endsWith('/upstreams')?{items:[upstream]}:path.endsWith('/virtual-servers')?{items:[server]}:path.endsWith('/agent-keys')?{items:[key]}:path.endsWith('/identity-bindings')?{items:[binding]}:path.endsWith('/catalog')?{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}:{items:[]}
   return r.fulfill({json})
@@ -35,7 +38,7 @@ for (const width of [375,768,1440]) test(`populated management layouts at ${widt
 test('audit operation details are keyboard accessible and preserve both raw stages',async({page})=>{
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  const event={virtualServer:'demo',operationId:'op-123',requestId:'req-456',traceId:'trace-789',tool:'lookup',durationMs:3,time:'2026-10-11T12:00:00Z'}
- await page.route('**/api/v1/**',r=>r.fulfill({json:r.request().url().endsWith('/me')?{name:'Viewer',role:'viewer'}:{items:[{...event,id:2,stage:'outcome',status:'error',reason:'upstream timeout'},{...event,id:1,stage:'admission',status:'started'}]}}))
+ await page.route('**/api/v1/**',r=>new URL(r.request().url()).pathname.endsWith('/audit-settings')?r.fulfill({json:auditSettings}):r.fulfill({json:r.request().url().endsWith('/me')?{name:'Viewer',role:'viewer'}:{items:[{...event,id:2,stage:'outcome',status:'error',reason:'upstream timeout'},{...event,id:1,stage:'admission',status:'started'}]}}))
  await page.goto('/audit?virtualServer=demo&subject=team&from=2026-10-11T00%3A00%3A00Z')
  await expect(page.getByLabel('Subject',{exact:true})).toHaveValue('team')
  const details=page.getByRole('button',{name:'Details',exact:true});await expect(details).toHaveCount(1)

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
@@ -134,7 +135,7 @@ func failure(message string) json.RawMessage {
 	raw, _ := json.Marshal(map[string]any{"isError": true, "content": []any{map[string]string{"type": "text", "text": message}}})
 	return raw
 }
-func (c *Compiled) Execute(ctx context.Context, base, name string, args json.RawMessage, headers map[string]string, tl tlsconf.Settings, identity Identity, authorize func() error) (json.RawMessage, error) {
+func (c *Compiled) Execute(ctx context.Context, base, name string, args json.RawMessage, headers map[string]string, tl tlsconf.Settings, identity Identity, authorize func() error) (auditResult json.RawMessage, auditErr error) {
 	req, err := c.Build(base, name, args, headers, identity)
 	if err != nil {
 		return failure(err.Error()), nil
@@ -142,6 +143,39 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(c.Config.TimeoutSeconds)*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)
+	observing := audit.ObservationEnabled(ctx)
+	var requestBody json.RawMessage
+	if req.Body != nil && observing {
+		raw, _ := io.ReadAll(req.Body)
+		req.Body = io.NopCloser(bytes.NewReader(raw))
+		if len(raw) > 0 {
+			requestBody = raw
+		}
+	}
+	complete, startErr := audit.Observe(ctx, req.Method, map[string]any{"operation": name, "path": req.URL.Path, "query": req.URL.Query(), "body": requestBody})
+	if startErr != nil {
+		return nil, startErr
+	}
+	var observedResponse json.RawMessage
+	var observedStatus int
+	defer func() {
+		if !observing {
+			return
+		}
+		content := auditResult
+		if observedStatus != 0 {
+			var body any = string(observedResponse)
+			if json.Valid(observedResponse) {
+				body = observedResponse
+			}
+			content, _ = json.Marshal(map[string]any{"statusCode": observedStatus, "body": body})
+		}
+		if e := complete(content, auditErr); e != nil {
+			auditResult = nil
+			auditErr = e
+		}
+	}()
+
 	var tokenSource *oauthtoken.Source
 	var token string
 	switch a := c.Config.Auth; a.Type {
@@ -173,17 +207,23 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 		return nil, &ExecutionError{Stage: "request", cause: err}
 	}
 	defer resp.Body.Close()
+	observedStatus = resp.StatusCode
 	if resp.StatusCode == 401 && tokenSource != nil {
 		tokenSource.Invalidate(token)
 	} // Never replay an operation, including after token renewal.
 	op := c.Operations[name].Definition
 	if resp.StatusCode < 200 || resp.StatusCode > 299 || (len(op.SuccessStatuses) > 0 && !slices.Contains(op.SuccessStatuses, resp.StatusCode)) {
+		if observing {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
+			observedResponse = body
+		}
 		return failure(fmt.Sprintf("REST service returned HTTP %d", resp.StatusCode)), nil
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
 	if err != nil || len(raw) > MaxResponseBytes {
 		return failure("REST response exceeded the size limit or could not be read; operation may have completed"), nil
 	}
+	observedResponse = raw
 	var value any
 	if resp.StatusCode != 204 {
 		if decodeJSON(raw, &value) != nil {

@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test } from '@playwright/test'
 import { server as originalServer, upstream as originalUpstream } from '../src/connections/fixtures'
@@ -7,6 +8,8 @@ test.beforeEach(async({page})=>{
   let upstream = {...originalUpstream}
   await page.route('**/auth/config',route=>route.fulfill({json:{oidc:false}}))
   await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
     const request=route.request(), path=new URL(request.url()).pathname
     if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Admin',role:'admin'}})
     if(request.method()==='PUT'){

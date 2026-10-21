@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { key, server, upstream } from '../src/connections/fixtures'
 import { answerConfirmation } from './confirmation'
@@ -6,6 +7,8 @@ test.use({viewport:{width:1280,height:1000}})
 async function inventory(page:Page){
  const writes:string[]=[]
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(['POST','PATCH','PUT','DELETE'].includes(request.method()))writes.push(path)
   const json=path.endsWith('/me')?{name:'Tester',role:'admin'}:path.endsWith('/agent-keys')?{items:Array.from({length:110},(_,i)=>({...key,slug:`agent-${i}`,description:'Customer support workspace',expiresAt:i%2?'2027-06-01T00:00:00Z':null}))}:path.endsWith('/virtual-servers')?{items:Array.from({length:60},(_,i)=>({...server,slug:`workspace-${i}`,name:`Workspace ${i}`}))}:path.endsWith('/upstreams')?{items:[upstream]}:{items:[]}
@@ -74,6 +77,8 @@ test('audit sorting preserves operation groups and cursor loads without inventin
  let reads=0
  const base={virtualServer:'demo',agentKey:'team-key',time:'2026-10-15T12:00:00Z',tool:'lookup',redactions:0}
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const path=new URL(route.request().url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{name:'Tester',role:'viewer'}})
   if(path.endsWith('/audit-events')){

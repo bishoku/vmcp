@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -34,20 +35,38 @@ func (w *statusCapture) WriteHeader(status int) {
 }
 
 type auditResponse struct {
-	header http.Header
-	body   bytes.Buffer
-	status int
+	forward    http.ResponseWriter
+	totalBytes int
+	header     http.Header
+	body       bytes.Buffer
+	status     int
 }
 
-func (w *auditResponse) Header() http.Header { return w.header }
+func (w *auditResponse) Header() http.Header {
+	if w.forward != nil {
+		return w.forward.Header()
+	}
+	return w.header
+}
 func (w *auditResponse) WriteHeader(status int) {
 	if w.status == 0 {
 		w.status = status
+		if w.forward != nil {
+			w.forward.WriteHeader(status)
+		}
 	}
 }
 func (w *auditResponse) Write(p []byte) (int, error) {
+	w.totalBytes += len(p)
 	if w.status == 0 {
 		w.status = 200
+	}
+	if w.forward != nil {
+		n, err := w.forward.Write(p)
+		if w.body.Len() < 2<<20+1 {
+			_, _ = w.body.Write(p[:min(n, (2<<20+1)-w.body.Len())])
+		}
+		return n, err
 	}
 	if w.body.Len()+len(p) > maxAuditResponseBytes {
 		return 0, errAuditResponseLimit
@@ -126,7 +145,28 @@ func (s *Server) recordDenial(r *http.Request, p *principal, err error) {
 }
 
 func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, p *principal) error {
+	if strings.HasPrefix(r.URL.Path, "/api/v1/openapi.") {
+		return h(w, r)
+	}
+	if s.Store == nil {
+		if r.Method == "GET" || r.Method == "HEAD" {
+			return h(w, r)
+		}
+		return auditUnavailable()
+	}
+	recorder := s.auditRecorder()
+	settings, settingsErr := store.LoadAuditSettingsIfChanged(r.Context(), s.Store.Pool, recorder.Settings())
+	if settingsErr != nil {
+		return auditUnavailable()
+	}
+	recorder.SetSettings(settings)
 	sensitive := r.Method != "GET" && r.Method != "HEAD" || r.URL.Path == "/api/v1/export" || strings.HasPrefix(r.URL.Path, "/api/v1/upstreams")
+	if c := settings.Scopes["reads"]; c.Request || c.Response {
+		sensitive = true
+	}
+	if strings.HasSuffix(r.URL.Path, "/payload") {
+		sensitive = true
+	}
 	if !sensitive {
 		return h(w, r)
 	}
@@ -138,6 +178,9 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 	target := r.Pattern
 	if slug := r.PathValue("slug"); store.ValidSlug(slug) {
 		target += ":" + slug
+	}
+	if strings.HasSuffix(r.URL.Path, "/payload") && audit.ValidID(r.PathValue("event")) {
+		target += ":" + r.PathValue("event")
 	}
 	e := audit.Event{
 		OperationID:   id,
@@ -152,15 +195,43 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 		Action:        r.Pattern,
 		Target:        target,
 		VirtualServer: "",
+		Policy:        &settings, Scope: "control", Boundary: "control",
 	}
-	d := s.auditRecorder()
+	if r.Method == "GET" || r.Method == "HEAD" {
+		e.Scope = "reads"
+	}
+	// Object context comes from matched routes, never arbitrary body data.
+	if strings.HasPrefix(r.URL.Path, "/api/v1/upstreams/") {
+		e.Upstream = r.PathValue("slug")
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/v1/virtual-servers/") {
+		e.VirtualServer = r.PathValue("slug")
+	}
+	excluded := r.URL.Path == "/api/v1/audit-preview" || strings.HasPrefix(r.URL.Path, "/api/v1/audit-events") || r.URL.Path == "/api/v1/audit-settings"
+	if excluded {
+		e.Scope = ""
+	}
+	d := recorder
 	w.Header().Set("X-Request-Id", id)
+	// Admission must contain the request before the handler runs. Read only
+	// when request capture is enabled, and preserve existing handler limits.
+	if !excluded && settings.Scopes[e.Scope].Request && r.Body != nil {
+		raw, readErr := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
+		if readErr != nil {
+			return apierror.New(400, "invalid_body", "Invalid body", "request could not be read")
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		e.RawPayload = raw
+	}
 	e, err = d.Admit(r.Context(), e)
 	if err != nil {
 		return auditUnavailable()
 	}
-	r = r.WithContext(audit.WithFailureReporter(audit.WithTransaction(r.Context(), e), d.ReportWriteFailure))
+	r = r.WithContext(audit.WithOperation(audit.WithFailureReporter(audit.WithTransaction(r.Context(), e), d.ReportWriteFailure), d, e))
 	response := &auditResponse{header: make(http.Header)}
+	if e.Mode == "relax" {
+		response.forward = w
+	}
 	start := time.Now()
 	err = h(response, r)
 	e.Status = "ok"
@@ -168,6 +239,18 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 		e.Status = "error"
 		e.Reason = "administrative operation failed"
 	}
+	if err != nil {
+		if response.forward == nil {
+			response.body.Reset()
+			response.header = make(http.Header)
+			response.status = 0
+			response.totalBytes = 0
+		}
+		apierror.Write(response, r, err, s.Log)
+		err = nil
+	}
+	e.RawPayload = response.body.Bytes()
+	e.RawPayloadBytes = response.totalBytes
 	e.DurationMS = int(time.Since(start).Milliseconds())
 	// Client cancellation cannot erase an outcome for an already committed mutation.
 	completion, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), audit.WriteTimeout)
@@ -177,6 +260,9 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 	}
 	if err != nil {
 		return err
+	}
+	if response.forward != nil {
+		return nil
 	}
 	for key, values := range response.header {
 		w.Header()[key] = values
@@ -202,8 +288,12 @@ func (s *Server) auditStatus(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, 200, map[string]any{"process": s.auditRecorder().Stats(), "durable": pending})
 }
 
-func (s *Server) auditRecorder() *audit.Durable {
-	s.auditOnce.Do(func() { s.auditor = audit.NewDurable(s.Store.Pool, s.Log) })
+func (s *Server) auditRecorder() *audit.Runtime {
+	s.auditOnce.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.auditCancel = cancel
+		s.auditor = audit.NewRuntime(ctx, s.Store.Pool, s.Store.Box, s.Log, "strict")
+	})
 	return s.auditor
 }
 
@@ -264,3 +354,9 @@ func (s *Server) revokeSessions(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func (s *Server) CloseAudit() {
+	if s.auditCancel != nil {
+		s.auditCancel()
+		<-s.auditor.Done()
+	}
+}

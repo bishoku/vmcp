@@ -1,9 +1,12 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, key } from '../src/connections/fixtures'
 test.use({viewport:{width:1280,height:1000},timezoneId:'Europe/Istanbul'})
 async function setup(page:Page){
  const writes:{path:string;body:Record<string,unknown>}[]=[],queries:URL[]=[]
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const req=route.request(),url=new URL(req.url()),path=url.pathname
   if(['POST','PUT','PATCH','DELETE'].includes(req.method())){
    const body=req.postDataJSON();writes.push({path,body})

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
@@ -26,6 +27,7 @@ const apiVersion = "vmcp/v1"
 const everything = 1_000_000
 
 type desiredWire struct {
+	AuditSettings  *audit.Settings     `json:"auditSettings"`
 	APIVersion     string              `json:"apiVersion"`
 	Upstreams      []upstreamWire      `json:"upstreams"`
 	VirtualServers []virtualServerWire `json:"virtualServers"`
@@ -83,11 +85,16 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		doc := struct {
+			AuditSettings  audit.Settings        `json:"auditSettings"`
 			APIVersion     string                `json:"apiVersion"`
 			Upstreams      []exportUpstream      `json:"upstreams"`
 			VirtualServers []exportVirtualServer `json:"virtualServers"`
 			Bindings       []bindingWire         `json:"bindings"`
 		}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}, Bindings: []bindingWire{}}
+		doc.AuditSettings, err = rd.AuditSettings(r.Context())
+		if err != nil {
+			return err
+		}
 		for _, u := range ups {
 			doc.Upstreams = append(doc.Upstreams, exportUpstream{Kind: u.Kind, REST: u.REST, Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
 			if u.TLS.CAPEM != "" || u.TLS.ServerName != "" || u.TLS.ClientCertPEM != "" {
@@ -160,6 +167,17 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 
 	// 1. Validate the whole document up front, reporting every problem.
 	var errs []apierror.FieldError
+	if doc.AuditSettings != nil {
+		normalized := doc.AuditSettings.Normalize()
+		doc.AuditSettings = &normalized
+		if err := doc.AuditSettings.Validate(); err != nil {
+			return apierror.New(422, "invalid_audit_settings", "Invalid audit settings", err.Error())
+		}
+		p, _ := r.Context().Value(principalKey{}).(*principal)
+		if p == nil || p.Role != "admin" {
+			return apierror.Forbidden("audit settings require admin access")
+		}
+	}
 	if doc.APIVersion != apiVersion {
 		errs = append(errs, apierror.FieldError{Field: "/apiVersion", Code: apierror.CodeValidationFailed, Message: fmt.Sprintf("must be %q", apiVersion)})
 	}
@@ -274,6 +292,16 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 		}
 		ctx := r.Context()
 		changes = []change{}
+		if doc.AuditSettings != nil {
+			current, err := tx.AuditSettings(ctx)
+			if err != nil {
+				return err
+			}
+			if err := tx.SaveAuditSettings(ctx, *doc.AuditSettings, current.Revision); err != nil {
+				return err
+			}
+			changes = append(changes, change{"auditSettings", "global", store.Updated})
+		}
 		now := time.Now().UTC()
 		for i, u := range doc.Upstreams {
 			_, outcome, err := tx.PutUpstream(ctx, u.Slug, upIn[i], nil, false)

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
@@ -323,7 +324,18 @@ func (c *SSEClient) post(ctx context.Context, msg *mcp.Message) error {
 	return nil
 }
 
-func (c *SSEClient) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (c *SSEClient) call(ctx context.Context, method string, params any) (auditResult json.RawMessage, auditErr error) {
+	complete, auditStartErr := audit.Observe(ctx, method, params)
+	if auditStartErr != nil {
+		return nil, auditStartErr
+	}
+	defer func() {
+		if err := complete(auditResult, auditErr); err != nil {
+			auditResult = nil
+			auditErr = err
+		}
+	}()
+
 	id := mcp.NewIntID(c.nextID.Add(1))
 	defer cancelRequest(ctx, method, id, c.Send)
 	req, err := mcp.NewRequest(id, method, params)

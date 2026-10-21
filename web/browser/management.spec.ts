@@ -1,8 +1,11 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 test('login loads all management pages and rejects a concurrent edit',async({page})=>{
  let writes=0
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',async route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const req=route.request(),url=new URL(req.url())
   if(url.pathname.endsWith('/me'))return route.fulfill({status:req.headers().authorization?200:401,json:{name:'Admin',role:'admin',via:'bootstrap-token'}})
   if(req.method()==='PATCH'){writes++;expect(req.headers()['if-match']).toBe('"7"');return route.fulfill({status:412,json:{detail:'stale',code:'precondition_failed'}})}

@@ -76,11 +76,12 @@ func run(log *slog.Logger) error {
 		pool.Close()
 		return err
 	}
-	auditor, err := audit.NewService(auditCtx, pool, log, config.Env("VMCP_AUDIT_MODE", "strict"))
-	if err != nil {
+	auditMode := config.Env("VMCP_AUDIT_MODE", "strict")
+	if auditMode != "strict" && auditMode != "relax" && auditMode != "best_effort" {
 		pool.Close()
-		return err
+		return errors.New("VMCP_AUDIT_MODE must be strict, relax or best_effort")
 	}
+	auditor := audit.NewRuntime(auditCtx, pool, box, log, auditMode)
 	// Cancel background goroutines (the NOTIFY listener holds a pool connection)
 	// and let the audit writer flush before closing the pool, otherwise Close
 	// blocks on error exits and buffered events are lost.
@@ -104,6 +105,7 @@ func run(log *slog.Logger) error {
 	sessions.Store = virtual.PGSessionStore{Pool: pool}
 	syncer := &snapshot.Syncer{Pool: pool, Box: box, Log: log, MaxAuthorizationAge: maxStale, ListenerURL: config.Env("VMCP_DB_LISTENER_URL", ""),
 		OnChange: func(snap *config.Snapshot) {
+			auditor.SetSettings(snap.Audit)
 			sessions.Reconcile(snap)
 			var configs []oauthtoken.Config
 			for _, up := range snap.Upstreams {

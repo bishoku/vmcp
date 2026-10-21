@@ -195,3 +195,15 @@ and reconnects, independent consumer receipts, retention protection and restrict
 export privileges. CI runs these alongside the existing required integration suite.
 The local brokers are deliberately single-node and plaintext; this is not an HA,
 SASL, mTLS, broker restart or production throughput certification.
+
+## Optional payload export
+
+Payload consumers are enabled by name in Settings → Audit capture & masking
+(`auditSettings.exportPayloads` in configuration export/apply). Other consumers
+continue to receive metadata. The exporter combines metadata and decrypted,
+policy-masked content into a single event message. It freezes delivery bytes
+before sending and preserves them on retry. Payload-enabled exporters require
+`VMCP_MASTER_KEY`, compatible `VMCP_KEY_ID` / `VMCP_DECRYPT_KEYS`, and the same tenant
+namespace as the writers. Apply migration 29 and the updated PostgreSQL role grants
+before upgrading. See [payload capture](Audit-Log.md#payload-capture-and-masking)
+for retention, access control and the accepted relax-mode loss windows.

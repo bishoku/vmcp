@@ -1,8 +1,11 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/auth/config', r => r.fulfill({ json: { oidc: false } }))
   await page.route('**/api/v1/**', route => {
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
     const request = route.request(), path = new URL(request.url()).pathname
     if (path.endsWith('/me')) return route.fulfill({ status: request.headers().authorization ? 200 : 401, json: { name: 'Admin', role: 'admin', via: 'bootstrap-token' } })
     if (path.endsWith('/agent-keys') && request.method() === 'POST') {

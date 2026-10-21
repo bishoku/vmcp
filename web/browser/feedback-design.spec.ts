@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream } from '../src/connections/fixtures'
 
@@ -6,7 +7,7 @@ test.use({viewport:{width:1280,height:1000}})
 async function base(page:Page){
  const writes:string[]=[]
  page.on('request',request=>{if(['POST','PUT','PATCH','DELETE'].includes(request.method()))writes.push(request.url())})
- await page.route('**/api/v1/**',route=>route.fulfill({json:route.request().url().endsWith('/me')?{name:'Tester',role:'admin'}:{items:[]}}))
+ await page.route('**/api/v1/**',route=>new URL(route.request().url()).pathname.endsWith('/audit-settings')?route.fulfill({json:auditSettings}):route.fulfill({json:route.request().url().endsWith('/me')?{name:'Tester',role:'admin'}:{items:[]}}))
  return writes
 }
 

@@ -411,11 +411,25 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	start := time.Now()
 	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
 		ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: "tools/call", Target: vs.Slug, TraceID: audit.TraceFrom(ctx)}
+	ev.Scope = "virtual"
+	ev.Boundary = "virtual"
+	ev.RawPayload = msg.Params
+	if _, ok := h.Audit.(*audit.Runtime); ok {
+		policy := snap.Audit
+		ev.Policy = &policy
+	}
 	if requestID, ok := ctx.Value(deliveryRequestKey{}).(string); ok {
 		ev.RequestID = requestID
 	}
+	var responsePayload json.RawMessage
 	finish := func(status, reason string) bool {
 		ev.Status, ev.Reason, ev.DurationMS = status, reason, int(time.Since(start).Milliseconds())
+		if status == "error" || status == "denied" {
+			ev.RawPayload, _ = json.Marshal(map[string]string{"error": reason})
+		}
+		if len(responsePayload) > 0 {
+			ev.RawPayload = responsePayload
+		}
 		if durable, ok := h.Audit.(audit.DurableRecorder); ok && ev.OperationID != "" {
 			completion, cancel := context.WithTimeout(context.WithoutCancel(ctx), audit.WriteTimeout)
 			defer cancel()
@@ -517,6 +531,9 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			return
 		}
 	}
+	if runtime, ok := h.Audit.(*audit.Runtime); ok {
+		ctx = audit.WithOperation(ctx, runtime, ev)
+	}
 	callStarted := time.Now()
 	result, err := h.callResilient(ctx, sess, up, vt, args)
 	callDuration := time.Since(callStarted)
@@ -552,6 +569,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 				}
 				rpcErr, ev.Redactions = &masked, ev.Redactions+n
 			}
+			responsePayload, _ = json.Marshal(map[string]any{"error": rpcErr})
 			if !finish("error", "upstream rpc error") {
 				http.Error(w, "audit outcome unavailable; operation may have completed", 503)
 				return
@@ -596,6 +614,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		IsError bool `json:"isError"`
 	}
 	_ = json.Unmarshal(result, &res)
+	ev.RawPayload = result
 	if res.IsError {
 		if !finish("tool_error", "") {
 			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
@@ -679,6 +698,9 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 		if errors.Is(err, errAuthorizationChanged) {
 			return res, err
 		}
+		if errors.Is(err, audit.ErrUnavailable) {
+			return res, err
+		}
 		switch resilience.Classify(ctx, err) {
 		case resilience.Reached:
 			if br != nil {
@@ -718,7 +740,7 @@ func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Ups
 			release()
 			return nil, err
 		}
-		ctx = upstream.WithOrigin(ctx, up.Slug)
+		ctx = audit.WithUpstream(upstream.WithOrigin(ctx, up.Slug), up.Slug)
 		res, err := c.CallTool(ctx, tool, args)
 		release()
 		if errors.Is(err, upstream.ErrSessionExpired) {

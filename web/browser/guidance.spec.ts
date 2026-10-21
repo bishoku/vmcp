@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 import { server, upstream } from '../src/connections/fixtures'
 for(const width of [1280,390])test(`guidance draft, preview and save at ${width}px`,async({page})=>{
@@ -6,6 +7,8 @@ for(const width of [1280,390])test(`guidance draft, preview and save at ${width}
  const guidance={instructions:'Start with {{tool:lookup}}',resources:[],prompts:[],toolReferences:[{key:'lookup',upstream:'alpha',tool:'lookup'}],upstreamInstructions:[]}
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ if(new URL(r.request().url()).pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
+
   const req=r.request(),path=new URL(req.url()).pathname
   if(path.endsWith('/me'))return r.fulfill({status:req.headers().authorization?200:401,json:{role:'admin',name:'Tester'}})
   if(req.method()==='PUT'){writes.push(req.postDataJSON());return r.fulfill({json:{...server,...req.postDataJSON(),version:server.version+1}})}

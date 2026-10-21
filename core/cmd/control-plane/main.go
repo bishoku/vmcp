@@ -90,7 +90,7 @@ func run(log *slog.Logger) error {
 	// Audit retention: 0 keeps events forever.
 	if days, err := strconv.Atoi(config.Env("VMCP_AUDIT_RETENTION_DAYS", "90")); err != nil || days < 0 {
 		return errors.New("VMCP_AUDIT_RETENTION_DAYS must be a non-negative integer")
-	} else if days > 0 {
+	} else {
 		bgWg.Add(1)
 		go func(d int) {
 			defer bgWg.Done()
@@ -114,6 +114,7 @@ func run(log *slog.Logger) error {
 		Log:            log,
 		TrustedProxies: trusted,
 	}
+	defer func() { cancelBg(); bgWg.Wait(); api.CloseAudit() }()
 	bgWg.Add(1)
 	go func() {
 		defer bgWg.Done()
@@ -188,6 +189,10 @@ func purgeLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, retent
 		start := time.Now()
 		var total int64
 		for batch := 0; batch < 200 && ctx.Err() == nil; batch++ {
+			payloadN, payloadErr := audit.PurgePayloads(ctx, pool)
+			if payloadErr != nil && ctx.Err() == nil {
+				log.Error("audit payload purge failed")
+			}
 			n, err := audit.Purge(ctx, pool, retention)
 			if err != nil {
 				if ctx.Err() == nil {
@@ -196,7 +201,7 @@ func purgeLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, retent
 				break
 			}
 			total += n
-			if n < 500 {
+			if n < 500 && payloadN < 500 {
 				break
 			}
 		}

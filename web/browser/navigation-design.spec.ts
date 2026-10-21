@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { answerConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
@@ -7,6 +8,8 @@ async function login(page:Page,path='/virtual-servers/demo/overview'){
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/auth/logout',r=>{logouts++;return r.fulfill({status:204})})
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Alexandra Morgan · Platform engineering',role:'admin'}})
   if(path.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})

@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import type { AdminToken } from '../src/api'
@@ -8,6 +9,8 @@ async function login(page:Page,role:'admin'|'editor'|'viewer'='admin'){
  let tokens:AdminToken[]=[token,{...token,slug:'expired-admin',scope:'admin',expiresAt:'2020-01-01T00:00:00Z',lastUsedAt:null}]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),url=new URL(request.url()),path=url.pathname
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role}})
   if(path.endsWith('/info'))return route.fulfill({json:{version:'dev-test',configRevision:17,tenantId:'demo-tenant'}})

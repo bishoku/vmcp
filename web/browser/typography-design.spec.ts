@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
 test.use({viewport:{width:1280,height:1000}})
@@ -5,6 +6,8 @@ async function setup(page:Page,longNames=false){
  const name=longNames?'Support workspace · '+ 'Customer operations and research '.repeat(3):'Support workspace'
  const description='Shared tools and reference material for support agents. Review the configured access rules and upstream capabilities before connecting a client.'
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const path=new URL(route.request().url()).pathname
   const json=path.endsWith('/me')?{name:'Tester',role:'admin'}:path.endsWith('/info')?{version:'test',configRevision:1}:path.endsWith('/upstreams')?{items:[{...upstream,name,description}]}:path.endsWith('/virtual-servers')?{items:[{...server,name,description}]}:path.endsWith('/agent-keys')?{items:[key]}:path.endsWith('/identity-bindings')?{items:[binding]}:path.endsWith('/catalog')?{resources:[],resourceTemplates:[],prompts:[]}:path.endsWith('/tools')?{items:[{name:'lookup',description:'Find a customer record'}]}:{items:[]}
   return route.fulfill({json})

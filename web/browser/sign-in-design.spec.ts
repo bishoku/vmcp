@@ -1,9 +1,12 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 
 for(const sso of [false,true])test(`${sso?'SSO and token':'token-only'} sign-in handles errors keyboard submission and memory-only access`,async({page})=>{
  const attempts:string[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:sso}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me')){
    const auth=request.headers().authorization
@@ -48,6 +51,8 @@ test('session recovery retains a draft after failed reauthentication and never r
  let writes=0
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:true}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({status:['Bearer accepted','Bearer replacement'].includes(request.headers().authorization)?200:401,json:{name:'Editor',role:'editor'}})
   if(path.endsWith('/agent-keys')&&request.method()==='POST'){writes++;return route.fulfill({status:401,json:{detail:'Expired'}})}

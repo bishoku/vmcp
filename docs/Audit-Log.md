@@ -2,7 +2,7 @@
 
 The data plane defaults to `VMCP_AUDIT_MODE=strict`: protected tool/resource/prompt calls receive a durable PostgreSQL admission before dispatch and a separate outcome. A failed admission prevents dispatch. A missing outcome identifies in-flight or incomplete work; an upstream action may have completed even when outcome persistence fails and the client receives 503.
 
-Administrative mutations and their identifier-only audit records commit in the same database transaction. Privileged export and upstream metadata reads are also admitted and audited. Arguments, results and credentials are excluded.
+By default, administrative mutations and their identifier-only audit records commit in the same database transaction. Privileged export and upstream metadata reads are also admitted and audited. Payload capture is disabled by default; credentials remain excluded by mandatory filters. See the optional capture policy below.
 
 | Field | Meaning |
 |---|---|
@@ -26,3 +26,99 @@ early catalog validation/denial paths still lack equivalent decision records;
 complete denial coverage is on the [production roadmap](../maintainer/Production-Roadmap.md).
 
 Configure destinations with [independent audit exporters](AUDIT_EXPORTERS.md).
+
+## Payload capture and masking
+
+Migration 29 adds optional, encrypted audit payloads in `audit_payloads`, separate
+from immutable metadata. Capture defaults to off. In **Settings → Audit capture &
+masking**, administrators select `strict` or `relax`, request/response capture for
+virtual calls, upstream calls, management APIs, discovery/system work and API
+reads, a payload size limit, payload retention, global RE2 rules and exporter
+consumer permissions. An empty mode preserves the deployment default: strict for
+the control plane; `VMCP_AUDIT_MODE` for the data plane (`best_effort` remains an
+alias for relax there). Historical rows are marked `legacy`, not retrospectively
+claimed as strict.
+
+Both modes write metadata and any required payload in one PostgreSQL transaction.
+Strict acknowledges that transaction before dispatch and before returning a
+normal outcome. Relax prepares masked, encrypted content and offers the entire
+event to a bounded background queue, without waiting for database storage. Its
+queue is bounded by both count and 32 MiB of accounted memory; overflow, process
+crash and failed shutdown can lose entire events. A request may have an admission
+without an outcome, or an outcome without a persisted admission in relax mode.
+Neither absence proves execution failure. Preparation still consumes CPU in
+relax mode; it intentionally avoids queuing raw, unmasked payloads.
+
+The operation retains its starting mode and policy revision. Saving settings
+never changes an operation halfway through. Configuration revision notifications
+propagate settings to data-plane snapshots; `/audit-status` reports the applied
+policy revision and mode. Control-plane mutations remain transactionally audited
+in strict mode. In relax mode their mutation events are queued only after commit,
+so audit failure cannot roll back the configuration change. A crash between the
+configuration commit and enqueue is an accepted loss window.
+
+Payloads represent the selected boundary: virtual requests contain MCP params,
+virtual responses contain results/errors, MCP upstream records contain actual
+protocol params/results, and REST upstream records contain the constructed method,
+path, query and body plus the bounded service response with its HTTP status. Enabling upstream capture
+adds separate admission/outcome records for protocol calls, including initialization
+and caller-level retries, linked through `parentOperationId` and `requestId`.
+Credential acquisition traffic and authorization headers are excluded. Transport
+internal OAuth refresh/replay remains inside its enclosing protocol exchange.
+Progress/logging notifications keep metadata evidence without accumulating stream
+payloads. Static OpenAPI downloads are excluded from payload capture.
+
+Audit masking never changes the messages forwarded to agents/upstreams. Mandatory
+secret-field filters are followed by global and applicable virtual-server/upstream
+rules. Local rules add protection; they cannot disable inherited global rules.
+JSON objects and arrays encoded inside strings (including MCP text results) also
+receive secret-field filtering within the same traversal budgets. Their outer
+string type is preserved. If a regex matches the original encoded JSON string,
+the entire string is redacted so decoding cannot defeat matches across JSON syntax.
+Regex matches on a value are merged before replacement. JSON structure is
+preserved; sensitive numeric values become redaction strings. Binary content is
+omitted or replaced with a marker. Invalid, oversized and policy-excluded documents
+have explicit states rather than unmasked fallbacks. The default stored-content
+budget is 64 KiB, configurable up to 1 MiB. Input traversal also has independent
+size, depth, node and match-count bounds. Rules cannot guarantee detection of
+arbitrary secrets or personal information.
+
+Local rules are managed on the virtual server's Protection screen and on the
+saved upstream screen. Global and local panels share a request/response preview
+helper backed by the production masking engine. Samples stay in component memory
+and are excluded from audit payload capture. Local previews merge the edited
+local rules with the current saved global/context policies and reject stale
+revisions. Samples are interpreted at the selected boundary; the helper does not
+call an upstream or predict its response. Saving settings uses optimistic
+concurrency and rejects stale writes with HTTP 409. `auditSettings` is included in
+configuration export/apply; applying it requires administrator access.
+
+Only administrators can read payloads, edit policies or use previews. Payload
+reads are themselves audited, without recursively capturing their returned
+content. Metadata lists do not load/decrypt payloads. Audit details fetch content
+on demand and show when content has expired. Local policies are keyed by slug;
+configuration export/apply can also manage policies for objects not yet created.
+
+Payload retention defaults to seven days, independently of the metadata retention
+environment setting. Metadata is retained until its payload has been released by
+payload cleanup, even when metadata retention is shorter. Cleanup runs even when metadata retention is disabled. Legal
+holds protect related payloads across the correlated request. Active consumers
+configured to receive payloads retain pending content until a delivery snapshot
+exists. Snapshots containing payloads are encrypted, frozen before first send and
+reused byte-for-byte on retry; snapshots are cleared after acknowledged delivery.
+Revoking payload export blocks pending payload snapshots rather than sending their
+contents or changing their body under the same event ID.
+Pending/dead deliveries can therefore retain encrypted content beyond its normal
+expiry. Retention and external destination lifetimes must be operated together.
+
+Exporters emit one combined message per audit event, not separate payload messages
+or one collapsed message for an entire operation. Payload export is opt-in by
+consumer name in Settings. Such exporters need `VMCP_MASTER_KEY` and the applicable
+keyring/tenant configuration; metadata-only exporters can continue without a key.
+Run the updated `deploy/postgres/audit-roles.sql` grants for the additional tables.
+The secret rotation command includes payloads and pending export snapshots.
+
+Apply migration 29 and role grants before deploying the new binaries. Keep capture
+disabled until every writer/exporter is updated; older writers do not implement
+these policies. Rollback drops payloads, settings and frozen envelopes: archive
+and coordinate a maintenance window before downgrading.

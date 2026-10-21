@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,6 +40,12 @@ func Run(ctx context.Context, log *slog.Logger, factory func() (audit.Publisher,
 	exporter, err := audit.NewPublishingExporter(pool, os.Getenv("VMCP_AUDIT_EXPORT_CONSUMER"), publisher)
 	if err != nil {
 		return err
+	}
+	if key := os.Getenv("VMCP_MASTER_KEY"); key != "" {
+		exporter.Box, err = secrets.FromEnv(key)
+		if err != nil {
+			return errors.New("invalid audit encryption configuration")
+		}
 	}
 	if err := exporter.Register(ctx); err != nil {
 		return errors.New("exporter registration failed")

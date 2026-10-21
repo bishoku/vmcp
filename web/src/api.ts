@@ -209,7 +209,17 @@ export interface BindingEvaluation {
   matches?: { slug: string; virtualServers: string[] }[]
 }
 
+export interface AuditRule { name:string; pattern:string }
+export interface AuditSettings {
+ mode:''|'strict'|'relax'; retentionDays:number; maxPayloadBytes:number; revision:number
+ scopes:Record<string,{request:boolean;response:boolean}>; rules:AuditRule[]
+ virtualServers:Record<string,AuditRule[]>; upstreams:Record<string,AuditRule[]>;exportPayloads:Record<string,boolean>
+}
+export interface AuditPreview {state:string;content?:unknown;originalBytes:number;storedBytes:number;redactions:number;revision:number;matches:{source:string;name:string;count:number}[]}
 export interface AuditEvent {
+ auditMode?:string;policyRevision?:number;scope?:string;boundary?:string;direction?:string;parentOperationId?:string|null
+ payloadState?:string;payloadOriginalBytes?:number;payloadStoredBytes?:number;payloadRedactions?:number
+
   eventId: string
   operationId?: string | null
   requestId?: string | null
@@ -364,9 +374,14 @@ async function listAll<T>(path: string, signal?: AbortSignal): Promise<T[]> {
  return all
 }
 
-export interface ConfigDocument { apiVersion: string; upstreams: unknown[]; virtualServers: unknown[]; bindings?: unknown[] }
+export interface ConfigDocument { apiVersion: string; upstreams: unknown[]; virtualServers: unknown[]; bindings?: unknown[];auditSettings?:AuditSettings }
 export interface ApplyResult { changes: {kind:string;slug:string;action:string}[]; configRevision?: number | null }
 export const api = {
+ auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),
+ saveAuditSettings:(settings:AuditSettings)=>request<AuditSettings>('PUT','/audit-settings',settings),
+ previewAudit:(body:{editScope?:'global'|'virtual'|'upstream';settings:AuditSettings;scope:string;direction:string;virtualServer:string;upstream:string;payload:unknown})=>request<AuditPreview>('POST','/audit-preview',body),
+ auditPayload:(id:string)=>request<{state:string;content?:unknown}>('GET',`/audit-events/${encodeURIComponent(id)}/payload`),
+
   downloadOpenAPI: (format: 'json' | 'yaml') => request<Blob>('GET', `/openapi.${format}`, undefined, undefined, undefined, 'blob'),
   exportConfig: () => request<ConfigDocument>('GET','/export'),
   applyConfig: (document: ConfigDocument, dryRun = true, prune = false, revision?:number) => request<ApplyResult>('POST',`/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),

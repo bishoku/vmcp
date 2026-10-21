@@ -68,11 +68,17 @@ func (s *Server) discoverOne(parent context.Context) {
 		_, _ = s.Store.Pool.Exec(ctx, `DELETE FROM mcp_discovery_requests WHERE upstream_id=$1::uuid`, id)
 		return
 	}
-	recorder := audit.NewDurable(s.Store.Pool, s.Log)
-	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "discovery", Action: "upstream.discovery", Method: "upstream.discovery", Target: slug, Revision: revision})
+	settings, settingsErr := store.LoadAuditSettings(ctx, s.Store.Pool)
+	if settingsErr != nil {
+		return
+	}
+	recorder := s.auditRecorder()
+	recorder.SetSettings(settings)
+	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "discovery", Action: "upstream.discovery", Method: "upstream.discovery", Target: slug, Revision: revision, Upstream: slug, Scope: "system", Boundary: "system", Policy: &settings})
 	if err != nil {
 		return
 	}
+	ctx = audit.WithOperation(ctx, recorder, event)
 	err = connErr
 	if err == nil {
 		probeCtx, probeCancel := context.WithTimeout(ctx, 55*time.Second)

@@ -19,3 +19,9 @@ GRANT DELETE ON audit_events TO vmcp_audit_retention;
 GRANT UPDATE(id) ON audit_events TO vmcp_audit_retention;
 -- A privileged evidence operator owns legal-hold creation/removal and consumer
 -- activation/deactivation. Those powers are deliberately absent above.
+
+-- Payload tables remain separate from metadata query access.
+GRANT SELECT ON audit_settings TO vmcp_audit_export;
+GRANT SELECT ON audit_payloads TO vmcp_audit_export, vmcp_audit_retention;
+GRANT DELETE ON audit_payloads TO vmcp_audit_retention;
+GRANT UPDATE(event_id) ON audit_payloads TO vmcp_audit_retention;

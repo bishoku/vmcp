@@ -186,11 +186,17 @@ func (h *Handler) runSubscription(parent context.Context) {
 		})
 	}
 	defer func() { stop(); stopHeartbeat() }()
-	recorder := audit.NewDurable(h.Delivery.Pool, h.Log)
-	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "resource-subscription", Action: "mcp.subscription_reconcile", Method: "resources/subscribe", VirtualServer: sess.slug, Revision: snap.Revision, Target: sid, Upstream: up.Slug})
+	var recorder audit.DurableRecorder = audit.NewDurable(h.Delivery.Pool, h.Log)
+	if runtime, ok := h.Audit.(*audit.Runtime); ok {
+		recorder = runtime
+	}
+	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "resource-subscription", Action: "mcp.subscription_reconcile", Method: "resources/subscribe", VirtualServer: sess.slug, Revision: snap.Revision, Target: sid, Upstream: up.Slug, Scope: "system", Boundary: "system", Policy: &snap.Audit})
 	if err != nil {
 		release(false)
 		return
+	}
+	if runtime, ok := h.Audit.(*audit.Runtime); ok {
+		ctx = audit.WithOperation(ctx, runtime, event)
 	}
 	event.Status = "error"
 	event.Reason = "subscription activation failed"

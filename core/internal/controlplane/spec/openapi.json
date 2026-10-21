@@ -58,6 +58,159 @@
     }
   ],
   "paths": {
+    "/api/v1/audit-settings": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "getAuditSettings",
+        "summary": "Read audit capture and masking settings",
+        "description": "Admin only. An empty mode preserves the deployment default.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "putAuditSettings",
+        "summary": "Replace audit settings",
+        "description": "Admin only. Supply the current revision; stale settings return 409. New operations use the saved policy after snapshot propagation. Existing operations retain their mode and policy.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
+    },
+    "/api/v1/audit-preview": {
+      "post": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "previewAuditPayload",
+        "summary": "Preview an audit payload with unsaved masking rules",
+        "description": "Admin only. Uses the production masking engine, mandatory secret filters and selected global/virtual-server/upstream rules. Samples and preview results are excluded from audit payload capture.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditPreviewInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
+    },
+    "/api/v1/audit-events/{event}/payload": {
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "getAuditPayload",
+        "summary": "Read an audit payload",
+        "description": "Admin only. Access is audited without recursively capturing the returned payload. Expired payloads return metadata state without content.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPayload"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/v1/openapi.json": {
       "get": {
         "tags": [
@@ -3028,6 +3181,284 @@
       }
     },
     "schemas": {
+      "AuditMaskRule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "pattern"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,40}$"
+          },
+          "pattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Go RE2 expression; must not match empty strings. Matches are replaced with [REDACTED]."
+          }
+        }
+      },
+      "AuditSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode",
+          "retentionDays",
+          "maxPayloadBytes",
+          "scopes",
+          "rules",
+          "virtualServers",
+          "upstreams",
+          "revision"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "",
+              "strict",
+              "relax"
+            ]
+          },
+          "retentionDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650,
+            "default": 7
+          },
+          "maxPayloadBytes": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 1048576,
+            "default": 65536
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scopes": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "virtual": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request",
+                  "response"
+                ],
+                "properties": {
+                  "request": {
+                    "type": "boolean"
+                  },
+                  "response": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "upstream": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request",
+                  "response"
+                ],
+                "properties": {
+                  "request": {
+                    "type": "boolean"
+                  },
+                  "response": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "control": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request",
+                  "response"
+                ],
+                "properties": {
+                  "request": {
+                    "type": "boolean"
+                  },
+                  "response": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "system": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request",
+                  "response"
+                ],
+                "properties": {
+                  "request": {
+                    "type": "boolean"
+                  },
+                  "response": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "reads": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "request",
+                  "response"
+                ],
+                "properties": {
+                  "request": {
+                    "type": "boolean"
+                  },
+                  "response": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          "rules": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/AuditMaskRule"
+            }
+          },
+          "virtualServers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/components/schemas/AuditMaskRule"
+              }
+            }
+          },
+          "upstreams": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/components/schemas/AuditMaskRule"
+              }
+            }
+          },
+          "exportPayloads": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Consumer name to payload export authorization. Default is metadata only."
+          }
+        }
+      },
+      "AuditPreviewInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "settings",
+          "scope",
+          "direction",
+          "payload"
+        ],
+        "properties": {
+          "editScope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "virtual",
+              "upstream"
+            ],
+            "description": "Local previews merge only the edited local rules into current saved settings; stale revisions return 409."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/AuditSettings"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "virtual",
+              "upstream",
+              "control",
+              "system",
+              "reads"
+            ]
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "request",
+              "response"
+            ]
+          },
+          "virtualServer": {
+            "type": "string"
+          },
+          "upstream": {
+            "type": "string"
+          },
+          "payload": {}
+        }
+      },
+      "AuditPreview": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "content": {},
+          "originalBytes": {
+            "type": "integer"
+          },
+          "storedBytes": {
+            "type": "integer"
+          },
+          "redactions": {
+            "type": "integer"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AuditPayload": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "content": {}
+        }
+      },
       "Slug": {
         "type": "string",
         "minLength": 1,
@@ -4915,6 +5346,45 @@
           "durationMs"
         ],
         "properties": {
+          "auditMode": {
+            "type": "string",
+            "enum": [
+              "strict",
+              "relax",
+              "legacy"
+            ]
+          },
+          "policyRevision": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "boundary": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "parentOperationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "payloadState": {
+            "type": "string"
+          },
+          "payloadOriginalBytes": {
+            "type": "integer"
+          },
+          "payloadStoredBytes": {
+            "type": "integer"
+          },
+          "payloadRedactions": {
+            "type": "integer"
+          },
           "tenantId": {
             "type": "string"
           },
@@ -5053,6 +5523,9 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "auditSettings": {
+            "$ref": "#/components/schemas/AuditSettings"
+          },
           "apiVersion": {
             "type": "string",
             "const": "vmcp/v1"

@@ -273,6 +273,13 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 	if id, ok := ctx.Value(deliveryRequestKey{}).(string); ok {
 		ev.RequestID = id
 	}
+	ev.Scope = "virtual"
+	ev.Boundary = "virtual"
+	ev.RawPayload = msg.Params
+	if _, ok := h.Audit.(*audit.Runtime); ok {
+		policy := snap.Audit
+		ev.Policy = &policy
+	}
 	durable, strict := h.Audit.(audit.DurableRecorder)
 	var err error
 	if strict {
@@ -281,6 +288,9 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 			fail(mcp.CodeInternalError, "audit admission unavailable")
 			return
 		}
+	}
+	if runtime, ok := h.Audit.(*audit.Runtime); ok {
+		ctx = audit.WithUpstream(audit.WithOperation(ctx, runtime, ev), up.Slug)
 	}
 	var result json.RawMessage
 	if object.Local != nil {
@@ -315,10 +325,12 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 			result, _ = json.Marshal(body)
 		}
 	}
+	ev.RawPayload = result
 	ev.Status = "ok"
 	if err != nil {
 		ev.Status = "error"
 		ev.Reason = "catalog operation failed"
+		ev.RawPayload = json.RawMessage(`{"error":"catalog operation failed"}`)
 	}
 	if strict {
 		finishCtx, done := context.WithTimeout(context.WithoutCancel(ctx), audit.WriteTimeout)

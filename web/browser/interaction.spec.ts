@@ -1,8 +1,11 @@
+import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 async function login(page: Page, role: 'viewer'|'editor'|'admin'='admin') {
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role,via:'admin-token'}})
   if(path.endsWith('/info'))return route.fulfill({json:{version:'test',configRevision:1}})

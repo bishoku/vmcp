@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import { key, binding, server } from '../src/connections/fixtures'
@@ -7,6 +8,8 @@ async function login(page:Page,role:'admin'|'viewer'='admin'){
  let bindings=[{...binding,description:'Team agents with verified claims'},{...binding,slug:'disabled-binding',enabled:false}]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role}})
   if(request.method()==='PATCH' && path.endsWith('/agent-keys/team-key')){

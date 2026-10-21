@@ -9,6 +9,17 @@ import (
 
 // AuditEvent is the API read model of an audit row.
 type AuditEvent struct {
+	Mode                 string  `json:"auditMode"`
+	PolicyRevision       int64   `json:"policyRevision"`
+	Scope                string  `json:"scope"`
+	Boundary             string  `json:"boundary"`
+	Direction            string  `json:"direction"`
+	ParentOperationID    *string `json:"parentOperationId"`
+	PayloadState         string  `json:"payloadState"`
+	PayloadOriginalBytes int     `json:"payloadOriginalBytes"`
+	PayloadStoredBytes   int     `json:"payloadStoredBytes"`
+	PayloadRedactions    int     `json:"payloadRedactions"`
+
 	TenantID      string    `json:"tenantId"`
 	EventID       string    `json:"eventId"`
 	OperationID   *string   `json:"operationId"`
@@ -59,7 +70,13 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	}
 	for column, value := range map[string]string{"stage": f.Stage, "operation_id": f.OperationID, "request_id": f.RequestID, "actor_id": f.ActorID} {
 		if value != "" {
-			add(column+" = ?", value)
+			if column == "operation_id" {
+				args = append(args, value)
+				n := strconv.Itoa(len(args))
+				where = append(where, "(operation_id=$"+n+"::uuid OR parent_operation_id=$"+n+"::uuid)")
+			} else {
+				add(column+" = ?", value)
+			}
 		}
 	}
 	if f.VirtualServer != "" {
@@ -86,7 +103,7 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	if f.BeforeID > 0 {
 		add("id < ?", f.BeforeID)
 	}
-	q := `SELECT tenant_id,event_id::text,operation_id::text,request_id::text,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,id, ts, virtual_server, agent_key, client_ip, method, subject, tool, upstream, status, reason, duration_ms, redactions FROM audit_events`
+	q := `SELECT tenant_id,event_id::text,operation_id::text,request_id::text,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,id, ts, virtual_server, agent_key, client_ip, method, subject, tool, upstream, status, reason, duration_ms, redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id::text,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions FROM audit_events`
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -100,7 +117,7 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	out := []AuditEvent{}
 	for rows.Next() {
 		var e AuditEvent
-		if err := rows.Scan(&e.TenantID, &e.EventID, &e.OperationID, &e.RequestID, &e.TraceID, &e.SchemaVersion, &e.ActorType, &e.ActorID, &e.Issuer, &e.Action, &e.Target, &e.Revision, &e.Stage, &e.ID, &e.Time, &e.VirtualServer, &e.AgentKey, &e.ClientIP, &e.Method, &e.Subject, &e.Tool, &e.Upstream, &e.Status, &e.Reason, &e.DurationMS, &e.Redactions); err != nil {
+		if err := rows.Scan(&e.TenantID, &e.EventID, &e.OperationID, &e.RequestID, &e.TraceID, &e.SchemaVersion, &e.ActorType, &e.ActorID, &e.Issuer, &e.Action, &e.Target, &e.Revision, &e.Stage, &e.ID, &e.Time, &e.VirtualServer, &e.AgentKey, &e.ClientIP, &e.Method, &e.Subject, &e.Tool, &e.Upstream, &e.Status, &e.Reason, &e.DurationMS, &e.Redactions, &e.Mode, &e.PolicyRevision, &e.Scope, &e.Boundary, &e.Direction, &e.ParentOperationID, &e.PayloadState, &e.PayloadOriginalBytes, &e.PayloadStoredBytes, &e.PayloadRedactions); err != nil {
 			return nil, false, err
 		}
 		out = append(out, e)

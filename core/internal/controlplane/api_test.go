@@ -60,6 +60,7 @@ func setup(t *testing.T) *api {
 		Version:    "test",
 		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
+	t.Cleanup(s.CloseAudit)
 	a := &api{pool: pool, t: t, srv: httptest.NewServer(s.Handler()), fixture: httptest.NewServer(fixture.New(fixture.Options{Token: "up-secret"}))}
 	t.Cleanup(a.srv.Close)
 	t.Cleanup(a.fixture.Close)

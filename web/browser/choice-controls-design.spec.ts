@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream, key } from '../src/connections/fixtures'
 
@@ -5,6 +6,8 @@ async function setup(page:Page){
  const writes:{path:string;body:Record<string,unknown>}[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const req=route.request(),path=new URL(req.url()).pathname
   if(['POST','PUT','PATCH','DELETE'].includes(req.method())){
    const body=req.postDataJSON();writes.push({path,body})

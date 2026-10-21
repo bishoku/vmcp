@@ -1,3 +1,4 @@
+import AuditSettingsPanel from '../AuditSettingsPanel'
 import { EmptyState, LoadingState } from '../Feedback'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -21,5 +22,5 @@ export default function UpstreamDetail({create = false}: {create?: boolean}) {
   return <>{readError && <ErrorBox title="Saved configuration could not be loaded" onRetry={load} busy={loading}>{readError}</ErrorBox>}<UpstreamDetailForm key={`${slug}:${revision}`} upstream={create ? null : upstream!} onClose={()=>navigate('/upstreams')} onReload={latest=>{setReplacement(latest);setRevision(v=>v+1)}} onSaved={saved=>{
     setReplacement(saved);setRevision(v=>v+1)
     if(create) navigate(`/upstreams/${encodeURIComponent(saved.slug)}`)
-  }}/></>
+  }}/>{!create&&<AuditSettingsPanel scope="upstream" slug={slug}/>}</>
 }

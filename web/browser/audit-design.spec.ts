@@ -1,3 +1,4 @@
+import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 
 const base={eventId:'event-1',operationId:'operation-123',requestId:'request-123',traceId:'trace-123',schemaVersion:1,actorType:'agent_key',actorId:'team-key',agentKey:'team-key',subject:'team',issuer:'https://idp.example',action:'tools/call',target:'lookup',configRevision:7,id:5,time:'2026-10-15T10:00:00Z',virtualServer:'demo',method:'tools/call',tool:'lookup',upstream:'alpha',status:'started',stage:'admission',durationMs:0,redactions:0}
@@ -7,6 +8,8 @@ const mutation={...base,eventId:'event-4',id:3,operationId:null,requestId:null,t
 async function login(page:Page){
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+
   const url=new URL(route.request().url())
   if(url.pathname.endsWith('/me'))return route.fulfill({status:route.request().headers().authorization?200:401,json:{name:'Reviewer',role:'viewer'}})
   if(url.pathname.endsWith('/audit-events')){

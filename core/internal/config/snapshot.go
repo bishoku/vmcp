@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
@@ -16,6 +17,7 @@ import (
 // Snapshot is the immutable, versioned configuration the data plane serves from.
 // The control plane produces it; the data plane swaps it in atomically.
 type Snapshot struct {
+	Audit          audit.Settings
 	Revision       int64
 	Upstreams      map[string]Upstream      // keyed by upstream ID
 	VirtualServers map[string]VirtualServer // keyed by slug (single tenant for now)

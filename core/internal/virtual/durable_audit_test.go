@@ -2,7 +2,10 @@ package virtual
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"github.com/bishoku/vmcp/core/internal/secrets"
+	"strings"
 	"testing"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
@@ -75,6 +78,78 @@ func TestStrictAuditAdmissionBeforeSideEffects(t *testing.T) {
 			}
 			if !audit.ValidID(response.Header.Get("X-Request-Id")) {
 				t.Fatal("missing safe correlation ID")
+			}
+		})
+	}
+}
+
+func TestRuntimePayloadsOnVirtualAndUpstreamBoundaries(t *testing.T) {
+	for _, mode := range []string{"strict", "relax"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx := context.Background()
+			url := testdb.New(t)
+			if err := store.Migrate(ctx, url); err != nil {
+				t.Fatal(err)
+			}
+			pool, err := store.Connect(ctx, url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(pool.Close)
+			box, err := secrets.NewBox(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			writerCtx, cancel := context.WithCancel(ctx)
+			r := newRig(t)
+			runtime := audit.NewRuntime(writerCtx, pool, box, r.handler.Log, "strict")
+			t.Cleanup(func() { cancel(); <-runtime.Done() })
+			r.handler.Audit = runtime
+			policy := audit.DefaultSettings()
+			policy.Mode = mode
+			policy.Scopes["virtual"] = audit.Capture{Request: true, Response: true}
+			policy.Scopes["upstream"] = audit.Capture{Request: true, Response: true}
+			policy.Rules = []audit.Rule{{Name: "email", Pattern: `[A-Za-z]+@example\.com`}}
+			policy.VirtualServers["support"] = []audit.Rule{{Name: "customer", Pattern: `CUST-[0-9]+`}}
+			policy.Upstreams["github"] = []audit.Rule{{Name: "employee", Pattern: `EMP-[0-9]+`}}
+			r.handler.Snap.(staticSnap).s.Audit = policy
+			runtime.SetSettings(policy)
+			sid := r.initialize(t)
+			response, msg := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Arguments: json.RawMessage(`{"email":"a@example.com","customer":"CUST-123","employee":"EMP-456","token":"never-store"}`)})
+			if response.StatusCode != 200 || msg == nil || msg.Error != nil {
+				t.Fatalf("call failed: %d %+v", response.StatusCode, msg)
+			}
+			cancel()
+			<-runtime.Done()
+			rows, err := pool.Query(ctx, `SELECT a.event_id::text,a.boundary,a.direction,p.ciphertext FROM audit_events a JOIN audit_payloads p USING(event_id) WHERE a.method='tools/call' ORDER BY a.id`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			seen := map[string]bool{}
+			for rows.Next() {
+				var id, boundary, direction string
+				var cipher []byte
+				if err := rows.Scan(&id, &boundary, &direction, &cipher); err != nil {
+					t.Fatal(err)
+				}
+				raw, err := box.OpenBound(cipher, id, "audit.payload")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if direction == "request" {
+					for _, secret := range []string{"a@example.com", "CUST-123", "EMP-456", "never-store"} {
+						if strings.Contains(string(raw), secret) {
+							t.Fatal("unmasked request", string(raw))
+						}
+					}
+				}
+				seen[boundary+":"+direction] = true
+			}
+			for _, key := range []string{"virtual:request", "virtual:response", "upstream:request", "upstream:response"} {
+				if !seen[key] {
+					t.Fatal("missing capture", key, seen)
+				}
 			}
 		})
 	}

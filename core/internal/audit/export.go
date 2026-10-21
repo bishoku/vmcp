@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
+	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -28,6 +29,7 @@ type Publisher interface {
 // Exporter delivers at least once using fenced PostgreSQL receipts.
 // HTTP fields remain supported for existing callers; broker publishers use Publisher.
 type Exporter struct {
+	Box                *secrets.Box
 	Publisher          Publisher
 	Pool               *pgxpool.Pool
 	Consumer, Endpoint string
@@ -86,7 +88,7 @@ func (p *HTTPPublisher) Publish(ctx context.Context, id string, raw []byte) erro
 }
 
 func (e *Exporter) Register(ctx context.Context) error {
-	_, err := e.Pool.Exec(ctx, `INSERT INTO audit_export_state(consumer) VALUES($1) ON CONFLICT(consumer) DO NOTHING`, e.Consumer)
+	_, err := e.Pool.Exec(ctx, `INSERT INTO audit_export_state(consumer,include_payload) VALUES($1,COALESCE((SELECT (settings->'exportPayloads'->>$1)::boolean FROM audit_settings WHERE singleton),false)) ON CONFLICT(consumer) DO NOTHING`, e.Consumer)
 	return err
 }
 func (e *Exporter) Fill(ctx context.Context) error {
@@ -98,18 +100,24 @@ func (e *Exporter) Fill(ctx context.Context) error {
  ORDER BY a.id LIMIT 500 ON CONFLICT DO NOTHING`, e.Consumer)
 	return err
 }
-func (e *Exporter) claimOne(ctx context.Context, lease string) (string, int, []byte, error) {
-	var id string
-	var raw []byte
-	var attempts int
+
+type exportClaim struct {
+	id         string
+	attempts   int
+	raw, saved []byte
+	include    bool
+}
+
+func (e *Exporter) claimOne(ctx context.Context, lease string) (*exportClaim, error) {
+	claim := &exportClaim{}
 	err := e.Pool.QueryRow(ctx, `WITH candidate AS (
  SELECT d.consumer,d.event_id FROM audit_deliveries d JOIN audit_export_state s USING(consumer)
  WHERE d.consumer=$1 AND s.active AND d.next_attempt<=now() AND (d.state='pending' OR (d.state='leased' AND d.lease_until<now()))
  ORDER BY d.next_attempt,d.event_id LIMIT 1 FOR UPDATE OF d SKIP LOCKED), claimed AS (
  UPDATE audit_deliveries d SET state='leased',lease_token=$2,lease_until=now()+interval '30 seconds',attempts=attempts+1
- FROM candidate c WHERE d.consumer=c.consumer AND d.event_id=c.event_id RETURNING d.event_id,d.attempts)
- SELECT c.event_id::text,c.attempts,to_jsonb(a) FROM claimed c JOIN audit_events a ON a.event_id=c.event_id`, e.Consumer, lease).Scan(&id, &attempts, &raw)
-	return id, attempts, raw, err
+ FROM candidate c WHERE d.consumer=c.consumer AND d.event_id=c.event_id RETURNING d.event_id,d.attempts,d.envelope)
+ SELECT c.event_id::text,c.attempts,to_jsonb(a),c.envelope,s.include_payload FROM claimed c JOIN audit_events a ON a.event_id=c.event_id JOIN audit_export_state s ON s.consumer=$1`, e.Consumer, lease).Scan(&claim.id, &claim.attempts, &claim.raw, &claim.saved, &claim.include)
+	return claim, err
 }
 func (e *Exporter) Step(ctx context.Context) (bool, error) {
 	token := make([]byte, 16)
@@ -117,12 +125,12 @@ func (e *Exporter) Step(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	lease := fmt.Sprintf("%x-%x-%x-%x-%x", token[:4], token[4:6], token[6:8], token[8:10], token[10:])
-	id, attempts, raw, err := e.claimOne(ctx, lease)
+	claim, err := e.claimOne(ctx, lease)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if fillErr := e.Fill(ctx); fillErr != nil {
 			return false, fillErr
 		}
-		id, attempts, raw, err = e.claimOne(ctx, lease)
+		claim, err = e.claimOne(ctx, lease)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -130,17 +138,22 @@ func (e *Exporter) Step(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	id, attempts := claim.id, claim.attempts
+	raw, freezeErr := e.freeze(ctx, claim, lease)
 	publisher := e.Publisher
 	if publisher == nil {
 		publisher = &HTTPPublisher{e.Endpoint, e.Client}
 	}
-	sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	accepted := publisher.Publish(sendCtx, id, raw) == nil
-	cancel()
+	accepted := false
+	if freezeErr == nil {
+		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		accepted = publisher.Publish(sendCtx, id, raw) == nil
+		cancel()
+	}
 	complete, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if accepted {
-		_, err = e.Pool.Exec(complete, `UPDATE audit_deliveries SET state='delivered',delivered_at=now(),lease_until=NULL WHERE consumer=$1 AND event_id=$2 AND lease_token=$3`, e.Consumer, id, lease)
+		_, err = e.Pool.Exec(complete, `UPDATE audit_deliveries SET state='delivered',delivered_at=now(),lease_until=NULL,envelope=NULL WHERE consumer=$1 AND event_id=$2 AND lease_token=$3`, e.Consumer, id, lease)
 	} else {
 		state := "pending"
 		if attempts >= 20 {
@@ -148,6 +161,9 @@ func (e *Exporter) Step(ctx context.Context) (bool, error) {
 		}
 		delay := min(3600, 1<<min(attempts, 12))
 		_, err = e.Pool.Exec(complete, `UPDATE audit_deliveries SET state=$4,next_attempt=now()+make_interval(secs=>$5),lease_until=NULL WHERE consumer=$1 AND event_id=$2 AND lease_token=$3`, e.Consumer, id, lease, state, delay)
+	}
+	if err == nil && freezeErr != nil {
+		return true, errors.New("audit export snapshot unavailable")
 	}
 	return true, err
 }
@@ -172,4 +188,75 @@ func (e *Exporter) Stats(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(counts)
+}
+
+// freeze pins the delivery bytes before network I/O. Only the fenced lease owner
+// may create a snapshot; retries never rebuild it from changing retention state.
+func (e *Exporter) freeze(ctx context.Context, claim *exportClaim, lease string) ([]byte, error) {
+	id, saved, include, metadata := claim.id, claim.saved, claim.include, claim.raw
+	var err error
+
+	if len(saved) > 0 {
+		if !include {
+			return nil, errors.New("payload export authorization revoked")
+		}
+		if json.Valid(saved) {
+			return saved, nil
+		}
+		if e.Box == nil {
+			return nil, errors.New("export snapshot key unavailable")
+		}
+		return e.Box.OpenBound(saved, e.Consumer+":"+id, "audit.export")
+	}
+	// Metadata is immutable and protected by its delivery receipt. Avoid extra
+	// reads/writes for the existing metadata-only exporter path.
+	raw := metadata
+	if !include {
+		return raw, nil
+	}
+	if include {
+		if e.Box == nil {
+			return nil, errors.New("payload export requires an encryption key")
+		}
+		var event map[string]any
+		if json.Unmarshal(metadata, &event) != nil {
+			return nil, errors.New("invalid export metadata")
+		}
+		state, _ := event["payload_state"].(string)
+		var cipher []byte
+		err = e.Pool.QueryRow(ctx, `SELECT ciphertext FROM audit_payloads WHERE event_id=$1::uuid`, id).Scan(&cipher)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		var content json.RawMessage
+		if len(cipher) > 0 {
+			content, err = e.Box.OpenBound(cipher, id, "audit.payload")
+			if err != nil {
+				return nil, errors.New("audit payload decryption failed")
+			}
+		} else if state == "captured" || state == "redacted" {
+			state = "expired"
+		}
+
+		event["payload"] = map[string]any{"state": state, "content": content}
+		raw, err = json.Marshal(event)
+		if err != nil {
+			return nil, err
+		}
+	}
+	snapshot := raw
+	if e.Box != nil {
+		snapshot, err = e.Box.SealBound(raw, e.Consumer+":"+id, "audit.export")
+		if err != nil {
+			return nil, err
+		}
+	}
+	tag, err := e.Pool.Exec(ctx, `UPDATE audit_deliveries SET envelope=$4 WHERE consumer=$1 AND event_id=$2::uuid AND lease_token=$3::uuid AND state='leased' AND envelope IS NULL`, e.Consumer, id, lease, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() != 1 {
+		return nil, errors.New("audit export lease lost")
+	}
+	return raw, nil
 }

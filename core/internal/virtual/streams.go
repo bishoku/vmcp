@@ -500,7 +500,11 @@ func (h *Handler) deliveryInput(w http.ResponseWriter, r *http.Request, sess *Se
 }
 
 func (h *Handler) auditDelivery(ctx context.Context, sess *Session, operation, action string) error {
-	return audit.Persist(ctx, h.Delivery.Pool, audit.Event{Time: time.Now().UTC(), VirtualServer: sess.slug, AgentKey: sess.keySlug, Subject: sess.owner.Subject, ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Action: action, Method: action, Target: sess.slug, OperationID: operation, RequestID: operation, Status: "ok", Stage: "event", TraceID: audit.TraceFrom(ctx)})
+	e := audit.InheritOperation(ctx, audit.Event{Time: time.Now().UTC(), VirtualServer: sess.slug, AgentKey: sess.keySlug, Subject: sess.owner.Subject, ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Action: action, Method: action, Target: sess.slug, OperationID: operation, RequestID: operation, Status: "ok", Stage: "event", TraceID: audit.TraceFrom(ctx)})
+	if runtime, ok := h.Audit.(*audit.Runtime); ok {
+		return runtime.Write(ctx, e)
+	}
+	return audit.Persist(ctx, h.Delivery.Pool, e)
 }
 func (h *Handler) WaitWorkers(ctx context.Context) error {
 	done := make(chan struct{})

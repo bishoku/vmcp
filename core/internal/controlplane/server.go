@@ -38,9 +38,10 @@ type Server struct {
 	Log            *slog.Logger
 	TrustedProxies []netip.Prefix
 	// OIDC enables browser sign-in; nil means bearer tokens only.
-	OIDC      *oidc.Provider
-	auditOnce sync.Once
-	auditor   *audit.Durable
+	OIDC        *oidc.Provider
+	auditOnce   sync.Once
+	auditor     *audit.Runtime
+	auditCancel context.CancelFunc
 }
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request) error
@@ -174,6 +175,10 @@ func (s *Server) Handler() http.Handler {
 	api("POST /api/v1/revocations/jwts", s.revokeJWT)
 	api("POST /api/v1/revocations/sessions", s.revokeSessions)
 
+	api("GET /api/v1/audit-settings", s.getAuditSettings)
+	api("PUT /api/v1/audit-settings", s.putAuditSettings)
+	api("POST /api/v1/audit-preview", s.previewAuditPayload)
+	api("GET /api/v1/audit-events/{event}/payload", s.getAuditPayload)
 	api("GET /api/v1/audit-events", s.listAuditEvents)
 	api("GET /api/v1/audit-status", s.auditStatus)
 
@@ -219,6 +224,9 @@ type principalKey struct{}
 // permit enforces roles: viewers read; editors change configuration but not admin tokens or revocations;
 // admins do everything.
 func permit(role string, r *http.Request) error {
+	if (strings.HasPrefix(r.URL.Path, "/api/v1/audit-settings") || strings.HasPrefix(r.URL.Path, "/api/v1/audit-preview") || strings.HasSuffix(r.URL.Path, "/payload")) && role != oidc.RoleAdmin {
+		return apierror.Forbidden("audit payloads and settings require admin access")
+	}
 	safe := r.Method == http.MethodGet || r.Method == http.MethodHead
 	switch role {
 	case oidc.RoleAdmin:

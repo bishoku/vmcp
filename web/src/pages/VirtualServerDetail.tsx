@@ -1,3 +1,4 @@
+import AuditSettingsPanel from '../AuditSettingsPanel'
 import { useEffect, useState } from 'react'
 import { api, type VirtualServer } from '../api'
 import GuidanceEditor from '../GuidanceEditor'
@@ -42,7 +43,7 @@ export default function VirtualServerDetail() {
     {active==='capabilities' && <SavedContent key={`${slug}:${server.version}:capabilities`} view="capabilities" server={server} upstreams={inventory.upstreams}/>}
     {active==='guidance' && <SavedContent view="guidance" key={`${slug}:${server.version}:guidance`} server={server} upstreams={inventory.upstreams}/>}
     {active==='access' && <ServerAccess key={slug} server={server} grants={grants} loading={inventory.loading}/>}
-    {active==='protection' && <ServerProtection server={server}/>}
+    {active==='protection' && <><ServerProtection server={server}/><AuditSettingsPanel scope="virtual" slug={slug}/></>}
     {active==='connect' && <Connect key={`${slug}:${server.version}`} server={server}/>}
     {active==='activity' && <RecentActivity key={slug} slug={slug}/>}
   </div>

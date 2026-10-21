@@ -1,4 +1,4 @@
-// Package audit records who called which tool, without recording payloads.
+// Package audit records operations and optional policy-masked payloads.
 package audit
 
 import (
@@ -14,8 +14,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Event is one audited action. Arguments and results are intentionally absent.
+// Event is one audited action. Payload is optional and never included in metadata queries.
 type Event struct {
+	Mode                 string
+	PolicyRevision       int64
+	Scope                string
+	Boundary             string
+	Direction            string
+	ParentOperationID    string
+	PayloadState         string
+	PayloadOriginalBytes int
+	PayloadStoredBytes   int
+	PayloadRedactions    int
+	// Policy and RawPayload are operation-local; only Ciphertext is persisted.
+	Policy           *Settings
+	RawPayload       []byte
+	RawPayloadBytes  int
+	Ciphertext       []byte
+	PayloadExpiresAt time.Time
+
 	EventID       string
 	OperationID   string
 	RequestID     string
@@ -64,6 +81,7 @@ type Writer struct {
 	failed          atomic.Int64
 	dead            atomic.Int64
 	pending         atomic.Int64
+	pendingBytes    atomic.Int64
 	oldest          atomic.Int64
 	write           func(context.Context, []Event) error
 	shutdownTimeout time.Duration
@@ -90,6 +108,11 @@ func (w *Writer) Dropped() int64 { return w.dropped.Load() }
 
 // Record queues an event.
 func (w *Writer) Record(e Event) {
+	e.RawPayload = nil
+	e.Policy = nil
+	if e.Mode == "" {
+		e.Mode = "relax"
+	}
 	var err error
 	e, err = Prepare(e)
 	if err != nil {
@@ -103,12 +126,19 @@ func (w *Writer) Record(e Event) {
 		w.dropped.Add(1)
 		return
 	}
+	size := int64(len(e.Ciphertext) + 4096)
+	if w.pendingBytes.Load()+size > 32<<20 {
+		w.dropped.Add(1)
+		return
+	}
+	w.pendingBytes.Add(size)
 	w.pending.Add(1)
 	select {
 	case w.ch <- e:
 		w.oldest.CompareAndSwap(0, e.Time.UnixNano())
 	default:
 		w.pending.Add(-1)
+		w.pendingBytes.Add(-size)
 		if n := w.dropped.Add(1); n == 1 || n%1000 == 0 {
 			w.log.Warn("best-effort audit buffer full", "dropped_total", n)
 		}
@@ -116,7 +146,7 @@ func (w *Writer) Record(e Event) {
 }
 
 func (w *Writer) Stats() Counters {
-	s := Counters{Mode: "best_effort", Dropped: w.dropped.Load(), FailedWrites: w.failed.Load(), DeadLetters: w.dead.Load(), Pending: w.pending.Load()}
+	s := Counters{Mode: "best_effort", PendingBytes: w.pendingBytes.Load(), Dropped: w.dropped.Load(), FailedWrites: w.failed.Load(), DeadLetters: w.dead.Load(), Pending: w.pending.Load()}
 	if oldest := w.oldest.Load(); oldest != 0 {
 		s.OldestPendingAgeSeconds = max(0, time.Since(time.Unix(0, oldest)).Seconds())
 	}
@@ -144,6 +174,9 @@ func (w *Writer) run(ctx context.Context) {
 		}
 		w.mu.Lock()
 		w.pending.Add(-int64(len(batch)))
+		for _, e := range batch {
+			w.pendingBytes.Add(-int64(len(e.Ciphertext) + 4096))
+		}
 		batch = batch[:0]
 		markedPermanent = false
 		if w.pending.Load() == 0 {
@@ -178,12 +211,14 @@ func (w *Writer) run(ctx context.Context) {
 						scancel()
 						if serr == nil {
 							dropped++
+							w.pendingBytes.Add(-int64(len(e.Ciphertext) + 4096))
 							continue
 						}
 						var spe *pgconn.PgError
 						if errors.As(serr, &spe) && (strings.HasPrefix(spe.Code, "22") || strings.HasPrefix(spe.Code, "23")) {
 							w.dead.Add(1)
 							w.dropped.Add(1)
+							w.pendingBytes.Add(-int64(len(e.Ciphertext) + 4096))
 							dropped++
 							w.log.Error("best-effort audit dropping invalid event", "event_id", e.EventID, "code", spe.Code)
 							continue
@@ -239,6 +274,7 @@ func (w *Writer) run(ctx context.Context) {
 			}
 			if err := retry(final); err != nil {
 				lost := w.pending.Swap(0)
+				w.pendingBytes.Store(0)
 				w.dropped.Add(lost)
 				w.log.Error("best-effort audit shutdown incomplete", "unpersisted_events", lost)
 				return
@@ -289,6 +325,8 @@ func insert(ctx context.Context, pool *pgxpool.Pool, evs []Event) error {
 }
 
 // Purge deletes events older than the retention period and returns how many.
+// Payload cleanup must release content first, so metadata deletion cannot
+// bypass payload expiry, legal holds or pending payload exports via CASCADE.
 func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (int64, error) {
 	if retention <= 0 {
 		return 0, nil
@@ -297,7 +335,8 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (in
 	defer cancel()
 	tag, err := pool.Exec(bounded, `WITH candidates AS (
  SELECT a.id FROM audit_events a WHERE a.ts < now() - make_interval(secs => $1)
- AND NOT EXISTS(SELECT 1 FROM audit_legal_holds h JOIN audit_events held ON held.event_id=h.event_id WHERE held.event_id=a.event_id OR (a.operation_id IS NOT NULL AND held.operation_id=a.operation_id))
+ AND NOT EXISTS(SELECT 1 FROM audit_payloads p WHERE p.event_id=a.event_id)
+ AND NOT EXISTS(SELECT 1 FROM audit_legal_holds h JOIN audit_events held ON held.event_id=h.event_id WHERE held.event_id=a.event_id OR (a.operation_id IS NOT NULL AND held.operation_id=a.operation_id) OR (a.request_id IS NOT NULL AND held.request_id=a.request_id))
  AND NOT EXISTS(SELECT 1 FROM audit_export_state consumer WHERE consumer.active AND EXISTS(
   SELECT 1 FROM audit_events sibling WHERE (sibling.event_id=a.event_id OR (a.operation_id IS NOT NULL AND sibling.operation_id=a.operation_id))
   AND NOT EXISTS(SELECT 1 FROM audit_deliveries d WHERE d.consumer=consumer.consumer AND d.event_id=sibling.event_id AND (d.state='delivered' OR (d.state='dead' AND sibling.ts < now() - make_interval(secs => $1 * 2))))))
@@ -310,3 +349,17 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, retention time.Duration) (in
 	return tag.RowsAffected(), err
 }
 
+// PurgePayloads has an independent lifetime; holds and pending payload exports
+// keep evidence available. Metadata remains immutable after content expiry.
+func PurgePayloads(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tag, err := pool.Exec(bounded, `WITH candidates AS (
+ SELECT p.event_id FROM audit_payloads p JOIN audit_events a USING(event_id)
+ WHERE p.expires_at<now()
+ AND NOT EXISTS(SELECT 1 FROM audit_legal_holds h JOIN audit_events held ON held.event_id=h.event_id WHERE h.event_id=a.event_id OR (a.operation_id IS NOT NULL AND held.operation_id=a.operation_id) OR (a.request_id IS NOT NULL AND held.request_id=a.request_id))
+ AND NOT EXISTS(SELECT 1 FROM audit_export_state s WHERE s.active AND s.include_payload AND NOT EXISTS(SELECT 1 FROM audit_deliveries d WHERE d.consumer=s.consumer AND d.event_id=p.event_id AND (d.state='delivered' OR d.envelope IS NOT NULL)))
+ ORDER BY p.expires_at LIMIT 500 FOR UPDATE OF p SKIP LOCKED)
+ DELETE FROM audit_payloads p USING candidates c WHERE p.event_id=c.event_id`)
+	return tag.RowsAffected(), err
+}
