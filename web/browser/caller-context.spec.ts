@@ -18,6 +18,7 @@ for(const kind of ['rest','mcp'] as const) for(const width of [390,1440]) test(`
  })
  await page.goto('/upstreams/context')
  await page.getByRole('button',{name:'Edit upstream',exact:true}).click()
+ await page.locator('summary').filter({hasText:'Per-call context'}).click()
  await page.getByLabel('Forward caller context',{exact:true}).check()
  await page.getByLabel('Metadata namespace',{exact:true}).fill('com.bank/caller-context')
  await page.getByRole('button',{name:'Add context field',exact:true}).click()

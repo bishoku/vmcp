@@ -55,6 +55,7 @@ test('virtual server creation exposes composed panels and saves explicit selecti
  await page.getByRole('region',{name:'Available tools',exact:true}).evaluate(el=>el.scrollIntoView({block:'center'}))
  await page.screenshot({path:test.info().outputPath('virtual-server-tool-picker.png'),animations:'disabled'})
  await page.setViewportSize({width:390,height:844})
+ await page.locator('summary').filter({hasText:'Access & protection'}).click()
  for(const name of ['Server identity','Resources and prompts','Exposed tools (1)','PII masking']){
   await page.getByRole('region',{name,exact:true}).evaluate(el=>el.scrollIntoView({block:'center'}))
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
@@ -77,6 +78,7 @@ test('new upstream protects pending headers and saves connection settings withou
  await page.getByLabel('Name',{exact:true}).fill('Knowledge MCP')
  await page.getByLabel('URL',{exact:true}).fill('https://knowledge.example/mcp')
  await page.screenshot({path:test.info().outputPath('upstream-create.png'),animations:'disabled'})
+ await page.locator('summary').filter({hasText:'Security & shared headers'}).click()
  await page.getByLabel('New header name',{exact:true}).fill('X-Workspace')
  await page.getByLabel('New header value',{exact:true}).fill('support')
  await page.getByRole('button',{name:'Save',exact:true}).click()

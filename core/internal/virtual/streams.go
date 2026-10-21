@@ -195,7 +195,7 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 		}
 		guarded = upstream.WithRelay(guarded, relay)
 		if msg.Method == mcp.MethodToolsCall {
-			h.callTool(guarded, recorder, msg, vs, sess, snap, h.ipString(r))
+			h.callTool(guarded, recorder, msg, vs, sess, snap, h.ipString(r), r.Header)
 		} else {
 			h.catalogCall(guarded, recorder, msg, vs, sess, snap, h.ipString(r))
 		}

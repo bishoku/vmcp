@@ -73,6 +73,13 @@ func TestRESTSnapshotReuseInvalidation(t *testing.T) {
 	if same.Upstreams[id].Fingerprint() == beforeContext.Upstreams[id].Fingerprint() {
 		t.Fatal("context update did not invalidate upstream fingerprint")
 	}
+	beforeHeaders := same
+	in.RequestHeaderMappings = []callercontext.HeaderMapping{{Source: "X-Source", Target: "X-Target"}}
+	save()
+	same = load(beforeHeaders)
+	if len(same.Upstreams[id].RequestHeaderMappings) != 1 || same.Revision <= beforeHeaders.Revision || same.Upstreams[id].Fingerprint() == beforeHeaders.Upstreams[id].Fingerprint() {
+		t.Fatal("header mappings not published in snapshot")
+	}
 	for _, change := range []func(){func() { in.URL = "https://other.example.com" }, func() { in.Headers = map[string]string{"X-Key": "changed"} }, func() { cfg.Operations[0].Path = "/changed" }, func() { cfg.Auth = restapi.Auth{Type: "bearer", Token: "new-secret"} }} {
 		before := same
 		change()

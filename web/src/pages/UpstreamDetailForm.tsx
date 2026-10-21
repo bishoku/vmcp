@@ -1,3 +1,5 @@
+import ConfigurationGroup from '../connections/ConfigurationGroup'
+import RequestHeaderMappings from '../connections/RequestHeaderMappings'
 import CallerContextEditor from '../connections/CallerContextEditor'
 import Button from '../Button'
 import RESTUpstreamEditor, { RESTConnectionSettings } from '../connections/RESTUpstreamEditor'
@@ -16,7 +18,7 @@ import { useEffect, useState, type ChangeEvent } from 'react'
 import { Activity, Cable, CheckCircle2, ChevronRight, Code2, Fingerprint, KeyRound, Layers3, Pencil, PlugZap, ShieldCheck, Wrench, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { ErrorBox, Modal, Pill, StaleRecovery } from '../ui'
-import { api, ApiError, type CallerContextConfig, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
+import { api, ApiError, type RequestHeaderMapping, type CallerContextConfig, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 import EditorSaveBar from '../connections/EditorSaveBar'
 import UpstreamDiscovery from '../connections/UpstreamDiscovery'
@@ -45,6 +47,7 @@ export default function UpstreamDetailForm({
   const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
   const [rest,setRest]=useState(upstream?.rest??emptyREST())
   const [callerContext,setCallerContext]=useState<CallerContextConfig>({enabled:upstream?.callerContext?.enabled??false,metaKey:upstream?.callerContext?.metaKey||'com.bank/caller-context',fields:upstream?.callerContext?.fields??[]})
+  const [requestHeaderMappings,setRequestHeaderMappings]=useState<RequestHeaderMapping[]>(upstream?.requestHeaderMappings??[])
   const [restBlocked,setRestBlocked]=useState(false)
   const [name, setName] = useState(upstream?.name ?? '')
   const [url, setUrl] = useState(upstream?.url ?? '')
@@ -100,7 +103,7 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
-  const unsaved = useUnsaved({callerContext,kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
+  const unsaved = useUnsaved({requestHeaderMappings,callerContext,kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
@@ -135,6 +138,7 @@ export default function UpstreamDetailForm({
         removed.forEach((h) => (headers[h] = null))
         if (upstream) {
           saved = await api.patchUpstream(upstream.slug, {
+            requestHeaderMappings,
             callerContext,
             name,
             url,
@@ -147,6 +151,7 @@ export default function UpstreamDetailForm({
           },upstream.version)
         } else {
           saved = await api.createUpstream(slug, {
+            requestHeaderMappings,
             callerContext,
             name: name || slug,
             url,
@@ -192,18 +197,15 @@ export default function UpstreamDetailForm({
       if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
       unsaved.clean();onReload(latest)
     }}/>
-    {kind==='mcp'&&<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryTile label="Transport" value={transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
-      <SummaryTile label="Authentication" value={authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
-      <SummaryTile label="Discovered tools" value={upstream?.toolCount ?? '—'} detail={upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryTile label="Transport" value={kind==='rest'?'REST API':transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
+      <SummaryTile label="Authentication" value={kind==='rest'?({none:'None',basic:'Basic',bearer:'Bearer token',oauth2:'OAuth 2.0'}[rest.auth.type]||'None'):authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={kind==='rest'?'Service authentication':authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
+      <SummaryTile label={kind==='rest'?'Defined tools':'Discovered tools'} value={kind==='rest'?rest.operations.filter(op=>op.enabled).length:upstream?.toolCount ?? '—'} detail={kind==='rest'?'Enabled REST operations':upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
       <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
-    </div>}
-    <CallerContextEditor value={callerContext} kind={kind} onChange={editable&&!busy?setCallerContext:undefined}/>
-    {kind==='rest'&&<RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/>}
-    <details open={kind==='mcp'||undefined} className="min-w-0">
-    <summary className={kind==='rest'?'cursor-pointer surface-card p-4 text-sm font-semibold':'hidden'}>Connection & authentication · {url||'Base URL required'}{!upstream&&!slug?' · Identifier required':''}</summary>
+    </div>
+    <ConfigurationGroup title="Connection & identity" description={url||'Start with a name, type and endpoint URL'} defaultOpen>
     <div className="layout-stack mt-4">
-    <div className="grid items-start layout-grid xl:grid-cols-[1.4fr_1fr]">
+    <div className={clsx("grid items-start layout-grid",kind==='mcp'&&"xl:grid-cols-[1.4fr_1fr]")}>
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
         <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 panel-body m-0">
           {!upstream && (
@@ -238,11 +240,10 @@ export default function UpstreamDetailForm({
         </ServerPanel>}
       </div>}
     </div>
-    {kind==='rest'&&<RESTConnectionSettings value={rest} onChange={editable&&!busy?setRest:undefined}/>}
-    </div></details>
-    <details open={kind==='mcp'||undefined} className="min-w-0">
-    <summary className={kind==='rest'?'cursor-pointer surface-card p-4 text-sm font-semibold':'hidden'}>Advanced connection settings · TLS & shared headers</summary>
+    </div></ConfigurationGroup>
+    <ConfigurationGroup title="Security & shared headers" description="Authentication, TLS certificates and static request headers">
     <div className="layout-stack mt-4">
+    {kind==='rest'&&<RESTConnectionSettings value={rest} onChange={editable&&!busy?setRest:undefined}/>}
     <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
     <div className="grid items-start layout-grid xl:grid-cols-2">
       <ServerPanel title="Transport security" description="Custom trust and mutual TLS settings" icon={ShieldCheck}>
@@ -367,7 +368,12 @@ export default function UpstreamDetailForm({
       </fieldset>
       ) : <div className="divide-y divide-line panel-inset">{existing.length?existing.map(header=><div key={header} className="flex min-w-0 items-center justify-between gap-4 py-4"><span className="min-w-0 break-all font-mono text-xs">{header}</span><span className="shrink-0 text-xs text-ink-muted">Value stored · masked</span></div>):<EmptyState title="No request headers configured." compact/>}</div>}
     </ServerPanel>
-    </div></details>
+    </div></ConfigurationGroup>
+    <ConfigurationGroup title="Per-call context" description={`${requestHeaderMappings.length} HTTP header mappings · Caller metadata ${callerContext.enabled?'enabled':'disabled'}`} defaultOpen={callerContext.enabled||requestHeaderMappings.length>0}>
+      <RequestHeaderMappings value={requestHeaderMappings} onChange={editable&&!busy?setRequestHeaderMappings:undefined}/>
+      <CallerContextEditor value={callerContext} kind={kind} onChange={editable&&!busy?setCallerContext:undefined}/>
+    </ConfigurationGroup>
+    {kind==='rest'&&<ConfigurationGroup title="REST operations" description={`${rest.operations.length} operations · Define requests and preview their MCP tools`} defaultOpen><RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/></ConfigurationGroup>}
     {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="layout-stack"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
     {kind==='mcp' && editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
     {kind==='mcp' && upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}

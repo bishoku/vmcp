@@ -346,7 +346,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 			h.streamCall(ctx, w, r, msg, vs, sess, snap)
 			return
 		}
-		h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r))
+		h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r), r.Header)
 	default:
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeMethodNotFound, "method not found: "+msg.Method))
 	}
@@ -408,7 +408,7 @@ func (h *Handler) ipString(r *http.Request) string {
 	return ""
 }
 
-func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, ip string) {
+func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, ip string, incoming http.Header) {
 	start := time.Now()
 	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
 		ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: "tools/call", Target: vs.Slug, TraceID: audit.TraceFrom(ctx)}
@@ -504,6 +504,21 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		}
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, contextErr.Error()))
 		return
+	}
+	forwardedHeaders, headerErr := callercontext.PrepareHeaders(up.RequestHeaderMappings, incoming)
+	if headerErr != nil {
+		if !finish("error", headerErr.Error()) {
+			http.Error(w, "audit outcome unavailable", 503)
+			return
+		}
+		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, headerErr.Error()))
+		return
+	}
+	if dynamicHeaders == nil {
+		dynamicHeaders = http.Header{}
+	}
+	for name, values := range forwardedHeaders {
+		dynamicHeaders[name] = values
 	}
 	ctx = upstream.WithCallerMeta(ctx, selectedMeta)
 	ctx = callercontext.WithHeaders(ctx, dynamicHeaders)

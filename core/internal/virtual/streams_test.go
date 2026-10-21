@@ -77,6 +77,9 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 			json.NewEncoder(w).Encode(result)
 			return
 		}
+		if r.Header.Get("X-Upstream-Context") != "per-call" {
+			t.Error("request headers lost in durable stream")
+		}
 		calls.Add(1)
 		var params mcp.CallToolParams
 		json.Unmarshal(msg.Params, &params)
@@ -120,6 +123,7 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 	snap := rig.handler.Snap.Snapshot()
 	up := snap.Upstreams["u-gh"]
 	up.URL = physical.URL
+	up.RequestHeaderMappings = []callercontext.HeaderMapping{{Source: "X-Request-Context", Target: "X-Upstream-Context", Required: true}}
 	up.CallerContext = &callercontext.Config{Enabled: true, MetaKey: "bank/context", Fields: []callercontext.Field{{Name: "token"}}}
 	snap.Upstreams["u-gh"] = up
 	rig.handler.Delivery = broker
@@ -139,6 +143,7 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
 		req.Header.Set("Mcp-Session-Id", sid)
+		req.Header.Set("X-Request-Context", "per-call")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)

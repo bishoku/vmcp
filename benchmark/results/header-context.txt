@@ -1,0 +1,96 @@
+Local forwarding microbenchmarks, 2026-10-21
+Go 1.27.3 linux/amd64; Intel Xeon Silver 4216 @ 2.10GHz; GOMAXPROCS=8
+Three repetitions, 300ms per sub-benchmark; no race instrumentation.
+
+goos: linux
+goarch: amd64
+pkg: github.com/bishoku/vmcp/core/internal/callercontext
+cpu: Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz
+BenchmarkForwarding/mcp/before/serial-8         	13956024	        26.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/mcp/before/serial-8         	11810588	        25.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/mcp/before/serial-8         	13257176	        25.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/mcp/before/parallel-8       	112874857	         3.200 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/mcp/before/parallel-8       	94642124	         3.294 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/mcp/before/parallel-8       	100000000	         3.231 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/mcp/disabled/serial-8       	 1288112	       288.2 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/mcp/disabled/serial-8       	 1277442	       322.9 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/mcp/disabled/serial-8       	 1311278	       291.8 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/mcp/disabled/parallel-8     	 4860673	        77.35 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/mcp/disabled/parallel-8     	 4208898	        77.90 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/mcp/disabled/parallel-8     	 4922718	        86.25 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/mcp/headers/serial-8        	   80926	      4733 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/mcp/headers/serial-8        	   70680	      4744 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/mcp/headers/serial-8        	   83095	      4622 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/mcp/headers/parallel-8      	  458523	       783.7 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/mcp/headers/parallel-8      	  461176	       752.5 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/mcp/headers/parallel-8      	  428935	       806.8 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/mcp/metadata/serial-8       	   10000	     32780 ns/op	   16729 B/op	      54 allocs/op
+BenchmarkForwarding/mcp/metadata/serial-8       	   10004	     31491 ns/op	   16729 B/op	      54 allocs/op
+BenchmarkForwarding/mcp/metadata/serial-8       	   10000	     31129 ns/op	   16731 B/op	      54 allocs/op
+BenchmarkForwarding/mcp/metadata/parallel-8     	   39615	      9602 ns/op	   16788 B/op	      54 allocs/op
+BenchmarkForwarding/mcp/metadata/parallel-8     	   38578	      9420 ns/op	   16799 B/op	      54 allocs/op
+BenchmarkForwarding/mcp/metadata/parallel-8     	   38108	      8162 ns/op	   16795 B/op	      54 allocs/op
+BenchmarkForwarding/mcp/combined/serial-8       	    8938	     36862 ns/op	   17964 B/op	      66 allocs/op
+BenchmarkForwarding/mcp/combined/serial-8       	    9255	     37653 ns/op	   17962 B/op	      66 allocs/op
+BenchmarkForwarding/mcp/combined/serial-8       	   10000	     36253 ns/op	   17954 B/op	      66 allocs/op
+BenchmarkForwarding/mcp/combined/parallel-8     	   37029	     10039 ns/op	   18026 B/op	      66 allocs/op
+BenchmarkForwarding/mcp/combined/parallel-8     	   32115	     10728 ns/op	   18016 B/op	      66 allocs/op
+BenchmarkForwarding/mcp/combined/parallel-8     	   33926	     10899 ns/op	   18026 B/op	      66 allocs/op
+BenchmarkForwarding/mcp/near_limit/serial-8     	     921	    429321 ns/op	  226062 B/op	     160 allocs/op
+BenchmarkForwarding/mcp/near_limit/serial-8     	     874	    402949 ns/op	  220875 B/op	     159 allocs/op
+BenchmarkForwarding/mcp/near_limit/serial-8     	     747	    413219 ns/op	  223596 B/op	     160 allocs/op
+BenchmarkForwarding/mcp/near_limit/parallel-8   	    3105	    103116 ns/op	  242182 B/op	     163 allocs/op
+BenchmarkForwarding/mcp/near_limit/parallel-8   	    3460	    105064 ns/op	  240202 B/op	     163 allocs/op
+BenchmarkForwarding/mcp/near_limit/parallel-8   	    2886	    119354 ns/op	  244411 B/op	     164 allocs/op
+BenchmarkForwarding/rest/before/serial-8        	14376396	        24.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/rest/before/serial-8        	13525551	        24.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/rest/before/serial-8        	13932022	        25.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/rest/before/parallel-8      	112604170	         3.181 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/rest/before/parallel-8      	100000000	         3.241 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/rest/before/parallel-8      	110628904	         3.242 ns/op	       0 B/op	       0 allocs/op
+BenchmarkForwarding/rest/disabled/serial-8      	 1272001	       301.1 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/rest/disabled/serial-8      	 1000000	       311.1 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/rest/disabled/serial-8      	 1266714	       282.4 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/rest/disabled/parallel-8    	 3933634	        89.88 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/rest/disabled/parallel-8    	 3470998	        95.05 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/rest/disabled/parallel-8    	 3849495	        90.35 ns/op	     144 B/op	       3 allocs/op
+BenchmarkForwarding/rest/headers/serial-8       	   86452	      5099 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/rest/headers/serial-8       	   79003	      4939 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/rest/headers/serial-8       	   67437	      4930 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/rest/headers/parallel-8     	  373809	       924.8 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/rest/headers/parallel-8     	  396330	       897.8 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/rest/headers/parallel-8     	  416806	       917.5 ns/op	    1008 B/op	      14 allocs/op
+BenchmarkForwarding/rest/metadata/serial-8      	    8580	     39412 ns/op	   17591 B/op	      63 allocs/op
+BenchmarkForwarding/rest/metadata/serial-8      	    8234	     37842 ns/op	   17576 B/op	      63 allocs/op
+BenchmarkForwarding/rest/metadata/serial-8      	   10000	     34057 ns/op	   17583 B/op	      63 allocs/op
+BenchmarkForwarding/rest/metadata/parallel-8    	   31226	     10369 ns/op	   17650 B/op	      63 allocs/op
+BenchmarkForwarding/rest/metadata/parallel-8    	   34011	     10543 ns/op	   17650 B/op	      63 allocs/op
+BenchmarkForwarding/rest/metadata/parallel-8    	   34252	     11283 ns/op	   17654 B/op	      63 allocs/op
+BenchmarkForwarding/rest/combined/serial-8      	    8924	     43444 ns/op	   18106 B/op	      72 allocs/op
+BenchmarkForwarding/rest/combined/serial-8      	    6710	     51693 ns/op	   18097 B/op	      72 allocs/op
+BenchmarkForwarding/rest/combined/serial-8      	   10000	     45760 ns/op	   18102 B/op	      72 allocs/op
+BenchmarkForwarding/rest/combined/parallel-8    	   32356	     10998 ns/op	   18167 B/op	      72 allocs/op
+BenchmarkForwarding/rest/combined/parallel-8    	   33403	     10808 ns/op	   18160 B/op	      72 allocs/op
+BenchmarkForwarding/rest/combined/parallel-8    	   30462	     11027 ns/op	   18160 B/op	      72 allocs/op
+BenchmarkForwarding/rest/near_limit/serial-8    	     901	    435685 ns/op	  232016 B/op	     220 allocs/op
+BenchmarkForwarding/rest/near_limit/serial-8    	     813	    440879 ns/op	  232769 B/op	     220 allocs/op
+BenchmarkForwarding/rest/near_limit/serial-8    	     878	    420456 ns/op	  231573 B/op	     220 allocs/op
+BenchmarkForwarding/rest/near_limit/parallel-8  	    2841	    112952 ns/op	  250795 B/op	     224 allocs/op
+BenchmarkForwarding/rest/near_limit/parallel-8  	    3318	    106095 ns/op	  249463 B/op	     223 allocs/op
+BenchmarkForwarding/rest/near_limit/parallel-8  	    3070	    110651 ns/op	  249510 B/op	     223 allocs/op
+PASS
+ok  	github.com/bishoku/vmcp/core/internal/callercontext	31.989s
+
+Unknown-field parsing (Prepare only):
+goos: linux
+goarch: amd64
+pkg: github.com/bishoku/vmcp/core/internal/callercontext
+cpu: Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz
+BenchmarkUnknownMetadataFields/mcp-8         	     189	   1614855 ns/op	  464080 B/op	    4857 allocs/op
+BenchmarkUnknownMetadataFields/mcp-8         	     241	   1431480 ns/op	  464036 B/op	    4857 allocs/op
+BenchmarkUnknownMetadataFields/mcp-8         	     283	   1496435 ns/op	  464049 B/op	    4857 allocs/op
+BenchmarkUnknownMetadataFields/rest-8        	     238	   1451347 ns/op	  464474 B/op	    4862 allocs/op
+BenchmarkUnknownMetadataFields/rest-8        	     214	   1554168 ns/op	  464482 B/op	    4862 allocs/op
+BenchmarkUnknownMetadataFields/rest-8        	     235	   1366222 ns/op	  464441 B/op	    4862 allocs/op
+PASS
+ok  	github.com/bishoku/vmcp/core/internal/callercontext	3.051s

@@ -21,6 +21,7 @@ for(const width of [1280,390])test(`guidance draft, preview and save at ${width}
  })
  await page.goto(`/virtual-servers/${server.slug}/edit`)
  await page.getByLabel('Admin token').fill('test');await page.getByRole('button',{name:'Continue',exact:true}).click()
+ await page.locator('summary').filter({hasText:'Agent guidance'}).click()
  await expect(page.getByText('Start with {{tool:lookup}}',{exact:true})).toBeVisible()
  await page.getByRole('button',{name:'Add resource',exact:true}).click()
  const item=page.getByRole('dialog',{name:'Add resource',exact:true})

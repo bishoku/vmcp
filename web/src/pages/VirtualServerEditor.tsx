@@ -1,3 +1,4 @@
+import ConfigurationGroup from '../connections/ConfigurationGroup'
 import GuidanceEditor from '../GuidanceEditor'
 import { normalizeGuidance } from '../guidance'
 import type { Guidance } from '../api'
@@ -241,7 +242,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
       <div className="mt-6">
         {draft ? (
           <div className="layout-stack">
-            <div className="grid gap-3 sm:grid-cols-3"><SummaryTile label="Selected tools" value={draft.tools.length} detail="Explicit tool selections in this draft" icon={Wrench}/><SummaryTile label="Resources & prompts" value={draft.catalog.length} detail="Resources, templates and prompt selections" icon={ListChecks}/><SummaryTile label="Authentication" value={draft.authRequired?'Required':'Anonymous'} detail="Draft client access requirement" icon={Fingerprint}/></div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SummaryTile label="Selected tools" value={draft.tools.length} detail="Explicit tool selections in this draft" icon={Wrench}/><SummaryTile label="Resources & prompts" value={draft.catalog.length} detail="Resources, templates and prompt selections" icon={ListChecks}/><SummaryTile label="Upstream servers" value={new Set([...draft.tools,...draft.catalog].map(item=>item.upstream)).size} detail="Sources composed into this draft" icon={Layers}/><SummaryTile label="Authentication" value={draft.authRequired?'Required':'Anonymous'} detail="Draft client access requirement" icon={Fingerprint}/></div>
             <fieldset disabled={!canEdit || busy} className="min-w-0 layout-stack border-0 p-0 m-0">
             <ServerPanel title="Server identity" description="Name, stable identifier and client access settings" icon={Layers}><div className="space-y-4 panel-body">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -266,7 +267,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
 
             {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to configure the public gateway URL; the path above is not a complete connection URL.</p>}
             </div></ServerPanel>
-            <ServerPanel title="Client feature permissions" description="Requires client negotiation and client approval. Roots never expose gateway files." icon={Fingerprint}><div className="grid gap-3 panel-body sm:grid-cols-3">{(['sampling','roots','elicitation'] as const).map(feature=><Checkbox key={feature} label={feature} field={`clientFeatures.${feature}`} checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>)}</div></ServerPanel>
+
 <div><h2 className="section-title">Capability composition</h2><p className="section-description mt-1 text-sm text-ink-muted">Select tools, resources, templates and prompts from stored upstream discovery.</p></div>
  <div className="grid grid-cols-1 xl:grid-cols-2 layout-grid">
               <ServerPanel title="Available tools" description="Add tools from stored upstream discovery; selection is explicit" icon={Wrench}>
@@ -320,8 +321,9 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             </div>
 
  <CatalogPicker upstreams={upstreams} value={draft.catalog} savedCatalog={servers.find((s) => s.slug === draft.slug)?.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
- <GuidanceEditor value={draft.guidance} tools={draft.tools} upstreams={upstreams} onChange={guidance=>setDraft({...draft,guidance})}/>
+ <ConfigurationGroup title="Agent guidance" description="Instructions and descriptions presented to agents"><GuidanceEditor value={draft.guidance} tools={draft.tools} upstreams={upstreams} onChange={guidance=>setDraft({...draft,guidance})}/></ConfigurationGroup>
 
+            <ConfigurationGroup title="Access & protection" description="Client permissions, rate limits, tool policies and PII masking">            <ServerPanel title="Client feature permissions" description="Requires client negotiation and client approval. Roots never expose gateway files." icon={Fingerprint}><div className="grid gap-3 panel-body sm:grid-cols-3">{(['sampling','roots','elicitation'] as const).map(feature=><Checkbox key={feature} label={feature} field={`clientFeatures.${feature}`} checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>)}</div></ServerPanel>
             <div className="grid items-start layout-grid xl:grid-cols-2"><ServerPanel title="Rate limit" description="Bound tool calls across client identities" icon={SlidersHorizontal}><div className="panel-body">
               <FormField name="rateLimitPerMinute" label="Rate limit" help="Server and credential limits can both apply. Empty means this configuration does not add a rate limit." hint="Optional. 1–1,000,000 calls per minute; empty means unlimited."><input type="number" min={1} placeholder="unlimited" className={`${input} max-w-40`} value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} /></FormField>
               <p className="mt-1 text-xs text-ink-muted">Shared by all agents. Each agent key can have its own limit too. Excess calls get HTTP 429.</p>
@@ -363,6 +365,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                 </div>
               )}
             </div></ServerPanel>
+            </ConfigurationGroup>
 
             </fieldset>
           </div>

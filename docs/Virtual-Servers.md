@@ -190,3 +190,9 @@ authorization/revocation, rate limiting, approval, PII masking and audit admissi
 and outcome handling remain on the request path. Disabling a virtual server or
 revoking its credentials also protects local capabilities. Guidance is included
 in migration `00027_guidance.sql`; apply migrations before starting the new binaries.
+
+The editor groups agent guidance and access/protection settings into expandable
+sections while keeping server identity and capability selection directly
+accessible. Summary cards use the same layout as upstream and virtual-server
+saved details. Expanding or collapsing a section does not discard draft changes;
+validation links open the relevant section before focusing its field.

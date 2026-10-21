@@ -60,10 +60,11 @@ func (b Binding) Principal() string { return "oauth:" + b.Slug }
 
 // Upstream is a physical MCP server. Headers are already decrypted.
 type Upstream struct {
-	CallerContext *callercontext.Config
-	Kind          string
-	Tenant        string
-	REST          *restapi.Compiled
+	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
+	CallerContext         *callercontext.Config
+	Kind                  string
+	Tenant                string
+	REST                  *restapi.Compiled
 	// RESTSourceHash identifies decrypted source bytes for immutable schema reuse.
 	RESTSourceHash [32]byte `json:"-"`
 	Instructions   string

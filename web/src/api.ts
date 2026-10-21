@@ -77,11 +77,14 @@ export interface RESTConfig {
  auth: RESTAuth; forwardIdentity:boolean; requireIdentity:boolean; allowInsecureHttp:boolean; timeoutSeconds:number; operations:RESTOperation[]
 }
 
+export interface RequestHeaderMapping { source:string; target:string; required?:boolean }
+
 export interface CallerContextConfig {
  enabled:boolean; metaKey:string; fields:{name:string;header?:string;bearer?:boolean;required?:boolean}[]
 }
 
 export interface Upstream {
+  requestHeaderMappings?: RequestHeaderMapping[]
   callerContext?: CallerContextConfig
   kind?: "mcp" | "rest"
   rest?: RESTConfig
@@ -103,6 +106,7 @@ export interface Upstream {
 }
 
 export interface UpstreamInput {
+  requestHeaderMappings?: RequestHeaderMapping[]
   callerContext?: CallerContextConfig
   kind?: "mcp" | "rest"
   rest?: RESTConfig

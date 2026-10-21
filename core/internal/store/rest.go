@@ -76,6 +76,13 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 	if err := contextConfig.Validate(kind, static, managed); err != nil {
 		return nil, "", apierror.Validation([]apierror.FieldError{vf("/callerContext", err.Error())})
 	}
+	mappings := in.RequestHeaderMappings
+	if mappings == nil && current != nil {
+		mappings = current.RequestHeaderMappings
+	}
+	if err := callercontext.ValidateHeaderMappings(mappings, static, contextConfig, kind); err != nil {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/requestHeaderMappings", err.Error())})
+	}
 	result, outcome, err := t.putUpstreamConnection(ctx, slug, in, ifMatch, createOnly)
 	if err != nil {
 		return nil, "", err
@@ -94,6 +101,28 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 				outcome = Updated
 			}
 			if _, err = t.q.Exec(ctx, `UPDATE upstreams SET caller_context=$2,version=version+$3,updated_at=now() WHERE tenant_id=`+tenantSQL+` AND slug=$1`, slug, raw, bump); err != nil {
+				return nil, "", err
+			}
+			result, err = t.GetUpstream(ctx, slug)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+	}
+	if mappings != nil {
+		raw, _ := json.Marshal(mappings)
+		var old []callercontext.HeaderMapping
+		if current != nil {
+			old = current.RequestHeaderMappings
+		}
+		oldRaw, _ := json.Marshal(old)
+		if !jsonEqual(raw, oldRaw) {
+			bump := 0
+			if outcome == Unchanged {
+				bump = 1
+				outcome = Updated
+			}
+			if _, err = t.q.Exec(ctx, `UPDATE upstreams SET request_header_mappings=$2,version=version+$3,updated_at=now() WHERE tenant_id=`+tenantSQL+` AND slug=$1`, slug, raw, bump); err != nil {
 				return nil, "", err
 			}
 			result, err = t.GetUpstream(ctx, slug)

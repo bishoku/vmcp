@@ -82,6 +82,7 @@ test('header replacement uses a masked draft modal and does not write before sav
  const writes:string[]=[]
  page.on('request',request=>{if(request.method()==='PATCH')writes.push(request.url())})
  await page.getByRole('button',{name:'Edit upstream',exact:true}).click()
+ await page.locator('summary').filter({hasText:'Security & shared headers'}).click()
  await page.getByRole('button',{name:'Replace',exact:true}).click()
  const replacement=page.getByRole('dialog',{name:'Replace X-Workspace',exact:true})
  await replacement.getByLabel('Replacement header value',{exact:true}).fill('test-replacement')

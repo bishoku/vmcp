@@ -25,6 +25,7 @@ test('switches and checkboxes edit only the draft, work with Space, and save exp
  await page.getByLabel('Name',{exact:true}).fill('Support workspace')
  const enabled=page.getByRole('switch',{name:'Enabled',exact:true})
  await expect(enabled).toBeChecked();await enabled.focus();await page.keyboard.press('Space');await expect(enabled).not.toBeChecked()
+ await page.locator('summary').filter({hasText:'Access & protection'}).click()
  const roots=page.getByRole('checkbox',{name:'roots',exact:true})
  await roots.locator('..').click();await expect(roots).toBeChecked()
  const pii=page.getByRole('switch',{name:'Mask sensitive data in tool results',exact:true})

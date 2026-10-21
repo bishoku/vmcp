@@ -103,6 +103,7 @@ test('upstream detail panels remain responsive and discovery reads never trigger
  await page.screenshot({path:test.info().outputPath('upstream-mobile.png'),fullPage:false,animations:'disabled'})
  await page.getByRole('button',{name:'Edit upstream'}).click()
  await page.getByLabel('Name',{exact:true}).fill('Draft upstream')
+ await page.locator('summary').filter({hasText:'Security & shared headers'}).click()
  await page.getByText('TLS (custom CA, server name, mTLS)',{exact:true}).click()
  await expect(page.getByLabel('Upload CA PEM')).toBeVisible()
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)

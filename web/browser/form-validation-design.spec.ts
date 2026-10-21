@@ -113,6 +113,7 @@ test('long capability editors use page scrolling and progressive lists',async({p
  await expect(available.getByRole('button',{name:'tool-99 Tool definition 99',exact:true})).toBeVisible()
  await expectPageScrollOnly(page)
  await page.setViewportSize({width:390,height:844})
+ await page.locator('summary').filter({hasText:'Access & protection'}).click()
  await page.getByRole('region',{name:'PII masking',exact:true}).scrollIntoViewIfNeeded()
  await expect(page.getByRole('button',{name:'Save',exact:true})).toBeInViewport()
  await expectPageScrollOnly(page)

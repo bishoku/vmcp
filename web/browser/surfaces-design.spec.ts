@@ -45,6 +45,7 @@ test('mobile dialog surfaces retain elevation without overflow and state colors 
  await page.screenshot({path:test.info().outputPath('surfaces-modal-mobile.png'),animations:'disabled'})
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click()
  await page.goto('/virtual-servers/new')
+ await page.locator('summary').filter({hasText:'Access & protection'}).click()
  await page.getByRole('checkbox',{name:'roots',exact:true}).check()
  const selected=page.locator('.choice-field').filter({has:page.getByRole('checkbox',{name:'roots',exact:true})})
  await expect(selected).toHaveCSS('border-color','rgb(224, 228, 255)')

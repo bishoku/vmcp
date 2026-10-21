@@ -22,39 +22,41 @@ import (
 
 // Upstream is the API read model of a physical MCP server. Header values are never exposed.
 type Upstream struct {
-	CallerContext    *callercontext.Config `json:"callerContext,omitempty"`
-	Kind             string                `json:"kind"`
-	REST             *restapi.Config       `json:"rest,omitempty"`
-	Slug             string                `json:"slug"`
-	Name             string                `json:"name"`
-	Description      string                `json:"description"`
-	URL              string                `json:"url"`
-	FallbackURLs     []string              `json:"fallbackUrls"`
-	Transport        string                `json:"transport"`
-	Enabled          bool                  `json:"enabled"`
-	HeaderNames      []string              `json:"headerNames"`
-	ToolCount        int                   `json:"toolCount"`
-	LastRefreshAt    *time.Time            `json:"lastRefreshAt"`
-	LastRefreshError *string               `json:"lastRefreshError"`
-	Health           Health                `json:"health"`
-	TLS              tlsconf.Info          `json:"tls"`
-	Auth             oauthtoken.Info       `json:"auth"`
-	Version          int64                 `json:"version"`
-	CreatedAt        time.Time             `json:"createdAt"`
-	UpdatedAt        time.Time             `json:"updatedAt"`
+	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
+	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
+	Kind                  string                        `json:"kind"`
+	REST                  *restapi.Config               `json:"rest,omitempty"`
+	Slug                  string                        `json:"slug"`
+	Name                  string                        `json:"name"`
+	Description           string                        `json:"description"`
+	URL                   string                        `json:"url"`
+	FallbackURLs          []string                      `json:"fallbackUrls"`
+	Transport             string                        `json:"transport"`
+	Enabled               bool                          `json:"enabled"`
+	HeaderNames           []string                      `json:"headerNames"`
+	ToolCount             int                           `json:"toolCount"`
+	LastRefreshAt         *time.Time                    `json:"lastRefreshAt"`
+	LastRefreshError      *string                       `json:"lastRefreshError"`
+	Health                Health                        `json:"health"`
+	TLS                   tlsconf.Info                  `json:"tls"`
+	Auth                  oauthtoken.Info               `json:"auth"`
+	Version               int64                         `json:"version"`
+	CreatedAt             time.Time                     `json:"createdAt"`
+	UpdatedAt             time.Time                     `json:"updatedAt"`
 }
 
 // UpstreamInput is the writable part of an upstream.
 type UpstreamInput struct {
-	CallerContext *callercontext.Config `json:"callerContext,omitempty"`
-	Kind          string
-	REST          *restapi.Config
-	Name          string
-	Description   string
-	URL           string
-	FallbackURLs  []string
-	Transport     string
-	Enabled       bool
+	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
+	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
+	Kind                  string
+	REST                  *restapi.Config
+	Name                  string
+	Description           string
+	URL                   string
+	FallbackURLs          []string
+	Transport             string
+	Enabled               bool
 	// Headers: nil keeps the stored headers, an empty map clears them, otherwise replaces.
 	Headers map[string]string
 	// TLS: nil keeps the stored settings; otherwise replaces them. An empty ClientKeyPEM
@@ -79,7 +81,8 @@ type TLSPatch struct {
 
 // UpstreamPatch is a JSON merge patch. A nil header value deletes that header.
 type UpstreamPatch struct {
-	CallerContext                     *callercontext.Config `json:"callerContext,omitempty"`
+	RequestHeaderMappings             []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
+	CallerContext                     *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                              *string
 	REST                              *restapi.Config
 	Name, Description, URL, Transport *string
@@ -92,18 +95,19 @@ type UpstreamPatch struct {
 
 // UpstreamConn is what the control plane needs to connect to an upstream.
 type UpstreamConn struct {
-	CallerContext *callercontext.Config
-	Version       int64
-	Enabled       bool
-	Kind          string
-	REST          *restapi.Config
-	URL           string
-	FallbackURLs  []string
-	Transport     string
-	Headers       map[string]string
-	TLS           tlsconf.Settings
-	OAuth         *oauthtoken.Config
-	ToolCount     int
+	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
+	CallerContext         *callercontext.Config
+	Version               int64
+	Enabled               bool
+	Kind                  string
+	REST                  *restapi.Config
+	URL                   string
+	FallbackURLs          []string
+	Transport             string
+	Headers               map[string]string
+	TLS                   tlsconf.Settings
+	OAuth                 *oauthtoken.Config
+	ToolCount             int
 }
 
 type upstreamRow struct {
@@ -123,7 +127,7 @@ const upstreamSelect = `
 	       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret,
 	       (SELECT COALESCE(jsonb_agg(jsonb_build_object('node', h.node, 'state', h.state, 'breaker', h.breaker,
 	           'url', h.url, 'latencyMs', h.latency_ms, 'error', h.error, 'checkedAt', h.checked_at)), '[]'::jsonb)
-	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.kind,u.encrypted_rest_config,u.caller_context
+	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.kind,u.encrypted_rest_config,u.caller_context,u.request_header_mappings
 	FROM upstreams u LEFT JOIN upstream_status s ON s.upstream_id = u.id
 	WHERE u.tenant_id = ` + tenantSQL
 
@@ -137,7 +141,7 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.URL, &r.Transport, &r.Enabled, &enc,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &count, &r.LastRefreshAt, &r.LastRefreshError, &r.FallbackURLs,
 		&r.tls.CAPEM, &r.tls.ServerName, &r.tls.ClientCertPEM, &encKey,
-		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Kind, &encREST, &r.CallerContext); err != nil {
+		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Kind, &encREST, &r.CallerContext, &r.RequestHeaderMappings); err != nil {
 		return nil, err
 	}
 	if len(encKey) > 0 {
@@ -251,7 +255,7 @@ func (t *Tx) UpstreamConnInfo(ctx context.Context, slug string) (*UpstreamConn, 
 	if err != nil {
 		return nil, err
 	}
-	return &UpstreamConn{CallerContext: r.CallerContext, Version: r.Version, Enabled: r.Enabled, Kind: r.Kind, REST: r.rest, URL: r.URL, FallbackURLs: r.FallbackURLs, Transport: r.Transport, Headers: r.headers, TLS: r.tls, OAuth: r.oauthPtr(), ToolCount: r.ToolCount}, nil
+	return &UpstreamConn{RequestHeaderMappings: r.RequestHeaderMappings, CallerContext: r.CallerContext, Version: r.Version, Enabled: r.Enabled, Kind: r.Kind, REST: r.rest, URL: r.URL, FallbackURLs: r.FallbackURLs, Transport: r.Transport, Headers: r.headers, TLS: r.tls, OAuth: r.oauthPtr(), ToolCount: r.ToolCount}, nil
 }
 
 // PutUpstream creates or replaces an upstream. With createOnly an existing slug is a 409.
@@ -461,7 +465,7 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	if err != nil {
 		return nil, err
 	}
-	in := UpstreamInput{CallerContext: cur.CallerContext, Kind: cur.Kind, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
+	in := UpstreamInput{RequestHeaderMappings: cur.RequestHeaderMappings, CallerContext: cur.CallerContext, Kind: cur.Kind, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
 	if p.FallbackURLs != nil {
 		in.FallbackURLs = *p.FallbackURLs
 	}
@@ -476,6 +480,9 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	}
 	if p.Kind != nil {
 		in.Kind = *p.Kind
+	}
+	if p.RequestHeaderMappings != nil {
+		in.RequestHeaderMappings = p.RequestHeaderMappings
 	}
 	if p.CallerContext != nil {
 		in.CallerContext = p.CallerContext

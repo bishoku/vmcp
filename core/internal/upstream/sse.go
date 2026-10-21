@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
@@ -311,6 +312,9 @@ func (c *SSEClient) post(ctx context.Context, msg *mcp.Message) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c.applyHeaders(req)
+	if msg.Method == mcp.MethodToolsCall {
+		callercontext.ApplyHeaders(ctx, req)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("post %s: %w", msg.Method, err)

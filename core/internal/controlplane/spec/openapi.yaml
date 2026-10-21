@@ -2057,6 +2057,12 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        requestHeaderMappings:
+          type: array
+          maxItems: 16
+          description: Per-tool-call HTTP header mappings. Omit to preserve; an empty array clears.
+          items:
+            $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
         rest:
@@ -2102,6 +2108,12 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        requestHeaderMappings:
+          type: array
+          maxItems: 16
+          description: Per-tool-call HTTP header mappings. Omit to preserve; an empty array clears.
+          items:
+            $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
         rest:
@@ -2149,6 +2161,12 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        requestHeaderMappings:
+          type: array
+          maxItems: 16
+          description: Per-tool-call HTTP header mappings. Omit to preserve; an empty array clears.
+          items:
+            $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
         rest:
@@ -2339,6 +2357,12 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        requestHeaderMappings:
+          type: array
+          maxItems: 16
+          description: Per-tool-call HTTP header mappings. Omit to preserve; an empty array clears.
+          items:
+            $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
         rest:
@@ -3688,6 +3712,22 @@ components:
           maxLength: 2097152
           description: Complete UTF-8 JSON/YAML document, at most 2 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams.
 
+    RequestHeaderMapping:
+      type: object
+      additionalProperties: false
+      required: [source, target]
+      properties:
+        source:
+          type: string
+          minLength: 1
+          maxLength: 128
+        target:
+          type: string
+          minLength: 1
+          maxLength: 128
+        required:
+          type: boolean
+          default: false
     CallerContextConfig:
       type: object
       additionalProperties: false

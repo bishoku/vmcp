@@ -105,3 +105,64 @@ policy and revocation consistency, session lifecycle and cross-node recovery,
 catalog pagination/extension fields/PII, cancellation, TypeScript SDK interop and
 concurrent metrics tests. Differential tests compare complete list response bodies
 for prepared/fallback snapshots, including stale cursors and invalid metadata.
+
+
+## Per-call header and caller metadata cost (2026-10-21)
+
+`internal/callercontext/performance_test.go` measures the added request path:
+field selection, caller metadata merge, context attachment and HTTP header copies.
+It excludes HTTP parsing/serialization, network, TLS, database, audit capture and
+upstream token verification. The reference called `before` omits this path; it is
+not a checkout of an earlier gateway release. `disabled` executes today's path
+with both features unconfigured.
+
+Run from `core`:
+
+```sh
+go test ./internal/callercontext -run '^$' -bench BenchmarkForwarding \
+  -benchmem -benchtime=300ms -count=3 -cpu=8
+go test ./internal/callercontext -run '^$' -bench BenchmarkUnknownMetadataFields \
+  -benchmem -benchtime=300ms -count=3 -cpu=8
+```
+
+Local medians of three serial samples, Go 1.27.3, Xeon Silver 4216, GOMAXPROCS=8:
+
+| Scenario | MCP time | REST time | MCP allocated bytes | REST allocated bytes |
+|---|---:|---:|---:|---:|
+| Features disabled | 0.292 µs | 0.301 µs | 144 | 144 |
+| Two header mappings | 4.733 µs | 4.939 µs | 1,008 | 1,008 |
+| Two caller metadata fields | 31.491 µs | 37.842 µs | 16,729 | 17,583 |
+| Both features | 36.862 µs | 45.760 µs | 17,962 | 18,102 |
+| Large metadata and headers | 413.219 µs | 435.685 µs | 223,596 | 232,016 |
+
+Normal fixtures contain a synthetic 2 KiB token and 36-byte session value per
+channel. The large fixture contains 16 metadata fields of 1,950 bytes each and
+four 8 KiB headers; metadata and mapped headers have separate 32 KiB limits.
+These are allocated bytes per operation, not retained heap. Full raw samples,
+including eight-worker parallel runs, are in `results/header-context.txt`.
+Parallel ns/op measures aggregate throughput cost, not individual call latency.
+
+A separate case adds 2,400 unknown tiny fields alongside the two selected fields,
+remaining below the 32 KiB metadata limit. `Prepare` alone takes a median 1.496 ms
+for MCP and 1.451 ms for REST, allocating about 464 KB and 4,857/4,862 objects.
+Unknown fields are filtered correctly, but parsing them into maps still allocates.
+A byte limit therefore does not prevent substantial allocation amplification.
+
+The main optimization opportunities found by code inspection are:
+
+- Skip empty maps/clones/context attachment when neither feature produces headers.
+- For REST, avoid creating and merging outgoing MCP metadata that the REST
+  executor does not use. Required-field and value validation must remain intact.
+- For MCP, avoid serializing selected metadata only to parse and serialize it again
+  in `WithCallerMeta`; preserve gateway progress-token correlation and filtering.
+- Bound metadata object cardinality or selectively parse configured fields with a
+  bounded parser, so unknown fields cannot create thousands of map entries.
+
+The request path adds no database query or external token-verification request.
+Values are local to the call and do not enter the upstream connection fingerprint;
+rotating a caller token therefore does not reconnect an upstream session. Editing
+the rules changes the snapshot fingerprint and can retire cached MCP clients.
+Large forwarded values also consume network bandwidth; captured MCP metadata can
+increase existing audit serialization/encryption/storage costs. Neither effect is
+included in the table. End-to-end p95/p99 and sustained deployment capacity still
+require representative load tests with the target audit and upstream configuration.

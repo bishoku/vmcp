@@ -446,3 +446,61 @@ Apply migration **30 (`00030_caller_context.sql`)** before starting the updated
 services. Existing upstreams default to disabled. Audit/log masking behavior is
 unchanged by this feature; it does not guarantee exclusion of caller tokens from
 existing recording paths. Configure and evaluate those policies separately.
+
+## Per-call request header mappings
+
+Use **Per-call context → Configure mappings** in an upstream's edit screen to
+forward selected HTTP headers from an agent's `tools/call` request. This works
+with REST, Streamable HTTP MCP, and legacy SSE MCP upstreams. A mapping copies
+values unchanged; using the same source and target name forwards the header
+without renaming it.
+
+```json
+{
+  "requestHeaderMappings": [
+    {"source": "X-Agent-Token", "target": "X-Customer-Token", "required": true},
+    {"source": "X-Chat-Session-Id", "target": "X-Session-Id"}
+  ]
+}
+```
+
+Mappings are an upstream setting, separate from `callerContext` metadata rules.
+Only listed headers reach the selected upstream. Missing optional headers are
+omitted; missing or empty required headers fail the tool call before dispatch.
+Names are case-insensitive. Multiple values are preserved. Each mapped header is
+limited to 8 KiB of values, and all mapped values together to 32 KiB; at most 16
+rules are allowed. Control characters other than horizontal tabs are rejected.
+
+Source and target names cannot be transport, session, gateway authentication,
+or proxy identity headers (including `Authorization`, `Cookie`, `Mcp-*`,
+`X-VMCP-*`, and `X-Forwarded-*`). Use a dedicated application header for a token
+that the upstream validates. Mapping targets must be unique and cannot collide
+with static upstream/operation headers or enabled REST caller-context mappings.
+Headers named by the incoming `Connection` header cannot be mapped either.
+
+Values belong to the current tool invocation; they are not stored in the MCP
+session, added to shared clients, or sent with initialize, discovery, background
+SSE connections, or other MCP methods. Retry/fallback attempts for that invocation
+use the same values; all configured fallback endpoints must therefore belong to
+the same trusted service. The upstream remains responsible for token validation.
+Audit/log capture behavior is unchanged.
+
+The API accepts `requestHeaderMappings` on create, PUT, PATCH, and declarative
+apply/export. Omit it to preserve stored rules; send `[]` to clear them. The
+configuration contains names and required flags only, never runtime values.
+REST request previews show placeholders for mapped headers. Administrative
+execution tests do not forward the administrator's headers; required mappings
+must be tested through an actual MCP tool call.
+
+Deploy migration **31** before starting the updated control/data plane, and update
+all nodes before enabling mappings. Existing upstreams default to an empty list.
+Rolling migration 31 back removes the rules, so disable mappings before reverting
+to an older application version.
+
+### Editing upstream configuration
+
+Both MCP and REST details use transport, authentication, tool count, and recorded
+health summary cards. Connection and identity settings appear first. Security and
+shared headers, per-call context, and REST operations are separate expandable
+sections. Header mappings are edited in a modal: **Use mappings** adds them to
+the draft, **Cancel** discards modal edits, and **Save** persists the upstream.

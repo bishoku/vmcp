@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 )
 
@@ -37,6 +38,9 @@ func (s *Server) restOperation(w http.ResponseWriter, r *http.Request) error {
 				preview.Headers[f.Header] = "[caller context: " + f.Name + "]"
 			}
 		}
+		for _, rule := range conn.RequestHeaderMappings {
+			preview.Headers[rule.Target] = "[request header: " + rule.Source + "]"
+		}
 		return writeJSON(w, 200, preview)
 	}
 	if r.PathValue("action") != "test" {
@@ -58,6 +62,9 @@ func (s *Server) restOperation(w http.ResponseWriter, r *http.Request) error {
 	}
 	if _, _, err := conn.CallerContext.Prepare(nil, "rest"); err != nil {
 		return apierror.Validation([]apierror.FieldError{storeRestError("Required caller context must be tested through a tool call with _meta")})
+	}
+	if _, err := callercontext.PrepareHeaders(conn.RequestHeaderMappings, nil); err != nil {
+		return apierror.Validation([]apierror.FieldError{storeRestError("Required request headers must be tested through an MCP tool call")})
 	}
 	// Admin tests do not impersonate an agent. Identity-required connections must be tested through MCP.
 	result, err := compiled.Execute(r.Context(), conn.URL, body.Operation, body.Arguments, conn.Headers, conn.TLS, restapi.Identity{}, nil)

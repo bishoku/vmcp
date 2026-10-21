@@ -361,3 +361,39 @@ func TestCallerContextMigrationUpgradeAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRequestHeadersMigrationUpgradeAndRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 30); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO upstreams(tenant_id,slug,name,url,transport) SELECT id,'before-headers','Before','https://example.com','streamable_http' FROM tenants WHERE slug='default'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := db.QueryRowContext(ctx, `SELECT request_header_mappings::text FROM upstreams WHERE slug='before-headers'`).Scan(&raw); err != nil || raw != "[]" {
+		t.Fatalf("default %q: %v", raw, err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 30); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM upstreams WHERE slug='before-headers'`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("rollback lost upstream", err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+}

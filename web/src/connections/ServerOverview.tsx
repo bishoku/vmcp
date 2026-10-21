@@ -1,3 +1,4 @@
+import { SummaryTile } from './ServerPanels'
 import { EmptyState } from '../Feedback'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ArrowUpRight, Box, Cable, Fingerprint, KeyRound, Layers3, ShieldCheck, ShieldOff, Wrench } from 'lucide-react'
@@ -16,7 +17,7 @@ export default function ServerOverview({server,upstreams,grants}:{server:Virtual
     {label:'Missing selections',value:missing,detail:missing?'Review upstream discovery':'All selections discovered',icon:Box,view:'capabilities'},
   ]
   return <section aria-label="Server overview" className="layout-stack">
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{stats.map(({label,value,detail,icon:Icon,view})=><Link key={label} to={serverPath(server.slug,view)} className="group surface-card surface-interactive p-4 sm:p-5"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-ink-muted">{label}</span><Icon aria-hidden="true" className={`icon-control ${label==='Missing selections'&&missing?'text-amber-600':'text-accent-700'}`}/></div><p className="summary-value mt-3">{value}</p><p className="mt-2 text-xs text-ink-muted">{detail}</p></Link>)}</div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{stats.map(({label,value,detail,icon,view})=><Link key={label} to={serverPath(server.slug,view)} className="min-w-0 rounded-xl hover:ring-1 hover:ring-accent-500"><SummaryTile label={label} value={value} detail={detail} icon={icon}/></Link>)}</div>
     <div className="grid layout-grid xl:grid-cols-[1.4fr_1fr]">
       <section aria-label="Upstream composition" className="flex flex-col overflow-hidden surface-card">
         <div className="flex items-center justify-between gap-3 border-b border-line panel-inset py-4"><div><h2 className="panel-title">Upstream composition</h2><p className="panel-description mt-1 text-xs text-ink-muted">Capabilities selected for this virtual server</p></div><Cable aria-hidden="true" className="icon-control text-ink-muted"/></div>

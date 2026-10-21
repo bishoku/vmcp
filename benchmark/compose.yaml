@@ -194,7 +194,7 @@ services:
     image: grafana/grafana:13.2.3
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: vmcp-demo-grafana
+      GF_SECURITY_ADMIN_PASSWORD: dock
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     ports: ["127.0.0.1:3301:3000"]

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 )
@@ -191,6 +192,9 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	c.applyHeaders(req, msg.Method)
+	if msg.Method == mcp.MethodToolsCall {
+		callercontext.ApplyHeaders(ctx, req)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
