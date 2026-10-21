@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
@@ -140,6 +141,7 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	if err != nil {
 		return failure(err.Error()), nil
 	}
+	callercontext.ApplyHeaders(ctx, req)
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(c.Config.TimeoutSeconds)*time.Second)
 	defer cancel()
 	req = req.WithContext(ctx)

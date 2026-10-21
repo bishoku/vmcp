@@ -11,6 +11,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
@@ -36,15 +37,16 @@ type desiredWire struct {
 }
 
 type exportUpstream struct {
-	Kind         string          `json:"kind"`
-	REST         *restapi.Config `json:"rest,omitempty"`
-	Slug         string          `json:"slug"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description"`
-	URL          string          `json:"url"`
-	FallbackURLs []string        `json:"fallbackUrls"`
-	Transport    string          `json:"transport"`
-	Enabled      bool            `json:"enabled"`
+	CallerContext *callercontext.Config `json:"callerContext,omitempty"`
+	Kind          string                `json:"kind"`
+	REST          *restapi.Config       `json:"rest,omitempty"`
+	Slug          string                `json:"slug"`
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	URL           string                `json:"url"`
+	FallbackURLs  []string              `json:"fallbackUrls"`
+	Transport     string                `json:"transport"`
+	Enabled       bool                  `json:"enabled"`
 	// TLS carries public material only; the client key is never exported.
 	TLS *exportTLS `json:"tls,omitempty"`
 	// Auth carries no secret; on apply an omitted clientSecret keeps the stored one.
@@ -96,7 +98,7 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		for _, u := range ups {
-			doc.Upstreams = append(doc.Upstreams, exportUpstream{Kind: u.Kind, REST: u.REST, Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
+			doc.Upstreams = append(doc.Upstreams, exportUpstream{CallerContext: u.CallerContext, Kind: u.Kind, REST: u.REST, Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
 			if u.TLS.CAPEM != "" || u.TLS.ServerName != "" || u.TLS.ClientCertPEM != "" {
 				doc.Upstreams[len(doc.Upstreams)-1].TLS = &exportTLS{u.TLS.CAPEM, u.TLS.ServerName, u.TLS.ClientCertPEM}
 			}

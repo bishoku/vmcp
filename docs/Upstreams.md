@@ -377,3 +377,72 @@ selected properties absent from the response remain absent; null values are
 preserved. If a selected property is removed from the schema, resolve the
 selection error before saving. Choosing all declared fields still filters out
 undeclared fields, unlike **Full response**.
+
+### Per-call caller context
+
+Upstream **Caller context** settings optionally forward selected string fields from
+`tools/call` → `params._meta`. This is caller-supplied application context, not a
+verified vMCP identity. The agent backend supplies a current token on every call;
+the upstream validates it and enforces its own authorization. vMCP does not exchange,
+refresh, or validate these tokens. vMCP authentication remains separate.
+
+Example upstream configuration (REST):
+
+```json
+{
+  "callerContext": {
+    "enabled": true,
+    "metaKey": "com.bank/caller-context",
+    "fields": [
+      {"name": "token", "header": "X-Bank-User-Token", "required": true},
+      {"name": "chatSessionId", "header": "X-Chat-Session-Id"}
+    ]
+  }
+}
+```
+
+The agent sends:
+
+```json
+{
+  "name": "getProducts",
+  "arguments": {},
+  "_meta": {
+    "com.bank/caller-context": {
+      "token": "example-upstream-token",
+      "chatSessionId": "chat-456"
+    }
+  }
+}
+```
+
+For MCP upstreams, omit `header` and `bearer` from the field definitions. Selected
+fields keep their namespace in outgoing tool metadata; unrelated fields are not
+forwarded. Gateway-managed progress correlation is preserved. Both Streamable HTTP
+and legacy SSE are supported. Context is not added to discovery or initialization.
+
+For REST, a field may target `Authorization` with `"bearer": true` to prepend
+`Bearer `. Managed REST authentication must then be `none`, and neither common nor
+operation-level static headers may configure the same header. Header matching is
+case-insensitive. Transport-managed and `X-VMCP-*` headers cannot be targets.
+REST redirects are not followed. All configured MCP fallback URLs belong to the
+same trusted upstream and may receive the selected metadata after a fallback.
+
+The feature is disabled by default. Rules apply to every tool call to the selected
+upstream. Missing optional or empty optional values are omitted; missing/empty
+required fields and invalid supplied values reject the call before dispatch.
+Fields must be strings, at most 8 KiB (including an optional Bearer prefix), without
+CR, LF or NUL; total incoming metadata is limited to 32 KiB when enabled. At most 16
+fields may be configured. Values are request-scoped, not cached on a session or
+shared HTTP client. Chat session IDs are distinct from MCP session IDs.
+
+API create, PUT, PATCH, and declarative apply/export support `callerContext`.
+Omission preserves saved settings; `{}` clears them. The entire supplied block
+replaces previous rules. The editor stores mapping rules, never runtime tokens.
+REST preview shows mapping placeholders. Admin execution tests cannot supply caller
+context; test required fields using an actual MCP tool call instead.
+
+Apply migration **30 (`00030_caller_context.sql`)** before starting the updated
+services. Existing upstreams default to disabled. Audit/log masking behavior is
+unchanged by this feature; it does not guarantee exclusion of caller tokens from
+existing recording paths. Configure and evaluate those policies separately.

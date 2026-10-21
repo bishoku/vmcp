@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
@@ -59,9 +60,10 @@ func (b Binding) Principal() string { return "oauth:" + b.Slug }
 
 // Upstream is a physical MCP server. Headers are already decrypted.
 type Upstream struct {
-	Kind   string
-	Tenant string
-	REST   *restapi.Compiled
+	CallerContext *callercontext.Config
+	Kind          string
+	Tenant        string
+	REST          *restapi.Compiled
 	// RESTSourceHash identifies decrypted source bytes for immutable schema reuse.
 	RESTSourceHash [32]byte `json:"-"`
 	Instructions   string

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/store"
@@ -12,18 +13,19 @@ import (
 
 // upstreamWire is the JSON body of upstream create/put (and an apply entry).
 type upstreamWire struct {
-	Kind         string            `json:"kind"`
-	REST         *restapi.Config   `json:"rest"`
-	Slug         string            `json:"slug"`
-	Name         *string           `json:"name"`
-	Description  *string           `json:"description"`
-	URL          *string           `json:"url"`
-	FallbackURLs []string          `json:"fallbackUrls"`
-	Transport    *string           `json:"transport"`
-	Enabled      *bool             `json:"enabled"`
-	Headers      map[string]string `json:"headers"`
-	TLS          *tlsWire          `json:"tls"`
-	Auth         *authWire         `json:"auth"`
+	CallerContext *callercontext.Config `json:"callerContext"`
+	Kind          string                `json:"kind"`
+	REST          *restapi.Config       `json:"rest"`
+	Slug          string                `json:"slug"`
+	Name          *string               `json:"name"`
+	Description   *string               `json:"description"`
+	URL           *string               `json:"url"`
+	FallbackURLs  []string              `json:"fallbackUrls"`
+	Transport     *string               `json:"transport"`
+	Enabled       *bool                 `json:"enabled"`
+	Headers       map[string]string     `json:"headers"`
+	TLS           *tlsWire              `json:"tls"`
+	Auth          *authWire             `json:"auth"`
 }
 
 // tlsWire is the writable TLS block. clientKeyPem is write-only and, when omitted
@@ -92,7 +94,7 @@ func required(field string) apierror.FieldError {
 
 // input applies the API defaults and reports missing required fields.
 func (w *upstreamWire) input() (store.UpstreamInput, []apierror.FieldError) {
-	in := store.UpstreamInput{Kind: w.Kind, REST: w.REST, Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
+	in := store.UpstreamInput{CallerContext: w.CallerContext, Kind: w.Kind, REST: w.REST, Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
 	var errs []apierror.FieldError
 	if w.Name == nil {
 		errs = append(errs, required("/name"))
@@ -117,17 +119,18 @@ func (w *upstreamWire) input() (store.UpstreamInput, []apierror.FieldError) {
 }
 
 type upstreamPatchWire struct {
-	Kind         *string            `json:"kind"`
-	REST         *restapi.Config    `json:"rest"`
-	Name         *string            `json:"name"`
-	Description  *string            `json:"description"`
-	URL          *string            `json:"url"`
-	FallbackURLs *[]string          `json:"fallbackUrls"`
-	Transport    *string            `json:"transport"`
-	Enabled      *bool              `json:"enabled"`
-	Headers      map[string]*string `json:"headers"`
-	TLS          *tlsPatchWire      `json:"tls"`
-	Auth         *authPatchWire     `json:"auth"`
+	CallerContext *callercontext.Config `json:"callerContext"`
+	Kind          *string               `json:"kind"`
+	REST          *restapi.Config       `json:"rest"`
+	Name          *string               `json:"name"`
+	Description   *string               `json:"description"`
+	URL           *string               `json:"url"`
+	FallbackURLs  *[]string             `json:"fallbackUrls"`
+	Transport     *string               `json:"transport"`
+	Enabled       *bool                 `json:"enabled"`
+	Headers       map[string]*string    `json:"headers"`
+	TLS           *tlsPatchWire         `json:"tls"`
+	Auth          *authPatchWire        `json:"auth"`
 }
 
 func (s *Server) listUpstreams(w http.ResponseWriter, r *http.Request) error {
@@ -239,7 +242,7 @@ func (s *Server) patchUpstream(w http.ResponseWriter, r *http.Request) error {
 	)
 	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{Kind: body.Kind, REST: body.REST,
+		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{CallerContext: body.CallerContext, Kind: body.Kind, REST: body.REST,
 			Name: body.Name, Description: body.Description, URL: body.URL, FallbackURLs: body.FallbackURLs, Transport: body.Transport,
 			Enabled: body.Enabled, Headers: body.Headers, TLS: body.TLS.patch(), OAuth: body.Auth.patch(),
 		}, ifMatch)

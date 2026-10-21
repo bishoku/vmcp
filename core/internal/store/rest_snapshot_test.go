@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"testing"
 
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -58,6 +59,19 @@ func TestRESTSnapshotReuseInvalidation(t *testing.T) {
 	same = load(same)
 	if same.Upstreams[id].REST != first.Upstreams[id].REST {
 		t.Fatal("metadata invalidated schemas")
+	}
+	beforeContext := same
+	in.CallerContext = &callercontext.Config{Enabled: true, MetaKey: "bank/context", Fields: []callercontext.Field{{Name: "token", Header: "X-Token"}}}
+	save()
+	same = load(beforeContext)
+	if same.Upstreams[id].CallerContext == nil || same.Upstreams[id].CallerContext.MetaKey != "bank/context" {
+		t.Fatal("context missing from runtime snapshot")
+	}
+	if same.Revision <= beforeContext.Revision {
+		t.Fatal("context update did not publish a revision")
+	}
+	if same.Upstreams[id].Fingerprint() == beforeContext.Upstreams[id].Fingerprint() {
+		t.Fatal("context update did not invalidate upstream fingerprint")
 	}
 	for _, change := range []func(){func() { in.URL = "https://other.example.com" }, func() { in.Headers = map[string]string{"X-Key": "changed"} }, func() { cfg.Operations[0].Path = "/changed" }, func() { cfg.Auth = restapi.Auth{Type: "bearer", Token: "new-secret"} }} {
 		before := same

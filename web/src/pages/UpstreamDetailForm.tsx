@@ -1,3 +1,4 @@
+import CallerContextEditor from '../connections/CallerContextEditor'
 import Button from '../Button'
 import RESTUpstreamEditor, { RESTConnectionSettings } from '../connections/RESTUpstreamEditor'
 import { emptyREST } from '../connections/rest-config'
@@ -15,7 +16,7 @@ import { useEffect, useState, type ChangeEvent } from 'react'
 import { Activity, Cable, CheckCircle2, ChevronRight, Code2, Fingerprint, KeyRound, Layers3, Pencil, PlugZap, ShieldCheck, Wrench, X, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { ErrorBox, Modal, Pill, StaleRecovery } from '../ui'
-import { api, ApiError, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
+import { api, ApiError, type CallerContextConfig, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
 
 import EditorSaveBar from '../connections/EditorSaveBar'
 import UpstreamDiscovery from '../connections/UpstreamDiscovery'
@@ -43,6 +44,7 @@ export default function UpstreamDetailForm({
   const [slug, setSlug] = useState(upstream?.slug ?? '')
   const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
   const [rest,setRest]=useState(upstream?.rest??emptyREST())
+  const [callerContext,setCallerContext]=useState<CallerContextConfig>({enabled:upstream?.callerContext?.enabled??false,metaKey:upstream?.callerContext?.metaKey||'com.bank/caller-context',fields:upstream?.callerContext?.fields??[]})
   const [restBlocked,setRestBlocked]=useState(false)
   const [name, setName] = useState(upstream?.name ?? '')
   const [url, setUrl] = useState(upstream?.url ?? '')
@@ -98,7 +100,7 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
-  const unsaved = useUnsaved({kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
+  const unsaved = useUnsaved({callerContext,kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
@@ -133,6 +135,7 @@ export default function UpstreamDetailForm({
         removed.forEach((h) => (headers[h] = null))
         if (upstream) {
           saved = await api.patchUpstream(upstream.slug, {
+            callerContext,
             name,
             url,
             fallbackUrls: kind==='rest'?[]:fallbackUrls(),
@@ -144,6 +147,7 @@ export default function UpstreamDetailForm({
           },upstream.version)
         } else {
           saved = await api.createUpstream(slug, {
+            callerContext,
             name: name || slug,
             url,
             fallbackUrls: kind==='rest'?[]:fallbackUrls(),
@@ -194,6 +198,7 @@ export default function UpstreamDetailForm({
       <SummaryTile label="Discovered tools" value={upstream?.toolCount ?? '—'} detail={upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
       <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
     </div>}
+    <CallerContextEditor value={callerContext} kind={kind} onChange={editable&&!busy?setCallerContext:undefined}/>
     {kind==='rest'&&<RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/>}
     <details open={kind==='mcp'||undefined} className="min-w-0">
     <summary className={kind==='rest'?'cursor-pointer surface-card p-4 text-sm font-semibold':'hidden'}>Connection & authentication · {url||'Base URL required'}{!upstream&&!slug?' · Identifier required':''}</summary>

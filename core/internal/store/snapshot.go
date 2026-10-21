@@ -148,7 +148,7 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 	rows, err := tx.Query(ctx, `
 		SELECT u.id::text, u.slug, u.url, u.fallback_urls, u.transport, u.encrypted_headers,
 		       u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key,
-		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.discovered_instructions,u.kind,u.encrypted_rest_config,u.tenant_id::text
+		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.discovered_instructions,u.kind,u.encrypted_rest_config,u.tenant_id::text,u.caller_context
 		FROM upstreams u JOIN tenants t ON t.id = u.tenant_id
 		WHERE t.slug = $1 AND u.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -160,7 +160,7 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		var oc oauthtoken.Config
 		if err := rows.Scan(&u.ID, &u.Slug, &u.URL, &u.FallbackURLs, &u.Transport, &enc,
 			&u.TLS.CAPEM, &u.TLS.ServerName, &u.TLS.ClientCertPEM, &encKey,
-			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &u.Instructions, &u.Kind, &encREST, &u.Tenant); err != nil {
+			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &u.Instructions, &u.Kind, &encREST, &u.Tenant, &u.CallerContext); err != nil {
 			rows.Close()
 			return nil, err
 		}

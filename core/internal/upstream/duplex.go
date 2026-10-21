@@ -149,3 +149,24 @@ func SetLoggingLevel(ctx context.Context, c Conn, level string) error {
 	}
 	return err
 }
+
+// WithCallerMeta preserves gateway-owned progress correlation while adding only
+// the selected upstream's namespaced caller context. It never mutates a client.
+func WithCallerMeta(ctx context.Context, selected json.RawMessage) context.Context {
+	if len(selected) == 0 {
+		return ctx
+	}
+	relay := relayFrom(ctx)
+	meta := map[string]json.RawMessage{}
+	_ = json.Unmarshal(relay.Meta, &meta)
+	if meta == nil {
+		meta = map[string]json.RawMessage{}
+	}
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(selected, &fields)
+	for k, v := range fields {
+		meta[k] = v
+	}
+	relay.Meta, _ = json.Marshal(meta)
+	return WithRelay(ctx, relay)
+}

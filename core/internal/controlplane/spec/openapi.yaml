@@ -2057,6 +2057,8 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        callerContext:
+          $ref: "#/components/schemas/CallerContextConfig"
         rest:
           $ref: "#/components/schemas/RESTConfig"
 
@@ -2100,6 +2102,8 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        callerContext:
+          $ref: "#/components/schemas/CallerContextConfig"
         rest:
           $ref: "#/components/schemas/RESTConfig"
       required:
@@ -2145,6 +2149,8 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        callerContext:
+          $ref: "#/components/schemas/CallerContextConfig"
         rest:
           $ref: "#/components/schemas/RESTConfig"
 
@@ -2333,6 +2339,8 @@ components:
             - mcp
             - rest
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
+        callerContext:
+          $ref: "#/components/schemas/CallerContextConfig"
         rest:
           $ref: "#/components/schemas/RESTConfig"
 
@@ -3679,3 +3687,23 @@ components:
           minLength: 1
           maxLength: 2097152
           description: Complete UTF-8 JSON/YAML document, at most 2 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams.
+
+    CallerContextConfig:
+      type: object
+      additionalProperties: false
+      description: Call-scoped metadata forwarding rules. Omission preserves settings; an empty object clears them. Values are supplied per call, not stored in this configuration. Tokens are validated by the upstream.
+      properties:
+        enabled: { type: boolean, default: false }
+        metaKey: { type: string, maxLength: 256, description: "Namespaced metadata key, such as com.bank/caller-context." }
+        fields:
+          type: array
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [name]
+            properties:
+              name: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+              header: { type: string, maxLength: 128, description: Target HTTP header for REST upstreams only. }
+              bearer: { type: boolean, default: false, description: Prefix the value with Bearer for an Authorization target. }
+              required: { type: boolean, default: false }

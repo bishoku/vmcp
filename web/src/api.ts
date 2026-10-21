@@ -77,7 +77,12 @@ export interface RESTConfig {
  auth: RESTAuth; forwardIdentity:boolean; requireIdentity:boolean; allowInsecureHttp:boolean; timeoutSeconds:number; operations:RESTOperation[]
 }
 
+export interface CallerContextConfig {
+ enabled:boolean; metaKey:string; fields:{name:string;header?:string;bearer?:boolean;required?:boolean}[]
+}
+
 export interface Upstream {
+  callerContext?: CallerContextConfig
   kind?: "mcp" | "rest"
   rest?: RESTConfig
   version: number
@@ -98,6 +103,7 @@ export interface Upstream {
 }
 
 export interface UpstreamInput {
+  callerContext?: CallerContextConfig
   kind?: "mcp" | "rest"
   rest?: RESTConfig
   name: string

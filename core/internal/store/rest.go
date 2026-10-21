@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 )
 
@@ -56,9 +57,50 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 	} else if in.REST != nil {
 		return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest", "REST operations require a REST upstream")})
 	}
+	contextConfig := in.CallerContext
+	if contextConfig == nil && current != nil {
+		contextConfig = current.CallerContext
+	}
+	headers := in.Headers
+	if headers == nil && current != nil {
+		headers = current.headers
+	}
+	static := []map[string]string{headers}
+	managed := false
+	if rest != nil {
+		managed = rest.Auth.Type != "" && rest.Auth.Type != "none"
+		for _, op := range rest.Operations {
+			static = append(static, op.Headers)
+		}
+	}
+	if err := contextConfig.Validate(kind, static, managed); err != nil {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/callerContext", err.Error())})
+	}
 	result, outcome, err := t.putUpstreamConnection(ctx, slug, in, ifMatch, createOnly)
 	if err != nil {
 		return nil, "", err
+	}
+	if contextConfig != nil {
+		raw, _ := json.Marshal(contextConfig)
+		var old *callercontext.Config
+		if current != nil {
+			old = current.CallerContext
+		}
+		oldRaw, _ := json.Marshal(old)
+		if !jsonEqual(raw, oldRaw) {
+			bump := 0
+			if outcome == Unchanged {
+				bump = 1
+				outcome = Updated
+			}
+			if _, err = t.q.Exec(ctx, `UPDATE upstreams SET caller_context=$2,version=version+$3,updated_at=now() WHERE tenant_id=`+tenantSQL+` AND slug=$1`, slug, raw, bump); err != nil {
+				return nil, "", err
+			}
+			result, err = t.GetUpstream(ctx, slug)
+			if err != nil {
+				return nil, "", err
+			}
+		}
 	}
 	if kind != "rest" {
 		return result, outcome, nil

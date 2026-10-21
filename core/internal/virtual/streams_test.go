@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -81,6 +82,12 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 		json.Unmarshal(msg.Params, &params)
 		var meta map[string]any
 		json.Unmarshal(params.Meta, &meta)
+		if !strings.Contains(string(params.Arguments), "cancel") {
+			cc, ok := meta["bank/context"].(map[string]any)
+			if !ok || cc["token"] != "context-token" {
+				t.Error("caller context lost in durable stream")
+			}
+		}
 		progress, _ := mcp.NewRequest(mcp.ID{}, mcp.MethodProgress, map[string]any{"progressToken": meta["progressToken"], "progress": 1})
 		ping, _ := mcp.NewRequest(mcp.NewStringID("physical-ping"), mcp.MethodPing, nil)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -113,6 +120,7 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 	snap := rig.handler.Snap.Snapshot()
 	up := snap.Upstreams["u-gh"]
 	up.URL = physical.URL
+	up.CallerContext = &callercontext.Config{Enabled: true, MetaKey: "bank/context", Fields: []callercontext.Field{{Name: "token"}}}
 	snap.Upstreams["u-gh"] = up
 	rig.handler.Delivery = broker
 	rig.handler.Sessions.Store = PGSessionStore{Pool: pool}
@@ -137,7 +145,7 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 		}
 		return resp
 	}
-	request, _ := mcp.NewRequest(mcp.NewIntID(9), mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Meta: json.RawMessage(`{"progressToken":"client-progress"}`)})
+	request, _ := mcp.NewRequest(mcp.NewIntID(9), mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Meta: json.RawMessage(`{"progressToken":"client-progress","bank/context":{"token":"context-token"}}`)})
 	response := post(rig.gw.URL, request)
 	scanner := bufio.NewScanner(response.Body)
 	lastID := ""

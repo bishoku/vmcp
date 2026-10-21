@@ -18,6 +18,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
@@ -495,6 +496,17 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		return
 	}
 
+	selectedMeta, dynamicHeaders, contextErr := up.CallerContext.Prepare(p.Meta, up.Kind)
+	if contextErr != nil {
+		if !finish("error", contextErr.Error()) {
+			http.Error(w, "audit outcome unavailable", 503)
+			return
+		}
+		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, contextErr.Error()))
+		return
+	}
+	ctx = upstream.WithCallerMeta(ctx, selectedMeta)
+	ctx = callercontext.WithHeaders(ctx, dynamicHeaders)
 	ev.Upstream = up.Slug
 	if err := h.Approval.Check(ctx, PolicyDecision{Actor: sess.owner.CredentialID, Server: vs.Slug, Method: msg.Method, Object: p.Name, Revision: snap.Revision}, p.Arguments); err != nil {
 		if !finish("denied", "approval policy") {
