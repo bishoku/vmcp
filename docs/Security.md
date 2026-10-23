@@ -71,3 +71,9 @@ and storage requirements.
 See [release signature verification](Release-Installation.md#verify-image-signatures)
 for the operator verification command. Helm does not enforce registry signatures
 without an external admission policy.
+
+A newly uploaded signature can briefly be absent from registry referrer reads.
+Publishing retries only Cosign exit code 10 with `no signatures found`, at most
+ten attempts ten seconds apart. Wrong signer identity, certificate failures and
+other verification errors fail immediately; the bounded retry never permits an
+unsigned image to pass.
