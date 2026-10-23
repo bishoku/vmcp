@@ -42,7 +42,7 @@ export default function RESTUpstreamEditor({value,onChange,upstream,onInvalidCha
   }
   const tool=restToolPreview(draft)
   for(const [label,schema] of [['Combined request',tool.inputSchema],['MCP output',tool.outputSchema]] as const){const issue=schemaLimitError(schema);if(issue)problems.push(`${label}: ${issue}`)}
-  const selection=responseSelectionError(draft.responseSchema,draft.responseFields)
+  const selection=responseSelectionError(draft.responseSchema,draft.responseFields,draft.responseFieldPaths)
   if(selection)problems.push(selection)
   setChecking(true)
   try {

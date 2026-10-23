@@ -1,0 +1,243 @@
+[
+  {
+    "name": "nested-nullable-items",
+    "schema": {
+      "type": "object",
+      "description": "Order response",
+      "minProperties": 2,
+      "properties": {
+        "order": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "items": {
+              "type": "array",
+              "uniqueItems": true,
+              "minItems": 1,
+              "items": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "sku": {
+                    "type": "string"
+                  },
+                  "price": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "sku",
+                  "price"
+                ]
+              }
+            },
+            "secret": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "items",
+            "secret"
+          ]
+        },
+        "private": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "order",
+        "private"
+      ]
+    },
+    "paths": [
+      [
+        "order",
+        "id"
+      ],
+      [
+        "order",
+        "items",
+        "sku"
+      ]
+    ],
+    "expectedSchema": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "sku": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sku"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "id",
+            "items"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "order"
+      ],
+      "additionalProperties": false,
+      "description": "Order response"
+    },
+    "body": {
+      "order": {
+        "id": 1,
+        "items": [
+          {
+            "sku": "A",
+            "price": 9
+          },
+          null
+        ],
+        "secret": "x"
+      },
+      "private": "x"
+    },
+    "expected": {
+      "order": {
+        "id": 1,
+        "items": [
+          {
+            "sku": "A"
+          },
+          null
+        ]
+      }
+    }
+  },
+  {
+    "name": "root-matrix",
+    "schema": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "hidden": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "paths": [
+      [
+        "id"
+      ]
+    ],
+    "expectedSchema": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      }
+    },
+    "body": [
+      [
+        {
+          "id": 1,
+          "hidden": "x"
+        }
+      ],
+      []
+    ],
+    "expected": [
+      [
+        {
+          "id": 1
+        }
+      ],
+      []
+    ]
+  },
+  {
+    "name": "whole-complex-field",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "record": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hidden": {}
+      }
+    },
+    "paths": [
+      [
+        "record"
+      ]
+    ],
+    "expectedSchema": {
+      "type": "object",
+      "properties": {
+        "record": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "body": {
+      "record": null,
+      "hidden": "x"
+    },
+    "expected": {
+      "record": null
+    }
+  }
+]

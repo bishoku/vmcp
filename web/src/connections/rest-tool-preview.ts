@@ -1,3 +1,4 @@
+import { responseProjection } from './response-projection'
 import type { RESTOperation } from '../api'
 
 export const schemaObject = (value: unknown): Record<string, unknown> =>
@@ -12,16 +13,10 @@ export function restToolPreview(operation: RESTOperation) {
     required.push('body')
   }
   let result: unknown = operation.responseSchema ?? {}
-  if (operation.responseFields?.length) {
-    const schema = schemaObject(result)
-    const fields = operation.responseFields
-    result = {
-      type: 'object',
-      properties: Object.fromEntries(fields.map(field => [field, schemaObject(schema.properties)[field]])),
-      required: (Array.isArray(schema.required) ? schema.required : []).filter(field => fields.includes(field as string)),
-      additionalProperties: false,
-    }
+  if (operation.responseFields?.length || operation.responseFieldPaths?.length) {
+    result = responseProjection(result, operation.responseFields, operation.responseFieldPaths).schema
   }
+
   return {
     name: operation.name,
     description: operation.description,
@@ -42,11 +37,6 @@ export function pathParameters(path: string, parameters: RESTOperation['paramete
   ]
 }
 
-export function responseSelectionError(schema: unknown, fields: string[] = []): string {
-  if (!fields.length) return ''
-  const root = schemaObject(schema), properties = schemaObject(root.properties)
-  if (root.type !== 'object') return 'Selected response fields require an object response schema. Restore the schema or choose the full response.'
-  if (fields.some(name => !Object.hasOwn(properties, name))) return 'Some selected fields are no longer declared in the response schema. Remove them from the selection or restore the fields.'
-  if (new Set(fields).size !== fields.length) return 'Response fields must be unique.'
-  return ''
+export function responseSelectionError(schema: unknown, fields: string[] = [], paths: string[][] = []): string {
+ return responseProjection(schema, fields, paths).error
 }

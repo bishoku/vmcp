@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/bishoku/vmcp/core/internal/callercontext"
@@ -79,6 +81,14 @@ func TestRESTSnapshotReuseInvalidation(t *testing.T) {
 	same = load(beforeHeaders)
 	if len(same.Upstreams[id].RequestHeaderMappings) != 1 || same.Revision <= beforeHeaders.Revision || same.Upstreams[id].Fingerprint() == beforeHeaders.Upstreams[id].Fingerprint() {
 		t.Fatal("header mappings not published in snapshot")
+	}
+	beforeProjection := same
+	cfg.Operations[0].ResponseSchema = json.RawMessage(`{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"id":{"type":"integer"},"private":{"type":"string"}}}}}}`)
+	cfg.Operations[0].ResponseFieldPaths = [][]string{{"items", "id"}}
+	save()
+	same = load(beforeProjection)
+	if same.Upstreams[id].REST == beforeProjection.Upstreams[id].REST || !reflect.DeepEqual(same.Upstreams[id].REST.Config.Operations[0].ResponseFieldPaths, cfg.Operations[0].ResponseFieldPaths) {
+		t.Fatal("nested response projection missing or stale in runtime snapshot")
 	}
 	for _, change := range []func(){func() { in.URL = "https://other.example.com" }, func() { in.Headers = map[string]string{"X-Key": "changed"} }, func() { cfg.Operations[0].Path = "/changed" }, func() { cfg.Auth = restapi.Auth{Type: "bearer", Token: "new-secret"} }} {
 		before := same

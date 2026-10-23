@@ -3581,7 +3581,19 @@ components:
           description: Optional inline JSON Schema. Adds required body argument; forbidden for GET.
         responseSchema:
           description: Optional inline JSON Schema validated before response field projection. No schema references supported.
+        responseFieldPaths:
+          type: array
+          maxItems: 256
+          description: Literal property-name paths for nested response projection. Arrays are traversed implicitly for every item, preserving order and length. Mutually exclusive with nonempty responseFields. Empty or omitted paths disable nested projection. Requires declared object/array schemas; complex branches can be selected whole.
+          items:
+            type: array
+            minItems: 1
+            maxItems: 32
+            items:
+              type: string
+              maxLength: 1024
         responseFields:
+          description: Legacy top-level literal property names. Mutually exclusive with nonempty responseFieldPaths.
           type: array
           items: &a1
             type: string

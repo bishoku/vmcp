@@ -41,19 +41,20 @@ type Parameter struct {
 	Schema   json.RawMessage `json:"schema"`
 }
 type Operation struct {
-	Name            string            `json:"name"`
-	Description     string            `json:"description"`
-	Enabled         bool              `json:"enabled"`
-	Method          string            `json:"method"`
-	Path            string            `json:"path"`
-	Parameters      []Parameter       `json:"parameters"`
-	BodySchema      json.RawMessage   `json:"bodySchema,omitempty"`
-	ResponseSchema  json.RawMessage   `json:"responseSchema,omitempty"`
-	ResponseFields  []string          `json:"responseFields,omitempty"`
-	SuccessStatuses []int             `json:"successStatuses,omitempty"`
-	Headers         map[string]string `json:"headers,omitempty"`
-	HeaderNames     []string          `json:"headerNames,omitempty"`
-	ReadOnly        bool              `json:"readOnly"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description"`
+	Enabled            bool              `json:"enabled"`
+	Method             string            `json:"method"`
+	Path               string            `json:"path"`
+	Parameters         []Parameter       `json:"parameters"`
+	BodySchema         json.RawMessage   `json:"bodySchema,omitempty"`
+	ResponseSchema     json.RawMessage   `json:"responseSchema,omitempty"`
+	ResponseFieldPaths [][]string        `json:"responseFieldPaths,omitempty"`
+	ResponseFields     []string          `json:"responseFields,omitempty"`
+	SuccessStatuses    []int             `json:"successStatuses,omitempty"`
+	Headers            map[string]string `json:"headers,omitempty"`
+	HeaderNames        []string          `json:"headerNames,omitempty"`
+	ReadOnly           bool              `json:"readOnly"`
 }
 type Config struct {
 	Auth              Auth        `json:"auth"`
@@ -72,6 +73,7 @@ type PreparedOperation struct {
 	Definition Operation
 	Input      *jsonschema.Schema
 	Output     *jsonschema.Schema
+	Projection *projectionNode
 }
 
 func (a Auth) OAuth() *oauthtoken.Config {
@@ -339,29 +341,12 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		if len(op.ResponseSchema) > 0 {
 			_ = decodeJSON(op.ResponseSchema, &outputShape)
 		}
-		if len(op.ResponseFields) > 0 {
-			schema, ok := outputShape.(map[string]any)
-			if !ok || schema["type"] != "object" {
-				return nil, errors.New("response field selection requires an object response schema")
-			}
-			props, _ := schema["properties"].(map[string]any)
-			selected := map[string]any{}
-			req := []string{}
-			for _, field := range op.ResponseFields {
-				if props[field] == nil || selected[field] != nil {
-					return nil, errors.New("response fields must be unique declared top-level properties")
-				}
-				selected[field] = props[field]
-			}
-			if requiredFields, ok := schema["required"].([]any); ok {
-				for _, field := range requiredFields {
-					if name, ok := field.(string); ok && selected[name] != nil {
-						req = append(req, name)
-					}
-				}
-			}
-			outputShape = map[string]any{"type": "object", "properties": selected, "required": req, "additionalProperties": false}
+		projection, projected, err := prepareProjection(outputShape, op.ResponseFields, op.ResponseFieldPaths)
+		if err != nil {
+			return nil, fmt.Errorf("%s response projection: %w", op.Name, err)
 		}
+		outputShape = projected
+
 		for _, status := range op.SuccessStatuses {
 			if status < 200 || status > 299 {
 				return nil, errors.New("success statuses must be 2xx")
@@ -376,7 +361,7 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		}
 		annotations, _ := json.Marshal(map[string]bool{"readOnlyHint": op.ReadOnly, "destructiveHint": !op.ReadOnly, "idempotentHint": false, "openWorldHint": true})
 		result.Tools = append(result.Tools, mcp.Tool{Name: op.Name, Description: op.Description, InputSchema: inputRaw, OutputSchema: outputRaw, Annotations: annotations})
-		result.Operations[op.Name] = PreparedOperation{Definition: op, Input: input, Output: output}
+		result.Operations[op.Name] = PreparedOperation{Definition: op, Input: input, Output: output, Projection: projection}
 	}
 	return result, nil
 }

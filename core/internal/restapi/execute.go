@@ -235,19 +235,11 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	if err := c.Operations[name].Output.Validate(value); err != nil {
 		return failure("REST response does not match the configured schema" + responseSchemaHint(err) + "; operation may have completed"), nil
 	}
-	if len(op.ResponseFields) > 0 {
-		obj, ok := value.(map[string]any)
-		if !ok {
-			return failure("REST response must be an object"), nil
-		}
-		selected := map[string]any{}
-		for _, field := range op.ResponseFields {
-			if v, ok := obj[field]; ok {
-				selected[field] = v
-			}
-		}
-		value = selected
+	value, err = c.Operations[name].Projection.apply(value, 0)
+	if err != nil {
+		return failure("REST response cannot be projected; operation may have completed"), nil
 	}
+
 	structured := map[string]any{"result": value}
 	text, _ := json.Marshal(structured)
 	return json.Marshal(map[string]any{"structuredContent": structured, "content": []any{map[string]string{"type": "text", "text": string(text)}}})

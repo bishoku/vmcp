@@ -199,3 +199,76 @@ func TestRESTOrderMappingThroughVirtualMCP(t *testing.T) {
 		})
 	}
 }
+
+func TestNestedResponseProjectionThroughVirtualMCP(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	raw, err := os.ReadFile("../../../web/src/connections/testdata/response-projection.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []struct {
+		Name                                   string
+		Schema, Body, Expected, ExpectedSchema json.RawMessage
+		Paths                                  [][]string
+	}
+	if err := json.Unmarshal(raw, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.Name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(fixture.Body)
+			}))
+			defer srv.Close()
+			compiled, err := restapi.Compile(srv.URL, restapi.Config{Auth: restapi.Auth{Type: "none"}, AllowInsecureHTTP: true, TimeoutSeconds: 3, Operations: []restapi.Operation{{Name: "lookup", Enabled: true, Method: "GET", Path: "/", ResponseSchema: fixture.Schema, ResponseFieldPaths: fixture.Paths}}}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := newRig(t)
+			snap := r.handler.Snap.(staticSnap).s
+			snap.Upstreams["rest"] = config.Upstream{ID: "rest", Slug: "rest", URL: srv.URL, REST: compiled}
+			tool := compiled.Tools[0]
+			tool.Name = "rest__lookup"
+			snap.VirtualServers["support"] = config.VirtualServer{Slug: "support", Tools: []config.VirtualTool{{UpstreamID: "rest", UpstreamName: "lookup", Tool: tool}}}
+			sid := r.initialize(t)
+			_, listed := r.rpc(t, "support", sid, mcp.MethodToolsList, nil)
+			if listed == nil || listed.Error != nil {
+				t.Fatalf("tools/list failed: %+v", listed)
+			}
+			var list mcp.ListToolsResult
+			if err := json.Unmarshal(listed.Result, &list); err != nil || len(list.Tools) != 1 {
+				t.Fatalf("tools/list: %s %v", listed.Result, err)
+			}
+			var shape struct{ Properties map[string]json.RawMessage }
+			if err := json.Unmarshal(list.Tools[0].OutputSchema, &shape); err != nil {
+				t.Fatal(err)
+			}
+			var gotSchema, wantSchema any
+			_ = json.Unmarshal(shape.Properties["result"], &gotSchema)
+			_ = json.Unmarshal(fixture.ExpectedSchema, &wantSchema)
+			if !reflect.DeepEqual(gotSchema, wantSchema) {
+				t.Fatalf("advertised output schema differs: %s", list.Tools[0].OutputSchema)
+			}
+			_, called := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: json.RawMessage(`{}`)})
+			if called == nil || called.Error != nil {
+				t.Fatalf("tools/call failed: %+v", called)
+			}
+			var result struct {
+				IsError           bool
+				StructuredContent struct{ Result any }
+				Content           []struct{ Text string }
+			}
+			if err := json.Unmarshal(called.Result, &result); err != nil || result.IsError || len(result.Content) != 1 {
+				t.Fatalf("call result: %s %v", called.Result, err)
+			}
+			var text struct{ Result any }
+			var expected any
+			_ = json.Unmarshal([]byte(result.Content[0].Text), &text)
+			_ = json.Unmarshal(fixture.Expected, &expected)
+			if !reflect.DeepEqual(result.StructuredContent.Result, expected) || !reflect.DeepEqual(text.Result, expected) {
+				t.Fatalf("virtual output differs: %s", called.Result)
+			}
+		})
+	}
+}

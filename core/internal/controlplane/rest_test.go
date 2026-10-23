@@ -77,3 +77,41 @@ func TestRESTLifecycleSecretsAndExplicitExecution(t *testing.T) {
 		t.Fatalf("disabled execution: %d", code)
 	}
 }
+
+func TestNestedResponseProjectionConfigurationRoundtrip(t *testing.T) {
+	a := setup(t)
+	paths := [][]string{{"order", "items", "productId"}, {"order", "items", "quantity"}}
+	operation := map[string]any{"name": "lookup", "method": "GET", "path": "/orders", "enabled": true, "responseSchema": json.RawMessage(`{"type":"object","properties":{"order":{"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"productId":{"type":"string"},"quantity":{"type":"integer"},"cost":{"type":"number"}}}}}}}}`), "responseFieldPaths": paths}
+	payload := map[string]any{"slug": "nested-rest", "name": "Nested REST", "kind": "rest", "url": "https://example.com", "rest": map[string]any{"auth": map[string]any{"type": "none"}, "timeoutSeconds": 30, "operations": []any{operation}}}
+	a.expect(201, "POST", "/api/v1/upstreams", payload)
+	check := func() {
+		t.Helper()
+		_, out := a.expect(200, "GET", "/api/v1/upstreams/nested-rest", nil)
+		raw, _ := json.Marshal(out)
+		var decoded struct {
+			REST struct {
+				Operations []struct{ ResponseFieldPaths [][]string }
+			}
+		}
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := json.Marshal(decoded.REST.Operations[0].ResponseFieldPaths)
+		want, _ := json.Marshal(paths)
+		if string(got) != string(want) {
+			t.Fatalf("projection changed: %s != %s", got, want)
+		}
+	}
+	check()
+	paths = [][]string{{"order", "items", "productId"}}
+	operation["responseFieldPaths"] = paths
+	a.expect(200, "PATCH", "/api/v1/upstreams/nested-rest", map[string]any{"rest": payload["rest"]})
+	check()
+	_, doc := a.expect(200, "GET", "/api/v1/export", nil)
+	a.expect(200, "POST", "/api/v1/apply?dryRun=true", doc)
+	a.expect(200, "POST", "/api/v1/apply", doc)
+	check()
+	operation["responseFieldPaths"] = [][]string{{"order", "missing"}}
+	a.expect(422, "PATCH", "/api/v1/upstreams/nested-rest", map[string]any{"rest": payload["rest"]})
+	check()
+}

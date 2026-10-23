@@ -29,7 +29,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   const [statuses, setStatuses] = useState((operation.successStatuses ?? []).join(', '))
   const [parametersJSON, setParametersJSON] = useState(json(operation.parameters))
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const invalid = Object.values(errors).some(Boolean) || !!responseSelectionError(operation.responseSchema, operation.responseFields)
+  const invalid = Object.values(errors).some(Boolean) || !!responseSelectionError(operation.responseSchema, operation.responseFields, operation.responseFieldPaths)
   // Valid edits belong to the parent's draft, which is cleaned on Save. Only
   // unparsed local text needs a separate navigation guard.
   useUnsaved(invalid ? { body, response, headers, statuses, parametersJSON } : null)
@@ -108,7 +108,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
       </section>
       <div hidden={view!=='schemas'} className="layout-stack">
       {operation.method !== 'GET' && <SchemaEditor label="Request body" value={operation.bodySchema} disabled={!!errors.bodySchema} onChange={schema => { setBody(json(schema)); set({ bodySchema: schema }) }}/>}
-      <SchemaEditor label="Response" responseFields={operation.responseFields??[]} onFieldsChange={(responseFields,responseSchema)=>{setResponse(json(responseSchema));set({responseFields,responseSchema})}} value={operation.responseSchema} disabled={!!errors.responseSchema} onChange={schema => { setResponse(json(schema)); set({ responseSchema: schema }) }}/>
+      <SchemaEditor label="Response" responseFields={operation.responseFields??[]} responseFieldPaths={operation.responseFieldPaths} onFieldsChange={(responseFields,responseSchema,responseFieldPaths)=>{setResponse(json(responseSchema));set({responseFields,responseSchema,responseFieldPaths})}} value={operation.responseSchema} disabled={!!errors.responseSchema} onChange={schema => { setResponse(json(schema)); set({ responseSchema: schema }) }}/>
       </div>
       <details hidden={view!=='advanced'} open className="border-t border-line pt-4">
         <summary className="cursor-pointer text-sm font-semibold">Advanced · body, response & headers</summary>

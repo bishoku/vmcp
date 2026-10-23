@@ -70,7 +70,7 @@ export interface RESTAuth {
 export interface RESTOperation {
  name: string; description: string; enabled: boolean; method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE'; path: string
  parameters: {name:string; in:'path'|'query'; required:boolean; schema:Record<string,unknown>}[]
- bodySchema?: unknown; responseSchema?: unknown; responseFields?: string[]; successStatuses?: number[]
+ bodySchema?: unknown; responseSchema?: unknown; responseFields?: string[]; responseFieldPaths?: string[][]; successStatuses?: number[]
  headers?: Record<string,string>; headerNames?:string[]; readOnly:boolean
 }
 export interface RESTConfig {

@@ -1,3 +1,4 @@
+import { effectivePaths, type FieldPath } from './response-projection'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { btn, input, primary } from '../styles'
 import { Modal, ErrorBox } from '../ui'
@@ -48,18 +49,18 @@ function AddField({ names, onAdd }: { names: string[]; onAdd: (name: string) => 
   const [name, setName] = useState('')
   return <div className="flex flex-wrap gap-2"><input className={input} aria-label="New field name" placeholder="New field name" value={name} onChange={e => setName(e.target.value)}/><button type="button" className={btn} disabled={!name.trim() || names.includes(name.trim())} onClick={() => { onAdd(name.trim()); setName('') }}>Add field</button></div>
 }
-export default function SchemaEditor({label,value,onChange,disabled,responseFields,onFieldsChange}:{label:string;value:unknown;onChange:(s:Schema|undefined)=>void;disabled?:boolean;responseFields?:string[];onFieldsChange?:(fields:string[],schema:Schema|undefined)=>void}) {
+export default function SchemaEditor({label,value,onChange,disabled,responseFields,responseFieldPaths,onFieldsChange}:{label:string;value:unknown;onChange:(s:Schema|undefined)=>void;disabled?:boolean;responseFields?:string[];responseFieldPaths?:FieldPath[];onFieldsChange?:(fields:string[],schema:Schema|undefined,paths:FieldPath[])=>void}) {
  const [open,setOpen]=useState(false)
  const root=objectSchema(value)
  return <section aria-label={`${label} visual editor`} className="surface-inset p-4 layout-stack">
   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">{label}</h3><p className="mt-1 text-xs text-ink-muted">{value===undefined?'No schema configured':`${Array.isArray(root.type)?root.type.join(' / '):root.type||'JSON Schema'} · ${Object.keys(objectSchema(root.properties)).length} top-level fields · ${(schemaBytes(value)/1024).toFixed(1)} / 64 KiB`}</p></div><button type="button" className={btn} disabled={disabled} onClick={()=>setOpen(true)}>Edit {label.toLowerCase()} schema</button></div>
   {schemaLimitError(value)&&<p role="alert" className="text-xs text-red-700">{schemaLimitError(value)}</p>}
-  {open&&<SchemaWorkspace label={label} initial={value} initialFields={responseFields} onClose={()=>setOpen(false)} onApply={(schema,fields)=>{if(fields&&onFieldsChange)onFieldsChange(fields,schema);else onChange(schema);setOpen(false)}}/>}
+  {open&&<SchemaWorkspace label={label} initial={value} initialFields={responseFields} initialPaths={responseFieldPaths} onClose={()=>setOpen(false)} onApply={(schema,fields)=>{if(fields&&onFieldsChange){const legacy=objectSchema(schema).type==='object'&&fields.every(path=>path.length===1);onFieldsChange(legacy?fields.map(path=>path[0]):[],schema,legacy?[]:fields)}else onChange(schema);setOpen(false)}}/>}
  </section>
 }
 
-function SchemaWorkspace({label,initial,initialFields,onClose,onApply}:{label:string;initial:unknown;initialFields?:string[];onClose:()=>void;onApply:(schema:Schema|undefined,fields?:string[])=>void}) {
- const [draft,setDraft]=useState(initial as Schema|undefined),[fields,setFields]=useState(initialFields??[])
+function SchemaWorkspace({label,initial,initialFields,initialPaths,onClose,onApply}:{label:string;initial:unknown;initialFields?:string[];initialPaths?:FieldPath[];onClose:()=>void;onApply:(schema:Schema|undefined,fields?:FieldPath[])=>void}) {
+ const [draft,setDraft]=useState(initial as Schema|undefined),[fields,setFields]=useState(effectivePaths(initialFields,initialPaths))
  const [raw,setRaw]=useState(initial===undefined?'':JSON.stringify(initial,null,2)),[rawError,setRawError]=useState('')
  const [example,setExample]=useState(''),[mode,setMode]=useState<'merge'|'replace'>('merge'),[tab,setTab]=useState<'example'|'fields'|'json'>('example')
  const [query,setQuery]=useState(''),[expanded,setExpanded]=useState(false),[errors,setErrors]=useState<string[]>([]),[status,setStatus]=useState(''),[busy,setBusy]=useState(false)
@@ -68,7 +69,7 @@ function SchemaWorkspace({label,initial,initialFields,onClose,onApply}:{label:st
  useEffect(()=>{if(errors.length)resultRef.current?.scrollIntoView?.({block:'nearest'})},[errors])
  const confirm=useConfirm()
  const update=(schema:Schema|undefined)=>{setDraft(schema);setRaw(schema===undefined?'':JSON.stringify(schema,null,2));setRawError('');setErrors([]);setStatus('')}
- const close=async()=>{if(busy)return;const dirty=example||rawError||JSON.stringify(draft)!==JSON.stringify(initial)||JSON.stringify(fields)!==JSON.stringify(initialFields??[]);if(!dirty||await confirm(discardConfirmation))onClose()}
+ const close=async()=>{if(busy)return;const dirty=example||rawError||JSON.stringify(draft)!==JSON.stringify(initial)||JSON.stringify(fields)!==JSON.stringify(effectivePaths(initialFields,initialPaths));if(!dirty||await confirm(discardConfirmation))onClose()}
  const generate=async()=>{
   setErrors([]);setStatus('')
   try {
@@ -94,7 +95,7 @@ function SchemaWorkspace({label,initial,initialFields,onClose,onApply}:{label:st
  const apply=async()=>{
   if(rawError)return
   setBusy(true);setErrors([])
-  try {const sample=example.trim()?{value:JSON.parse(example)}:undefined;const issues=await checkSchema(draft,sample);const selection=initialFields!==undefined?responseSelectionError(draft,fields):'';if(selection)issues.push(selection);if(issues.length){setErrors(issues);return}onApply(draft,initialFields===undefined?undefined:fields)}catch(error){setErrors([error instanceof SyntaxError?'Enter valid JSON in the example or clear it before applying.':(error as Error).message])}finally{setBusy(false)}
+  try {const sample=example.trim()?{value:JSON.parse(example)}:undefined;const issues=await checkSchema(draft,sample);const selection=initialFields!==undefined?responseSelectionError(draft,[],fields):'';if(selection)issues.push(selection);if(issues.length){setErrors(issues);return}onApply(draft,initialFields===undefined?undefined:fields)}catch(error){setErrors([error instanceof SyntaxError?'Enter valid JSON in the example or clear it before applying.':(error as Error).message])}finally{setBusy(false)}
  }
  return <Modal title={`${label} schema`} size="audit" busy={busy} onClose={()=>void close()} description="Edit a schema in this workspace, apply it to the operation draft, then save the upstream." footer={<div className="flex flex-wrap justify-between gap-3"><div className="min-w-0 space-y-2"><button className={btn} disabled={busy||!!rawError} onClick={()=>void validate()}>Check schema & example</button>{status&&<p role="status" className="max-w-xl text-xs text-ink-muted">{status}</p>}</div><div className="flex flex-wrap gap-3"><button className={btn} onClick={()=>void close()}>Cancel schema changes</button><button className={primary} disabled={busy||!!rawError||!!schemaLimitError(draft)} onClick={()=>void apply()}>{busy?'Checking…':'Apply schema'}</button></div></div>}>
   <div className="layout-stack">

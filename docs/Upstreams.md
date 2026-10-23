@@ -122,7 +122,7 @@ MCP POST does not imply a successful tool call; inspect its JSON-RPC result/erro
 - An optional request-body schema adds a required tool argument named `body` and sends
   it as JSON. GET bodies are unsupported. Other input fields are rejected.
 - Responses must be JSON (204 maps to `null`), at most 1 MiB, and match the configured
-  response schema. Optional response-field selection keeps declared top-level object fields.
+  response schema. Optional response-field selection keeps declared object fields, including nested fields and array item properties.
   MCP output is an object `{ "result": ... }`, returned as structured content and JSON text.
 - Schemas are inline JSON Schema 2020-12; schema references, multipart uploads, binary
   responses, streaming and pagination orchestration are outside this version.
@@ -363,20 +363,46 @@ verify whether the service created the order first.
 
 ### Select the fields returned to agents
 
-Use **Fields returned to the agent** below the response schema editor. **Full
-response** keeps the original response, including undeclared fields. **Selected
-fields only** starts with the declared top-level properties; uncheck those the
-agent should not receive. Keep at least one selection. Selecting an object or
-array returns its entire contents; nested property selection is not supported.
+Use **Fields returned to the agent** in the response schema modal's **Fields**
+view. **Full response** keeps the original response, including undeclared fields.
+**Selected fields only** starts with declared root properties. Expand a branch to
+select individual children, including properties inside arrays. Search by field
+name or nested path. Selecting a parent includes its entire contents; unchecking
+a child narrows that branch to its remaining declared fields. Keep at least one
+selection, or explicitly choose **Full response**.
 
-The MCP preview immediately reflects the selected properties and their required
-flags. Save applies the same projection to both structured and text tool output;
-unselected and undeclared properties are omitted. The original response schema
-remains intact and validates the upstream response before projection. Optional
-selected properties absent from the response remain absent; null values are
-preserved. If a selected property is removed from the schema, resolve the
-selection error before saving. Choosing all declared fields still filters out
-undeclared fields, unlike **Full response**.
+For example, selecting `order.id`, `order.items[].productId` and
+`order.items[].quantity` removes other fields while preserving the `order` object,
+array order and number of items. Root arrays and nested arrays work the same way.
+Optional missing fields remain absent; null values and empty arrays are preserved.
+Complex schemas using composition such as `oneOf` can be selected as a whole
+branch; their children cannot be selected individually.
+
+The MCP preview and advertised output schema reflect the selection, including
+required flags. The same projection applies to structured and text tool output.
+The original schema validates the upstream response before projection. Narrowed
+branches omit unselected and undeclared fields. Resolve selection errors when
+changing the schema before saving.
+
+The API stores nested selections as literal property-name segments, with arrays
+traversed implicitly:
+
+```json
+"responseFieldPaths": [
+  ["order", "id"],
+  ["order", "items", "productId"],
+  ["order", "items", "quantity"]
+]
+```
+
+Paths support up to 256 selections, 32 property names per path and 1024 UTF-8
+bytes per property name. Duplicate or overlapping parent/child paths are rejected.
+Dots, slashes and asterisks in names are literal. Existing `responseFields` remains
+supported for literal top-level properties; do not set both options. Empty or
+omitted selections return the full response. No database migration is needed.
+Update all control-plane and data-plane nodes before saving nested selections;
+older binaries do not recognize `responseFieldPaths` and may return the full
+response. Refresh clients' `tools/list` after saving.
 
 ### Per-call caller context
 
