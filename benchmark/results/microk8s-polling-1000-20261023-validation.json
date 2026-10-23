@@ -1,0 +1,22 @@
+{
+  "race_exit_code": 0,
+  "tests": [
+    "--- PASS: TestDeliveryMigrationUpgradeAndRollback (2.95s)",
+    "--- PASS: TestDeliveryCleanupIndexesUpgradeAndRollback (1.52s)",
+    "--- PASS: TestResourceHintsAreFencedSessionScopedAndRevocable (1.29s)",
+    "--- PASS: TestDeliveryBackpressureReservesTerminalAndExpiresReplay (1.70s)",
+    "--- PASS: TestDurableRoutingFencingReplayAndIsolation (1.46s)",
+    "--- PASS: TestListChangePublicationDeduplicatesAndWakes (0.99s)",
+    "--- PASS: TestExpiredWorkerCannotResumeOrDuplicateExecution (0.84s)",
+    "--- PASS: TestLocalWakeIsBoundedSessionScopedAndReplicaLocal (0.00s)",
+    "--- PASS: TestNegotiatedClientRequestsAndDeclinesAcrossNodes (2.09s)",
+    "--- PASS: TestDuplexReplayAndRepliesAcrossNodes (3.17s)",
+    "--- PASS: TestCuratedCatalogProtocolAndCrossNodeSubscriptions (1.74s)",
+    "--- PASS: TestSubscriptionNotificationsSurviveWorkerFailover (1.85s)",
+    "--- PASS: TestSubscriptionNotificationsRecoverAfterUpstreamDisconnect (1.94s)",
+    "--- PASS: TestSubscriptionCancellationDuringInitializeRemainsRetryable (1.93s)"
+  ],
+  "vet_exit_code": 0,
+  "vet_output": "",
+  "database": "dedicated temporary Docker PostgreSQL; removed after tests"
+}

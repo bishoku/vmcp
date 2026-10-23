@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/mockupstream"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
@@ -43,28 +44,30 @@ type Parameter struct {
 	DefaultValue json.RawMessage `json:"defaultValue,omitempty"`
 }
 type Operation struct {
-	Name               string            `json:"name"`
-	Description        string            `json:"description"`
-	Enabled            bool              `json:"enabled"`
-	Method             string            `json:"method"`
-	Path               string            `json:"path"`
-	Parameters         []Parameter       `json:"parameters"`
-	BodySchema         json.RawMessage   `json:"bodySchema,omitempty"`
-	ResponseSchema     json.RawMessage   `json:"responseSchema,omitempty"`
-	ResponseFieldPaths [][]string        `json:"responseFieldPaths,omitempty"`
-	ResponseFields     []string          `json:"responseFields,omitempty"`
-	SuccessStatuses    []int             `json:"successStatuses,omitempty"`
-	Headers            map[string]string `json:"headers,omitempty"`
-	HeaderNames        []string          `json:"headerNames,omitempty"`
-	ReadOnly           bool              `json:"readOnly"`
+	MockRules          []mockupstream.Rule `json:"mockRules,omitempty"`
+	Name               string              `json:"name"`
+	Description        string              `json:"description"`
+	Enabled            bool                `json:"enabled"`
+	Method             string              `json:"method"`
+	Path               string              `json:"path"`
+	Parameters         []Parameter         `json:"parameters"`
+	BodySchema         json.RawMessage     `json:"bodySchema,omitempty"`
+	ResponseSchema     json.RawMessage     `json:"responseSchema,omitempty"`
+	ResponseFieldPaths [][]string          `json:"responseFieldPaths,omitempty"`
+	ResponseFields     []string            `json:"responseFields,omitempty"`
+	SuccessStatuses    []int               `json:"successStatuses,omitempty"`
+	Headers            map[string]string   `json:"headers,omitempty"`
+	HeaderNames        []string            `json:"headerNames,omitempty"`
+	ReadOnly           bool                `json:"readOnly"`
 }
 type Config struct {
-	Auth              Auth        `json:"auth"`
-	ForwardIdentity   bool        `json:"forwardIdentity"`
-	RequireIdentity   bool        `json:"requireIdentity"`
-	AllowInsecureHTTP bool        `json:"allowInsecureHttp"`
-	TimeoutSeconds    int         `json:"timeoutSeconds"`
-	Operations        []Operation `json:"operations"`
+	Mock              *mockupstream.Config `json:"mock,omitempty"`
+	Auth              Auth                 `json:"auth"`
+	ForwardIdentity   bool                 `json:"forwardIdentity"`
+	RequireIdentity   bool                 `json:"requireIdentity"`
+	AllowInsecureHTTP bool                 `json:"allowInsecureHttp"`
+	TimeoutSeconds    int                  `json:"timeoutSeconds"`
+	Operations        []Operation          `json:"operations"`
 }
 type Compiled struct {
 	Config     Config                       `json:"config"`
@@ -225,6 +228,14 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 	}
 	if c.TimeoutSeconds < 1 || c.TimeoutSeconds > 120 || len(c.Operations) > 200 {
 		return nil, errors.New("timeout must be 1–120 seconds; at most 200 operations")
+	}
+	if c.Mock != nil {
+		if err := mockupstream.ValidateEndpoint(base); err != nil {
+			return nil, err
+		}
+	}
+	if err := mockupstream.Validate(c.Mock, c.MockOperations()); err != nil {
+		return nil, err
 	}
 	raw, _ := json.Marshal(c)
 	if len(raw) > 512<<10 {
@@ -431,4 +442,12 @@ func hasSchemaReference(value any) bool {
 		}
 	}
 	return false
+}
+
+func (c Config) MockOperations() []mockupstream.Operation {
+	out := make([]mockupstream.Operation, 0, len(c.Operations))
+	for _, op := range c.Operations {
+		out = append(out, mockupstream.Operation{Name: op.Name, Method: op.Method, Path: op.Path, Enabled: op.Enabled, Rules: op.MockRules})
+	}
+	return out
 }

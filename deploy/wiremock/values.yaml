@@ -1,0 +1,8 @@
+# Overlay for the existing vMCP Helm chart, after your normal production values.
+# The WireMock service is deployed separately using kubernetes.yaml.
+controlPlane:
+  env:
+    VMCP_WIREMOCK_URL: http://vmcp-wiremock:8080
+global:
+  # Merge with your existing allowlist rather than replacing required hosts.
+  egressAllowHosts: [vmcp-wiremock]

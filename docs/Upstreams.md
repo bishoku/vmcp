@@ -361,6 +361,153 @@ bounded, not a byte-for-byte substitute for the service's own request trace.
 Do not blindly retry a create operation after a response-validation failure:
 verify whether the service created the order first.
 
+### Optional mock upstreams with shared WireMock
+
+Mock upstreams reuse the REST-to-MCP operation definitions and execution path.
+One continuously running WireMock instance serves multiple independent mock
+upstreams; no per-user pods, ownership model, or user isolation layer is added.
+Mock mode is stored as `kind: rest` with `rest.mock: {}`. It cannot be switched on
+or off for an existing upstream; create a separate upstream instead.
+
+Set `VMCP_WIREMOCK_URL` on the control plane to an internal HTTP(S) origin, for
+example `http://wiremock:8080`. Do not include a path, credentials, query or
+fragment. The URL is an operator setting and replaces any URL supplied for a
+mock upstream. Configure the normal vMCP egress policy on **both planes** to allow
+the WireMock service. Enable the explicit insecure-HTTP development/internal
+exception for HTTP mock endpoints. HTTPS uses the normal trust policy.
+
+Without this setting, the feature is disabled and the application has no
+WireMock runtime dependency. With it enabled, an unavailable WireMock affects
+mock calls and their publication status; it does not block readiness, ordinary
+MCP/REST calls, or configuration writes. Configuration saves do not call WireMock
+inside the database transaction.
+
+In the web UI:
+
+1. Choose **Add upstream → Mock upstream (WireMock)**. The shared URL is read-only.
+2. Choose **Quick mock operation** to paste JSON request/response examples, method,
+   path and status. Review the generated operation before applying it. Request
+   examples generate the MCP body schema; response schema inference is optional.
+   Examples do not automatically constrain matching. Alternatively, use the
+   existing operation editor or import OpenAPI / Swagger.
+3. Open **Mock responses** in the operation modal. The **Visual editor** shows
+   response cards in matching order, with name, status, latency, conditions and
+   fallback indicators. Duplicate/remove responses or move them earlier/later.
+   Edit query/header/body conditions, status, headers, delay and JSON/text body.
+   **WireMock JSON** edits the same rules and preserves complex matchers.
+4. Apply the operation and save the upstream. The publication panel shows
+   **pending**, **active**, **unavailable**, or **disabled**. Wait for active before
+   testing. Admins can choose **Apply mock definitions now** with version checking.
+5. Bind the configured tools to a virtual server as usual. REST input `body` and
+   output `result` envelopes, headers/caller context, defaults, output projection,
+   authentication, audit capture, and timeouts keep their existing behavior.
+
+The visual condition builder supports equals, contains, regex, present and absent
+(header/query) matches. Conditions are ANDed. Body fields come from the request
+schema, including nested objects and array items; paths address the actual REST
+body, without the MCP `body` wrapper. For an array field, choose **Any array item
+equals**. The builder generates a JSONPath filter such as
+`$.order.items[?(@.productId == "SKU-42")]`. Plain input is treated as text;
+JSON numbers, booleans and null are typed values (quote numeric text to keep it
+as a string). Saved filters can be edited as **Is present** JSONPath conditions.
+Presence requires a non-null scalar or a nonempty selection. Conditions on two
+array fields are independent; use a combined JSONPath filter in JSON view if
+both must match the **same** array item.
+
+Simple conditions can be edited or removed individually. Advanced matchers are
+shown verbatim and preserved when changing other fields; edit them in JSON view.
+Query/header fields cannot silently overwrite existing conditions with the same
+name. Use JSON view for combined matchers on a single field. Request condition
+inputs must be applied or cancelled before switching responses or saving.
+
+A rule without conditions is a fallback. The editor warns when it precedes other
+responses and offers **Move fallback last**. **Make fallback and move last**
+explicitly clears all conditions after confirmation. Move actions assign
+consecutive priorities in displayed matching order; simply opening the editor
+never changes priorities. Equal priorities retain WireMock's tie-breaking behavior.
+
+Response presets cover success, empty list, not found, unauthorized and server
+error. JSON bodies can be formatted and statically previewed. Invalid JSON,
+duplicate/invalid response headers and invalid rule fields prevent Apply while
+retaining the draft. Enable **Dynamic response templates** to evaluate WireMock
+templates. The static preview does not execute templates or predict rule matching:
+save, wait for **active**, then use **Operation preview & test → Execute test
+request** against the saved upstream. A response schema applies to all responses,
+including error presets, so review inferred schemas before publishing.
+
+For example, add an optional string query parameter named `name` and use:
+
+```json
+[
+  {
+    "name": "Greeting", "priority": 1,
+    "request": {"queryParameters": {"name": {"matches": ".+"}}},
+    "response": {
+      "status": 200,
+      "jsonBody": {"message": "Hello {{request.query.name}}"},
+      "transformers": ["response-template"]
+    }
+  },
+  {
+    "name": "Fallback", "priority": 10,
+    "response": {"status": 200, "jsonBody": {"message": "No name supplied"}}
+  }
+]
+```
+
+Lower priority numbers match first. Use distinct priorities for overlapping
+rules. Request conditions support `queryParameters`, `headers`, and `bodyPatterns`
+(including nested JSONPath matching). Responses support `status`, `headers`,
+`jsonBody` or a string `body`, `fixedDelayMilliseconds`, and the `response-template`
+transformer. Use valid JSON replies for successful REST calls. Malformed or
+schema-incompatible mock replies produce the same tool errors as real REST
+responses, which can be useful for negative tests.
+
+Method, URL path, mapping IDs, metadata, and namespaces are generated by vMCP;
+users cannot replace them. The initial editor excludes proxying, body files,
+custom extensions, stateful scenarios, and global WireMock settings. Limits are
+20 rules per operation, 1000 per upstream, 128 UTF-8 bytes per rule name,
+priorities 1–1000, and delays 0–120000 ms; the existing 512 KiB REST configuration
+and runtime body limits also apply.
+
+The database is the source of truth. Control-plane replicas reconcile mappings
+every five seconds, using a shared lock and a consistent configuration snapshot.
+The owner is derived from the database's stable tenant UUID, and namespaces from
+that owner plus the upstream slug. Identical operation paths in different mock
+upstreams cannot collide. Updating/disabling/deleting a mock only changes its
+managed mappings. Unrelated WireMock mappings are preserved; no global reset is
+used. Missing managed mappings are restored after WireMock restarts. Publication
+is eventual, not an atomic multi-mapping transaction; network failures remain
+pending/unavailable and are retried. All replicas managing a database must use
+the same endpoint.
+
+Keep WireMock's admin API private and managed through vMCP. This integration uses
+its internal admin API without additional authentication. The optional deployment
+examples disable the request journal and system-property template access, and
+bound template cache and JVM memory. A shared process still shares CPU, memory,
+and failure scope across mocks; it is not a security boundary between hostile
+users or an emulator for native MCP transport/session behavior.
+
+The optional demo overlay is `benchmark/compose.mock.yaml`. For Kubernetes,
+`deploy/wiremock/kubernetes.yaml` creates one private Deployment/Service, and
+`deploy/wiremock/values.yaml` shows the vMCP Helm environment overlay. Merge its
+egress host list with your existing allowlist and permit the service in any
+cluster NetworkPolicies. The default Helm chart and demo remain unchanged when
+the overlay is not used.
+
+To decommission the integration, disable/delete mock upstreams while WireMock is
+still reachable so their mappings can be cleaned, then remove the environment
+setting. Clearing the setting stops management and prevents new mock creation;
+it does not turn off already saved data-plane tools. Existing mocks can still be
+disabled or edited while management is disabled.
+
+No new database migration is required. Upgrade the web UI and **all control-plane
+and data-plane instances before creating mock upstreams**. Older binaries ignore
+mock settings and do not apply the namespace prefix. Refresh clients' `tools/list`
+after saving. Export/import includes mock rules; importing into another database
+regenerates the namespace. Removing a database/deployment without reconciling
+deletions may leave its old mappings, which must then be removed by the operator.
+
 ### Fixed parameters and fallback values
 
 Keep the operation path as a path, for example `/sample`. Define query parameters

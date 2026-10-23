@@ -35,3 +35,39 @@ lacks context binding until rotated. See [security operations](SECURITY_OPERATIO
 - PII masking is pattern-based and best effort.
 - SSO logout revokes the shared browser session. Operators can revoke a subject's sessions; role changes apply at the next sign-in. Agent JWT containment uses an exact-token denylist, not universal IdP introspection.
 - The optional approval hook gates request metadata/digests; it does not inspect returned prompt instructions. Treat upstream content as untrusted.
+
+## Container images and release verification
+
+Go services use statically linked binaries in a non-root Distroless Debian 13
+runtime; the web image serves built assets with a non-root Nginx process. Builder
+and runtime base images are pinned to multi-platform index digests. Weekly
+Dependabot PRs maintain Dockerfile bases, Compose dependencies and GitHub Actions;
+updates must pass CI and are not automatically merged. Go toolchain updates must
+also keep `core/go.mod` and the Docker builder version aligned.
+
+Every published application image is scanned in CI. Release candidates are pushed
+by digest, then the exact candidate digest is scanned for both Linux AMD64 and
+ARM64, signed with Cosign, verified against the publishing workflow's GitHub OIDC
+identity and assigned its version tag. HIGH/CRITICAL findings, including findings
+without a fix, block promotion. Scanner errors also fail the gate. JSON scan
+reports are retained as workflow artifacts; SBOM and provenance remain attached
+to the image. The GitHub release job independently checks all nine signatures
+before creating release assets. Untagged candidate manifests can remain in the
+registry after a failed scan and are not approved release images.
+
+A scan is evidence for the vulnerability database at that time, not a permanent
+security guarantee. Newly disclosed issues require rescanning and rebuilding even
+when application code has not changed. Rebuild after approved base-digest updates;
+changing a floating tag elsewhere cannot update a pinned image.
+
+Helm defaults disable privilege escalation, drop Linux capabilities, use a
+read-only root filesystem and RuntimeDefault seccomp, and disable service-account
+token mounting. The local deployment Compose file applies the corresponding
+application filesystem/capability restrictions with bounded writable temporary
+mounts; its example credentials and plaintext database connections remain for
+local development only. Stateful dependency containers retain their own startup
+and storage requirements.
+
+See [release signature verification](Release-Installation.md#verify-image-signatures)
+for the operator verification command. Helm does not enforce registry signatures
+without an external admission policy.

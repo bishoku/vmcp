@@ -397,3 +397,49 @@ func TestRequestHeadersMigrationUpgradeAndRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeliveryCleanupIndexesUpgradeAndRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 31); err != nil {
+		t.Fatal(err)
+	}
+	// Preserve real parent/child rows across index creation and rollback.
+	_, err = db.ExecContext(ctx, `INSERT INTO sessions(id,virtual_server,key_slug,protocol_version) VALUES('index-upgrade','v','','2025-06-18');
+ INSERT INTO mcp_operations(id,session_id,client_request_id,principal_hash,virtual_server,fence,lease_until,state) VALUES('00000000-0000-4000-8000-000000000001','index-upgrade','1',decode('00','hex'),'v',gen_random_uuid(),now(),'done');
+ INSERT INTO mcp_streams(id,session_id,operation_id) VALUES(gen_random_uuid(),'index-upgrade','00000000-0000-4000-8000-000000000001');
+ INSERT INTO mcp_pending_requests(id,session_id,operation_id,expires_at) VALUES(gen_random_uuid(),'index-upgrade','00000000-0000-4000-8000-000000000001',now());`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM pg_index WHERE indexrelid IN ('mcp_stream_operation'::regclass,'mcp_pending_operation'::regclass,'mcp_operation_cleanup'::regclass) AND indisvalid`).Scan(&count); err != nil || count != 3 {
+		t.Fatalf("indexes %d: %v", count, err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 31); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM mcp_streams WHERE session_id='index-upgrade'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("rollback lost child: %d %v", count, err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM mcp_operations WHERE session_id='index-upgrade'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM mcp_streams WHERE session_id='index-upgrade')+(SELECT count(*) FROM mcp_pending_requests WHERE session_id='index-upgrade')`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cascade failed: %d %v", count, err)
+	}
+}

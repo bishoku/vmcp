@@ -8,6 +8,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
+	"github.com/bishoku/vmcp/core/internal/mockupstream"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 )
 
@@ -49,6 +50,25 @@ func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 		}
 		if len(in.FallbackURLs) > 0 || (in.OAuth != nil && !in.OAuth.IsZero()) || (current != nil && !current.oauth.IsZero()) {
 			return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest", "REST uses its own auth configuration and does not support fallback URLs")})
+		}
+
+		if current != nil && current.rest != nil && (current.rest.Mock != nil) != (rest.Mock != nil) {
+			return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest/mock", "mock mode is immutable; create a separate upstream")})
+		}
+		if rest.Mock != nil {
+			if t.wireMockURL == "" && current == nil {
+				return nil, "", apierror.Validation([]apierror.FieldError{vf("/rest/mock", "WireMock integration is disabled; configure VMCP_WIREMOCK_URL on the control plane")})
+			}
+			owner, err := t.MockOwner(ctx)
+			if err != nil {
+				return nil, "", err
+			}
+			rest.Mock.Namespace = mockupstream.Namespace(owner, slug)
+			if t.wireMockURL != "" {
+				in.URL = t.wireMockURL
+			} else {
+				in.URL = current.URL
+			}
 		}
 		compiled, err = restapi.Compile(in.URL, *rest, headers)
 		if err != nil {

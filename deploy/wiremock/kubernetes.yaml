@@ -1,0 +1,57 @@
+# Optional, shared mock service. Apply into the same namespace as vMCP.
+# No public ingress or per-user pods; vMCP's database restores managed mappings.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmcp-wiremock
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: vmcp-wiremock}
+  template:
+    metadata:
+      labels: {app: vmcp-wiremock}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: wiremock
+          image: wiremock/wiremock:3.13.2@sha256:0d4ecb3e4dc8213fd7a4d37d6a78f6e6b553a6d2e15bd51b0999781282ac61b3
+          args: ["--no-request-journal", "--disable-request-logging", "--permitted-system-keys", "^$", "--max-template-cache-entries", "1000"]
+          env:
+            - {name: JAVA_OPTS, value: -Xmx256m}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 5
+          livenessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 15
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: work, mountPath: /home/wiremock}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: work, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vmcp-wiremock
+spec:
+  selector: {app: vmcp-wiremock}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

@@ -71,3 +71,27 @@ Helm rollback does not reverse database migrations. Follow
 [upgrade and rollback guidance](PRODUCTION_DEPLOYMENT.md#upgrade-rollback-and-support)
 and [encryption recovery](SECURITY_OPERATIONS.md#encryption-upgrades-and-recovery).
 Preserve your values and the exact image inventory for each deployment.
+
+## Verify image signatures
+
+New releases produced by the hardened publishing workflow are signed with Sigstore
+Cosign using GitHub Actions OIDC. Older releases may not have these signatures.
+Install Cosign from its official distribution and verify all image digests before
+running Helm. From the downloaded release directory, with `jq` available:
+
+```bash
+set -euo pipefail
+version=$(jq -r '.version' images.json)
+jq -r '.images[] | .image + "@" + .digest' images.json | while IFS= read -r image; do
+  cosign verify \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity "https://github.com/bishoku/vmcp/.github/workflows/docker-publish.yml@refs/tags/$version" \
+    "$image" || exit 1
+done
+```
+
+Require the expected repository, workflow and version identity; a signature from
+an arbitrary signer is insufficient. A missing signature or verification failure
+must stop installation. The chart itself does not install an admission controller
+or enforce signatures inside the cluster; organizations can additionally enforce
+this identity with their existing image admission policy.

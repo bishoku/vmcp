@@ -10,6 +10,9 @@ jobs:
   core:
     runs-on: ubuntu-latest
     services:
+      wiremock:
+        image: wiremock/wiremock:3.13.2
+        ports: ["18089:8080"]
       redis:
         image: redis:7
         ports:
@@ -53,6 +56,7 @@ jobs:
     env:
       VMCP_TEST_KAFKA_BROKERS: localhost:19092
       VMCP_TEST_RABBITMQ_URL: amqp://audit:audit@localhost:5673/
+      VMCP_TEST_WIREMOCK_URL: http://127.0.0.1:18089
       VMCP_REQUIRE_INTEGRATION: "1"
       VMCP_REQUIRE_SDK_INTEROP: "1"
       VMCP_TEST_REDIS_URL: redis://localhost:6379/0
@@ -88,6 +92,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: web
@@ -96,14 +101,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: |
-          npm ci
-          npm run lint
-          npm run build
-          npm test
-          npm run validate:api
-          npx playwright install --with-deps chromium
-          npm run test:browser
+      - name: Install web dependencies
+        timeout-minutes: 5
+        run: npm ci
+      - name: Audit web dependencies
+        timeout-minutes: 3
+        run: npm audit --audit-level=high
+      - name: Lint web
+        run: npm run lint
+      - name: Build web
+        run: npm run build
+      - name: Run web unit tests
+        timeout-minutes: 5
+        run: npm test
+      - name: Validate OpenAPI assets
+        run: npm run validate:api
+      - name: Install browser and system dependencies
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium
+      - name: Run browser tests
+        timeout-minutes: 10
+        run: npm run test:browser
 
   deployment-validation:
     name: Helm and image validation (disposable cluster)
@@ -120,6 +138,8 @@ jobs:
       - run: npm ci --prefix web
       - name: Test Docker release manifest generation
         run: python3 -m unittest discover -s scripts -p 'test_prepare*release.py'
+      - name: Test benchmark reporting and archive retention
+        run: python3 -m unittest discover -s benchmark/kubernetes -p 'test_*.py'
       - name: Test trial installer
         run: |
           bash -n deploy/helm/vmcp/quickstart.sh
@@ -140,11 +160,6 @@ jobs:
           done
           docker tag vmcp/data-plane:helm-test vmcp-dp:ci
           docker build -t vmcp/web:helm-test web
-      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: vmcp-dp:ci
-          severity: CRITICAL,HIGH
-          exit-code: "1"
       - uses: helm/kind-action@v1.12.0
         with:
           cluster_name: vmcp-helm-test
@@ -160,3 +175,40 @@ jobs:
           done
       - name: Verify real Helm installation and upgrade
         run: python3 tests/helm/smoke.py
+
+  image-security:
+    name: Image security (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        service: [web, control-plane, data-plane, migrate, audit-exporter, audit-exporter-kafka, audit-exporter-rabbitmq, tenant-router, rotate-secrets]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test image security gates
+        run: python3 -m unittest discover -s scripts -p 'test_image_security.py'
+      - name: Build native image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          context=core
+          if [[ "$SERVICE" == web ]]; then context=web; fi
+          docker build --pull --build-arg SERVICE="$SERVICE" -t "vmcp/$SERVICE:security" "$context"
+      - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: v0.76.1
+      - name: Scan native image
+        env:
+          SERVICE: ${{ matrix.service }}
+          TRIVY_IMAGE_SRC: docker
+        run: scripts/scan-image.sh "vmcp/$SERVICE:security" image-security linux/amd64
+      - name: Preserve scan reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-security-${{ matrix.service }}
+          path: image-security/*.json
+          if-no-files-found: warn
+          retention-days: 30

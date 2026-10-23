@@ -52,6 +52,7 @@ type AuditEvent struct {
 type AuditFilter struct {
 	VirtualServer, AgentKey, Subject, Tool, Status string
 	Stage, OperationID, RequestID, ActorID         string
+	Activity                                       string
 	Incomplete                                     bool
 	From, To                                       *time.Time
 	BeforeID                                       int64 // cursor: return events with a smaller id
@@ -64,6 +65,19 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	add := func(cond string, v any) {
 		args = append(args, v)
 		where = append(where, strings.ReplaceAll(cond, "?", "$"+strconv.Itoa(len(args))))
+	}
+	// Classify the whole call by its recorded origin. Upstream attempts inherit
+	// membership through an explicit parent operation, never a shared trace ID
+	// or virtual-server name (administrative routes can carry those too).
+	switch f.Activity {
+	case "virtual":
+		where = append(where, `(scope='virtual' OR (scope='upstream' AND EXISTS(SELECT 1 FROM audit_events parent WHERE parent.operation_id=audit_events.parent_operation_id AND parent.scope='virtual')))`)
+	case "control":
+		where = append(where, `(scope IN ('control','reads') OR (scope='upstream' AND EXISTS(SELECT 1 FROM audit_events parent WHERE parent.operation_id=audit_events.parent_operation_id AND parent.scope IN ('control','reads'))))`)
+	case "system":
+		where = append(where, `scope='system'`)
+	case "upstream":
+		where = append(where, `scope='upstream'`)
 	}
 	if f.Incomplete {
 		where = append(where, `stage='admission' AND NOT EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=audit_events.operation_id AND o.stage='outcome')`)

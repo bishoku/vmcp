@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 385" role="img" aria-label="Çağrı hızı ve node kapanışı">
+<rect width="1040" height="385" rx="16" fill="#f8fafc"/>
+<text x="24" y="30" font-family="sans-serif" font-size="18" fill="#0f172a">Çağrı hızı ve node kapanışı</text>
+<path d="M72 314.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="318.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">0</text>
+<path d="M72 249.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="253.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">17</text>
+<path d="M72 184.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="188.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">34</text>
+<path d="M72 119.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="123.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">50</text>
+<path d="M72 54.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="58.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">67</text>
+<text x="72.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">0s</text>
+<text x="260.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">6s</text>
+<text x="448.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">11s</text>
+<text x="636.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">17s</text>
+<text x="824.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">22s</text>
+<text x="1012.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">28s</text>
+<path d="M439.2297661357525 54V314" stroke="#dc2626" stroke-dasharray="5 4"/>
+<text x="443.2297661357525" y="66" font-family="sans-serif" font-size="11" fill="#b91c1c">Node kapanışı</text>
+<path d="M708.7200730633742 54V314" stroke="#dc2626" stroke-dasharray="5 4"/>
+<text x="712.7200730633742" y="66" font-family="sans-serif" font-size="11" fill="#b91c1c">Node geri dönüşü</text>
+<polyline points="72.00,275.31 105.81,275.31 136.97,236.62 170.78,236.62 204.59,236.62 237.35,81.86 271.16,85.73 304.96,310.13 305.07,236.62 338.88,236.62 371.61,236.62 405.42,236.62 439.23,240.49 473.04,236.62 506.85,236.62 540.65,236.62 574.46,236.62 608.27,236.62 642.08,236.62 675.89,236.62 708.72,236.62 742.53,236.62 776.34,236.62 810.15,236.62 843.95,236.62 876.77,275.31 910.57,275.31 944.38,275.31 978.19,275.31 1012.00,275.31" fill="none" stroke="#4f46e5" stroke-width="2"/>
+<text x="24" y="365" font-family="sans-serif" font-size="12" fill="#4f46e5">Başarılı çağrı/s</text>
+<polyline points="72.00,275.31 105.81,275.31 136.97,236.62 170.78,236.62 204.59,236.62 237.35,81.86 271.16,81.86 304.96,314.00 305.07,236.62 338.88,236.62 371.61,236.62 405.42,236.62 439.23,236.62 473.04,236.62 506.85,236.62 540.65,236.62 574.46,236.62 608.27,236.62 642.08,236.62 675.89,236.62 708.72,236.62 742.53,236.62 776.34,236.62 810.15,236.62 843.95,236.62 876.77,275.31 910.57,275.31 944.38,275.31 978.19,275.31 1012.00,275.31" fill="none" stroke="#94a3b8" stroke-width="2"/>
+<text x="274" y="365" font-family="sans-serif" font-size="12" fill="#94a3b8">Hedef çağrı/s</text>
+<polyline points="72.00,314.00 105.81,314.00 136.97,314.00 170.78,314.00 204.59,314.00 237.35,314.00 271.16,314.00 304.96,314.00 305.07,314.00 338.88,314.00 371.61,314.00 405.42,314.00 439.23,310.13 473.04,314.00 506.85,314.00 540.65,314.00 574.46,314.00 608.27,314.00 642.08,314.00 675.89,314.00 708.72,314.00 742.53,314.00 776.34,314.00 810.15,314.00 843.95,314.00 876.77,314.00 910.57,314.00 944.38,314.00 978.19,314.00 1012.00,314.00" fill="none" stroke="#dc2626" stroke-width="2"/>
+<text x="524" y="365" font-family="sans-serif" font-size="12" fill="#dc2626">Hata + gönderilemeyen/s</text>
+<text x="72" y="44" font-family="sans-serif" font-size="11" fill="#475569">çağrı / saniye</text>
+</svg>

@@ -36,6 +36,9 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   publish:
+    permissions:
+      contents: read
+      id-token: write
     needs: [validate, verify]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -86,15 +89,15 @@ jobs:
         with:
           username: ${{ env.DOCKERHUB_NAMESPACE }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and publish versioned image
+      - name: Build candidate images by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           build-args: ${{ matrix.buildArgs }}
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}:${{ needs.validate.outputs.version }}
+          # Candidates are addressable by digest; version tags are added only after verification.
+          outputs: type=image,name=${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }},push-by-digest=true,name-canonical=true,push=true
           labels: |
             org.opencontainers.image.title=vmcp-${{ matrix.service }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -105,6 +108,39 @@ jobs:
           cache-to: type=gha,mode=max,scope=publish-${{ matrix.service }}
           provenance: mode=max
           sbom: true
+      - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: v0.76.1
+      - name: Scan exact release digest on both architectures
+        env:
+          IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TRIVY_IMAGE_SRC: remote
+        run: scripts/scan-image.sh "$IMAGE@$DIGEST" image-security linux/amd64 linux/arm64
+      - name: Preserve release scan reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-image-security-${{ matrix.service }}
+          path: image-security/*.json
+          if-no-files-found: warn
+          retention-days: 90
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign and verify the release digest
+        env:
+          IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/docker-publish.yml@${{ github.ref }}
+        run: |
+          cosign sign --yes "$IMAGE@$DIGEST"
+          cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "$CERTIFICATE_IDENTITY" "$IMAGE@$DIGEST"
+      - name: Tag verified release digest
+        env:
+          IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: docker buildx imagetools create --tag "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
       - name: Record published manifest digest
         env:
           SERVICE: ${{ matrix.service }}

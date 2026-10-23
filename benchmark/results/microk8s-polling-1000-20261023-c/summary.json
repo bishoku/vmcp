@@ -1,0 +1,157 @@
+{
+  "StartedUTC": "2026-10-23T18:04:11Z",
+  "SourceRevision": "922c16eb3d6571fd11f65ff3add2fe1d0d4ad33d",
+  "BinarySHA256": "7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6",
+  "GoVersion": "go1.27.3",
+  "HostOS": "linux",
+  "HostArch": "amd64",
+  "Profile": {
+    "Servers": 300,
+    "Tools": 200,
+    "Resources": 0,
+    "Sessions": 600,
+    "SteadyRPS": 1000,
+    "BurstRPS": 1000,
+    "Workers": 512,
+    "REST": true,
+    "Smoke": false
+  },
+  "DataPlaneConfiguration": {
+    "audit": "strict",
+    "cpu_limit_each": "8",
+    "database_focus": true,
+    "db_acquire_timeout": "2s",
+    "db_pool_max_each": 64,
+    "expired_fixture_operations": 100000,
+    "fault": "none; focused database capacity run",
+    "go_soft_memory_limit_each": "768MiB",
+    "gomaxprocs_each": 8,
+    "health_interval": "30s",
+    "memory_limit_each": "3Gi",
+    "memory_measurement": "kubelet container RSS; CPU recent usageNanoCores",
+    "namespace": "vmcp-load-20261023-210337",
+    "nodes": 2,
+    "platform": "MicroK8s Kubernetes",
+    "postgres_limits": "none",
+    "redis_failure_policy": "strict",
+    "remote_poll_probe": {
+      "budget_ms": 500,
+      "interval_ms": 250,
+      "max_ms": 304.337,
+      "p50_ms": 250.044,
+      "p95_ms": 260.127,
+      "reader": "acceptance-node-2",
+      "samples": 24,
+      "writer": "native host"
+    }
+  },
+  "ProxyPolicy": "same host test round-robin proxy, passive 10s cooldown, no POST retries; real Kubernetes NodePort Services/CNI to data-plane pods; no ingress capacity claim",
+  "Thresholds": {
+    "burst_max_p99_ms": 10000,
+    "burst_min_success_percent": 80,
+    "burst_min_target_completion_percent": 80,
+    "fault_phase_min_success_percent": 99,
+    "fault_transition_grace_seconds": 10,
+    "per_node_max_rss_bytes": 1610612736,
+    "post_fault_max_errors_percent": 0.1,
+    "soak_max_rss_growth_percent": 20,
+    "steady_min_target_completion_percent": 95,
+    "steady_p95_ms": 250,
+    "steady_p99_ms": 1000,
+    "steady_success_percent": 99.9
+  },
+  "Resources": {
+    "acceptance-node-1": {
+      "max_metric_label_overflows": 280127,
+      "max_os_reported_cpu_percent": 772.7511645,
+      "max_pool_acquired": 64,
+      "max_pool_cancelled_acquires": 306,
+      "max_rss_bytes": 1025191936,
+      "median_os_reported_cpu_percent": 767.5515893,
+      "median_rss_bytes": 984956928,
+      "pool_acquire_seconds_observed": 3410.469014675
+    },
+    "acceptance-node-2": {
+      "max_metric_label_overflows": 257683,
+      "max_os_reported_cpu_percent": 773.8740329,
+      "max_pool_acquired": 29,
+      "max_pool_cancelled_acquires": 0,
+      "max_rss_bytes": 1011466240,
+      "median_os_reported_cpu_percent": 768.2509617,
+      "median_rss_bytes": 978354176,
+      "pool_acquire_seconds_observed": 18.442544687
+    }
+  },
+  "Consistency": null,
+  "Functional": {
+    "cross_node_session_and_paginated_masked_metadata": true,
+    "cross_replica_polling_under_500ms": true,
+    "invalid_keys_rejected_on_both_nodes": true,
+    "key_revocation_propagated_and_rejected_on_both_nodes": false,
+    "session_termination_authoritative_on_both_nodes": true
+  },
+  "Pass": false,
+  "Failures": [
+    "steady capacity/latency SLO failed",
+    "ERROR: could not resize shared memory segment \"/PostgreSQL.3490393770\" to 196736 bytes: No space left on device (SQLSTATE 53100)",
+    "revoked key accepted or snapshot propagation timed out on acceptance-node-1",
+    "revoked key accepted or snapshot propagation timed out on acceptance-node-2"
+  ],
+  "Phases": [
+    {
+      "name": "warmup",
+      "target_rps": 50,
+      "PlannedSeconds": 15,
+      "ElapsedSeconds": 15.040853121,
+      "Scheduled": 750,
+      "Offered": 750,
+      "Success": 750,
+      "Errors": 0,
+      "Dropped": 0,
+      "InvalidResults": 0,
+      "CompletedRPS": 49.86419280651388,
+      "SuccessPercent": 100,
+      "P50MS": 19.545235,
+      "P95MS": 90.477999,
+      "P99MS": 107.572859,
+      "MaxMS": 124.714076,
+      "HTTPStatuses": {
+        "200": 750
+      },
+      "Nodes": {
+        "acceptance-node-1": 375,
+        "acceptance-node-2": 375
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "steady",
+      "target_rps": 1000,
+      "PlannedSeconds": 300,
+      "ElapsedSeconds": 300.038698792,
+      "Scheduled": 300000,
+      "Offered": 289367,
+      "Success": 280056,
+      "Errors": 9311,
+      "Dropped": 10633,
+      "InvalidResults": 0,
+      "CompletedRPS": 933.3995952107069,
+      "SuccessPercent": 96.78228685371863,
+      "P50MS": 67.035248,
+      "P95MS": 161.995748,
+      "P99MS": 1046.361156,
+      "MaxMS": 2109.951427,
+      "HTTPStatuses": {
+        "200": 280056,
+        "502": 4,
+        "503": 9307
+      },
+      "Nodes": {
+        "acceptance-node-1": 145733,
+        "acceptance-node-2": 134323
+      },
+      "slo_pass": false
+    }
+  ],
+  "ReportAvailable": true
+}

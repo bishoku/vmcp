@@ -128,7 +128,7 @@ func TestDuplexReplayAndRepliesAcrossNodes(t *testing.T) {
 	snap.Upstreams["u-gh"] = up
 	rig.handler.Delivery = broker
 	rig.handler.Sessions.Store = PGSessionStore{Pool: pool}
-	second := &Handler{Snap: rig.handler.Snap, Sessions: NewManager(), Delivery: broker, Log: rig.handler.Log}
+	second := &Handler{Snap: rig.handler.Snap, Sessions: NewManager(), Delivery: &delivery.Store{Pool: pool, Box: box}, Log: rig.handler.Log}
 	second.Sessions.Store = PGSessionStore{Pool: pool}
 	mux := http.NewServeMux()
 	second.Register(mux)

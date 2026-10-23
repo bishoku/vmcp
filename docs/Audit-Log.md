@@ -16,6 +16,25 @@ By default, administrative mutations and their identifier-only audit records com
 | `status` | `started`, `ok`, `tool_error`, `error` or `denied` |
 | `reason`, `durationMs`, `redactions` | Fixed/configured reason, duration and masking count |
 
+The Audit page's **Activity** filter separates **Virtual MCP calls**, **Control
+plane API**, **System activity**, and **Upstream calls only**. The default is
+**All activity**. Virtual MCP includes tool/resource/prompt call events plus
+upstream attempts explicitly linked to a stored virtual parent operation. Control
+plane API includes reads, writes and their linked upstream attempts. System
+activity contains meaningful automatic catalog changes and historical maintenance
+records. New routine discovery and subscription maintenance are operational logs
+and metrics, not audit events.
+Upstream calls only selects events recorded with upstream scope; system-scoped
+upstream traffic stays under System activity.
+
+The API accepts `activity=virtual|control|system|upstream`. Filtering happens in
+PostgreSQL before cursor pagination and applies equally to Operations and Raw
+events. Other filters still intersect it. Filter links preserve the selection.
+The call's `virtualServer`, shared trace/request IDs or method name alone do not
+establish its origin. Legacy/unclassified records remain visible under All
+activity; an upstream record whose parent has been removed cannot be attributed
+to a virtual/control operation by this filter.
+
 `GET /api/v1/audit-events` supports filters and cursor pagination. Use `incomplete=true` for admissions without outcomes; this includes currently running calls. The Audit UI exposes this filter. `GET /api/v1/audit-status` reports durability counters and the persisted incomplete backlog.
 
 The **Operations** view groups a tool call and its explicitly linked upstream
@@ -35,12 +54,45 @@ complete denial coverage is on the [production roadmap](../maintainer/Production
 
 Configure destinations with [independent audit exporters](AUDIT_EXPORTERS.md).
 
+## Background work and meaningful system changes
+
+Automatic discovery does not create audit admissions/outcomes for each poll,
+retry, connection or list request. Unchanged results update refresh freshness
+without adding audit events or changing the configuration revision. Routine
+resource-subscription activation, reconnects, lease renewal and worker shutdown
+also do not create system audit lifecycles. The client's original subscribe /
+unsubscribe requests retain their normal virtual-call auditing. Administrative
+configuration/permission changes retain their existing audit behavior.
+
+A discovered tool/resource/template/prompt addition, modification or removal,
+capability change, or instructions change creates one `upstream.catalog_changed`
+mutation event. Its upstream, configuration revision and bounded change summary
+identify what changed. The summary includes sorted object identifiers, not
+schemas, descriptions or instruction content; changes exceeding 8 KiB are
+summarized by exact counts. Payload capture is not used for this metadata event.
+Strict mode commits the catalog change and audit fact atomically: an audit write
+failure rolls back the change for retry. Relax mode queues the fact after commit
+and retains its documented loss guarantees. Failed probes produce no catalog
+mutation event and retain their normal retry behavior.
+
+Operational failures use warning logs; routine completions and subscription
+activation use debug logs. Logs carry configured server identifiers and fixed
+outcome/reason categories, without session IDs, resource URIs, payloads or raw
+upstream errors. Both planes expose `vmcp_background_operations_total` with fixed
+`activity` (`discovery`, `subscription`) and `outcome` labels. Discovery reports
+`changed`, `unchanged`, `error` or `cancelled`; subscription workers report their
+final `ok`, `error` or `cancelled` outcome when they finish. This counter is local
+to each process and resets on restart.
+
+System payload-capture settings do not re-enable routine maintenance auditing.
+Existing audit history is retained; no records are deleted by this change.
+
 ## Payload capture and masking
 
 Migration 29 adds optional, encrypted audit payloads in `audit_payloads`, separate
 from immutable metadata. Capture defaults to off. In **Settings → Audit capture &
 masking**, administrators select `strict` or `relax`, request/response capture for
-virtual calls, upstream calls, management APIs, discovery/system work and API
+virtual calls, upstream calls, management APIs, the system payload scope and API
 reads, a payload size limit, payload retention, global RE2 rules and exporter
 consumer permissions. An empty mode preserves the deployment default: strict for
 the control plane; `VMCP_AUDIT_MODE` for the data plane (`best_effort` remains an

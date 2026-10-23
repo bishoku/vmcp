@@ -68,17 +68,11 @@ func (s *Server) discoverOne(parent context.Context) {
 		_, _ = s.Store.Pool.Exec(ctx, `DELETE FROM mcp_discovery_requests WHERE upstream_id=$1::uuid`, id)
 		return
 	}
-	settings, settingsErr := store.LoadAuditSettings(ctx, s.Store.Pool)
-	if settingsErr != nil {
-		return
-	}
-	recorder := s.auditRecorder()
-	recorder.SetSettings(settings)
-	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "discovery", Action: "upstream.discovery", Method: "upstream.discovery", Target: slug, Revision: revision, Upstream: slug, Scope: "system", Boundary: "system", Policy: &settings})
-	if err != nil {
-		return
-	}
-	ctx = audit.WithOperation(ctx, recorder, event)
+	// Routine network probes are operational work, not audit lifecycles.
+	// Only a committed catalog change is recorded below.
+	outcome, phase := "error", "probe"
+	defer func() { s.Metrics.Background("discovery", outcome) }()
+	var changes store.DiscoveryChanges
 	err = connErr
 	if err == nil {
 		probeCtx, probeCancel := context.WithTimeout(ctx, 55*time.Second)
@@ -86,33 +80,27 @@ func (s *Server) discoverOne(parent context.Context) {
 		probeCancel()
 		err = probeErr
 		if err == nil {
-			err = s.Store.Do(audit.WithTransaction(ctx, event), func(tx *store.Tx) error {
-				current, err := tx.Revision(ctx)
-				if err != nil {
-					return err
-				}
-				if current != revision {
-					return errors.New("configuration changed during discovery")
-				}
-				if _, err := tx.ReplaceTools(ctx, slug, result.Tools, time.Now().UTC()); err != nil {
-					return err
-				}
-				if err := tx.ReplaceCatalog(ctx, slug, result.Catalog); err != nil {
-					return err
-				}
-				return tx.SetRefreshStatus(ctx, slug, time.Now().UTC(), nil)
-			})
+			phase = "commit"
+			err = s.commitDiscovery(ctx, revision, slug, result, &changes)
 		}
 	}
 	completion, done := context.WithTimeout(context.WithoutCancel(ctx), audit.WriteTimeout)
 	defer done()
-	event.Status = "ok"
-	if err != nil {
-		event.Status = "error"
-		event.Reason = "catalog reconciliation failed"
-	}
-	if recorder.Complete(completion, event) != nil {
-		return
+	if err == nil {
+		outcome = "unchanged"
+		if !changes.Empty() {
+			outcome = "changed"
+		}
+		if s.Log != nil {
+			s.Log.Debug("background discovery completed", "upstream", slug, "outcome", outcome)
+		}
+	} else {
+		if ctx.Err() != nil {
+			outcome = "cancelled"
+		}
+		if s.Log != nil {
+			s.Log.Warn("background discovery failed", "upstream", slug, "outcome", outcome, "phase", phase)
+		}
 	}
 	if err == nil {
 		_, _ = s.Store.Pool.Exec(completion, `DELETE FROM mcp_discovery_requests WHERE upstream_id=$1 AND lease_owner=$2 AND requested_at=$3`, id, owner, requested)
@@ -129,4 +117,25 @@ func (s *Server) enqueueDiscovery(ctx context.Context) error {
  WHERE u.kind='mcp' AND u.enabled AND (status.last_refresh_at IS NULL OR status.last_refresh_at<now()-interval '30 seconds')
  ON CONFLICT(upstream_id) DO NOTHING`)
 	return err
+}
+
+func (s *Server) commitDiscovery(ctx context.Context, revision int64, slug string, result *probeResult, changes *store.DiscoveryChanges) error {
+	settings, err := store.LoadAuditSettings(ctx, s.Store.Pool)
+	if err != nil {
+		return err
+	}
+	recorder := s.auditRecorder()
+	recorder.SetSettings(settings)
+	event := recorder.Pin(audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "discovery", Action: "upstream.catalog_changed", Method: "upstream.discovery", Target: "upstream:" + slug, Upstream: slug, Scope: "system", Boundary: "system", Policy: &settings})
+	return s.Store.Do(audit.WithOperation(ctx, recorder, event), func(tx *store.Tx) error {
+		current, err := tx.Revision(ctx)
+		if err != nil {
+			return err
+		}
+		if current != revision {
+			return errors.New("configuration changed during discovery")
+		}
+		*changes, err = tx.ReplaceDiscovery(ctx, slug, result.Tools, result.Catalog, time.Now().UTC(), event)
+		return err
+	})
 }

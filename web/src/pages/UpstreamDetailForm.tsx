@@ -46,6 +46,9 @@ export default function UpstreamDetailForm({
   const [slug, setSlug] = useState(upstream?.slug ?? '')
   const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
   const [rest,setRest]=useState(upstream?.rest??emptyREST())
+  const [mockProvider,setMockProvider]=useState({enabled:false,url:''})
+  useEffect(()=>{const controller=new AbortController();void api.mockProvider(controller.signal).then(setMockProvider).catch(()=>{});return()=>controller.abort()},[])
+
   const [callerContext,setCallerContext]=useState<CallerContextConfig>({enabled:upstream?.callerContext?.enabled??false,metaKey:upstream?.callerContext?.metaKey||'com.bank/caller-context',fields:upstream?.callerContext?.fields??[]})
   const [requestHeaderMappings,setRequestHeaderMappings]=useState<RequestHeaderMapping[]>(upstream?.requestHeaderMappings??[])
   const [restBlocked,setRestBlocked]=useState(false)
@@ -198,7 +201,7 @@ export default function UpstreamDetailForm({
       unsaved.clean();onReload(latest)
     }}/>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryTile label="Transport" value={kind==='rest'?'REST API':transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
+      <SummaryTile label="Transport" value={rest.mock?'Mock / WireMock':kind==='rest'?'REST API':transport==='sse'?'Legacy SSE':'Streamable HTTP'} detail={editing?'Current draft transport':'Saved endpoint transport'} icon={Cable}/>
       <SummaryTile label="Authentication" value={kind==='rest'?({none:'None',basic:'Basic',bearer:'Bearer token',oauth2:'OAuth 2.0'}[rest.auth.type]||'None'):authType==='none'?(existing.some(h=>!removed.includes(h))?'Headers':'None'):'OAuth 2.0'} detail={kind==='rest'?'Service authentication':authType==='none'?`${existing.filter(h=>!removed.includes(h)).length} configured headers`:'Client credentials grant'} icon={KeyRound}/>
       <SummaryTile label={kind==='rest'?'Defined tools':'Discovered tools'} value={kind==='rest'?rest.operations.filter(op=>op.enabled).length:upstream?.toolCount ?? '—'} detail={kind==='rest'?'Enabled REST operations':upstream?'Last saved discovery count':'Available after saving & discovery'} icon={Wrench}/>
       <SummaryTile label="Recorded health" value={upstream?.enabled===false?'Disabled':upstream?.health?.state ?? 'Unknown'} detail="Stored observation · not a live check" icon={Activity}/>
@@ -211,9 +214,9 @@ export default function UpstreamDetailForm({
           {!upstream && (
             <FormField name="slug" label="Slug" required hint="Stable identifier: lowercase letters, numbers and hyphens, up to 63 characters."><input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" /></FormField>
           )}
-          <FormField name="kind" label="Upstream type" hint="Type cannot change after creation."><Select className={input} disabled={!!upstream} value={kind} onChange={e=>setKind(e.target.value as 'mcp'|'rest')}><option value="mcp">MCP server</option><option value="rest">REST API</option></Select></FormField>
+          <FormField name="kind" label="Upstream type" hint="Type cannot change after creation."><Select className={input} disabled={!!upstream} value={kind==='rest'&&rest.mock?'mock':kind} onChange={e=>{const type=e.target.value;setKind(type==='mock'?'rest':type as 'mcp'|'rest');if(type==='mock'){setRest({...emptyREST(),allowInsecureHttp:mockProvider.url.startsWith('http:'),mock:{}});setUrl(mockProvider.url)}else if(rest.mock){setRest(emptyREST());setUrl('')}}}><option value="mcp">MCP server</option><option value="rest">REST API</option><option value="mock" disabled={!mockProvider.enabled}>Mock upstream (WireMock){!mockProvider.enabled?' · not configured':''}</option></Select></FormField>
           <FormField name="name" label="Name" hint="Display name, up to 120 characters. New upstreams use the slug if left empty."><input className={clsx(input, 'mt-1')} value={name} onChange={(e) => setName(e.target.value)} /></FormField>
-          <FormField name="url" label="URL" required hint={kind==='rest'?'Base URL of your REST service. Operation paths are appended to it.':'Absolute HTTP or HTTPS endpoint, without credentials or a fragment.'}><input className={clsx(input, 'mt-1')} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={kind==='rest'?'https://api.example.com/v1':'https://host/mcp'} /></FormField>
+          <FormField name="url" label="URL" required hint={rest.mock?'Shared WireMock endpoint configured by the operator. Each mock upstream gets its own namespace.':kind==='rest'?'Base URL of your REST service. Operation paths are appended to it.':'Absolute HTTP or HTTPS endpoint, without credentials or a fragment.'}><input className={clsx(input, 'mt-1')} readOnly={!!rest.mock} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={kind==='rest'?'https://api.example.com/v1':'https://host/mcp'} /></FormField>
           {kind==='mcp'&&<><FormField name="fallbackUrls" label="Fallback URLs" hint="Optional. Up to five distinct URLs, one per line, tried in order."><textarea className={clsx(input, 'mt-1 font-mono')} rows={2} value={fallbacks} onChange={(e) => setFallbacks(e.target.value)} /></FormField>
           <FormField name="transport" label="Transport" required help="Choose the protocol implemented by this MCP endpoint. Changing this setting does not automatically test or discover the server." hint="Choose the protocol supported by the upstream."><Select className={clsx(input, 'mt-1')} value={transport} onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}>
               <option value="streamable_http">Streamable HTTP</option>

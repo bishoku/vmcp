@@ -18,3 +18,13 @@ deploy/helm/vmcp/charts/
 .idea
 
 artifacts/
+
+# MicroK8s results are curated exports. Raw evidence belongs in artifacts/.
+/benchmark/results/microk8s-*/*
+!/benchmark/results/microk8s-*/report.md
+!/benchmark/results/microk8s-*/comparison.md
+!/benchmark/results/microk8s-*/summary.json
+!/benchmark/results/microk8s-*/reproduction.json
+!/benchmark/results/microk8s-*/diagnostics.json
+!/benchmark/results/microk8s-*/throughput.svg
+!/benchmark/results/microk8s-*/memory.svg

@@ -67,13 +67,17 @@ export interface RESTAuth {
  scopes?: string[]; audience?: string; tokenAuthMethod?: 'client_secret_basic' | 'client_secret_post'
  hasPassword?: boolean; hasToken?: boolean; hasClientSecret?: boolean
 }
+export interface MockRule {name:string;priority:number;request?:Record<string,unknown>;response:{status:number;headers?:Record<string,string>;jsonBody?:unknown;body?:string;fixedDelayMilliseconds?:number;transformers?:string[]}}
+export interface MockStatus {state:'active'|'pending'|'disabled'|'unavailable';message?:string;ruleCount?:number;namespace?:string}
 export interface RESTOperation {
+ mockRules?:MockRule[]
  name: string; description: string; enabled: boolean; method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE'; path: string
  parameters: {name:string; in:'path'|'query'; required:boolean; exposeToMcp?:boolean; defaultValue?:string|number|boolean; schema:Record<string,unknown>}[]
  bodySchema?: unknown; responseSchema?: unknown; responseFields?: string[]; responseFieldPaths?: string[][]; successStatuses?: number[]
  headers?: Record<string,string>; headerNames?:string[]; readOnly:boolean
 }
 export interface RESTConfig {
+ mock?:{namespace?:string}
  auth: RESTAuth; forwardIdentity:boolean; requireIdentity:boolean; allowInsecureHttp:boolean; timeoutSeconds:number; operations:RESTOperation[]
 }
 
@@ -257,6 +261,7 @@ export interface AuditEvent {
   redactions?: number
 }
 export interface AuditQuery {
+  activity?: string
   incomplete?: string
   operationId?: string
   requestId?: string
@@ -399,6 +404,9 @@ export const api = {
   importREST: (document:string) => request<RESTImportResult>('POST','/rest-imports',{document}),
   restOperation: (slug:string, action:'preview'|'test', operation:string, args:unknown, version:number) => request<unknown>('POST', `/upstreams/${encodeURIComponent(slug)}/rest/${action}`, {operation,arguments:args},version),
   me: () => request<Me>('GET', '/me'),
+  mockProvider:(signal?:AbortSignal)=>request<{enabled:boolean;url:string}>('GET','/mock-provider',undefined,undefined,signal),
+  mockStatus:(slug:string,signal?:AbortSignal)=>request<MockStatus>('GET',`/upstreams/${encodeURIComponent(slug)}/mock/status`,undefined,undefined,signal),
+  syncMock:(slug:string,version:number)=>request<MockStatus>('POST',`/upstreams/${encodeURIComponent(slug)}/mock/sync`,{},version),
   info: (signal?: AbortSignal) => request<{ version: string; configRevision: number; tenantId?: string }>('GET', '/info', undefined, undefined, signal),
   listUpstreams: async (signal?: AbortSignal) => listAll<Upstream>('/upstreams', signal),
   createUpstream: (slug: string, input: UpstreamInput) =>

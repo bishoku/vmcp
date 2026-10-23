@@ -71,6 +71,20 @@ exercise quota outage, listener termination/reconnection, pool exhaustion and
 snapshot freshness; actual PostgreSQL primary promotion/backup restore remains
 part of [deployment acceptance](PRODUCTION_DEPLOYMENT.md#availability-and-disaster-recovery-acceptance).
 
+## Background maintenance metrics
+
+Both planes expose `vmcp_background_operations_total{activity,outcome}` for
+background maintenance. Labels are fixed and never contain identities, session
+IDs, resource URIs, payloads or raw error messages. Discovery uses
+`activity="discovery"` and outcomes `changed`, `unchanged`, `error`, `cancelled`;
+subscription workers use `activity="subscription"` and their final `ok`, `error`,
+`cancelled` outcome when they exit. Counters reset on process restart.
+
+Routine polling, reconnects and lease maintenance use operational logs and this
+counter, rather than audit lifecycles. Only meaningful discovered catalog changes
+produce `upstream.catalog_changed` audit mutations. Client MCP calls and explicit
+administrative operations retain their existing auditing. See [Audit log](Audit-Log.md).
+
 ## Virtual server and upstream metrics
 
 Data planes additionally expose the following families. Each family has a

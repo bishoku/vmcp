@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -74,17 +75,35 @@ func acceptanceMonitor(ctx context.Context, nodes []*acceptanceNode, pool *pgxpo
 				return
 			case <-ticker.C:
 			}
+			var kubeSamples map[string]acceptanceNodeSample
+			if acceptanceKubernetes() {
+				kubeSamples = acceptanceKubeSamples(monitorCtx)
+			}
 			sample := acceptanceSample{Seconds: time.Since(start).Seconds(), Phase: phase.Load().(string), Database: map[string]any{}}
+			for name, container := range kubeSamples {
+				if !strings.HasPrefix(name, "acceptance-node-") {
+					sample.Containers = append(sample.Containers, map[string]any{"name": name, "rss_bytes": container.RSSBytes, "cpu_percent": container.ReportedCPUPercent})
+				}
+			}
 			for _, node := range nodes {
 				pid, alive := node.process()
 				item := acceptanceNodeSample{Name: node.name, PID: pid, Alive: alive}
 				if alive {
-					ps, _ := exec.CommandContext(monitorCtx, "ps", "-o", "rss=,%cpu=", "-p", strconv.Itoa(pid)).Output()
-					fields := strings.Fields(string(ps))
-					if len(fields) >= 2 {
-						rss, _ := strconv.ParseInt(fields[0], 10, 64)
-						item.RSSBytes = rss * 1024
-						item.ReportedCPUPercent, _ = strconv.ParseFloat(fields[1], 64)
+					if acceptanceKubernetes() {
+						if measured, ok := kubeSamples[node.name]; ok {
+							item.RSSBytes = measured.RSSBytes
+							item.ReportedCPUPercent = measured.ReportedCPUPercent
+						} else {
+							item.Error = "kubelet RSS sample unavailable"
+						}
+					} else {
+						ps, _ := exec.CommandContext(monitorCtx, "ps", "-o", "rss=,%cpu=", "-p", strconv.Itoa(pid)).Output()
+						fields := strings.Fields(string(ps))
+						if len(fields) >= 2 {
+							rss, _ := strconv.ParseInt(fields[0], 10, 64)
+							item.RSSBytes = rss * 1024
+							item.ReportedCPUPercent, _ = strconv.ParseFloat(fields[1], 64)
+						}
 					}
 					client := &http.Client{Timeout: 2 * time.Second}
 					resp, err := client.Get(node.url + "/metrics")
@@ -197,7 +216,7 @@ func TestScaleAcceptance(t *testing.T) {
 	if err := os.MkdirAll(output, 0700); err != nil {
 		t.Fatal(err)
 	}
-	profile := acceptanceProfile{Servers: acceptanceNumber("VMCP_ACCEPTANCE_SERVERS", 300, 1, 1000), Tools: acceptanceNumber("VMCP_ACCEPTANCE_TOOLS", 300, 1, 1000), Resources: acceptanceNumber("VMCP_ACCEPTANCE_RESOURCES", 100, 0, 1000), SteadyRPS: acceptanceNumber("VMCP_ACCEPTANCE_RPS", 200, 1, 2000), BurstRPS: acceptanceNumber("VMCP_ACCEPTANCE_BURST_RPS", 600, 1, 5000), Workers: 128, Smoke: os.Getenv("VMCP_ACCEPTANCE_SMOKE") == "1"}
+	profile := acceptanceProfile{Servers: acceptanceNumber("VMCP_ACCEPTANCE_SERVERS", 300, 1, 1000), Tools: acceptanceNumber("VMCP_ACCEPTANCE_TOOLS", 300, 1, 1000), Resources: acceptanceNumber("VMCP_ACCEPTANCE_RESOURCES", 100, 0, 1000), SteadyRPS: acceptanceNumber("VMCP_ACCEPTANCE_RPS", 200, 1, 2000), BurstRPS: acceptanceNumber("VMCP_ACCEPTANCE_BURST_RPS", 600, 1, 5000), Workers: acceptanceNumber("VMCP_ACCEPTANCE_WORKERS", 128, 1, 2048), Smoke: os.Getenv("VMCP_ACCEPTANCE_SMOKE") == "1"}
 	profile.REST = os.Getenv("VMCP_ACCEPTANCE_REST") == "1"
 	if profile.REST {
 		profile.Tools = acceptanceNumber("VMCP_ACCEPTANCE_TOOLS", 200, 1, 200)
@@ -208,6 +227,17 @@ func TestScaleAcceptance(t *testing.T) {
 	report := acceptanceReport{StartedUTC: started.UTC().Format(time.RFC3339), Profile: profile, GoVersion: runtime.Version(), HostOS: runtime.GOOS, HostArch: runtime.GOARCH, Functional: map[string]any{}, DataPlaneConfiguration: map[string]any{"nodes": 2, "gomaxprocs_each": 2, "go_soft_memory_limit_each": "768MiB", "db_pool_max_each": 64, "db_acquire_timeout": "2s", "audit": "strict", "redis_failure_policy": "strict", "health_interval": "30s"}, ProxyPolicy: "test round-robin proxy; passive 10s failure cooldown; no request retries; not the production ingress", Thresholds: map[string]any{"steady_success_percent": 99.9, "steady_min_target_completion_percent": 95, "steady_p95_ms": 250, "steady_p99_ms": 1000, "burst_min_target_completion_percent": 80, "burst_min_success_percent": 80, "burst_max_p99_ms": 10000, "fault_phase_min_success_percent": 99, "fault_transition_grace_seconds": 10, "post_fault_max_errors_percent": 0.1, "per_node_max_rss_bytes": int64(1536 << 20), "soak_max_rss_growth_percent": 20}}
 	source, _ := exec.Command("git", "rev-parse", "HEAD").Output()
 	report.SourceRevision = strings.TrimSpace(string(source))
+	if acceptanceKubernetes() {
+		report.DataPlaneConfiguration["platform"] = "MicroK8s Kubernetes"
+		report.DataPlaneConfiguration["postgres_limits"] = "none"
+		report.DataPlaneConfiguration["namespace"] = os.Getenv("VMCP_ACCEPTANCE_NAMESPACE")
+		report.DataPlaneConfiguration["memory_measurement"] = "kubelet container RSS; CPU recent usageNanoCores"
+		report.DataPlaneConfiguration["gomaxprocs_each"] = acceptanceNumber("VMCP_ACCEPTANCE_DP_CPUS", 2, 2, 8)
+		report.DataPlaneConfiguration["cpu_limit_each"] = fmt.Sprint(max(4, acceptanceNumber("VMCP_ACCEPTANCE_DP_CPUS", 2, 2, 8)))
+		report.DataPlaneConfiguration["memory_limit_each"] = "3Gi"
+		report.DataPlaneConfiguration["fault"] = "scale one test Deployment to zero, then restore; not a physical Kubernetes node failure"
+		report.ProxyPolicy = "same host test round-robin proxy, passive 10s cooldown, no POST retries; real Kubernetes NodePort Services/CNI to data-plane pods; no ingress capacity claim"
+	}
 	file, err := os.Open(binary)
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +258,18 @@ func TestScaleAcceptance(t *testing.T) {
 	fixture := &acceptanceFixture{tools: profile.Tools, resources: profile.Resources, rest: profile.REST}
 	fixtures := make([]*httptest.Server, 16)
 	for i := range fixtures {
-		fixtures[i] = httptest.NewServer(fixture)
+		if acceptanceKubernetes() {
+			server := httptest.NewUnstartedServer(fixture)
+			listener, listenErr := net.Listen("tcp", net.JoinHostPort(os.Getenv("VMCP_ACCEPTANCE_NODE_IP"), "0"))
+			if listenErr != nil {
+				t.Fatal(listenErr)
+			}
+			server.Listener = listener
+			server.Start()
+			fixtures[i] = server
+		} else {
+			fixtures[i] = httptest.NewServer(fixture)
+		}
 		defer fixtures[i].Close()
 	}
 	t.Logf("Seeding %d upstreams, %d virtual servers, %d tools and %d resources", profile.Servers, profile.Servers, profile.Servers*profile.Tools, profile.Servers*profile.Resources)
@@ -307,7 +348,37 @@ func TestScaleAcceptance(t *testing.T) {
 			report.Failures = append(report.Failures, name+" capacity/latency SLO failed")
 		}
 	}
-	if profile.Smoke {
+	if os.Getenv("VMCP_ACCEPTANCE_DATABASE_FOCUS") == "1" {
+		report.DataPlaneConfiguration["database_focus"] = true
+		report.DataPlaneConfiguration["delivery_wakeup"] = "local channel; cross-replica polling; no delivery NOTIFY"
+		report.DataPlaneConfiguration["postgres_tuned"] = os.Getenv("VMCP_ACCEPTANCE_POSTGRES_TUNED") == "1"
+		report.DataPlaneConfiguration["postgres_limits"] = "none"
+		report.DataPlaneConfiguration["fault"] = "none; focused database capacity run"
+		// Expired fixtures exercise the 15-minute cleanup path in a five-minute run.
+		// Use a separate session so audit verification only sees actual client calls.
+		if _, err := pool.Exec(ctx, `INSERT INTO sessions(id,virtual_server,key_slug,protocol_version) VALUES('expired-fixture','accept-vs-0000','','2025-06-18');
+INSERT INTO mcp_operations(id,session_id,client_request_id,principal_hash,virtual_server,fence,lease_until,state,created_at)
+SELECT gen_random_uuid(),'expired-fixture',i::text,decode('00','hex'),'accept-vs-0000',gen_random_uuid(),now()-interval '20 minutes','done',now()-interval '20 minutes' FROM generate_series(1,100000) i;
+INSERT INTO mcp_streams(id,session_id,operation_id,expires_at) SELECT gen_random_uuid(),session_id,id,now()-interval '20 minutes' FROM mcp_operations WHERE session_id='expired-fixture';
+ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
+			t.Fatal(err)
+		}
+		report.DataPlaneConfiguration["expired_fixture_operations"] = 100000
+		run("warmup", 50, 15, nil, 0)
+		var pollProbe func() (map[string]any, error)
+		if os.Getenv("VMCP_ACCEPTANCE_POLL_PROBE") == "1" {
+			pollProbe = acceptancePollingProbe(ctx, nodes[1], clients[len(clients)-1], pool, master)
+		}
+		run("steady", profile.SteadyRPS, 300, nil, 0)
+		if pollProbe != nil {
+			values, probeErr := pollProbe()
+			report.DataPlaneConfiguration["remote_poll_probe"] = values
+			report.Functional["cross_replica_polling_under_500ms"] = probeErr == nil
+			if probeErr != nil {
+				report.Failures = append(report.Failures, probeErr.Error())
+			}
+		}
+	} else if profile.Smoke {
 		run("warmup", 10, 2, nil, 0)
 		run("steady", profile.SteadyRPS, 3, nil, 0)
 		run("spike", profile.BurstRPS, 2, nil, 0)
@@ -317,9 +388,12 @@ func TestScaleAcceptance(t *testing.T) {
 		run("node-rejoin", profile.SteadyRPS, 5, nil, 0)
 		run("soak", 10, 5, nil, 0)
 	} else {
-		run("warmup", 50, 20, nil, 0)
-		run("steady", profile.SteadyRPS, 90, nil, 0)
-		run("spike", profile.BurstRPS, 20, nil, 0)
+		run("warmup", 50, acceptanceNumber("VMCP_ACCEPTANCE_WARMUP_SECONDS", 20, 1, 3600), nil, 0)
+		if acceptanceKubernetes() {
+			run("baseline", 200, 90, nil, 0)
+		}
+		run("steady", profile.SteadyRPS, acceptanceNumber("VMCP_ACCEPTANCE_STEADY_SECONDS", 90, 1, 3600), nil, 0)
+		run("spike", profile.BurstRPS, acceptanceNumber("VMCP_ACCEPTANCE_SPIKE_SECONDS", 20, 1, 600), nil, 0)
 		run("recovery", profile.SteadyRPS, 45, nil, 0)
 		if profile.REST {
 			run("config-refresh", profile.SteadyRPS, 30, func() {
@@ -361,12 +435,32 @@ func TestScaleAcceptance(t *testing.T) {
 		run("node-loss", profile.SteadyRPS, 90, nodes[0].kill, 20)
 		nodes[0].start(t)
 		run("node-rejoin", profile.SteadyRPS, 60, nil, 0)
-		run("soak", max(1, profile.SteadyRPS/2), 300, nil, 0)
+		run("soak", acceptanceNumber("VMCP_ACCEPTANCE_SOAK_RPS", max(1, profile.SteadyRPS/2), 1, 2000), acceptanceNumber("VMCP_ACCEPTANCE_SOAK_SECONDS", 300, 5, 7200), nil, 0)
 	}
 	phase.Store("verification")
 	report.Samples = stopMonitor()
 	report.Resources = acceptanceResources(report.Samples)
-	auditCtx, auditCancel := context.WithTimeout(ctx, 30*time.Second)
+	if acceptanceKubernetes() {
+		for _, node := range nodes {
+			var measured bool
+			for _, sample := range report.Samples {
+				for _, value := range sample.Nodes {
+					if value.Name == node.name && value.RSSBytes > 0 {
+						measured = true
+					}
+				}
+			}
+			if !measured {
+				report.Failures = append(report.Failures, "Kubernetes RSS observations missing for "+node.name)
+			}
+			node.mu.Lock()
+			if node.kubeError != "" {
+				report.Failures = append(report.Failures, node.kubeError)
+			}
+			node.mu.Unlock()
+		}
+	}
+	auditCtx, auditCancel := context.WithTimeout(ctx, time.Duration(acceptanceNumber("VMCP_ACCEPTANCE_AUDIT_CHECK_SECONDS", 30, 30, 600))*time.Second)
 	consistency, err := acceptanceCheckAudit(auditCtx, pool, tracker, fixture)
 	auditCancel()
 	report.Consistency = consistency

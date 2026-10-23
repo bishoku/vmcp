@@ -22,7 +22,10 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
 			limit = n
 		}
 	}
-	f := store.AuditFilter{VirtualServer: q.Get("virtualServer"), AgentKey: q.Get("agentKey"), Subject: q.Get("subject"), Tool: q.Get("tool"), Status: q.Get("status")}
+	f := store.AuditFilter{Activity: q.Get("activity"), VirtualServer: q.Get("virtualServer"), AgentKey: q.Get("agentKey"), Subject: q.Get("subject"), Tool: q.Get("tool"), Status: q.Get("status")}
+	if f.Activity != "" && f.Activity != "virtual" && f.Activity != "control" && f.Activity != "system" && f.Activity != "upstream" {
+		errs = append(errs, apierror.FieldError{Field: "activity", Code: apierror.CodeValidationFailed, Message: "must be one of: virtual, control, system, upstream"})
+	}
 	if f.Status != "" && f.Status != "started" && f.Status != "ok" && f.Status != "tool_error" && f.Status != "error" && f.Status != "denied" {
 		errs = append(errs, apierror.FieldError{Field: "status", Code: apierror.CodeValidationFailed, Message: "must be one of: started, ok, tool_error, error, denied"})
 	}

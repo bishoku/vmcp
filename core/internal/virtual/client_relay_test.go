@@ -133,7 +133,7 @@ func TestNegotiatedClientRequestsAndDeclinesAcrossNodes(t *testing.T) {
 	rig.handler.Delivery = broker
 	rig.handler.Sessions.Store = PGSessionStore{Pool: pool}
 	defer rig.handler.StopWorkers()
-	second := &Handler{Snap: rig.handler.Snap, Sessions: NewManager(), Delivery: broker, Log: rig.handler.Log}
+	second := &Handler{Snap: rig.handler.Snap, Sessions: NewManager(), Delivery: &delivery.Store{Pool: pool, Box: box}, Log: rig.handler.Log}
 	second.Sessions.Store = PGSessionStore{Pool: pool}
 	mux := http.NewServeMux()
 	second.Register(mux)

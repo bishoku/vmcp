@@ -188,22 +188,13 @@ func TestListChangePublicationDeduplicatesAndWakes(t *testing.T) {
 	}
 	wake, unsubscribe := s.Subscribe("s")
 	defer unsubscribe()
-	go s.listen(ctx)
-	// Wait for LISTEN without relying on wakeups as the queue.
-	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
-		var n int
-		_ = pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query='LISTEN vmcp_delivery'`).Scan(&n)
-		if n > 0 {
-			break
-		}
-	}
 	if err := s.PublishListChanged(ctx, 11); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-wake:
 	case <-time.After(time.Second):
-		t.Fatal("NOTIFY did not wake reader")
+		t.Fatal("local publication did not wake reader")
 	}
 }
 

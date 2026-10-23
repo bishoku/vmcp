@@ -38,13 +38,17 @@ def render(source):
     root = source.parent
     profile = report['Profile']
     smoke = profile.get('Smoke', False)
+    kubernetes = report.get('DataPlaneConfiguration',{}).get('platform') == 'MicroK8s Kubernetes'
     failures = report.get('Failures') or []
     phases = report.get('Phases') or []
     lines = ['# Ölçek ve dayanıklılık kabul testi', '', f"Başlangıç: {report.get('StartedUTC', '')}. Sonuç: **{'GEÇTİ' if report.get('Pass') else 'BULGU VAR / KABUL EŞİKLERİ KARŞILANMADI'}**.", '']
     if smoke:
         lines += ['Bu kısa koşu yalnızca test düzeneğinin fonksiyonel doğrulamasıdır; kapasite kabulü değildir.', '']
     if profile.get('REST'):
-        lines += ['Profil: **REST upstream**. Kaydedilmiş JSON operasyonları, request/response şema doğrulaması ve mevcut MCP istemci yolu kullanıldı.', f"Trafik altında iki node'a snapshot yayılımı: **{report.get('DataPlaneConfiguration', {}).get('rest_refresh_ms', 'ölçülmedi')} ms**.", '']
+        refresh_ms = report.get('DataPlaneConfiguration', {}).get('rest_refresh_ms')
+        refresh_ok = report.get('Functional', {}).get('configuration_refresh_under_rest_load')
+        refresh_text = f"Trafik altında iki node'a snapshot yayılımı: **{refresh_ms} ms**." if refresh_ok else f"Snapshot yayılımı **{refresh_ms} ms gözlem penceresinde doğrulanamadı**." if refresh_ok is False else 'Snapshot yayılımı bu koşuda ölçülmedi.'
+        lines += ['Profil: **REST upstream**. Kaydedilmiş JSON operasyonları, request/response şema doğrulaması ve mevcut MCP istemci yolu kullanıldı.', refresh_text, '']
     lines += [f"Envanter: {profile['Servers']} upstream, {profile['Servers']} virtual server, {profile['Servers']*profile['Tools']:,} tool tanımı/seçimi, {profile['Servers']*profile['Resources']:,} resource tanımı/seçimi; {profile['Sessions']} kalıcı session, 64 yapılandırılmış agent key.", '', 'İki ayrı gerçek data-plane süreci; her birinde GOMAXPROCS=2, 768 MiB Go yumuşak bellek limiti ve 64 bağlantılık DB pool. Ayrı PostgreSQL 17 konteyneri 2 CPU / 2 GiB; ayrı Redis konteyneri 0,5 CPU / 256 MiB. Ana uygulama ortamına dokunulmadı.', '', f"{profile['Servers']} mantıksal upstream adresi 16 sentetik HTTP fixture dinleyicisine dağıtılır. Tool yanıtı 5 ms geciktirilir. Her yanıtta doğru upstream rotası, tool adı, çağrı nonce’u ve PII maskesi doğrulanır. Bu gerçek upstream servislerinin kapasite veya ağ gecikmesi testi değildir.", '', 'Test proxy’si round-robin dağıtır, arızalı node için 10 saniyelik pasif bekleme uygular ve POST isteğini başka node’a tekrar göndermez. Üretim ingress’i/nginx bu koşunun parçası değildir. Node kaybı SIGKILL ile yapılır; PostgreSQL HA/failover kapsam dışıdır.', '', '## Aşamalar', '', '| Aşama | Hedef çağrı/s | Başarılı çağrı/s | Başarı % | p95 ms | p99 ms | Hata | Gönderilemeyen | Eşik |', '|---|---:|---:|---:|---:|---:|---:|---:|---|']
     throughput, target, errors, markers = [], [], [], []
     offset = 0
@@ -62,7 +66,7 @@ def render(source):
             markers.append((offset, 'Node geri dönüşü'))
         offset += p['ElapsedSeconds']
     lines += ['', 'Yüzdelikler yalnızca başarılı çağrıların servis gecikmesidir; hatalar ayrıca sayılır. Başarı oranı gönderilen isteklere göre, çağrı/s ise kuyruk boşaltma dahil gerçek aşama süresine göre hesaplanır. Gönderilemeyen istekler de hedefin karşılanması değerlendirmesine dahildir. İstemci retry yapmaz.', '']
-    if chart(root/'throughput.svg', 'Çağrı hızı ve node kapanışı', [('Başarılı çağrı/s','#4f46e5',throughput),('Hedef çağrı/s','#94a3b8',target),('Hata + gönderilemeyen/s','#dc2626',errors)], 'çağrı / saniye', markers):
+    if chart(root/'throughput.svg', 'Çağrı hızı ve hata/gönderilemeyen talep' if report.get('DataPlaneConfiguration', {}).get('database_focus') else 'Çağrı hızı ve node kapanışı', [('Başarılı çağrı/s','#4f46e5',throughput),('Hedef çağrı/s','#94a3b8',target),('Hata + gönderilemeyen/s','#dc2626',errors)], 'çağrı / saniye', markers):
         lines += ['![Çağrı hızı](throughput.svg)', '']
     lines += ['## Tutarlılık ve güvenlik', '']
     c = report.get('Consistency') or {}
@@ -85,7 +89,7 @@ def render(source):
     samples = report.get('Samples') or []
     db_samples = [s['Database'] for s in samples if 'connections' in s.get('Database',{})]
     if db_samples:
-        lines += ['', f"PostgreSQL: örneklenen bağlantı tepe sayısı **{max(d['connections'] for d in db_samples)} / 200**, deadlock **{max(d['deadlocks'] for d in db_samples)}**, lock bekleyen oturum tepe sayısı **{max(d['lock_waiters'] for d in db_samples)}**. Test veritabanı boyutu ilk/son örnekte **{db_samples[0]['size_bytes']/1048576:.1f} / {db_samples[-1]['size_bytes']/1048576:.1f} MiB**. Audit ve dayanıklı delivery kayıtları bu büyümeye dahildir.", '']
+        lines += ['', f"PostgreSQL: örneklenen bağlantı tepe sayısı **{max(d['connections'] for d in db_samples)} / {256 if kubernetes else 200}**, deadlock **{max(d['deadlocks'] for d in db_samples)}**, lock bekleyen oturum tepe sayısı **{max(d['lock_waiters'] for d in db_samples)}**. Test veritabanı boyutu ilk/son örnekte **{db_samples[0]['size_bytes']/1048576:.1f} / {db_samples[-1]['size_bytes']/1048576:.1f} MiB**. Audit ve dayanıklı delivery kayıtları bu büyümeye dahildir.", '']
     docker = [v for s in samples for v in s.get('containers') or []]
     lines += ['', 'RSS yaklaşık beş saniyede bir örneklenir; Go heap ile aynı değildir. CPU yüzdesi işletim sisteminin süreç için raporladığı değerdir; birden çok çekirdekte %100’ü aşabilir. Node yeniden başladığında sayaçlar sıfırlanır. Bu profilde rate-limit değerleri sınırsızdır; Redis limiter maliyeti ölçülmemiştir. Kısa soak süresi uzun dönemli bellek sızıntısının olmadığını kanıtlamaz.', '', f"Kaynak örneği: {len(samples)}. Konteyner kaynağı örneği: {len(docker)}. PostgreSQL connection, lock wait, deadlock, transaction ve disk boyutu örnekleri ham raporda bulunur. Metrik etiket taşmaları beklenen cardinality sınırıdır; tüm tool’lara ayrı seri ayrıldığı anlamına gelmez.", '', '## Eşikler ve sınırlamalar', '', '- Sabit yük: hedefin en az %95’i, gönderilenlerde en az %99,9 başarı; p95 ≤250 ms, p99 ≤1000 ms.', '- Yük artışı: hedefin en az %80’i, en az %80 başarı; p99 <10 saniye ve bozuk sonuç olmaması.', '- Node geçişi: aşamada en az %99 başarı; 10 saniyelik geçişten sonra hata ≤%0,1, p99 ≤1000 ms. Pasif sağlık kontrolü isteğinin hatası da sayılır.', '- Node RSS ≤1,5 GiB; soak ilk/son üçte birlik medyanları arasında artış ≤%20.', '- Yerel, tek fiziksel makine ve tek PostgreSQL örneği. Üretim ağları, JWT/IdP yükü, kontrol düzlemi discovery/config churn, uzun çalışan gerçek araçlar ve veritabanı HA dahil değildir.', '']
     if not smoke and report.get('Pass'):
@@ -96,6 +100,40 @@ def render(source):
     if failures:
         lines += ['## Kabul bulguları', ''] + [f'- {f}' for f in failures] + ['']
     lines += ['## Tekrarlanabilirlik', '', f"Kaynak HEAD: `{report.get('SourceRevision','')}`; çalışma ağacındaki değişiklikleri içeren gerçek binary SHA-256: `{report.get('BinarySHA256','')}`.", f"{report.get('GoVersion','')}, {report.get('HostOS','')}/{report.get('HostArch','')}. Ham örnekler ve sayaçlar: [report.json](report.json).", '', '```sh', ('VMCP_ACCEPTANCE_REST=1 ' if profile.get('REST') else '') + './scripts/acceptance-core.sh', '```', '']
+    if kubernetes:
+        replacements = {
+            'İki ayrı gerçek data-plane süreci; her birinde GOMAXPROCS=2, 768 MiB Go yumuşak bellek limiti ve 64 bağlantılık DB pool. Ayrı PostgreSQL 17 konteyneri 2 CPU / 2 GiB; ayrı Redis konteyneri 0,5 CPU / 256 MiB. Ana uygulama ortamına dokunulmadı.': 'MicroK8s üzerinde ayrı test namespace’i: iki data-plane podu ve bir control-plane podu. Data plane başına GOMAXPROCS=2, GOMEMLIMIT=768MiB, 64 bağlantılık pool; Kubernetes CPU limiti 4, bellek limiti 3GiB. PostgreSQL limiti 4 CPU / 4GiB, Redis 1 CPU / 512MiB. Envanter ve yük sürücüsü host üzerinde; PostgreSQL/Redis ve uygulama Kubernetes üzerinde. Mevcut vmcp-demo değiştirilmedi.',
+            'Node kaybı SIGKILL ile yapılır; PostgreSQL HA/failover kapsam dışıdır.': 'Tek data-plane Deployment sıfır replikaya indirilip yeniden açılır. Bu fiziksel Kubernetes node arızası veya zorunlu SIGKILL değildir; PostgreSQL HA/failover kapsam dışıdır.',
+            'CPU yüzdesi işletim sisteminin süreç için raporladığı değerdir; birden çok çekirdekte %100’ü aşabilir.': 'RSS kubelet container RSS değeridir. CPU, kubelet usageNanoCores değerinden hesaplanan yakın dönem kullanımdır; önceki native ps ortalamasıyla aynı ölçüm değildir ve birden çok çekirdekte %100’ü aşabilir.',
+            'Kısa soak süresi uzun dönemli bellek sızıntısının olmadığını kanıtlamaz.': 'Bu süre uzun dönemli bellek sızıntısının olmadığını kanıtlamaz.',
+            'Mevcut yapı bu profil için yeterli kapasite payı gösteriyor; ikinci optimizasyon paketini zorunlu kılan bir darboğaz gözlenmedi. Bu sonuç mikro tuning yerine kod basitliğini korumayı destekliyor. İlk mikrobenchmarkdan farklı olarak bu koşu tam üretim data-plane’inin dayanıklı MCP delivery/SSE yolunu da çalıştırır; bu iki koşunun gecikmeleri doğrudan karşılaştırılmamalı. Üretim boyutlandırması için farklı gerçek upstream gecikmeleri, JWT/rate-limit politikaları ve ingress ayrıca doğrulanmalı.': 'Bu sonuç yalnızca belirtilen Kubernetes profili ve sentetik upstream gecikmesi için geçerlidir. Artan RPS ve süre, önceki Compose koşusundan farklıdır; CPU, bellek ve ağ altyapısı farkları yazılım hızlanması olarak yorumlanmamalıdır. Gerçek servis gecikmeleri, JWT/rate-limit politikaları ve üretim ingress’i ayrıca doğrulanmalıdır.',
+            './scripts/acceptance-core.sh': 'python3 benchmark/kubernetes/run.py' + (' --smoke' if smoke else ''),
+            'Node kaybı': 'Pod devreden çıkarma',
+            'Node geri dönüşü': 'Pod geri dönüşü',
+        }
+        lines = [line for line in lines]
+        for i,line in enumerate(lines):
+            for old,new in replacements.items():line=line.replace(old,new)
+            lines[i]=line
+        lines[0]='# MicroK8s üzerinde ölçek ve dayanıklılık testi'
+    cpus = report.get('DataPlaneConfiguration', {}).get('gomaxprocs_each', 2)
+    if kubernetes and cpus != 2:
+        lines = [line.replace('GOMAXPROCS=2', f'GOMAXPROCS={cpus}').replace('Kubernetes CPU limiti 4', f'Kubernetes CPU limiti {max(4, cpus)}') for line in lines]
+    if report.get('DataPlaneConfiguration', {}).get('postgres_limits') == 'none':
+        lines = [line.replace('PostgreSQL limiti 4 CPU / 4GiB', 'PostgreSQL CPU/bellek limiti yok; requests 2 CPU / 2GiB') for line in lines]
+    if report.get('DataPlaneConfiguration', {}).get('database_focus'):
+        lines = [line.replace('PostgreSQL limiti 4 CPU / 4GiB', 'PostgreSQL CPU/bellek limiti yok; requests 2 CPU / 2GiB').replace('Tek data-plane Deployment sıfır replikaya indirilip yeniden açılır. Bu fiziksel Kubernetes node arızası veya zorunlu SIGKILL değildir;', 'Bu odaklı koşuda pod kapatma veya konfigürasyon mutasyonu yapılmaz;').replace('python3 benchmark/kubernetes/run.py', 'python3 benchmark/kubernetes/run.py --database-focus') for line in lines]
+        lines.insert(4, 'PostgreSQL odaklı profil: 15 saniye ısınma ve 300 saniye 1.000 TPS hedefi; önceden süresi dolmuş 100.000 operation/stream ile delivery temizliği de çalıştırılır. Bu koşu uzun soak veya fault kabul testi değildir. SQL süreleri ve beklemeler postgres-*.json dosyalarında bulunur.')
+    if kubernetes and cpus != 2:
+        lines = [line.replace('python3 benchmark/kubernetes/run.py --database-focus',f'python3 benchmark/kubernetes/run.py --database-focus --data-plane-cpus {cpus}') for line in lines]
+    if report.get('DataPlaneConfiguration', {}).get('postgres_tuned'):
+        lines = [line.replace('python3 benchmark/kubernetes/run.py --database-focus','python3 benchmark/kubernetes/run.py --database-focus --postgres-tuned') for line in lines]
+        lines += ['', 'PostgreSQL OLTP profili: shared_buffers=1GiB, effective_cache_size=4GiB, WAL buffers=32MiB, max_wal_size=4GiB, checkpoint=15min, daha sık autovacuum/analyze. fsync, synchronous_commit ve full_page_writes açık. Gerçek ayarlar: [postgres-effective-settings.json](postgres-effective-settings.json). Bu profil yalnızca izole benchmark kurulumu içindir.', '']
+    probe = report.get('DataPlaneConfiguration', {}).get('remote_poll_probe')
+    if probe:
+        lines += ['', '## Yük altında farklı process üzerinden polling', '', f"Native host test veritabanına event yazar; gerçek data-plane podu GET SSE üzerinden okur. Local wake paylaşılmaz. Bu, tool çağrısı süresinden ayrı, yazım başlangıcından event’in client tarafından okunmasına kadar ölçümdür. İlk yük penceresinde yaklaşık saniyede bir {probe.get('samples',0)} event; p50={probe.get('p50_ms','ölçülmedi')} ms, p95={probe.get('p95_ms','ölçülmedi')} ms, max={probe.get('max_ms','ölçülmedi')} ms. Kabul bütçesi 500ms. Örnekleme, her koşulda 500ms garantisi değildir.", '']
+    if probe and 'connection_attempts' in probe:
+        lines += [f"GET bağlantı hazırlığı: {probe['connection_attempts']} deneme, {probe.get('connection_setup_ms','ölçülmedi')} ms. Bu süre event teslimi ölçümünden ayrıdır; tool çağrılarında retry yoktur.", '']
     (root/'report.md').write_text('\n'.join(lines), encoding='utf-8')
     return root/'report.md'
 

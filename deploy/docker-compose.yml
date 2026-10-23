@@ -10,9 +10,17 @@ x-network-policy: &network-policy
   VMCP_EGRESS_ALLOW_CIDRS: ${VMCP_EGRESS_ALLOW_CIDRS:-}
   VMCP_EGRESS_ALLOW_HOSTS: ${VMCP_EGRESS_ALLOW_HOSTS:-}
 
+# Match the Helm workload restrictions for application containers.
+x-app-security: &app-security
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m,uid=65532,gid=65532,mode=1770
+
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
     environment:
       POSTGRES_USER: vmcp
       POSTGRES_PASSWORD: vmcp
@@ -28,6 +36,7 @@ services:
       retries: 10
 
   control-plane:
+    <<: *app-security
     build:
       context: ../core
       args:
@@ -47,10 +56,11 @@ services:
   # Optional: only for rate limits shared between data-plane nodes.
   # Start with `docker compose --profile redis up` and set VMCP_REDIS_URL=redis://redis:6379/0.
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
     profiles: [redis]
 
   data-plane:
+    <<: *app-security
     stop_grace_period: 105s
     build:
       context: ../core
@@ -74,6 +84,11 @@ services:
         condition: service_started
 
   web:
+    <<: *app-security
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,uid=65532,gid=65532,mode=1770
+      - /etc/nginx/conf.d:rw,noexec,nosuid,size=1m,uid=65532,gid=65532,mode=0770
+      - /var/cache/nginx:rw,noexec,nosuid,size=32m,uid=65532,gid=65532,mode=0770
     build:
       context: ../web
       args:

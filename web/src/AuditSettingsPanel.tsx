@@ -7,7 +7,7 @@ import { ServerPanel } from './connections/ServerPanels'
 import { btn, input, primary } from './styles'
 
 const scopes=['virtual','upstream','control','system','reads'] as const
-const labels:Record<string,string>={virtual:'Virtual-server calls',upstream:'Upstream calls',control:'Management API',system:'Bootstrap & discovery',reads:'Read API calls'}
+const labels:Record<string,string>={virtual:'Virtual-server calls',upstream:'Upstream calls',control:'Management API',system:'System payload scope',reads:'Read API calls'}
 export default function AuditSettingsPanel({scope='global',slug=''}:{scope?:'global'|'virtual'|'upstream';slug?:string}){
  const {manageTokens}=useCapabilities()
  if(!manageTokens)return null
@@ -56,6 +56,7 @@ function AuditEditor({scope,slug}:{scope:'global'|'virtual'|'upstream';slug:stri
  <button className={btn} disabled={busy} onClick={()=>void test()}>Preview audit payloads</button>
  {results&&<div className="grid gap-4 md:grid-cols-2">{(['request','response'] as const).map(direction=><div key={direction}><h4 className="text-sm font-medium">{direction} · {results[direction].state}</h4><p className="text-xs text-ink-muted">{results[direction].originalBytes} original bytes · {results[direction].storedBytes} stored bytes · {results[direction].redactions} redactions</p><pre className="mt-2 overflow-auto whitespace-pre-wrap break-all surface-inset p-3 text-xs">{JSON.stringify(results[direction].content??null,null,2)}</pre>{results[direction].matches.map(m=><p className="text-xs" key={`${m.source}:${m.name}`}>{m.source} / {m.name}: {m.count}</p>)}</div>)}</div>}
  </div></details>
+ <p className="text-xs text-ink-muted">Routine discovery and subscription maintenance use logs and metrics. System catalog changes contain audit metadata only; enabling system payload capture does not record routine maintenance.</p>
  <div className="flex items-center justify-between gap-3"><span className="text-xs text-ink-muted">Policy revision {draft.revision}</span><button className={primary} disabled={busy} onClick={()=>void save()}>Save audit settings</button></div>
  </>}
  </fieldset></ServerPanel>

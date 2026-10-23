@@ -1,0 +1,259 @@
+{
+  "polling-wait-summary.json": {
+    "samples": 53,
+    "active_session_samples": 1102,
+    "object_lock_samples": 0,
+    "waits": [
+      {
+        "type": "Client",
+        "event": "ClientRead",
+        "session_samples": 143
+      },
+      {
+        "type": "LWLock",
+        "event": "WALWrite",
+        "session_samples": 655
+      },
+      {
+        "type": null,
+        "event": null,
+        "session_samples": 258
+      },
+      {
+        "type": "IO",
+        "event": "WalSync",
+        "session_samples": 44
+      },
+      {
+        "type": "IO",
+        "event": "DataFileWrite",
+        "session_samples": 1
+      },
+      {
+        "type": "Timeout",
+        "event": "VacuumDelay",
+        "session_samples": 1
+      }
+    ]
+  },
+  "postgres-benchmark-settings.txt": "autovacuum_analyze_scale_factor|0.1|\nautovacuum_naptime|60|s\nautovacuum_vacuum_scale_factor|0.2|\ncheckpoint_completion_target|0.9|\ncheckpoint_timeout|300|s\neffective_cache_size|524288|8kB\nfsync|on|\nfull_page_writes|on|\nmaintenance_work_mem|65536|kB\nmax_connections|256|\nmax_wal_size|1024|MB\nmin_wal_size|80|MB\nshared_buffers|16384|8kB\nsynchronous_commit|on|\nwal_buffers|512|8kB\nwork_mem|4096|kB\n",
+  "postgres-cgroup-limits.json": {
+    "cpu.max": "max 100000\n",
+    "memory.max": "max\n",
+    "cpu.stat": "usage_usec 6987461\nuser_usec 3289577\nsystem_usec 3697883\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n"
+  },
+  "postgres-delivery-custom-generic-plans.txt": "Limit  (cost=0.84..16.91 rows=1 width=412) (actual time=0.076..0.076 rows=0 loops=1)\n  Buffers: shared hit=8\n  ->  Nested Loop  (cost=0.84..16.91 rows=1 width=412) (actual time=0.075..0.075 rows=0 loops=1)\n        Buffers: shared hit=8\n        ->  Index Scan using mcp_event_replay on mcp_events e  (cost=0.42..8.44 rows=1 width=412) (actual time=0.036..0.036 rows=1 loops=1)\n              Index Cond: ((stream_id = '432fe6ed-da6d-46a1-ab60-4fd129b9cf5d'::uuid) AND (seq > '0'::bigint))\n              Buffers: shared hit=4\n        ->  Index Scan using mcp_streams_pkey on mcp_streams s  (cost=0.42..8.45 rows=1 width=16) (actual time=0.038..0.038 rows=0 loops=1)\n              Index Cond: (id = '432fe6ed-da6d-46a1-ab60-4fd129b9cf5d'::uuid)\n              Filter: ((session_id = '7b77412dca854704302d2c6421f1e083'::text) AND (owner = 'f3e5ca2b-05c5-4ede-b59f-3f721a0fed6b'::uuid) AND (lease_until > now()) AND (expires_at > now()))\n              Rows Removed by Filter: 1\n              Buffers: shared hit=4\nPlanning:\n  Buffers: shared hit=284 read=11\n  I/O Timings: shared read=0.120\nPlanning Time: 2.532 ms\nExecution Time: 0.160 ms\nUpdate on mcp_streams  (cost=0.42..8.46 rows=0 width=0)\n  ->  Index Scan using mcp_streams_pkey on mcp_streams  (cost=0.42..8.46 rows=1 width=30)\n        Index Cond: (id = '432fe6ed-da6d-46a1-ab60-4fd129b9cf5d'::uuid)\n        Filter: ((session_id = '7b77412dca854704302d2c6421f1e083'::text) AND (expires_at > now()) AND ((owner = 'f3e5ca2b-05c5-4ede-b59f-3f721a0fed6b'::uuid) OR (lease_until IS NULL) OR (lease_until < now())))\nLimit  (cost=0.84..16.91 rows=1 width=412) (actual time=0.033..0.033 rows=0 loops=1)\n  Buffers: shared hit=8\n  ->  Nested Loop  (cost=0.84..16.91 rows=1 width=412) (actual time=0.032..0.033 rows=0 loops=1)\n        Buffers: shared hit=8\n        ->  Index Scan using mcp_event_replay on mcp_events e  (cost=0.42..8.44 rows=1 width=412) (actual time=0.016..0.016 rows=1 loops=1)\n              Index Cond: ((stream_id = $1) AND (seq > $4))\n              Buffers: shared hit=4\n        ->  Index Scan using mcp_streams_pkey on mcp_streams s  (cost=0.42..8.45 rows=1 width=16) (actual time=0.016..0.016 rows=0 loops=1)\n              Index Cond: (id = $1)\n              Filter: ((session_id = $2) AND (owner = $3) AND (lease_until > now()) AND (expires_at > now()))\n              Rows Removed by Filter: 1\n              Buffers: shared hit=4\nPlanning:\n  Buffers: shared hit=16\nPlanning Time: 0.201 ms\nExecution Time: 0.068 ms\nUpdate on mcp_streams  (cost=0.42..8.46 rows=0 width=0)\n  ->  Index Scan using mcp_streams_pkey on mcp_streams  (cost=0.42..8.46 rows=1 width=30)\n        Index Cond: (id = $1)\n        Filter: ((session_id = $2) AND (expires_at > now()) AND ((owner = $3) OR (lease_until IS NULL) OR (lease_until < now())))\nmcp_streams|154488|18301|2026-10-23 18:05:55.154373+00|2026-10-23 18:07:45.831836+00\nmcp_events|112548|0||2026-10-23 18:07:46.61172+00\n",
+  "postgres-demo-settings.txt": "autovacuum_analyze_scale_factor|0.1|\nautovacuum_naptime|60|s\nautovacuum_vacuum_scale_factor|0.2|\ncheckpoint_completion_target|0.9|\ncheckpoint_timeout|300|s\neffective_cache_size|524288|8kB\nfsync|on|\nfull_page_writes|on|\nmaintenance_work_mem|65536|kB\nmax_connections|100|\nmax_wal_size|1024|MB\nmin_wal_size|80|MB\nshared_buffers|16384|8kB\nsynchronous_commit|on|\nwal_buffers|512|8kB\nwork_mem|4096|kB\n",
+  "postgres-hot-query-intervals.json": [
+    {
+      "utc": "2026-10-23T18:06:11.918037+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 6386,
+      "buffer_hits_per_call": 1365.028186658315,
+      "mean_ms_delta": 1.3284762945505764
+    },
+    {
+      "utc": "2026-10-23T18:06:11.918037+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 3210,
+      "buffer_hits_per_call": 1504.011214953271,
+      "mean_ms_delta": 1.4902813766355139
+    },
+    {
+      "utc": "2026-10-23T18:06:29.459213+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 39186,
+      "buffer_hits_per_call": 7215.21150410861,
+      "mean_ms_delta": 8.067538835987358
+    },
+    {
+      "utc": "2026-10-23T18:06:29.459213+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 13872,
+      "buffer_hits_per_call": 10038.162341407151,
+      "mean_ms_delta": 11.292277263696695
+    },
+    {
+      "utc": "2026-10-23T18:06:46.73702+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 41533,
+      "buffer_hits_per_call": 7549.852550983555,
+      "mean_ms_delta": 9.220711837719266
+    },
+    {
+      "utc": "2026-10-23T18:06:46.73702+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 9013,
+      "buffer_hits_per_call": 21066.50649062465,
+      "mean_ms_delta": 25.83097990669024
+    },
+    {
+      "utc": "2026-10-23T18:07:03.52017+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 18130,
+      "buffer_hits_per_call": 4.496580253723111,
+      "mean_ms_delta": 0.04006681356804319
+    },
+    {
+      "utc": "2026-10-23T18:07:03.52017+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 9111,
+      "buffer_hits_per_call": 7.144331028427176,
+      "mean_ms_delta": 0.0639677783997371
+    },
+    {
+      "utc": "2026-10-23T18:07:20.303993+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33594,
+      "buffer_hits_per_call": 4.831428231231768,
+      "mean_ms_delta": 0.038823926802166814
+    },
+    {
+      "utc": "2026-10-23T18:07:20.303993+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16778,
+      "buffer_hits_per_call": 7.212063416378591,
+      "mean_ms_delta": 0.06295874937433409
+    },
+    {
+      "utc": "2026-10-23T18:07:37.053153+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33513,
+      "buffer_hits_per_call": 5.502521409602244,
+      "mean_ms_delta": 0.03923696326814423
+    },
+    {
+      "utc": "2026-10-23T18:07:37.053153+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16746,
+      "buffer_hits_per_call": 7.056252239340738,
+      "mean_ms_delta": 0.06270889949801779
+    },
+    {
+      "utc": "2026-10-23T18:07:53.82826+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33515,
+      "buffer_hits_per_call": 5.5027002834551695,
+      "mean_ms_delta": 0.04171484323407008
+    },
+    {
+      "utc": "2026-10-23T18:07:53.82826+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16788,
+      "buffer_hits_per_call": 7.120741005480105,
+      "mean_ms_delta": 0.06578000738637446
+    },
+    {
+      "utc": "2026-10-23T18:08:10.585793+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33561,
+      "buffer_hits_per_call": 5.51211227317422,
+      "mean_ms_delta": 0.0431907179462566
+    },
+    {
+      "utc": "2026-10-23T18:08:10.585793+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16754,
+      "buffer_hits_per_call": 7.541900441685567,
+      "mean_ms_delta": 0.07017688701205752
+    },
+    {
+      "utc": "2026-10-23T18:08:27.38477+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33512,
+      "buffer_hits_per_call": 5.502775125328241,
+      "mean_ms_delta": 0.04310266053908302
+    },
+    {
+      "utc": "2026-10-23T18:08:27.38477+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16753,
+      "buffer_hits_per_call": 7.348773354026145,
+      "mean_ms_delta": 0.06975778278530377
+    },
+    {
+      "utc": "2026-10-23T18:08:44.210058+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33662,
+      "buffer_hits_per_call": 5.495009209197314,
+      "mean_ms_delta": 0.04274392611833301
+    },
+    {
+      "utc": "2026-10-23T18:08:44.210058+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16853,
+      "buffer_hits_per_call": 7.04450246246959,
+      "mean_ms_delta": 0.06740329027482149
+    },
+    {
+      "utc": "2026-10-23T18:09:00.980001+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33573,
+      "buffer_hits_per_call": 5.502636046823341,
+      "mean_ms_delta": 0.04294320072694356
+    },
+    {
+      "utc": "2026-10-23T18:09:00.980001+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16768,
+      "buffer_hits_per_call": 7.207418893129771,
+      "mean_ms_delta": 0.06842772930589254
+    },
+    {
+      "utc": "2026-10-23T18:09:17.832595+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33712,
+      "buffer_hits_per_call": 5.515128144280968,
+      "mean_ms_delta": 0.04355545921354733
+    },
+    {
+      "utc": "2026-10-23T18:09:17.832595+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16869,
+      "buffer_hits_per_call": 8.011678226332325,
+      "mean_ms_delta": 0.07316375837331976
+    },
+    {
+      "utc": "2026-10-23T18:09:34.588401+00:00",
+      "phase": "steady",
+      "query": "events",
+      "calls_delta": 33506,
+      "buffer_hits_per_call": 5.48609204321614,
+      "mean_ms_delta": 0.04391268357932973
+    },
+    {
+      "utc": "2026-10-23T18:09:34.588401+00:00",
+      "phase": "steady",
+      "query": "claim",
+      "calls_delta": 16749,
+      "buffer_hits_per_call": 7.240969610125978,
+      "mean_ms_delta": 0.06966677270266888
+    }
+  ],
+  "postgres-index-plans.txt": "fsync|on|\nfull_page_writes|on|\nmax_connections|256|\npg_stat_statements.track|all|\nshared_buffers|16384|8kB\nsynchronous_commit|on|\ntrack_io_timing|on|\nwork_mem|4096|kB\nmcp_operations|mcp_operations_pkey|CREATE UNIQUE INDEX mcp_operations_pkey ON public.mcp_operations USING btree (id)\nmcp_operations|mcp_operation_request|CREATE UNIQUE INDEX mcp_operation_request ON public.mcp_operations USING btree (session_id, client_request_id) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_expiry|CREATE INDEX mcp_operation_expiry ON public.mcp_operations USING btree (lease_until) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_principal|CREATE INDEX mcp_operation_principal ON public.mcp_operations USING btree (principal_hash) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_cleanup|CREATE INDEX mcp_operation_cleanup ON public.mcp_operations USING btree (created_at) WHERE (state <> 'running'::text)\nmcp_streams|mcp_streams_pkey|CREATE UNIQUE INDEX mcp_streams_pkey ON public.mcp_streams USING btree (id)\nmcp_streams|mcp_get_stream|CREATE UNIQUE INDEX mcp_get_stream ON public.mcp_streams USING btree (session_id) WHERE ((operation_id IS NULL) AND (NOT closed))\nmcp_streams|mcp_stream_expiry|CREATE INDEX mcp_stream_expiry ON public.mcp_streams USING btree (expires_at)\nmcp_streams|mcp_stream_operation|CREATE INDEX mcp_stream_operation ON public.mcp_streams USING btree (operation_id) WHERE (operation_id IS NOT NULL)\nmcp_pending_requests|mcp_pending_requests_pkey|CREATE UNIQUE INDEX mcp_pending_requests_pkey ON public.mcp_pending_requests USING btree (id)\nmcp_pending_requests|mcp_pending_operation|CREATE INDEX mcp_pending_operation ON public.mcp_pending_requests USING btree (operation_id)\nLimit  (cost=0.42..8.44 rows=1 width=4) (actual time=0.048..0.049 rows=0 loops=1)\n  Buffers: shared hit=3\n  ->  Index Only Scan using mcp_stream_operation on mcp_streams  (cost=0.42..8.44 rows=1 width=4) (actual time=0.047..0.047 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=61\nPlanning Time: 0.491 ms\nExecution Time: 0.075 ms\nLimit  (cost=0.00..7.08 rows=200 width=16) (actual time=0.349..0.444 rows=200 loops=1)\n  Buffers: shared hit=112\n  ->  Seq Scan on mcp_operations  (cost=0.00..3787.36 rows=107018 width=16) (actual time=0.348..0.423 rows=200 loops=1)\n        Filter: ((state <> 'running'::text) AND (created_at < (now() - '00:15:00'::interval)))\n        Buffers: shared hit=112\nPlanning:\n  Buffers: shared hit=71\nPlanning Time: 0.674 ms\nExecution Time: 0.470 ms"
+}

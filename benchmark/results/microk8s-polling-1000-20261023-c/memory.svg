@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 385" role="img" aria-label="Data-plane RSS">
+<rect width="1040" height="385" rx="16" fill="#f8fafc"/>
+<text x="24" y="30" font-family="sans-serif" font-size="18" fill="#0f172a">Data-plane RSS</text>
+<path d="M72 314.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="318.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">0</text>
+<path d="M72 249.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="253.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">274</text>
+<path d="M72 184.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="188.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">548</text>
+<path d="M72 119.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="123.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">821</text>
+<path d="M72 54.0H1012" stroke="#e2e8f0"/>
+<text x="64" y="58.0" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">1095</text>
+<text x="72.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">0s</text>
+<text x="260.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">83s</text>
+<text x="448.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">166s</text>
+<text x="636.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">250s</text>
+<text x="824.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">333s</text>
+<text x="1012.0" y="336" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#475569">416s</text>
+<polyline points="300.40,97.87 311.75,97.77 323.06,97.77 334.26,97.46 345.55,97.46 356.93,93.53 368.38,93.53 379.76,93.53 390.92,93.53 402.27,81.86 413.46,81.86 424.71,81.86 435.94,89.29 447.33,89.29 458.57,89.29 469.80,89.29 481.13,89.68 492.42,89.68 503.69,89.86 515.00,89.86 526.32,89.83 537.64,89.83 548.90,89.83 560.17,89.88 571.47,89.88 582.75,89.88 594.03,89.88 605.39,90.96 616.69,90.96 627.97,90.96 639.28,90.96 650.51,91.12 661.80,91.12 673.19,91.15 684.43,91.15 695.70,91.15 707.01,91.15 718.36,90.94 729.60,90.94 740.86,90.93 752.22,90.93 763.52,90.93 774.80,91.21 786.11,91.21 797.37,91.27 808.61,91.27 819.98,91.27 831.36,91.28 842.53,91.28 853.88,91.20 865.19,91.20 876.44,91.20 887.75,91.19 899.07,91.19 910.32,91.19 921.62,90.97 932.90,90.97 944.22,90.97 955.60,90.97 966.83,90.67 978.07,90.67 989.48,90.67 1000.68,90.84 1012.00,90.84" fill="none" stroke="#4f46e5" stroke-width="2"/>
+<text x="24" y="365" font-family="sans-serif" font-size="12" fill="#4f46e5">acceptance-node-1</text>
+<polyline points="300.40,98.31 311.75,98.31 323.06,98.31 334.26,98.31 345.55,95.01 356.93,95.01 368.38,92.56 379.76,92.56 390.92,92.56 402.27,94.04 413.46,94.04 424.71,94.04 435.94,93.10 447.33,93.10 458.57,93.10 469.80,92.44 481.13,92.44 492.42,92.44 503.69,92.44 515.00,84.97 526.32,84.97 537.64,92.26 548.90,92.26 560.17,92.26 571.47,92.26 582.75,92.41 594.03,92.41 605.39,92.41 616.69,92.41 627.97,86.44 639.28,86.44 650.51,92.43 661.80,92.43 673.19,92.43 684.43,92.43 695.70,92.46 707.01,92.46 718.36,92.46 729.60,92.59 740.86,92.59 752.22,92.59 763.52,92.59 774.80,92.76 786.11,92.76 797.37,92.76 808.61,92.20 819.98,92.20 831.36,92.07 842.53,92.07 853.88,92.07 865.19,92.57 876.44,92.57 887.75,92.57 899.07,92.57 910.32,92.63 921.62,92.63 932.90,92.63 944.22,92.33 955.60,92.33 966.83,92.33 978.07,92.33 989.48,92.32 1000.68,92.32 1012.00,92.32" fill="none" stroke="#0891b2" stroke-width="2"/>
+<text x="274" y="365" font-family="sans-serif" font-size="12" fill="#0891b2">acceptance-node-2</text>
+<text x="72" y="44" font-family="sans-serif" font-size="11" fill="#475569">MiB</text>
+</svg>

@@ -64,11 +64,10 @@ func TestCuratedCatalogProtocolAndCrossNodeSubscriptions(t *testing.T) {
 			t.Fatal("snapshot did not load curated catalogs")
 		}
 	}
-	broker := &delivery.Store{Pool: e.pool, Box: e.syncer.Box}
 	newNode := func() (*virtual.Handler, *httptest.Server) {
 		manager := virtual.NewManager()
 		manager.Store = virtual.PGSessionStore{Pool: e.pool}
-		h := &virtual.Handler{Snap: e.syncer, Sessions: manager, Delivery: broker, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		h := &virtual.Handler{Snap: e.syncer, Sessions: manager, Delivery: &delivery.Store{Pool: e.pool, Box: e.syncer.Box}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 		mux := http.NewServeMux()
 		h.Register(mux)
 		srv := httptest.NewServer(mux)
