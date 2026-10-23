@@ -126,6 +126,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
       - name: Sign and verify the release digest
         env:
           IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}
@@ -133,8 +135,7 @@ jobs:
           CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/docker-publish.yml@${{ github.ref }}
         run: |
           cosign sign --yes "$IMAGE@$DIGEST"
-          cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity "$CERTIFICATE_IDENTITY" "$IMAGE@$DIGEST"
+          scripts/verify-image-signature.sh "$IMAGE@$DIGEST" "$CERTIFICATE_IDENTITY"
       - name: Tag verified release digest
         env:
           IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}
