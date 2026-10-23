@@ -92,6 +92,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: web
@@ -100,15 +101,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: |
-          npm ci
-          npm audit --audit-level=high
-          npm run lint
-          npm run build
-          npm test
-          npm run validate:api
-          npx playwright install --with-deps chromium
-          npm run test:browser
+      - name: Install web dependencies
+        timeout-minutes: 5
+        run: npm ci
+      - name: Audit web dependencies
+        timeout-minutes: 3
+        run: npm audit --audit-level=high
+      - name: Lint web
+        run: npm run lint
+      - name: Build web
+        run: npm run build
+      - name: Run web unit tests
+        timeout-minutes: 5
+        run: npm test
+      - name: Validate OpenAPI assets
+        run: npm run validate:api
+      - name: Install browser and system dependencies
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium
+      - name: Run browser tests
+        timeout-minutes: 10
+        run: npm run test:browser
 
   deployment-validation:
     name: Helm and image validation (disposable cluster)
