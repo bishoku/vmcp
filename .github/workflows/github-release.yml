@@ -57,7 +57,7 @@ jobs:
           path: source
           persist-credentials: false
       - name: Download successful image publication manifests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: docker-images-${{ steps.source.outputs.version }}
           path: published-images
