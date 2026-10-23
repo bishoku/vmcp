@@ -35,10 +35,12 @@ type Auth struct {
 	HasClientSecret bool     `json:"hasClientSecret,omitempty"`
 }
 type Parameter struct {
-	Name     string          `json:"name"`
-	In       string          `json:"in"`
-	Required bool            `json:"required"`
-	Schema   json.RawMessage `json:"schema"`
+	Name         string          `json:"name"`
+	In           string          `json:"in"`
+	Required     bool            `json:"required"`
+	Schema       json.RawMessage `json:"schema"`
+	ExposeToMCP  *bool           `json:"exposeToMcp,omitempty"`
+	DefaultValue json.RawMessage `json:"defaultValue,omitempty"`
 }
 type Operation struct {
 	Name               string            `json:"name"`
@@ -70,10 +72,11 @@ type Compiled struct {
 	Tools      []mcp.Tool                   `json:"-"`
 }
 type PreparedOperation struct {
-	Definition Operation
-	Input      *jsonschema.Schema
-	Output     *jsonschema.Schema
-	Projection *projectionNode
+	Definition        Operation
+	Input             *jsonschema.Schema
+	Output            *jsonschema.Schema
+	ParameterDefaults map[string]any
+	Projection        *projectionNode
 }
 
 func (a Auth) OAuth() *oauthtoken.Config {
@@ -285,13 +288,16 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		properties := map[string]any{}
 		required := []string{}
 		paths := map[string]bool{}
+		parameterNames := map[string]bool{}
+		defaults := map[string]any{}
 		if len(op.Parameters) > 100 {
 			return nil, errors.New("at most 100 parameters")
 		}
 		for _, p := range op.Parameters {
-			if !nameRE.MatchString(p.Name) || p.Name == "body" || properties[p.Name] != nil || !slices.Contains([]string{"path", "query"}, p.In) {
+			if !nameRE.MatchString(p.Name) || p.Name == "body" || parameterNames[p.Name] || !slices.Contains([]string{"path", "query"}, p.In) {
 				return nil, errors.New("invalid or duplicate parameter")
 			}
+			parameterNames[p.Name] = true
 			var schema map[string]any
 			if decodeJSON(p.Schema, &schema) != nil {
 				return nil, errors.New("invalid parameter schema")
@@ -300,9 +306,37 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 			if !slices.Contains([]string{"string", "number", "integer", "boolean"}, typ) {
 				return nil, errors.New("path/query parameters must have scalar types")
 			}
-			properties[p.Name] = schema
-			if p.Required || p.In == "path" {
-				required = append(required, p.Name)
+
+			hasDefault := len(p.DefaultValue) > 0
+			exposed := p.ExposeToMCP == nil || *p.ExposeToMCP
+			if !exposed && !hasDefault {
+				return nil, fmt.Errorf("%s parameter %s: hidden parameters require a fixed value", op.Name, p.Name)
+			}
+			if hasDefault {
+				var value any
+				if decodeJSON(p.DefaultValue, &value) != nil {
+					return nil, fmt.Errorf("%s parameter %s: invalid default value", op.Name, p.Name)
+				}
+				validator, err := compileSchema(p.Schema)
+				if err != nil {
+					return nil, fmt.Errorf("%s parameter %s: invalid schema", op.Name, p.Name)
+				}
+				if err := validator.Validate(value); err != nil {
+					return nil, fmt.Errorf("%s parameter %s: default value does not match parameter schema", op.Name, p.Name)
+				}
+				if p.In == "path" && unsafePathValue(fmt.Sprint(value)) {
+					return nil, fmt.Errorf("%s parameter %s: unsafe default path value", op.Name, p.Name)
+				}
+				defaults[p.Name] = value
+				// This annotation describes the runtime fallback; schema.default alone
+				// never enables substitution for existing configurations.
+				schema["default"] = value
+			}
+			if exposed {
+				properties[p.Name] = schema
+				if !hasDefault && (p.Required || p.In == "path") {
+					required = append(required, p.Name)
+				}
 			}
 			if p.In == "path" {
 				paths[p.Name] = true
@@ -361,7 +395,7 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		}
 		annotations, _ := json.Marshal(map[string]bool{"readOnlyHint": op.ReadOnly, "destructiveHint": !op.ReadOnly, "idempotentHint": false, "openWorldHint": true})
 		result.Tools = append(result.Tools, mcp.Tool{Name: op.Name, Description: op.Description, InputSchema: inputRaw, OutputSchema: outputRaw, Annotations: annotations})
-		result.Operations[op.Name] = PreparedOperation{Definition: op, Input: input, Output: output, Projection: projection}
+		result.Operations[op.Name] = PreparedOperation{Definition: op, Input: input, Output: output, ParameterDefaults: defaults, Projection: projection}
 	}
 	return result, nil
 }

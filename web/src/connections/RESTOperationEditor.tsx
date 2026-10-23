@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type InputHTMLAttributes } from 'react'
+import {hasParameterDefault,initialParameterDefault,parseParameterDefault,parameterValueError} from './rest-parameters'
 import SchemaEditor from './SchemaEditor'
 import { Wrench } from 'lucide-react'
 import type { RESTOperation } from '../api'
@@ -29,7 +30,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   const [statuses, setStatuses] = useState((operation.successStatuses ?? []).join(', '))
   const [parametersJSON, setParametersJSON] = useState(json(operation.parameters))
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const invalid = Object.values(errors).some(Boolean) || !!responseSelectionError(operation.responseSchema, operation.responseFields, operation.responseFieldPaths)
+  const invalid = operation.parameters.some(parameter=>!!parameterValueError(parameter)) || Object.values(errors).some(Boolean) || !!responseSelectionError(operation.responseSchema, operation.responseFields, operation.responseFieldPaths)
   // Valid edits belong to the parent's draft, which is cleaned on Save. Only
   // unparsed local text needs a separate navigation guard.
   useUnsaved(invalid ? { body, response, headers, statuses, parametersJSON } : null)
@@ -60,7 +61,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
     <fieldset disabled={!onChange} className="panel-body layout-stack min-w-0">
       <div hidden={view!=='tool'} className="layout-stack"><div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
         <FormField name={field('method')} label="HTTP method"><Select className={input} value={operation.method} onChange={event => set({ method: event.target.value as RESTOperation['method'], readOnly: false })}>{['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(method => <option key={method}>{method}</option>)}</Select></FormField>
-        <FormField name={field('path')} label="Operation path" required hint="Use {id} to create a path parameter automatically.">
+        <FormField name={field('path')} label="Operation path" required hint="Use {id} for path parameters. Configure query parameters in Parameters; do not append ? to the path.">
           <input className={input} disabled={!!errors.parameters} value={operation.path} placeholder="/customers/{id}" onChange={event => set({ path: event.target.value, parameters: pathParameters(event.target.value, operation.parameters) })}/>
         </FormField>
       </div>
@@ -98,9 +99,15 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
             <input className={input} value={String(value.schema.description ?? '')} onChange={event => parameter(position, { schema: { ...value.schema, description: event.target.value } })}/>
           </FormField>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <Switch label={`Parameter ${position + 1} required`} disabled={value.in === 'path'} checked={value.in === 'path' || value.required} onChange={event => parameter(position, { required: event.target.checked })}/>
+            <Switch label={`Parameter ${position + 1} expose to MCP`} checked={value.exposeToMcp!==false} onChange={event=>parameter(position,{exposeToMcp:event.target.checked,...(!event.target.checked&&!hasParameterDefault(value)?{defaultValue:initialParameterDefault(value)}:{})})}/>
+            <Switch label={`Parameter ${position + 1} required`} disabled={value.in === 'path'||hasParameterDefault(value)} checked={!hasParameterDefault(value)&&(value.in==='path'||value.required)} onChange={event => parameter(position, { required: event.target.checked })}/>
             {value.in === 'query' && onChange && <button className={btn} onClick={() => set({ parameters: operation.parameters.filter((_, i) => i !== position) })}>Remove parameter {position + 1}</button>}
           </div>
+          <Switch label={`Parameter ${position + 1} use default value`} disabled={value.exposeToMcp===false} checked={hasParameterDefault(value)} onChange={event=>parameter(position,{defaultValue:event.target.checked?initialParameterDefault(value):undefined})}/>
+          {hasParameterDefault(value)&&<FormField name={field(`parameters.${position}.defaultValue`)} label={`Parameter ${position + 1} ${value.exposeToMcp===false?'fixed':'default'} value`} error={parameterValueError(value)} hint={value.exposeToMcp===false?'Always sent to REST. Hidden from MCP; callers cannot override it.':'Used only when the argument is absent. Explicit false, zero and empty strings are preserved.'}>
+            {value.schema.type==='boolean'?<Select className={input} value={String(value.defaultValue)} onChange={event=>parameter(position,{defaultValue:event.target.value==='true'})}><option value="false">false</option><option value="true">true</option></Select>:<ParameterDefaultInput className={input} configured={value.defaultValue} valueType={value.schema.type} onChange={event=>parameter(position,{defaultValue:parseParameterDefault(event.target.value,value.schema.type)})}/>}
+          </FormField>}
+          {!hasParameterDefault(value)&&parameterValueError(value)&&<p role="alert" className="text-xs text-red-700">{parameterValueError(value)}</p>}
           {Object.keys(value.schema).some(key => !['type', 'description'].includes(key)) && <details><summary className="cursor-pointer text-xs">Imported schema constraints (preserved)</summary><pre className="mt-2 whitespace-pre-wrap break-all text-xs">{json(value.schema)}</pre></details>}
         </div>)}
         {onChange && <button className={`${btn} self-start`} disabled={operation.parameters.length >= 100} onClick={() => {setParameterQuery('');set({ parameters: [...operation.parameters, { name: '', in: 'query', required: false, schema: { type: 'string' } }] })}}>Add query parameter</button>}
@@ -151,4 +158,14 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
       </details>
     </fieldset>
   </ServerPanel>
+}
+
+// Retain editable numeric text (for example "1." or "-0.") while publishing
+// typed values to the draft. Synchronize when advanced editing changes it.
+function ParameterDefaultInput({configured,valueType,...props}:InputHTMLAttributes<HTMLInputElement>&{configured:unknown;valueType:unknown}) {
+ const [draft,setDraft]=useState({configured,valueType,text:String(configured)})
+ if(!Object.is(draft.configured,configured)||draft.valueType!==valueType){
+  setDraft({configured,valueType,text:parseParameterDefault(draft.text,valueType)===configured?draft.text:String(configured)})
+ }
+ return <input {...props} value={draft.text} onChange={event=>{setDraft({configured:parseParameterDefault(event.target.value,valueType),valueType,text:event.target.value});props.onChange?.(event)}}/>
 }

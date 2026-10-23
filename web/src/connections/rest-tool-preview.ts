@@ -6,8 +6,9 @@ export const schemaObject = (value: unknown): Record<string, unknown> =>
 
 /** Mirrors restapi.Compile's public tool shape. Never includes request credentials. */
 export function restToolPreview(operation: RESTOperation) {
-  const properties = Object.fromEntries(operation.parameters.map(parameter => [parameter.name, parameter.schema]))
-  const required = operation.parameters.filter(parameter => parameter.required || parameter.in === 'path').map(parameter => parameter.name)
+  const exposed=operation.parameters.filter(parameter=>parameter.exposeToMcp!==false)
+  const properties = Object.fromEntries(exposed.map(parameter => [parameter.name, parameter.defaultValue===undefined?parameter.schema:{...parameter.schema,default:parameter.defaultValue}]))
+  const required = exposed.filter(parameter => parameter.defaultValue===undefined&&(parameter.required || parameter.in === 'path')).map(parameter => parameter.name)
   if (operation.bodySchema !== undefined) {
     properties.body = operation.bodySchema as Record<string, unknown>
     required.push('body')

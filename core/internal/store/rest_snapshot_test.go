@@ -90,6 +90,19 @@ func TestRESTSnapshotReuseInvalidation(t *testing.T) {
 	if same.Upstreams[id].REST == beforeProjection.Upstreams[id].REST || !reflect.DeepEqual(same.Upstreams[id].REST.Config.Operations[0].ResponseFieldPaths, cfg.Operations[0].ResponseFieldPaths) {
 		t.Fatal("nested response projection missing or stale in runtime snapshot")
 	}
+
+	beforeParameters := same
+	hidden := false
+	cfg.Operations[0].Parameters = []restapi.Parameter{{Name: "type", In: "query", ExposeToMCP: &hidden, DefaultValue: json.RawMessage(`1`), Schema: json.RawMessage(`{"type":"integer"}`)}}
+	save()
+	same = load(beforeParameters)
+	if same.Upstreams[id].REST == beforeParameters.Upstreams[id].REST {
+		t.Fatal("parameter defaults did not invalidate compiled snapshot")
+	}
+	req, err := same.Upstreams[id].REST.Build(in.URL, "get", json.RawMessage(`{}`), nil, restapi.Identity{})
+	if err != nil || req.URL.Query().Get("type") != "1" {
+		t.Fatal("fixed parameter lost in snapshot", err)
+	}
 	for _, change := range []func(){func() { in.URL = "https://other.example.com" }, func() { in.Headers = map[string]string{"X-Key": "changed"} }, func() { cfg.Operations[0].Path = "/changed" }, func() { cfg.Auth = restapi.Auth{Type: "bearer", Token: "new-secret"} }} {
 		before := same
 		change()

@@ -272,3 +272,43 @@ func TestNestedResponseProjectionThroughVirtualMCP(t *testing.T) {
 		})
 	}
 }
+
+func TestFixedAndDefaultParametersThroughVirtualMCP(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.URL.Path != "/sample" || r.URL.Query().Get("type") != "1" || r.URL.Query().Get("content") != "all & more" {
+			t.Errorf("wrong upstream request: %s", r.URL)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	hidden := false
+	compiled, err := restapi.Compile(srv.URL, restapi.Config{Auth: restapi.Auth{Type: "none"}, TimeoutSeconds: 3, AllowInsecureHTTP: true, Operations: []restapi.Operation{{Name: "sample", Method: "GET", Path: "/sample", Enabled: true, Parameters: []restapi.Parameter{
+		{Name: "type", In: "query", ExposeToMCP: &hidden, DefaultValue: json.RawMessage(`1`), Schema: json.RawMessage(`{"type":"integer"}`)},
+		{Name: "content", In: "query", Required: true, DefaultValue: json.RawMessage(`"all & more"`), Schema: json.RawMessage(`{"type":"string"}`)},
+	}}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRig(t)
+	snap := r.handler.Snap.(staticSnap).s
+	snap.Upstreams["rest"] = config.Upstream{ID: "rest", Slug: "rest", URL: srv.URL, REST: compiled}
+	tool := compiled.Tools[0]
+	tool.Name = "rest__sample"
+	snap.VirtualServers["support"] = config.VirtualServer{Slug: "support", Tools: []config.VirtualTool{{UpstreamID: "rest", UpstreamName: "sample", Tool: tool}}}
+	sid := r.initialize(t)
+	_, listed := r.rpc(t, "support", sid, mcp.MethodToolsList, nil)
+	if listed == nil || listed.Error != nil || strings.Contains(string(listed.Result), `"type":{"type":"integer"}`) {
+		t.Fatalf("tools/list: %+v", listed)
+	}
+	_, called := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: json.RawMessage(`{}`)})
+	if called == nil || called.Error != nil || strings.Contains(string(called.Result), `"isError":true`) || calls.Load() != 1 {
+		t.Fatalf("default call: %+v count=%d", called, calls.Load())
+	}
+	_, called = r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: json.RawMessage(`{"type":2}`)})
+	if called == nil || !strings.Contains(string(called.Result), `"isError":true`) || calls.Load() != 1 {
+		t.Fatalf("fixed value override was accepted: %+v", called)
+	}
+}

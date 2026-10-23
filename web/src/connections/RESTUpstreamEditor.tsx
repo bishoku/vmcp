@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import {parameterValueError,hasParameterDefault} from './rest-parameters'
 import { checkSchema, schemaLimitError } from './schema-validation'
 import { responseSelectionError, restToolPreview } from './rest-tool-preview'
 import { inferSchema, mergeExample, objectSchema } from './schema-editor'
@@ -33,7 +34,7 @@ export default function RESTUpstreamEditor({value,onChange,upstream,onInvalidCha
   const problems:string[]=[]
   if(!/^[A-Za-z0-9_.-]{1,128}$/.test(draft.name))problems.push('Tool name must contain 1–128 letters, numbers, dots, underscores or hyphens.')
   if(value.operations.some((o,i)=>i!==draftIndex&&o.name===draft.name))problems.push('Tool name must be unique.')
-  if(!draft.path.startsWith('/'))problems.push('Operation path must start with /.')
+  if(!draft.path.startsWith('/')||/[?#]/.test(draft.path))problems.push('Operation path must start with / and contain no query or fragment. Add query parameters in Parameters.')
   if(draft.method==='GET'&&draft.bodySchema!==undefined)problems.push('GET requests cannot have a body schema. Remove it in Advanced settings or choose another method.')
   const parameterNames=new Set<string>()
   for(const parameter of draft.parameters){
@@ -46,6 +47,11 @@ export default function RESTUpstreamEditor({value,onChange,upstream,onInvalidCha
   if(selection)problems.push(selection)
   setChecking(true)
   try {
+   for(const parameter of draft.parameters){
+    const issue=parameterValueError(parameter);if(issue)problems.push(`Parameter ${parameter.name}: ${issue}`)
+    const sample=hasParameterDefault(parameter)?{value:parameter.defaultValue}:undefined
+    problems.push(...(await checkSchema(parameter.schema,sample)).map(issue=>`Parameter ${parameter.name}: ${issue}`))
+   }
    for(const [label,schema] of [['Request body',draft.bodySchema],['Response',draft.responseSchema]] as const)problems.push(...(await checkSchema(schema)).map(issue=>`${label}: ${issue}`))
    if(problems.length){setIssues(problems);return}
    const operations=draftIndex===null?[...value.operations,draft]:value.operations.map((o,i)=>i===draftIndex?draft:o)

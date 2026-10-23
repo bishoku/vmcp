@@ -115,3 +115,33 @@ func TestNestedResponseProjectionConfigurationRoundtrip(t *testing.T) {
 	a.expect(422, "PATCH", "/api/v1/upstreams/nested-rest", map[string]any{"rest": payload["rest"]})
 	check()
 }
+
+func TestRESTParameterValueConfigurationRoundtrip(t *testing.T) {
+	a := setup(t)
+	parameters := []any{
+		map[string]any{"name": "type", "in": "query", "exposeToMcp": false, "defaultValue": 1, "schema": map[string]any{"type": "integer", "enum": []int{1, 2}}},
+		map[string]any{"name": "content", "in": "query", "required": true, "defaultValue": "all", "schema": map[string]any{"type": "string"}},
+	}
+	rest := map[string]any{"auth": map[string]any{"type": "none"}, "timeoutSeconds": 30, "operations": []any{map[string]any{"name": "sample", "method": "GET", "path": "/sample", "enabled": true, "parameters": parameters}}}
+	a.expect(201, "POST", "/api/v1/upstreams", map[string]any{"slug": "defaults", "name": "Defaults", "kind": "rest", "url": "https://example.com", "rest": rest})
+	check := func(want float64) {
+		t.Helper()
+		_, out := a.expect(200, "GET", "/api/v1/upstreams/defaults", nil)
+		ops := out["rest"].(map[string]any)["operations"].([]any)
+		ps := ops[0].(map[string]any)["parameters"].([]any)
+		p := ps[0].(map[string]any)
+		if p["exposeToMcp"] != false || p["defaultValue"] != want {
+			t.Fatalf("lost fixed value: %v", p)
+		}
+	}
+	check(1)
+	parameters[0].(map[string]any)["defaultValue"] = 2
+	a.expect(200, "PATCH", "/api/v1/upstreams/defaults", map[string]any{"rest": rest})
+	_, doc := a.expect(200, "GET", "/api/v1/export", nil)
+	a.expect(200, "POST", "/api/v1/apply?dryRun=true", doc)
+	a.expect(200, "POST", "/api/v1/apply", doc)
+	check(2)
+	parameters[0].(map[string]any)["defaultValue"] = 3
+	a.expect(422, "PATCH", "/api/v1/upstreams/defaults", map[string]any{"rest": rest})
+	check(2)
+}

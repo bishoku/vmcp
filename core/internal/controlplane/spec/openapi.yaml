@@ -3542,9 +3542,19 @@ components:
             - query
         required:
           type: boolean
+        exposeToMcp:
+          type: boolean
+          default: true
+          description: Omitted or true exposes the parameter as an MCP argument. False requires defaultValue, sends it as a fixed value, and rejects attempts to supply this argument.
+        defaultValue:
+          description: Explicit scalar fallback, validated against schema. Used only when the MCP argument is absent; makes an exposed parameter optional. For hidden parameters this is a fixed value. schema.default alone does not enable fallback. Null is not supported.
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
         schema:
           type: object
-          description: Inline JSON Schema with scalar type string, number, integer or boolean. Path parameters are always required.
+          description: Inline JSON Schema with scalar type string, number, integer or boolean. Path parameters without defaultValue are always required.
       required:
         - name
         - in

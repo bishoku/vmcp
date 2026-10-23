@@ -361,6 +361,64 @@ bounded, not a byte-for-byte substitute for the service's own request trace.
 Do not blindly retry a create operation after a response-validation failure:
 verify whether the service created the order first.
 
+### Fixed parameters and fallback values
+
+Keep the operation path as a path, for example `/sample`. Define query parameters
+in the operation modal's **Parameters** section rather than appending
+`?type=1&content={content}` to the path.
+
+Each path or query parameter supports:
+
+- **Expose to MCP** (enabled by default): include the parameter in the tool's
+  input schema. Disable it to send a fixed value that callers cannot override.
+- **Use default value**: apply a configured value only when an exposed argument
+  is absent. An explicit `0`, `false`, or empty string overrides the fallback.
+  Hidden parameters must have a fixed value, so this option cannot be disabled
+  while the parameter is hidden.
+- **Required**: require a caller argument when no default exists. A configured
+  default satisfies the requirement, including for path parameters; the argument
+  is then optional in the MCP input schema. Removing the default restores the
+  existing required setting. Path arguments without defaults remain required.
+
+For `/sample?type=1&content={content}`, use path `/sample` and parameters:
+
+```json
+[
+  {
+    "name": "type", "in": "query", "required": false,
+    "exposeToMcp": false, "defaultValue": 1,
+    "schema": {"type": "integer", "enum": [1, 2]}
+  },
+  {
+    "name": "content", "in": "query", "required": false,
+    "exposeToMcp": true, "defaultValue": "all",
+    "schema": {"type": "string"}
+  }
+]
+```
+
+Only `content` appears in the MCP input schema. Calling with `{}` sends
+`type=1&content=all`. Calling with `{"content":"a&b"}` sends `type=1` and
+URL-encoded `content=a%26b`. Supplying `type` as a tool argument is rejected before
+an upstream request is sent. An exposed optional parameter without a default is
+omitted from the URL when absent.
+
+Configured values are validated against the parameter's complete schema,
+including enums, patterns, and numeric bounds. Null, arrays, and objects are not
+supported for these scalar parameters. An explicitly invalid caller argument
+fails validation rather than falling back. Request preview and actual calls use
+the same resolver and URL encoding. These settings apply to path/query
+parameters, not request-body properties.
+
+`schema.default` alone remains an annotation and does not activate runtime
+fallback. This preserves existing definitions and imported OpenAPI behavior.
+Enable **Use default value** to activate a fallback; an imported schema default
+is offered as the initial value. Omitted `exposeToMcp` preserves the existing
+behavior of exposing the parameter. No database migration is needed. Update all
+control-plane and data-plane instances before using these options: older
+binaries do not enforce fixed values or apply fallbacks. Refresh clients'
+`tools/list` after saving.
+
 ### Select the fields returned to agents
 
 Use **Fields returned to the agent** in the response schema modal's **Fields**

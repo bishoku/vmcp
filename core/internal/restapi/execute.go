@@ -68,11 +68,14 @@ func (c *Compiled) Build(base, name string, args json.RawMessage, common map[str
 	for _, p := range op.Definition.Parameters {
 		v, ok := values[p.Name]
 		if !ok {
+			v, ok = op.ParameterDefaults[p.Name]
+		}
+		if !ok {
 			continue
 		}
 		value := fmt.Sprint(v)
 		if p.In == "path" {
-			if value == "." || value == ".." || strings.ContainsAny(value, "/\\%\x00") {
+			if unsafePathValue(value) {
 				return nil, errors.New("unsafe path parameter")
 			}
 			path = strings.ReplaceAll(path, "{"+p.Name+"}", url.PathEscape(value))
@@ -257,4 +260,9 @@ func decodeJSON(raw []byte, into any) error {
 		return errors.New("expected one JSON value")
 	}
 	return nil
+}
+
+// Keep validation identical for configured and caller-provided path values.
+func unsafePathValue(value string) bool {
+	return value == "." || value == ".." || strings.ContainsAny(value, "/\\%\x00")
 }

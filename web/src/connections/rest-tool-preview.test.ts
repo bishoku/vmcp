@@ -46,3 +46,15 @@ test('nested order example produces the body schema exercised by the virtual MCP
   // Inferring types does not infer the upstream's business-required fields.
   expect(orderFixture.bodySchema.properties.order.properties.items.items).not.toHaveProperty('required')
 })
+
+test('fixed values stay private and explicit defaults make MCP arguments optional',()=>{
+ const tool=restToolPreview({...operation,bodySchema:undefined,parameters:[
+  {name:'type',in:'query',required:true,schema:{type:'integer'},exposeToMcp:false,defaultValue:1},
+  {name:'id',in:'path',required:true,schema:{type:'integer'},defaultValue:0},
+  {name:'flag',in:'query',required:true,schema:{type:'boolean'},defaultValue:false},
+  {name:'content',in:'query',required:false,schema:{type:'string'},defaultValue:''},
+  {name:'mandatory',in:'query',required:true,schema:{type:'string'}},
+ ]})
+ expect(tool.inputSchema.properties).toEqual({id:{type:'integer',default:0},flag:{type:'boolean',default:false},content:{type:'string',default:''},mandatory:{type:'string'}})
+ expect(tool.inputSchema.required).toEqual(['mandatory'])
+})
