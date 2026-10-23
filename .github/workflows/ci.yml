@@ -65,7 +65,7 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version-file: core/go.mod
@@ -97,7 +97,7 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: azure/setup-helm@v4.3.0
         with:
           version: v3.17.3
@@ -186,7 +186,7 @@ jobs:
       matrix:
         service: [web, control-plane, data-plane, migrate, audit-exporter, audit-exporter-kafka, audit-exporter-rabbitmq, tenant-router, rotate-secrets]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Test image security gates
         run: python3 -m unittest discover -s scripts -p 'test_image_security.py'
       - name: Build native image

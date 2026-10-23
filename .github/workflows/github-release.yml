@@ -33,7 +33,7 @@ jobs:
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
     steps:
       - name: Check out release automation
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: automation
           persist-credentials: false
@@ -51,7 +51,7 @@ jobs:
           actual=$(gh api "repos/$GH_REPO/commits/refs/tags/$version" --jq .sha)
           [[ "$actual" == "$expected" ]] || { echo 'Version tag no longer matches the published commit' >&2; exit 1; }
       - name: Check out the published source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.source.outputs.sha }}
           path: source

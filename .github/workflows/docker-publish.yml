@@ -75,7 +75,7 @@ jobs:
             context: core
             buildArgs: SERVICE=rotate-secrets
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
       - name: Set up ARM emulation
@@ -168,7 +168,7 @@ jobs:
     needs: [validate, publish]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
       - uses: actions/download-artifact@v4
