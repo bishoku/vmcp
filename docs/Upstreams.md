@@ -504,3 +504,49 @@ health summary cards. Connection and identity settings appear first. Security an
 shared headers, per-call context, and REST operations are separate expandable
 sections. Header mappings are edited in a modal: **Use mappings** adds them to
 the draft, **Cancel** discards modal edits, and **Save** persists the upstream.
+
+### REST operation and schema workspaces
+
+The REST operations list opens each operation in a modal. Use the operation's
+Request & tool, Parameters, Request & response schemas, and Advanced settings
+sections to work on one part at a time. Parameter search helps with large input
+lists. **Apply operation** updates the upstream draft; **Save** persists it.
+Canceling an operation window discards changes made within that window.
+
+Request and response schema buttons open a larger schema workspace. It has:
+
+- **Example JSON**: generate from a raw REST body with either Merge (preserve
+  existing constraints) or Replace (explicitly replace them after confirmation).
+  Paste the raw REST response, not the MCP `structuredContent.result` wrapper.
+- **Fields**: search by name, path or description; expand individual branches or
+  all fields. Only expanded branches mount their controls. Edit types, descriptions,
+  required flags and nullability. Response field projection is edited here too.
+- **Schema JSON**: edit complex inline schemas directly or remove a schema.
+
+**Check schema & example** reports schema errors and sample mismatches with JSON
+paths before any upstream request is sent. **Apply schema** validates the schema,
+any supplied example, and response field selections, then updates the operation
+window. Schemas are limited to 64 KiB each, matching the backend. JSON Schema
+references must be expanded inline. Browser checks do not replace backend
+validation; a single example cannot establish every possible runtime response.
+For example, an integer inferred from `1` rejects `1.5`; choose number when the
+service can return decimals. Enable Allow null when a field may be null. Fields
+remain optional until explicitly marked required.
+
+Unknown types inferred from nulls or empty lists can be filled by a later example.
+Merge keeps imported constraints and closed-object properties; if those rules
+conflict with a new example, inspect the reported paths or explicitly choose
+Replace. Replacement does not silently discard a response projection: stale
+selected fields must be fixed or Full response selected before applying.
+
+The OpenAPI import modal shows Available, Needs changes, and Already configured
+counts and filters. Unselectable operations retain the exact server reason plus
+an action to resolve it. Response import errors include the HTTP status and nested
+schema property location when available. Unsupported constructs remain blocked;
+other compatible operations can still be imported. Generated tool definitions can
+be previewed before adding operations to the upstream draft.
+
+A runtime response-schema mismatch identifies the configured schema location and
+failed keyword. It does not include actual response values or dynamic object keys.
+The error still warns that the operation may have completed; test execution and
+normal REST calls are never automatically replayed to repair a schema mismatch.

@@ -21,3 +21,7 @@ test('property names cannot mutate prototypes', () => {
   expect(Object.keys((mergeExample({ type: 'object' }, inferSchema(example)) as Record<string, unknown>).properties as object)).toEqual(['__proto__'])
   expect(({} as Record<string, unknown>).polluted).toBeUndefined()
 })
+test('later examples fill unconstrained null/empty-array inference without losing descriptions',()=>{
+ expect(mergeExample({description:'Unknown until now'},inferSchema(3))).toEqual({type:'integer',description:'Unknown until now'})
+ expect(mergeExample(inferSchema([]),inferSchema([{id:1}]))).toEqual({type:'array',items:{type:'object',properties:{id:{type:'integer'}}}})
+})

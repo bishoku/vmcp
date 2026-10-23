@@ -153,7 +153,7 @@ func (i *importer) operation(path, method string, pathItem, source map[string]an
 		}
 		schema, err := i.schema(sourceSchema, "input", map[string]bool{}, 0)
 		if err != nil {
-			return out, err
+			return out, fmt.Errorf("request body: %w", err)
 		}
 		out.BodySchema = raw(schema)
 		if !flag(body["required"]) {
@@ -203,7 +203,7 @@ func (i *importer) operation(path, method string, pathItem, source map[string]an
 		}
 		schema, err := i.schema(sourceSchema, "output", map[string]bool{}, 0)
 		if err != nil {
-			return out, err
+			return out, fmt.Errorf("response HTTP %d: %w", code, err)
 		}
 		schemas = append(schemas, schema)
 		out.SuccessStatuses = append(out.SuccessStatuses, code)

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import ResponseFieldSelector from './ResponseFieldSelector'
 import SchemaEditor from './SchemaEditor'
 import { Wrench } from 'lucide-react'
 import type { RESTOperation } from '../api'
@@ -22,6 +21,8 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   names: string[]
 }) {
   // Invalid JSON remains local until corrected. Navigation must explicitly discard it.
+  const [view,setView]=useState<'tool'|'parameters'|'schemas'|'advanced'>('tool')
+  const [parameterQuery,setParameterQuery]=useState('')
   const [body, setBody] = useState(json(operation.bodySchema))
   const [response, setResponse] = useState(json(operation.responseSchema))
   const [headers, setHeaders] = useState(json(operation.headers))
@@ -55,8 +56,9 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   const parameter = (position: number, patch: Partial<RESTOperation['parameters'][number]>) =>
     set({ parameters: operation.parameters.map((value, i) => i === position ? { ...value, ...patch } : value) })
   return <ServerPanel title="Request & tool" description={onChange ? 'Changes update the upstream draft. Use Save when ready.' : 'Saved operation definition'} icon={Wrench}>
+    <nav aria-label="Operation editor sections" className="flex flex-wrap gap-2 panel-body border-b border-line">{(['tool','parameters','schemas','advanced'] as const).map(tab=><button key={tab} className={btn} aria-pressed={view===tab} onClick={()=>setView(tab)}>{tab==='tool'?'Request & tool':tab==='parameters'?`Parameters (${operation.parameters.length})`:tab==='schemas'?'Request & response schemas':'Advanced settings'}</button>)}</nav>
     <fieldset disabled={!onChange} className="panel-body layout-stack min-w-0">
-      <div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      <div hidden={view!=='tool'} className="layout-stack"><div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
         <FormField name={field('method')} label="HTTP method"><Select className={input} value={operation.method} onChange={event => set({ method: event.target.value as RESTOperation['method'], readOnly: false })}>{['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(method => <option key={method}>{method}</option>)}</Select></FormField>
         <FormField name={field('path')} label="Operation path" required hint="Use {id} to create a path parameter automatically.">
           <input className={input} disabled={!!errors.parameters} value={operation.path} placeholder="/customers/{id}" onChange={event => set({ path: event.target.value, parameters: pathParameters(event.target.value, operation.parameters) })}/>
@@ -73,12 +75,14 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
         <Switch label="Include in tool catalog" checked={operation.enabled} onChange={event => set({ enabled: event.target.checked })}/>
         <Switch label="Read-only operation" disabled={operation.method !== 'GET'} checked={operation.readOnly} onChange={event => set({ readOnly: event.target.checked })}/>
       </div>
-      <section aria-label="Request parameters" className="layout-stack border-t border-line pt-4">
+      </div>
+      <section hidden={view!=='parameters'} aria-label="Request parameters" className="layout-stack border-t border-line pt-4">
         <div><h3 className="text-sm font-semibold">Parameters</h3><p className="mt-1 text-xs text-ink-muted">Path values come from the URL above. Add query parameters for filters and options.</p></div>
         {errors.parameters && <p className="text-xs text-amber-800">Correct the advanced parameter JSON to continue editing parameter rows.</p>}
         <fieldset disabled={!!errors.parameters} className="layout-stack min-w-0">
         {!operation.parameters.length && <p className="text-xs text-ink-muted">This request has no path or query parameters.</p>}
-        {operation.parameters.map((value, position) => <div key={position} role="group" aria-label={`Parameter ${position + 1}`} className="surface-inset p-3 layout-stack">
+        <label className="text-xs">Find a parameter<input aria-label="Find parameters" className={`${input} mt-2`} value={parameterQuery} onChange={e=>setParameterQuery(e.target.value)}/></label>
+        {operation.parameters.map((value, position) => <div key={position} hidden={!!parameterQuery&&!`${value.name} ${value.schema.description??''}`.toLowerCase().includes(parameterQuery.toLowerCase())} role="group" aria-label={`Parameter ${position + 1}`} className="surface-inset p-3 layout-stack">
           <div className="grid gap-3 sm:grid-cols-2">
             <FormField name={field(`parameters.${position}.name`)} label={`Parameter ${position + 1} name`} hint={value.in === 'path' ? 'Path · edit the name in the URL.' : 'Query parameter'}
               error={!validName.test(value.name) || value.name === 'body' ? 'Use a valid name other than “body”.' : operation.parameters.filter(other => other.name === value.name).length > 1 ? 'Parameter names must be unique.' : undefined}>
@@ -99,13 +103,14 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
           </div>
           {Object.keys(value.schema).some(key => !['type', 'description'].includes(key)) && <details><summary className="cursor-pointer text-xs">Imported schema constraints (preserved)</summary><pre className="mt-2 whitespace-pre-wrap break-all text-xs">{json(value.schema)}</pre></details>}
         </div>)}
-        {onChange && <button className={`${btn} self-start`} disabled={operation.parameters.length >= 100} onClick={() => set({ parameters: [...operation.parameters, { name: '', in: 'query', required: false, schema: { type: 'string' } }] })}>Add query parameter</button>}
+        {onChange && <button className={`${btn} self-start`} disabled={operation.parameters.length >= 100} onClick={() => {setParameterQuery('');set({ parameters: [...operation.parameters, { name: '', in: 'query', required: false, schema: { type: 'string' } }] })}}>Add query parameter</button>}
         </fieldset>
       </section>
+      <div hidden={view!=='schemas'} className="layout-stack">
       {operation.method !== 'GET' && <SchemaEditor label="Request body" value={operation.bodySchema} disabled={!!errors.bodySchema} onChange={schema => { setBody(json(schema)); set({ bodySchema: schema }) }}/>}
-      <SchemaEditor label="Response" value={operation.responseSchema} disabled={!!errors.responseSchema} onChange={schema => { setResponse(json(schema)); set({ responseSchema: schema }) }}/>
-      <ResponseFieldSelector schema={operation.responseSchema} fields={operation.responseFields} onChange={responseFields => set({ responseFields })}/>
-      <details className="border-t border-line pt-4">
+      <SchemaEditor label="Response" responseFields={operation.responseFields??[]} onFieldsChange={(responseFields,responseSchema)=>{setResponse(json(responseSchema));set({responseFields,responseSchema})}} value={operation.responseSchema} disabled={!!errors.responseSchema} onChange={schema => { setResponse(json(schema)); set({ responseSchema: schema }) }}/>
+      </div>
+      <details hidden={view!=='advanced'} open className="border-t border-line pt-4">
         <summary className="cursor-pointer text-sm font-semibold">Advanced · body, response & headers</summary>
         <div className="mt-4 layout-stack">
           <FormField name={field('parameters')} label="Request parameters (JSON)" error={errors.parameters} hint="Optional advanced editing of enums, patterns and other schema constraints. Changes also update the visual rows.">

@@ -2,6 +2,7 @@ package restapi
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 )
@@ -63,7 +64,7 @@ func (i *importer) schema(value any, direction string, seen map[string]bool, dep
 				}
 				v, err := i.schema(property, direction, seen, depth+1)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("%s.%s: %w", key, name, err)
 				}
 				if key == "properties" && direction == "input" && flag(obj(v)["readOnly"]) {
 					continue

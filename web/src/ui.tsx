@@ -40,8 +40,8 @@ export function Modal({ title, children, onClose, variant = 'modal', busy = fals
   return (
     <dialog ref={ref} aria-labelledby={titleId} aria-describedby={description?descriptionId:undefined} aria-modal="true"
       className="motion-modal fixed inset-0 m-0 h-full max-h-none w-full max-w-none border-0 bg-transparent p-0 text-ink backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px]"
-      onCancel={e => { e.preventDefault(); if (!busy) dismiss() }}
-      tabIndex={-1} onKeyDown={e => trapTab(e, e.currentTarget)}>
+      onCancel={e => { e.preventDefault(); e.stopPropagation(); if (!busy) dismiss() }}
+      tabIndex={-1} onKeyDown={e => { if ((e.target as HTMLElement).closest('dialog') === e.currentTarget) trapTab(e, e.currentTarget) }}>
       <div className={clsx('flex h-full w-full', variant === 'drawer' ? 'justify-end' : 'modal-placement items-center justify-center')}
         onClick={e => { if (e.target === e.currentTarget) if (!busy) dismiss() }}>
         <section className={clsx('flex min-h-0 flex-col overflow-hidden',

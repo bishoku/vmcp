@@ -233,7 +233,7 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 		}
 	}
 	if err := c.Operations[name].Output.Validate(value); err != nil {
-		return failure("REST response does not match the configured schema; operation may have completed"), nil
+		return failure("REST response does not match the configured schema" + responseSchemaHint(err) + "; operation may have completed"), nil
 	}
 	if len(op.ResponseFields) > 0 {
 		obj, ok := value.(map[string]any)

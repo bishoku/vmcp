@@ -196,3 +196,17 @@ func TestImportNeverFetchesServersOrExternalReferences(t *testing.T) {
 		t.Fatal("external reference fetched or accepted")
 	}
 }
+
+func TestImportBlockedResponseShowsPropertyLocation(t *testing.T) {
+	result, err := Import(`{"openapi":"3.1.0","paths":{"/orders":{"get":{"operationId":"orders","responses":{"200":{"content":{"application/json":{"schema":{"type":"object","properties":{"customer":{"type":"object","properties":{"secret":{"type":"string","writeOnly":true}}}}}}}}}}}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Operations) != 1 || len(result.Operations[0].Errors) != 1 || result.Operations[0].Operation != nil {
+		t.Fatal("unsupported operation imported")
+	}
+	detail := result.Operations[0].Errors[0]
+	if !strings.Contains(detail, "response HTTP 200") || !strings.Contains(detail, "properties.customer") || !strings.Contains(detail, "properties.secret") {
+		t.Fatal(detail)
+	}
+}

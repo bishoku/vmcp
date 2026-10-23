@@ -6,6 +6,7 @@ export function mergeExample(existing: unknown, inferred: Schema): Schema {
   if (existing !== undefined) {
     if (typeof existing === 'boolean' || Array.isArray(existing)) return existing as Schema
     const old = objectSchema(existing), next = objectSchema(inferred)
+    if (Object.keys(old).every(key => key === 'description')) return {...next,...old}
     if (old.type !== next.type || ['$ref', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'prefixItems'].some(k => k in old)) return old
     if (old.type === 'object') {
       const properties = Object.assign(Object.create(null) as Record<string, unknown>, objectSchema(old.properties))

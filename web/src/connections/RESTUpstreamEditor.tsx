@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { checkSchema, schemaLimitError } from './schema-validation'
+import { responseSelectionError, restToolPreview } from './rest-tool-preview'
 import { inferSchema, mergeExample, objectSchema } from './schema-editor'
 import RESTImportDialog from './RESTImportDialog'
 import RESTOperationEditor from './RESTOperationEditor'
@@ -9,65 +11,64 @@ import { ServerPanel } from './ServerPanels'
 import { FormField } from '../FormField'
 import Select from '../Select'
 import { Switch } from '../SelectionControls'
-import { ErrorBox } from '../ui'
+import { ErrorBox, Modal } from '../ui'
 import { btn, input, primary } from '../styles'
 import { useConfirm } from '../confirmation'
-import { useCapabilities, useOperation } from '../interaction'
+import { useCapabilities, useOperation, useUnsaved } from '../interaction'
 
 const newOperation = (): RESTOperation => ({name:'',description:'',enabled:true,method:'GET',path:'/',parameters:[],readOnly:false})
 const json = (value:unknown) => value === undefined ? '' : JSON.stringify(value,null,2)
 
 export default function RESTUpstreamEditor({value,onChange,upstream,onInvalidChange}:{value:RESTConfig;onChange?:(v:RESTConfig)=>void;upstream:Upstream|null;onInvalidChange?:(invalid:boolean)=>void}) {
- const [selected,setSelected]=useState(0)
- const [importing,setImporting]=useState(false)
- const [query,setQuery]=useState('')
- const [invalid,setInvalid]=useState(false)
- const [editorRevision,setEditorRevision]=useState(0)
- const [mobilePanel,setMobilePanel]=useState<'editor'|'preview'>('editor')
- const [importPreview,setImportPreview]=useState<RESTOperation>()
+ const [selected,setSelected]=useState(0),[importing,setImporting]=useState(false),[query,setQuery]=useState(''),[limit,setLimit]=useState(50)
+ const [draft,setDraft]=useState<RESTOperation|null>(null),[draftIndex,setDraftIndex]=useState<number|null>(null),[initial,setInitial]=useState('')
+ const [invalid,setInvalid]=useState(false),[issues,setIssues]=useState<string[]>([]),[checking,setChecking]=useState(false)
+ useUnsaved(draft&&(invalid||JSON.stringify(draft)!==initial)?{draft,invalid}:null)
  const confirm=useConfirm()
- useEffect(()=>{onInvalidChange?.(invalid||importing);return()=>onInvalidChange?.(false)},[invalid,importing,onInvalidChange])
- const navigate=async(action:()=>void)=>{if(!invalid||await confirm({title:'Discard invalid field changes?',description:'Valid changes stay in the upstream draft. Unfinished JSON or status edits for this operation will be discarded.',confirmLabel:'Discard invalid changes',tone:'warning'})){if(invalid)setEditorRevision(revision=>revision+1);setInvalid(false);setMobilePanel('editor');action()}}
+ useEffect(()=>{onInvalidChange?.(!!draft||importing);return()=>onInvalidChange?.(false)},[draft,importing,onInvalidChange])
+ const openOperation=(index:number|null,operation:RESTOperation)=>{setDraftIndex(index);setDraft(structuredClone(operation));setInitial(JSON.stringify(operation));setInvalid(false);setIssues([])}
+ const closeOperation=async()=>{if(checking)return;if(draft&&(invalid||JSON.stringify(draft)!==initial)&&!await confirm({title:'Discard operation changes?',description:'Changes made in this operation window will be discarded. Applied upstream draft changes are kept.',confirmLabel:'Discard changes',tone:'warning'}))return;setDraft(null);setInvalid(false);setIssues([])}
+ const apply=async()=>{
+  if(!draft||!onChange||invalid)return
+  const problems:string[]=[]
+  if(!/^[A-Za-z0-9_.-]{1,128}$/.test(draft.name))problems.push('Tool name must contain 1–128 letters, numbers, dots, underscores or hyphens.')
+  if(value.operations.some((o,i)=>i!==draftIndex&&o.name===draft.name))problems.push('Tool name must be unique.')
+  if(!draft.path.startsWith('/'))problems.push('Operation path must start with /.')
+  if(draft.method==='GET'&&draft.bodySchema!==undefined)problems.push('GET requests cannot have a body schema. Remove it in Advanced settings or choose another method.')
+  const parameterNames=new Set<string>()
+  for(const parameter of draft.parameters){
+   if(!/^[A-Za-z0-9_.-]{1,128}$/.test(parameter.name)||parameter.name==='body'||parameterNames.has(parameter.name))problems.push(`Parameter name must be valid, unique and different from body: ${parameter.name||'(empty)'}`)
+   parameterNames.add(parameter.name)
+  }
+  const tool=restToolPreview(draft)
+  for(const [label,schema] of [['Combined request',tool.inputSchema],['MCP output',tool.outputSchema]] as const){const issue=schemaLimitError(schema);if(issue)problems.push(`${label}: ${issue}`)}
+  const selection=responseSelectionError(draft.responseSchema,draft.responseFields)
+  if(selection)problems.push(selection)
+  setChecking(true)
+  try {
+   for(const [label,schema] of [['Request body',draft.bodySchema],['Response',draft.responseSchema]] as const)problems.push(...(await checkSchema(schema)).map(issue=>`${label}: ${issue}`))
+   if(problems.length){setIssues(problems);return}
+   const operations=draftIndex===null?[...value.operations,draft]:value.operations.map((o,i)=>i===draftIndex?draft:o)
+   onChange({...value,operations});setSelected(draftIndex??value.operations.length);setDraft(null);setInvalid(false);setIssues([])
+  }finally{setChecking(false)}
+ }
  const operation=value.operations[selected]
+ const shown=value.operations.map((op,i)=>({op,i})).filter(({op})=>`${op.name} ${op.method} ${op.path}`.toLowerCase().includes(query.toLowerCase()))
  return <section aria-label="REST to MCP workspace" className="layout-stack min-w-0">
-   <div className="flex flex-wrap items-start justify-between gap-4">
-     <div><h2 className="section-title">REST → MCP workspace</h2><p className="section-description mt-1 text-sm text-ink-muted">Import an API or build a request. See its MCP tool definition as you edit.</p></div>
-     {onChange&&<div className="flex flex-wrap gap-2">
-       <button className={primary} disabled={value.operations.length>=200||importing} onClick={()=>void navigate(()=>{setImportPreview(undefined);setImporting(true)})}>Import OpenAPI / Swagger</button>
-       <button className={btn} disabled={value.operations.length>=200||importing} onClick={()=>void navigate(()=>{onChange({...value,operations:[...value.operations,newOperation()]});setSelected(value.operations.length);setQuery('')})}>Add operation</button>
-     </div>}
-   </div>
-   <p role="status" className="text-xs text-ink-muted">{upstream?'Saved catalog':'Upstream draft'} · {value.operations.filter(op=>op.enabled).length} enabled tools · {onChange?'Save validates and updates the catalog.':'Select tools in a virtual server to expose them to agents.'}</p>
-   <div role="group" aria-label="Workspace view" className="flex gap-2 xl:hidden">
-     <button className={btn} aria-pressed={mobilePanel==='editor'} onClick={()=>setMobilePanel('editor')}>Editor</button>
-     <button className={btn} aria-pressed={mobilePanel==='preview'} onClick={()=>setMobilePanel('preview')}>MCP preview</button>
-   </div>
-   <div className="grid items-start gap-4 xl:grid-cols-[minmax(11rem,0.65fr)_minmax(0,1.6fr)_minmax(0,1fr)]">
-     <nav aria-label="REST operations" className="surface-card min-w-0 p-3 layout-stack">
-       <FormField name="rest.search" label="Find an operation"><input className={input} placeholder="Name, method or path" value={query} onChange={event=>setQuery(event.target.value)}/></FormField>
-       <div className="max-h-72 overflow-auto xl:max-h-[42rem] layout-stack">
-         {value.operations.map((op,i)=>({op,i})).filter(({op})=>`${op.name} ${op.method} ${op.path}`.toLowerCase().includes(query.toLowerCase())).map(({op,i})=><button key={i} aria-label={`${op.name||'Untitled tool'} ${op.method} ${op.path}`} className={`rounded-lg border p-3 text-left ${i===selected&&!importing?'border-accent-500 bg-accent-50':'border-line hover:bg-canvas'}`} aria-current={i===selected&&!importing?'true':undefined} disabled={importing} onClick={()=>void navigate(()=>setSelected(i))}>
-           <span className="block break-all text-sm font-medium">{op.name||'Untitled tool'}</span><span className="mt-1 block break-all font-mono text-xs text-ink-muted">{op.method} {op.path}</span><span className="mt-1 block text-xs text-ink-muted">{op.enabled?'Included in catalog':'Disabled'}</span>
-         </button>)}
-         {value.operations.length===0&&<p className="text-xs text-ink-muted">Start with an OpenAPI / Swagger file, or add a request manually.</p>}
-         {!!value.operations.length&&!value.operations.some(op=>`${op.name} ${op.method} ${op.path}`.toLowerCase().includes(query.toLowerCase()))&&<p className="text-xs text-ink-muted">No operations match your search.</p>}
-       </div>
-     </nav>
-     <div className={`layout-stack min-w-0 ${mobilePanel==='editor'?'':'hidden xl:flex'}`}>
-       {importing&&onChange?<RESTImportDialog inline existing={value.operations} onPreview={setImportPreview} onClose={()=>setImporting(false)} onApply={operations=>{onChange({...value,operations:[...value.operations,...operations]});setSelected(value.operations.length);setQuery('');setImporting(false)}}/>:operation?<>
-         <RESTOperationEditor key={`${selected}-${editorRevision}`} operation={operation} index={selected} names={value.operations.map(op=>op.name)} onInvalidChange={setInvalid} onChange={onChange?op=>onChange({...value,operations:value.operations.map((old,i)=>i===selected?op:old)}):undefined}/>
-         {onChange&&<button className={`${btn} action-danger-outline self-start`} onClick={async()=>{if(await confirm({title:'Remove operation?',description:'After Save, virtual servers selecting this tool will no longer be able to call it.',confirmLabel:'Remove operation',tone:'danger'})){onChange({...value,operations:value.operations.filter((_,i)=>i!==selected)});setSelected(0);setEditorRevision(revision=>revision+1);setInvalid(false)}}}>Remove operation</button>}
-       </>:<div className="surface-card p-6 layout-stack"><h3 className="text-base font-semibold">Turn your first request into a tool</h3><p className="text-sm text-ink-muted">Import OpenAPI to select existing endpoints, or add an operation and enter its method and path. Path parameters are created automatically.</p></div>}
-     </div>
-     <div className={`min-w-0 xl:sticky xl:top-24 ${mobilePanel==='preview'?'':'hidden xl:block'}`}><RESTToolPreview operation={importing?importPreview:operation} invalid={invalid}/></div>
-   </div>
-   {upstream&&<RESTTest key={upstream.version} upstream={upstream} onUseResponse={onChange&&!invalid&&!importing?(name,result)=>{
-     const position=value.operations.findIndex(op=>op.name===name)
-     if(position<0)return
-     onChange({...value,operations:value.operations.map((op,i)=>i===position?{...op,responseSchema:mergeExample(op.responseSchema,inferSchema(result))}:op)})
-     setSelected(position);setEditorRevision(v=>v+1);setMobilePanel('editor')
-   }:undefined} draftNames={value.operations.map(op=>op.name)}/>}
-   {!upstream&&<p className="text-xs text-ink-muted">Save the upstream to execute a test request and generate a response schema from its result.</p>}
+  <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="section-title">REST → MCP workspace</h2><p className="section-description mt-1 text-sm text-ink-muted">Manage operations here. Open a workspace to edit requests and schemas without extending this page.</p></div>{onChange&&<div className="flex flex-wrap gap-2"><button className={primary} disabled={value.operations.length>=200} onClick={()=>setImporting(true)}>Import OpenAPI / Swagger</button><button className={btn} disabled={value.operations.length>=200} onClick={()=>openOperation(null,newOperation())}>Add operation</button></div>}</div>
+  <p role="status" className="text-xs text-ink-muted">{value.operations.filter(op=>op.enabled).length} enabled tools · {value.operations.length} total · Apply operation changes to the draft, then Save the upstream.</p>
+  <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+   <section aria-label="REST operations" className="surface-card panel-body layout-stack min-w-0">
+    <FormField name="rest.search" label="Find an operation"><input className={input} placeholder="Name, method or path" value={query} onChange={e=>{setQuery(e.target.value);setLimit(50)}}/></FormField>
+    <div className="max-h-[32rem] overflow-auto layout-stack">{shown.slice(0,limit).map(({op,i})=><article key={i} data-validation-field={`rest.operations.${i}`} tabIndex={-1} className="surface-inset p-3 layout-stack"><div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><button aria-label={`${op.name||'Untitled tool'} ${op.method} ${op.path}`} className="min-w-0 flex-1 text-left" onClick={()=>setSelected(i)} aria-current={i===selected?'true':undefined}><span className="block break-all text-sm font-semibold">{op.name||'Untitled tool'}</span><span className="mt-1 block break-all font-mono text-xs text-ink-muted">{op.method} {op.path}</span></button><span className="text-xs text-ink-muted">{op.enabled?'In catalog':'Disabled by configuration'}</span></div><div className="flex flex-wrap gap-2"><button className={btn} onClick={()=>openOperation(i,op)}>{onChange?'Edit':'View'} operation {op.name}</button>{onChange&&<button className={`${btn} action-danger-outline`} onClick={async()=>{if(await confirm({title:'Remove operation?',description:'After Save, virtual servers selecting this tool will no longer be able to call it.',confirmLabel:'Remove operation',tone:'danger'})){onChange({...value,operations:value.operations.filter((_,j)=>j!==i)});setSelected(0)}}}>Remove {op.name}</button>}</div></article>)}{!shown.length&&<p className="text-sm text-ink-muted">{value.operations.length?'No operations match your search.':'Import OpenAPI / Swagger or add your first operation.'}</p>}{shown.length>limit&&<button className={btn} onClick={()=>setLimit(n=>n+50)}>Show more operations</button>}</div>
+   </section>
+   <RESTToolPreview operation={operation}/>
+  </div>
+  {importing&&onChange&&<RESTImportDialog existing={value.operations} onClose={()=>setImporting(false)} onApply={operations=>{onChange({...value,operations:[...value.operations,...operations]});setSelected(value.operations.length);setQuery('');setImporting(false)}}/>}
+  {draft&&<Modal title={`${onChange?'Edit':'View'} REST operation`} size="audit" busy={checking} onClose={()=>void closeOperation()} description="Apply changes to the upstream draft. Save the upstream afterward to publish them." footer={<div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>void closeOperation()}>{onChange?'Cancel operation changes':'Close operation'}</button>{onChange&&<button className={primary} disabled={invalid||checking} onClick={()=>void apply()}>{checking?'Checking…':'Apply operation'}</button>}</div>}>
+   <div className="layout-stack">{!!issues.length&&<ErrorBox title="Operation needs attention"><ul className="space-y-1">{issues.map((issue,i)=><li key={i}>{issue}</li>)}</ul></ErrorBox>}<div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]"><RESTOperationEditor operation={draft} index={draftIndex??value.operations.length} names={[...value.operations.filter((_,i)=>i!==draftIndex).map(op=>op.name),draft.name]} onInvalidChange={setInvalid} onChange={onChange?setDraft:undefined}/><RESTToolPreview operation={draft} invalid={invalid}/></div></div>
+  </Modal>}
+  {upstream&&<RESTTest key={upstream.version} upstream={upstream} onUseResponse={onChange?(name,result)=>{const position=value.operations.findIndex(op=>op.name===name);if(position>=0){const op=value.operations[position];openOperation(position,{...op,responseSchema:mergeExample(op.responseSchema,inferSchema(result))})}}:undefined} draftNames={value.operations.map(op=>op.name)}/>}
  </section>
 }
 
@@ -113,6 +114,7 @@ function RESTTest({upstream,onUseResponse,draftNames}:{upstream:Upstream;onUseRe
  const response=await api.restOperation(upstream.slug,action,operation,parsed,upstream.version)
  setResult(json(response))
  const envelope=objectSchema(response),structured=objectSchema(envelope.structuredContent)
+ if(envelope.isError){const content=Array.isArray(envelope.content)?envelope.content:[];const message=content.map(item=>objectSchema(item).text).filter(text=>typeof text==='string').join(' ');setError(message||'The saved REST operation returned an error.')}
  if(action==='test'&&!envelope.isError&&Object.hasOwn(structured,'result'))setSample({operation,value:structured.result})
  }catch(e){setError(e instanceof Error?e.message:'Request failed')}})
  return <ServerPanel title="Operation preview & test" description="Uses the saved configuration; preview never sends a request" icon={Cable}><div className="panel-body layout-stack">
