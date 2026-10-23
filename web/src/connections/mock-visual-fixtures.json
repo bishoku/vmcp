@@ -1,0 +1,26 @@
+[
+  {
+    "name":"nested-array-string",
+    "condition":{"source":"bodyPatterns","field":"$[\"order\"][\"items\"][*][\"productId\"]","operator":"anyEqualTo","value":"SKU-42"},
+    "request":{"bodyPatterns":[{"matchesJsonPath":"$[\"order\"][\"items\"][?(@[\"productId\"] == \"SKU-42\")]"}]},
+    "cases":[{"body":{"order":{"items":[{"productId":"other"},{"productId":"SKU-42"}]}},"matched":true},{"body":{"order":{"items":[{"productId":"other"}]}},"matched":false},{"body":{"order":{"items":[]}},"matched":false}]
+  },
+  {
+    "name":"nested-array-number",
+    "condition":{"source":"bodyPatterns","field":"$.order.items[*].quantity","operator":"anyEqualTo","value":"2"},
+    "request":{"bodyPatterns":[{"matchesJsonPath":"$.order.items[?(@.quantity == 2)]"}]},
+    "cases":[{"body":{"order":{"items":[{"quantity":1},{"quantity":2}]}},"matched":true},{"body":{"order":{"items":[{"quantity":1}]}},"matched":false}]
+  },
+  {
+    "name":"nested-scalar",
+    "condition":{"source":"bodyPatterns","field":"$.order.id","operator":"equalTo","value":"A"},
+    "request":{"bodyPatterns":[{"matchesJsonPath":{"expression":"$.order.id","equalTo":"A"}}]},
+    "cases":[{"body":{"order":{"id":"A"}},"matched":true},{"body":{"order":{"id":"B"}},"matched":false},{"body":{"order":{}},"matched":false}]
+  },
+  {
+    "name":"escaped-array-value",
+    "condition":{"source":"bodyPatterns","field":"$.items[*].id","operator":"anyEqualTo","value":"SKU\"X"},
+    "request":{"bodyPatterns":[{"matchesJsonPath":"$.items[?(@.id == \"SKU\\\"X\")]"}]},
+    "cases":[{"body":{"items":[{"id":"SKU\"X"}]} ,"matched":true},{"body":{"items":[{"id":"other"}]},"matched":false}]
+  }
+]

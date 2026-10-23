@@ -126,6 +126,7 @@ func acceptanceSeed(t *testing.T, p acceptanceProfile, fixtures []*httptest.Serv
 }
 
 type acceptanceNode struct {
+	kubeError                               string
 	mu                                      sync.Mutex
 	cmd                                     *exec.Cmd
 	done                                    chan error
@@ -136,6 +137,10 @@ type acceptanceNode struct {
 }
 
 func (n *acceptanceNode) start(t *testing.T) {
+	if acceptanceKubernetes() {
+		n.startKubernetes(t)
+		return
+	}
 	t.Helper()
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -195,6 +200,10 @@ func (n *acceptanceNode) start(t *testing.T) {
 	t.Fatalf("%s did not become ready", n.name)
 }
 func (n *acceptanceNode) kill() {
+	if acceptanceKubernetes() {
+		n.killKubernetes()
+		return
+	}
 	n.mu.Lock()
 	if !n.alive {
 		n.mu.Unlock()

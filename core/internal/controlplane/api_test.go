@@ -27,13 +27,14 @@ import (
 const token = "admin-test-token"
 
 type api struct {
+	control *controlplane.Server
 	t       *testing.T
 	srv     *httptest.Server
 	fixture *httptest.Server
 	pool    *pgxpool.Pool
 }
 
-func setup(t *testing.T) *api {
+func setup(t *testing.T, configure ...func(*controlplane.Server)) *api {
 	t.Helper()
 	url := testdb.New(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -61,7 +62,10 @@ func setup(t *testing.T) *api {
 		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	t.Cleanup(s.CloseAudit)
-	a := &api{pool: pool, t: t, srv: httptest.NewServer(s.Handler()), fixture: httptest.NewServer(fixture.New(fixture.Options{Token: "up-secret"}))}
+	for _, apply := range configure {
+		apply(s)
+	}
+	a := &api{control: s, pool: pool, t: t, srv: httptest.NewServer(s.Handler()), fixture: httptest.NewServer(fixture.New(fixture.Options{Token: "up-secret"}))}
 	t.Cleanup(a.srv.Close)
 	t.Cleanup(a.fixture.Close)
 	return a

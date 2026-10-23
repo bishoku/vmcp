@@ -1,0 +1,16 @@
+# Optional overlay: docker compose -f benchmark/compose.yaml -f benchmark/compose.mock.yaml up -d --build wiremock control-plane data-plane-1 data-plane-2
+services:
+  wiremock:
+    image: wiremock/wiremock:3.13.2@sha256:0d4ecb3e4dc8213fd7a4d37d6a78f6e6b553a6d2e15bd51b0999781282ac61b3
+    command: ["--no-request-journal", "--disable-request-logging", "--permitted-system-keys", "^$", "--max-template-cache-entries", "1000"]
+    environment:
+      JAVA_OPTS: -Xmx256m
+    mem_limit: 512m
+    cpus: 1
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [demo]
+  control-plane:
+    environment:
+      VMCP_WIREMOCK_URL: http://wiremock:8080

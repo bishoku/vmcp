@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directories:
+      - /core
+      - /web
+      - /benchmark/mcp
+      - /benchmark/traffic
+      - /deploy/wiremock
+    schedule:
+      interval: weekly
+    groups:
+      container-bases:
+        patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directories:
+      - /deploy
+      - /benchmark
+      - /benchmark/acceptance
+      - /tests/audit-exporters
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

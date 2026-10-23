@@ -1,0 +1,41 @@
+{
+  "sourceRevision": "922c16eb3d6571fd11f65ff3add2fe1d0d4ad33d",
+  "sourceTreeSHA256": "f87dd7059800ebfc800d3b5fd217712046b4ccaa05a8ff10d24575dbd6b655cc",
+  "workingTree": " M .github/workflows/ci.yml\n M api/openapi.yaml\n M benchmark/compose.yaml\n M core/cmd/control-plane/main.go\n M core/internal/controlplane/api_test.go\n M core/internal/controlplane/audit.go\n M core/internal/controlplane/discovery.go\n M core/internal/controlplane/server.go\n M core/internal/controlplane/spec/openapi.json\n M core/internal/controlplane/spec/openapi.yaml\n M core/internal/e2e/acceptance_runtime_test.go\n M core/internal/e2e/acceptance_test.go\n M core/internal/e2e/subscriptions_recovery_test.go\n M core/internal/restapi/config.go\n M core/internal/restapi/execute.go\n M core/internal/store/audit.go\n M core/internal/store/rest.go\n M core/internal/store/tx.go\n M core/internal/telemetry/telemetry.go\n M core/internal/virtual/subscriptions.go\n M docs/Audit-Log.md\n M docs/OBSERVABILITY.md\n M docs/Upstreams.md\n M web/src/App.tsx\n M web/src/AuditSettingsPanel.tsx\n M web/src/api.ts\n M web/src/connections/AuditFilters.tsx\n M web/src/connections/RESTOperationEditor.tsx\n M web/src/connections/RESTUpstreamEditor.tsx\n M web/src/pages/Audit.test.tsx\n M web/src/pages/UpstreamDetailForm.tsx\n M web/src/pages/Upstreams.tsx\n?? benchmark/compose.mock.yaml\n?? benchmark/kubernetes/\n?? core/internal/controlplane/audit_activity_test.go\n?? core/internal/controlplane/discovery_audit_test.go\n?? core/internal/controlplane/mock_upstreams.go\n?? core/internal/controlplane/mock_upstreams_test.go\n?? core/internal/e2e/acceptance_kubernetes_test.go\n?? core/internal/mockupstream/\n?? core/internal/store/discovery.go\n?? core/internal/store/discovery_test.go\n?? core/internal/store/mock.go\n?? core/internal/telemetry/background.go\n?? core/internal/telemetry/background_test.go\n?? core/internal/virtual/mock_upstream_test.go\n?? deploy/wiremock/\n?? web/browser/audit-activity.spec.ts\n?? web/browser/mock-upstream.spec.ts\n?? web/src/connections/MockRulesEditor.test.tsx\n?? web/src/connections/MockRulesEditor.tsx\n?? web/src/connections/MockUpstreamStatus.tsx\n?? web/src/connections/QuickMockOperation.tsx\n?? web/src/connections/mock-rules.test.ts\n?? web/src/connections/mock-rules.ts\n?? web/src/connections/mock-visual-fixtures.json\n?? web/src/connections/mock-visual.test.ts\n?? web/src/connections/mock-visual.ts\n",
+  "images": {},
+  "node": {
+    "architecture": "amd64",
+    "containerRuntimeVersion": "containerd://2.1.6",
+    "kernelVersion": "7.0.0-34-generic",
+    "kubeletVersion": "v1.35.6",
+    "operatingSystem": "linux",
+    "osImage": "Ubuntu 24.04.5 LTS"
+  },
+  "capacity": {
+    "cpu": "64",
+    "ephemeral-storage": "959218776Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164651880Ki",
+    "pods": "110"
+  },
+  "allocatable": {
+    "cpu": "64",
+    "ephemeral-storage": "958170200Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164549480Ki",
+    "pods": "110"
+  },
+  "loadDriver": "native host Go process; fixtures bound to selected node IP",
+  "routing": "host test proxy -> dedicated Kubernetes NodePort Services -> data-plane pods",
+  "profileEnvironment": {},
+  "workloads": [],
+  "rawArchive": {
+    "filename": "microk8s-20261023-192647-1f43fe378d61.tar.gz",
+    "sha256": "c1ec605857ed8e3ea89b389fa13e2b87c4aade55e20da9f5809854a6892f8ff9",
+    "bytes": 4420,
+    "fileCount": 1,
+    "originalBytes": 15101
+  }
+}

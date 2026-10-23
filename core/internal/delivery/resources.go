@@ -47,9 +47,6 @@ func (s *Store) ResourceUpdated(ctx context.Context, session, uri, owner string)
 	if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload) VALUES($1,$2,$3)`, eventID, stream, sealed); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, session); err != nil {
-		return err
-	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}

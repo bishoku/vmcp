@@ -18,9 +18,13 @@ through shared operation state. Active workers renew every second; leases last
 Work is never automatically reexecuted after worker loss. Clients must reconcile
 ambiguous outcomes with audit evidence before retrying side-effecting tools.
 
-PostgreSQL is the durable queue. A second dedicated LISTEN connection per DP
-wakes readers; polling every 250ms preserves delivery if notifications are lost.
-Use VMCP_DB_LISTENER_URL with direct/session pooling for both listeners.
+PostgreSQL is the durable queue. After a successful write/commit, same-process
+readers wake through a bounded local channel. Readers on another data-plane
+replica poll: SSE events every 250ms; pending client replies and subscription
+readiness every 50ms. There is no delivery LISTEN/NOTIFY connection or per-event
+PostgreSQL notification. Poll intervals are not end-to-end latency guarantees:
+database/pool/scheduler delays add to them. VMCP_DB_LISTENER_URL still configures
+the independent configuration/snapshot listener, which is unchanged.
 Replay event IDs are opaque UUIDs and are scoped to the authenticated session
 and original stream. Stream ownership excludes concurrent live delivery;
 replay intentionally redelivers events after the supplied cursor.
@@ -38,7 +42,7 @@ limited to 2MiB and all events to 12MiB per operation. Upstream frames remain
 limited to 10MiB. Capacity exhaustion fails closed. GET streams also use HTTP
 admission budgets. Wake channels contain one coalesced signal.
 
-Replay expires after 15 minutes; cleanup removes at most 100 streams and 100
+Replay expires after 15 minutes; cleanup removes at most 200 streams and 200
 terminal operations per tick. Capacity bounds are safety limits, not a measured
 throughput guarantee. Monitor PostgreSQL storage, WAL and latency under load.
 Payloads use the configured AES-GCM box; use the [keyring and rotation procedure](SECURITY_OPERATIONS.md#encryption-upgrades-and-recovery)

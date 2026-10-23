@@ -221,7 +221,7 @@ func run(log *slog.Logger) error {
 		}
 		log.Info("accepting access tokens from an identity provider", "issuer", issuer)
 	}
-	deliveryStore := &delivery.Store{Pool: pool, Box: box, ListenerURL: syncer.ListenerURL}
+	deliveryStore := &delivery.Store{Pool: pool, Box: box}
 	go deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
 	approval, err := virtual.NewApprovalPolicy(config.Env("VMCP_APPROVAL_URL", ""))
 	if err != nil {

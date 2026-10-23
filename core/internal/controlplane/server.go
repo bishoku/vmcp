@@ -22,6 +22,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/oidc"
 	"github.com/bishoku/vmcp/core/internal/store"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 )
 
 const (
@@ -32,6 +33,7 @@ const (
 
 // Server is the control plane HTTP API.
 type Server struct {
+	Metrics        *telemetry.Registry
 	Store          *store.Store
 	AdminToken     string
 	Version        string
@@ -127,6 +129,9 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/v1/info", s.getInfo)
 	api("GET /api/v1/me", s.getMe)
 
+	api("GET /api/v1/mock-provider", s.mockProvider)
+	api("GET /api/v1/upstreams/{slug}/mock/status", s.mockAction)
+	api("POST /api/v1/upstreams/{slug}/mock/{action}", s.mockAction)
 	api("GET /api/v1/upstreams", s.listUpstreams)
 	api("POST /api/v1/upstreams", s.createUpstream)
 	api("GET /api/v1/upstreams/{slug}", s.getUpstream)

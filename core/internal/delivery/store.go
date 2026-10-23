@@ -18,11 +18,10 @@ import (
 var ErrCapacity = errors.New("MCP delivery capacity or ownership unavailable")
 
 type Store struct {
-	Pool        *pgxpool.Pool
-	Box         *secrets.Box
-	ListenerURL string
-	watchMu     sync.Mutex
-	watchers    map[string]map[string]chan struct{}
+	Pool     *pgxpool.Pool
+	Box      *secrets.Box
+	watchMu  sync.Mutex
+	watchers map[string]map[string]chan struct{}
 }
 type Operation struct{ ID, Fence, Stream, Session string }
 type Event struct {
@@ -115,9 +114,6 @@ func (s *Store) Append(ctx context.Context, op Operation, payload []byte, termin
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, op.Session); err != nil {
-		return err
-	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -174,7 +170,6 @@ func (s *Store) Reply(ctx context.Context, session, id string, response []byte) 
 		return ErrCapacity
 	}
 	if err == nil {
-		_, _ = s.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, session)
 		s.NotifyLocal(session)
 	}
 	return err
@@ -316,9 +311,6 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 		if _, err := tx.Exec(ctx, `UPDATE mcp_streams SET last_revision=$2 WHERE id=$1`, id, revision); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, sessions[id]); err != nil {
-			return err
-		}
 		notified = append(notified, sessions[id])
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -330,7 +322,6 @@ func (s *Store) PublishListChanged(ctx context.Context, revision int64) error {
 	return nil
 }
 func (s *Store) Run(ctx context.Context, revision func() int64) {
-	go s.listen(ctx)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -353,7 +344,6 @@ func (s *Store) CancelPending(ctx context.Context, op Operation, id string, resp
 	}
 	_, err = s.Pool.Exec(ctx, `UPDATE mcp_pending_requests SET response=$3 WHERE id=$1 AND operation_id=$2 AND response IS NULL`, id, op.ID, sealed)
 	if err == nil {
-		_, _ = s.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, op.Session)
 		s.NotifyLocal(op.Session)
 	}
 	return err

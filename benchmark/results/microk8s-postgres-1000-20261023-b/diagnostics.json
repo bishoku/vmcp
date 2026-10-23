@@ -1,0 +1,1960 @@
+{
+  "polling-wait-summary.json": {
+    "samples": 53,
+    "active_session_samples": 5287,
+    "object_lock_samples": 4762,
+    "waits": [
+      {
+        "type": "IO",
+        "event": "WalSync",
+        "session_samples": 48
+      },
+      {
+        "type": "LWLock",
+        "event": "WALWrite",
+        "session_samples": 126
+      },
+      {
+        "type": "Lock",
+        "event": "object",
+        "session_samples": 4762
+      },
+      {
+        "type": null,
+        "event": null,
+        "session_samples": 124
+      },
+      {
+        "type": "Client",
+        "event": "ClientRead",
+        "session_samples": 24
+      },
+      {
+        "type": "Lock",
+        "event": "transactionid",
+        "session_samples": 202
+      },
+      {
+        "type": "Timeout",
+        "event": "VacuumDelay",
+        "session_samples": 1
+      }
+    ]
+  },
+  "postgres-cgroup-limits.json": {
+    "cpu.max": "max 100000\n",
+    "memory.max": "max\n",
+    "cpu.stat": "usage_usec 4116277\nuser_usec 2020314\nsystem_usec 2095963\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n"
+  },
+  "postgres-cleanup-selector-comparison.txt": "current operation selector\nLimit  (cost=0.00..115.81 rows=200 width=16) (actual time=22.026..22.027 rows=0 loops=1)\n  Buffers: shared hit=2493\n  ->  Seq Scan on mcp_operations  (cost=0.00..4130.20 rows=7133 width=16) (actual time=22.025..22.025 rows=0 loops=1)\n        Filter: ((state <> 'running'::text) AND (created_at < (now() - '00:15:00'::interval)))\n        Rows Removed by Filter: 83386\n        Buffers: shared hit=2493\nPlanning:\n  Buffers: shared hit=152\nPlanning Time: 1.218 ms\nExecution Time: 22.073 ms\nordered operation selector\nLimit  (cost=0.30..284.27 rows=200 width=24) (actual time=0.047..0.047 rows=0 loops=1)\n  Buffers: shared hit=8\n  ->  Index Scan using mcp_operation_cleanup on mcp_operations  (cost=0.30..10128.16 rows=7133 width=24) (actual time=0.039..0.039 rows=0 loops=1)\n        Index Cond: (created_at < (now() - '00:15:00'::interval))\n        Buffers: shared hit=8\nPlanning:\n  Buffers: shared hit=19\nPlanning Time: 0.196 ms\nExecution Time: 0.067 ms\ncurrent stream selector\nLimit  (cost=0.00..89.30 rows=200 width=16) (actual time=13.873..13.874 rows=0 loops=1)\n  Buffers: shared hit=1925\n  ->  Seq Scan on mcp_streams  (cost=0.00..3151.95 rows=7059 width=16) (actual time=13.872..13.872 rows=0 loops=1)\n        Filter: (expires_at < now())\n        Rows Removed by Filter: 83388\n        Buffers: shared hit=1925\nPlanning:\n  Buffers: shared hit=71\nPlanning Time: 0.632 ms\nExecution Time: 13.889 ms\nordered stream selector\nLimit  (cost=0.29..221.39 rows=200 width=24) (actual time=0.017..0.017 rows=0 loops=1)\n  Buffers: shared hit=8\n  ->  Index Scan using mcp_stream_expiry on mcp_streams  (cost=0.29..7804.02 rows=7059 width=24) (actual time=0.016..0.016 rows=0 loops=1)\n        Index Cond: (expires_at < now())\n        Buffers: shared hit=8\nPlanning:\n  Buffers: shared hit=11\nPlanning Time: 0.120 ms\nExecution Time: 0.035 ms\n0\n{\"operations\" : 83388, \"streams\" : 83388, \"expired_operations\" : 0}\n",
+  "postgres-index-plans.txt": "fsync|on|\nfull_page_writes|on|\nmax_connections|256|\npg_stat_statements.track|all|\nshared_buffers|16384|8kB\nsynchronous_commit|on|\ntrack_io_timing|on|\nwork_mem|4096|kB\nmcp_operations|mcp_operations_pkey|CREATE UNIQUE INDEX mcp_operations_pkey ON public.mcp_operations USING btree (id)\nmcp_operations|mcp_operation_request|CREATE UNIQUE INDEX mcp_operation_request ON public.mcp_operations USING btree (session_id, client_request_id) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_expiry|CREATE INDEX mcp_operation_expiry ON public.mcp_operations USING btree (lease_until) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_principal|CREATE INDEX mcp_operation_principal ON public.mcp_operations USING btree (principal_hash) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_cleanup|CREATE INDEX mcp_operation_cleanup ON public.mcp_operations USING btree (created_at) WHERE (state <> 'running'::text)\nmcp_streams|mcp_streams_pkey|CREATE UNIQUE INDEX mcp_streams_pkey ON public.mcp_streams USING btree (id)\nmcp_streams|mcp_get_stream|CREATE UNIQUE INDEX mcp_get_stream ON public.mcp_streams USING btree (session_id) WHERE ((operation_id IS NULL) AND (NOT closed))\nmcp_streams|mcp_stream_expiry|CREATE INDEX mcp_stream_expiry ON public.mcp_streams USING btree (expires_at)\nmcp_streams|mcp_stream_operation|CREATE INDEX mcp_stream_operation ON public.mcp_streams USING btree (operation_id) WHERE (operation_id IS NOT NULL)\nmcp_pending_requests|mcp_pending_requests_pkey|CREATE UNIQUE INDEX mcp_pending_requests_pkey ON public.mcp_pending_requests USING btree (id)\nmcp_pending_requests|mcp_pending_operation|CREATE INDEX mcp_pending_operation ON public.mcp_pending_requests USING btree (operation_id)\nLimit  (cost=0.42..8.44 rows=1 width=4) (actual time=0.041..0.041 rows=0 loops=1)\n  Buffers: shared hit=3\n  ->  Index Only Scan using mcp_stream_operation on mcp_streams  (cost=0.42..8.44 rows=1 width=4) (actual time=0.040..0.040 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=61\nPlanning Time: 0.490 ms\nExecution Time: 0.064 ms\nLimit  (cost=0.00..7.08 rows=200 width=16) (actual time=0.287..0.348 rows=200 loops=1)\n  Buffers: shared hit=128\n  ->  Seq Scan on mcp_operations  (cost=0.00..3653.98 rows=103249 width=16) (actual time=0.287..0.333 rows=200 loops=1)\n        Filter: ((state <> 'running'::text) AND (created_at < (now() - '00:15:00'::interval)))\n        Buffers: shared hit=128\nPlanning:\n  Buffers: shared hit=71\nPlanning Time: 0.592 ms\nExecution Time: 0.367 ms",
+  "postgres-load-summary.json": {
+    "phase": {
+      "name": "steady",
+      "target_rps": 1000,
+      "PlannedSeconds": 300,
+      "ElapsedSeconds": 301.680759494,
+      "Scheduled": 300000,
+      "Offered": 112447,
+      "Success": 92509,
+      "Errors": 19938,
+      "Dropped": 187553,
+      "InvalidResults": 0,
+      "CompletedRPS": 306.64534309434435,
+      "SuccessPercent": 82.26898005282489,
+      "P50MS": 797.23904,
+      "P95MS": 4394.074199,
+      "P99MS": 4716.58489,
+      "MaxMS": 5534.806316,
+      "HTTPStatuses": {
+        "200": 92583,
+        "429": 14,
+        "502": 8,
+        "503": 19842
+      },
+      "Nodes": {
+        "acceptance-node-1": 51911,
+        "acceptance-node-2": 40691
+      },
+      "ErrorExamples": [
+        "HTTP 502",
+        "HTTP 502",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503"
+      ],
+      "Seconds": [
+        {
+          "second": 0,
+          "Success": 191,
+          "Errors": 807,
+          "Dropped": 2
+        },
+        {
+          "second": 1,
+          "Success": 0,
+          "Errors": 999,
+          "Dropped": 0
+        },
+        {
+          "second": 2,
+          "Success": 0,
+          "Errors": 1001,
+          "Dropped": 0
+        },
+        {
+          "second": 3,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 4,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 5,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 6,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 7,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 8,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 9,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 10,
+          "Success": 482,
+          "Errors": 142,
+          "Dropped": 7
+        },
+        {
+          "second": 11,
+          "Success": 681,
+          "Errors": 0,
+          "Dropped": 176
+        },
+        {
+          "second": 12,
+          "Success": 715,
+          "Errors": 0,
+          "Dropped": 320
+        },
+        {
+          "second": 13,
+          "Success": 689,
+          "Errors": 1,
+          "Dropped": 276
+        },
+        {
+          "second": 14,
+          "Success": 551,
+          "Errors": 0,
+          "Dropped": 468
+        },
+        {
+          "second": 15,
+          "Success": 508,
+          "Errors": 0,
+          "Dropped": 488
+        },
+        {
+          "second": 16,
+          "Success": 549,
+          "Errors": 0,
+          "Dropped": 435
+        },
+        {
+          "second": 17,
+          "Success": 434,
+          "Errors": 0,
+          "Dropped": 591
+        },
+        {
+          "second": 18,
+          "Success": 501,
+          "Errors": 1,
+          "Dropped": 473
+        },
+        {
+          "second": 19,
+          "Success": 544,
+          "Errors": 0,
+          "Dropped": 460
+        },
+        {
+          "second": 20,
+          "Success": 538,
+          "Errors": 0,
+          "Dropped": 458
+        },
+        {
+          "second": 21,
+          "Success": 521,
+          "Errors": 0,
+          "Dropped": 479
+        },
+        {
+          "second": 22,
+          "Success": 560,
+          "Errors": 546,
+          "Dropped": 215
+        },
+        {
+          "second": 23,
+          "Success": 502,
+          "Errors": 110,
+          "Dropped": 67
+        },
+        {
+          "second": 24,
+          "Success": 390,
+          "Errors": 0,
+          "Dropped": 610
+        },
+        {
+          "second": 25,
+          "Success": 494,
+          "Errors": 0,
+          "Dropped": 518
+        },
+        {
+          "second": 26,
+          "Success": 579,
+          "Errors": 0,
+          "Dropped": 409
+        },
+        {
+          "second": 27,
+          "Success": 584,
+          "Errors": 1,
+          "Dropped": 427
+        },
+        {
+          "second": 28,
+          "Success": 508,
+          "Errors": 0,
+          "Dropped": 480
+        },
+        {
+          "second": 29,
+          "Success": 581,
+          "Errors": 0,
+          "Dropped": 420
+        },
+        {
+          "second": 30,
+          "Success": 565,
+          "Errors": 0,
+          "Dropped": 454
+        },
+        {
+          "second": 31,
+          "Success": 544,
+          "Errors": 0,
+          "Dropped": 454
+        },
+        {
+          "second": 32,
+          "Success": 553,
+          "Errors": 264,
+          "Dropped": 165
+        },
+        {
+          "second": 33,
+          "Success": 599,
+          "Errors": 778,
+          "Dropped": 96
+        },
+        {
+          "second": 34,
+          "Success": 39,
+          "Errors": 999,
+          "Dropped": 0
+        },
+        {
+          "second": 35,
+          "Success": 0,
+          "Errors": 1001,
+          "Dropped": 0
+        },
+        {
+          "second": 36,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 37,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 38,
+          "Success": 0,
+          "Errors": 999,
+          "Dropped": 0
+        },
+        {
+          "second": 39,
+          "Success": 0,
+          "Errors": 1001,
+          "Dropped": 0
+        },
+        {
+          "second": 40,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 41,
+          "Success": 0,
+          "Errors": 999,
+          "Dropped": 0
+        },
+        {
+          "second": 42,
+          "Success": 475,
+          "Errors": 194,
+          "Dropped": 0
+        },
+        {
+          "second": 43,
+          "Success": 610,
+          "Errors": 1,
+          "Dropped": 256
+        },
+        {
+          "second": 44,
+          "Success": 762,
+          "Errors": 0,
+          "Dropped": 261
+        },
+        {
+          "second": 45,
+          "Success": 678,
+          "Errors": 0,
+          "Dropped": 302
+        },
+        {
+          "second": 46,
+          "Success": 688,
+          "Errors": 0,
+          "Dropped": 320
+        },
+        {
+          "second": 47,
+          "Success": 679,
+          "Errors": 0,
+          "Dropped": 263
+        },
+        {
+          "second": 48,
+          "Success": 678,
+          "Errors": 0,
+          "Dropped": 322
+        },
+        {
+          "second": 49,
+          "Success": 784,
+          "Errors": 0,
+          "Dropped": 298
+        },
+        {
+          "second": 50,
+          "Success": 679,
+          "Errors": 0,
+          "Dropped": 239
+        },
+        {
+          "second": 51,
+          "Success": 727,
+          "Errors": 0,
+          "Dropped": 273
+        },
+        {
+          "second": 52,
+          "Success": 700,
+          "Errors": 0,
+          "Dropped": 300
+        },
+        {
+          "second": 53,
+          "Success": 706,
+          "Errors": 0,
+          "Dropped": 294
+        },
+        {
+          "second": 54,
+          "Success": 693,
+          "Errors": 0,
+          "Dropped": 309
+        },
+        {
+          "second": 55,
+          "Success": 651,
+          "Errors": 0,
+          "Dropped": 347
+        },
+        {
+          "second": 56,
+          "Success": 653,
+          "Errors": 0,
+          "Dropped": 347
+        },
+        {
+          "second": 57,
+          "Success": 691,
+          "Errors": 0,
+          "Dropped": 314
+        },
+        {
+          "second": 58,
+          "Success": 636,
+          "Errors": 0,
+          "Dropped": 369
+        },
+        {
+          "second": 59,
+          "Success": 533,
+          "Errors": 0,
+          "Dropped": 457
+        },
+        {
+          "second": 60,
+          "Success": 680,
+          "Errors": 0,
+          "Dropped": 320
+        },
+        {
+          "second": 61,
+          "Success": 661,
+          "Errors": 0,
+          "Dropped": 346
+        },
+        {
+          "second": 62,
+          "Success": 640,
+          "Errors": 0,
+          "Dropped": 353
+        },
+        {
+          "second": 63,
+          "Success": 587,
+          "Errors": 0,
+          "Dropped": 424
+        },
+        {
+          "second": 64,
+          "Success": 623,
+          "Errors": 0,
+          "Dropped": 366
+        },
+        {
+          "second": 65,
+          "Success": 724,
+          "Errors": 0,
+          "Dropped": 303
+        },
+        {
+          "second": 66,
+          "Success": 662,
+          "Errors": 0,
+          "Dropped": 316
+        },
+        {
+          "second": 67,
+          "Success": 717,
+          "Errors": 0,
+          "Dropped": 278
+        },
+        {
+          "second": 68,
+          "Success": 798,
+          "Errors": 0,
+          "Dropped": 271
+        },
+        {
+          "second": 69,
+          "Success": 741,
+          "Errors": 0,
+          "Dropped": 218
+        },
+        {
+          "second": 70,
+          "Success": 744,
+          "Errors": 0,
+          "Dropped": 283
+        },
+        {
+          "second": 71,
+          "Success": 729,
+          "Errors": 0,
+          "Dropped": 259
+        },
+        {
+          "second": 72,
+          "Success": 693,
+          "Errors": 0,
+          "Dropped": 285
+        },
+        {
+          "second": 73,
+          "Success": 652,
+          "Errors": 0,
+          "Dropped": 335
+        },
+        {
+          "second": 74,
+          "Success": 752,
+          "Errors": 0,
+          "Dropped": 256
+        },
+        {
+          "second": 75,
+          "Success": 717,
+          "Errors": 0,
+          "Dropped": 290
+        },
+        {
+          "second": 76,
+          "Success": 744,
+          "Errors": 0,
+          "Dropped": 242
+        },
+        {
+          "second": 77,
+          "Success": 754,
+          "Errors": 0,
+          "Dropped": 274
+        },
+        {
+          "second": 78,
+          "Success": 662,
+          "Errors": 0,
+          "Dropped": 308
+        },
+        {
+          "second": 79,
+          "Success": 697,
+          "Errors": 0,
+          "Dropped": 308
+        },
+        {
+          "second": 80,
+          "Success": 764,
+          "Errors": 0,
+          "Dropped": 265
+        },
+        {
+          "second": 81,
+          "Success": 679,
+          "Errors": 1,
+          "Dropped": 310
+        },
+        {
+          "second": 82,
+          "Success": 717,
+          "Errors": 0,
+          "Dropped": 273
+        },
+        {
+          "second": 83,
+          "Success": 726,
+          "Errors": 0,
+          "Dropped": 322
+        },
+        {
+          "second": 84,
+          "Success": 723,
+          "Errors": 0,
+          "Dropped": 245
+        },
+        {
+          "second": 85,
+          "Success": 368,
+          "Errors": 0,
+          "Dropped": 595
+        },
+        {
+          "second": 86,
+          "Success": 338,
+          "Errors": 0,
+          "Dropped": 662
+        },
+        {
+          "second": 87,
+          "Success": 367,
+          "Errors": 0,
+          "Dropped": 633
+        },
+        {
+          "second": 88,
+          "Success": 267,
+          "Errors": 0,
+          "Dropped": 733
+        },
+        {
+          "second": 89,
+          "Success": 296,
+          "Errors": 0,
+          "Dropped": 704
+        },
+        {
+          "second": 90,
+          "Success": 335,
+          "Errors": 0,
+          "Dropped": 665
+        },
+        {
+          "second": 91,
+          "Success": 250,
+          "Errors": 0,
+          "Dropped": 750
+        },
+        {
+          "second": 92,
+          "Success": 234,
+          "Errors": 0,
+          "Dropped": 766
+        },
+        {
+          "second": 93,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 94,
+          "Success": 231,
+          "Errors": 12,
+          "Dropped": 757
+        },
+        {
+          "second": 95,
+          "Success": 220,
+          "Errors": 0,
+          "Dropped": 780
+        },
+        {
+          "second": 96,
+          "Success": 230,
+          "Errors": 0,
+          "Dropped": 770
+        },
+        {
+          "second": 97,
+          "Success": 250,
+          "Errors": 0,
+          "Dropped": 751
+        },
+        {
+          "second": 98,
+          "Success": 181,
+          "Errors": 0,
+          "Dropped": 818
+        },
+        {
+          "second": 99,
+          "Success": 263,
+          "Errors": 0,
+          "Dropped": 737
+        },
+        {
+          "second": 100,
+          "Success": 196,
+          "Errors": 0,
+          "Dropped": 804
+        },
+        {
+          "second": 101,
+          "Success": 318,
+          "Errors": 0,
+          "Dropped": 682
+        },
+        {
+          "second": 102,
+          "Success": 213,
+          "Errors": 0,
+          "Dropped": 787
+        },
+        {
+          "second": 103,
+          "Success": 222,
+          "Errors": 0,
+          "Dropped": 778
+        },
+        {
+          "second": 104,
+          "Success": 212,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 105,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 106,
+          "Success": 232,
+          "Errors": 0,
+          "Dropped": 768
+        },
+        {
+          "second": 107,
+          "Success": 240,
+          "Errors": 0,
+          "Dropped": 760
+        },
+        {
+          "second": 108,
+          "Success": 212,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 109,
+          "Success": 272,
+          "Errors": 0,
+          "Dropped": 737
+        },
+        {
+          "second": 110,
+          "Success": 165,
+          "Errors": 0,
+          "Dropped": 826
+        },
+        {
+          "second": 111,
+          "Success": 276,
+          "Errors": 0,
+          "Dropped": 724
+        },
+        {
+          "second": 112,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 113,
+          "Success": 251,
+          "Errors": 0,
+          "Dropped": 749
+        },
+        {
+          "second": 114,
+          "Success": 192,
+          "Errors": 0,
+          "Dropped": 808
+        },
+        {
+          "second": 115,
+          "Success": 222,
+          "Errors": 0,
+          "Dropped": 778
+        },
+        {
+          "second": 116,
+          "Success": 216,
+          "Errors": 0,
+          "Dropped": 797
+        },
+        {
+          "second": 117,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 773
+        },
+        {
+          "second": 118,
+          "Success": 262,
+          "Errors": 3,
+          "Dropped": 735
+        },
+        {
+          "second": 119,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 120,
+          "Success": 223,
+          "Errors": 0,
+          "Dropped": 777
+        },
+        {
+          "second": 121,
+          "Success": 199,
+          "Errors": 0,
+          "Dropped": 801
+        },
+        {
+          "second": 122,
+          "Success": 262,
+          "Errors": 0,
+          "Dropped": 738
+        },
+        {
+          "second": 123,
+          "Success": 158,
+          "Errors": 0,
+          "Dropped": 842
+        },
+        {
+          "second": 124,
+          "Success": 295,
+          "Errors": 0,
+          "Dropped": 707
+        },
+        {
+          "second": 125,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 126,
+          "Success": 228,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 127,
+          "Success": 221,
+          "Errors": 0,
+          "Dropped": 779
+        },
+        {
+          "second": 128,
+          "Success": 210,
+          "Errors": 0,
+          "Dropped": 791
+        },
+        {
+          "second": 129,
+          "Success": 205,
+          "Errors": 0,
+          "Dropped": 795
+        },
+        {
+          "second": 130,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 784
+        },
+        {
+          "second": 131,
+          "Success": 212,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 132,
+          "Success": 243,
+          "Errors": 0,
+          "Dropped": 757
+        },
+        {
+          "second": 133,
+          "Success": 203,
+          "Errors": 0,
+          "Dropped": 797
+        },
+        {
+          "second": 134,
+          "Success": 193,
+          "Errors": 0,
+          "Dropped": 807
+        },
+        {
+          "second": 135,
+          "Success": 236,
+          "Errors": 0,
+          "Dropped": 764
+        },
+        {
+          "second": 136,
+          "Success": 183,
+          "Errors": 0,
+          "Dropped": 817
+        },
+        {
+          "second": 137,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 138,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 139,
+          "Success": 250,
+          "Errors": 4,
+          "Dropped": 749
+        },
+        {
+          "second": 140,
+          "Success": 197,
+          "Errors": 0,
+          "Dropped": 800
+        },
+        {
+          "second": 141,
+          "Success": 236,
+          "Errors": 0,
+          "Dropped": 764
+        },
+        {
+          "second": 142,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 763
+        },
+        {
+          "second": 143,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 763
+        },
+        {
+          "second": 144,
+          "Success": 247,
+          "Errors": 0,
+          "Dropped": 770
+        },
+        {
+          "second": 145,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 769
+        },
+        {
+          "second": 146,
+          "Success": 204,
+          "Errors": 0,
+          "Dropped": 795
+        },
+        {
+          "second": 147,
+          "Success": 170,
+          "Errors": 0,
+          "Dropped": 831
+        },
+        {
+          "second": 148,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 149,
+          "Success": 245,
+          "Errors": 0,
+          "Dropped": 755
+        },
+        {
+          "second": 150,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 789
+        },
+        {
+          "second": 151,
+          "Success": 205,
+          "Errors": 2,
+          "Dropped": 796
+        },
+        {
+          "second": 152,
+          "Success": 236,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 153,
+          "Success": 176,
+          "Errors": 0,
+          "Dropped": 823
+        },
+        {
+          "second": 154,
+          "Success": 258,
+          "Errors": 0,
+          "Dropped": 743
+        },
+        {
+          "second": 155,
+          "Success": 233,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 156,
+          "Success": 221,
+          "Errors": 0,
+          "Dropped": 774
+        },
+        {
+          "second": 157,
+          "Success": 210,
+          "Errors": 0,
+          "Dropped": 790
+        },
+        {
+          "second": 158,
+          "Success": 220,
+          "Errors": 0,
+          "Dropped": 780
+        },
+        {
+          "second": 159,
+          "Success": 222,
+          "Errors": 0,
+          "Dropped": 778
+        },
+        {
+          "second": 160,
+          "Success": 196,
+          "Errors": 0,
+          "Dropped": 805
+        },
+        {
+          "second": 161,
+          "Success": 243,
+          "Errors": 0,
+          "Dropped": 756
+        },
+        {
+          "second": 162,
+          "Success": 266,
+          "Errors": 0,
+          "Dropped": 738
+        },
+        {
+          "second": 163,
+          "Success": 189,
+          "Errors": 0,
+          "Dropped": 807
+        },
+        {
+          "second": 164,
+          "Success": 250,
+          "Errors": 0,
+          "Dropped": 750
+        },
+        {
+          "second": 165,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 809
+        },
+        {
+          "second": 166,
+          "Success": 230,
+          "Errors": 0,
+          "Dropped": 747
+        },
+        {
+          "second": 167,
+          "Success": 209,
+          "Errors": 0,
+          "Dropped": 791
+        },
+        {
+          "second": 168,
+          "Success": 243,
+          "Errors": 0,
+          "Dropped": 757
+        },
+        {
+          "second": 169,
+          "Success": 203,
+          "Errors": 0,
+          "Dropped": 796
+        },
+        {
+          "second": 170,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 787
+        },
+        {
+          "second": 171,
+          "Success": 249,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 172,
+          "Success": 181,
+          "Errors": 0,
+          "Dropped": 811
+        },
+        {
+          "second": 173,
+          "Success": 286,
+          "Errors": 0,
+          "Dropped": 714
+        },
+        {
+          "second": 174,
+          "Success": 210,
+          "Errors": 0,
+          "Dropped": 791
+        },
+        {
+          "second": 175,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 176,
+          "Success": 232,
+          "Errors": 0,
+          "Dropped": 768
+        },
+        {
+          "second": 177,
+          "Success": 231,
+          "Errors": 0,
+          "Dropped": 769
+        },
+        {
+          "second": 178,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 784
+        },
+        {
+          "second": 179,
+          "Success": 171,
+          "Errors": 0,
+          "Dropped": 830
+        },
+        {
+          "second": 180,
+          "Success": 280,
+          "Errors": 0,
+          "Dropped": 721
+        },
+        {
+          "second": 181,
+          "Success": 150,
+          "Errors": 0,
+          "Dropped": 861
+        },
+        {
+          "second": 182,
+          "Success": 309,
+          "Errors": 0,
+          "Dropped": 679
+        },
+        {
+          "second": 183,
+          "Success": 181,
+          "Errors": 0,
+          "Dropped": 819
+        },
+        {
+          "second": 184,
+          "Success": 281,
+          "Errors": 0,
+          "Dropped": 719
+        },
+        {
+          "second": 185,
+          "Success": 193,
+          "Errors": 0,
+          "Dropped": 807
+        },
+        {
+          "second": 186,
+          "Success": 230,
+          "Errors": 2,
+          "Dropped": 788
+        },
+        {
+          "second": 187,
+          "Success": 195,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 188,
+          "Success": 218,
+          "Errors": 0,
+          "Dropped": 782
+        },
+        {
+          "second": 189,
+          "Success": 216,
+          "Errors": 0,
+          "Dropped": 784
+        },
+        {
+          "second": 190,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 191,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 763
+        },
+        {
+          "second": 192,
+          "Success": 218,
+          "Errors": 0,
+          "Dropped": 782
+        },
+        {
+          "second": 193,
+          "Success": 236,
+          "Errors": 0,
+          "Dropped": 764
+        },
+        {
+          "second": 194,
+          "Success": 235,
+          "Errors": 0,
+          "Dropped": 765
+        },
+        {
+          "second": 195,
+          "Success": 205,
+          "Errors": 0,
+          "Dropped": 795
+        },
+        {
+          "second": 196,
+          "Success": 264,
+          "Errors": 0,
+          "Dropped": 736
+        },
+        {
+          "second": 197,
+          "Success": 201,
+          "Errors": 0,
+          "Dropped": 801
+        },
+        {
+          "second": 198,
+          "Success": 261,
+          "Errors": 0,
+          "Dropped": 737
+        },
+        {
+          "second": 199,
+          "Success": 219,
+          "Errors": 0,
+          "Dropped": 781
+        },
+        {
+          "second": 200,
+          "Success": 127,
+          "Errors": 0,
+          "Dropped": 881
+        },
+        {
+          "second": 201,
+          "Success": 291,
+          "Errors": 0,
+          "Dropped": 701
+        },
+        {
+          "second": 202,
+          "Success": 175,
+          "Errors": 0,
+          "Dropped": 825
+        },
+        {
+          "second": 203,
+          "Success": 245,
+          "Errors": 0,
+          "Dropped": 755
+        },
+        {
+          "second": 204,
+          "Success": 253,
+          "Errors": 0,
+          "Dropped": 747
+        },
+        {
+          "second": 205,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 206,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 207,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 789
+        },
+        {
+          "second": 208,
+          "Success": 259,
+          "Errors": 0,
+          "Dropped": 741
+        },
+        {
+          "second": 209,
+          "Success": 186,
+          "Errors": 0,
+          "Dropped": 814
+        },
+        {
+          "second": 210,
+          "Success": 217,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 211,
+          "Success": 223,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 212,
+          "Success": 261,
+          "Errors": 0,
+          "Dropped": 739
+        },
+        {
+          "second": 213,
+          "Success": 241,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 214,
+          "Success": 197,
+          "Errors": 31,
+          "Dropped": 772
+        },
+        {
+          "second": 215,
+          "Success": 231,
+          "Errors": 1,
+          "Dropped": 768
+        },
+        {
+          "second": 216,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 786
+        },
+        {
+          "second": 217,
+          "Success": 241,
+          "Errors": 0,
+          "Dropped": 758
+        },
+        {
+          "second": 218,
+          "Success": 232,
+          "Errors": 0,
+          "Dropped": 768
+        },
+        {
+          "second": 219,
+          "Success": 178,
+          "Errors": 0,
+          "Dropped": 822
+        },
+        {
+          "second": 220,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 775
+        },
+        {
+          "second": 221,
+          "Success": 241,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 222,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 223,
+          "Success": 190,
+          "Errors": 0,
+          "Dropped": 810
+        },
+        {
+          "second": 224,
+          "Success": 240,
+          "Errors": 2,
+          "Dropped": 758
+        },
+        {
+          "second": 225,
+          "Success": 273,
+          "Errors": 4,
+          "Dropped": 726
+        },
+        {
+          "second": 226,
+          "Success": 187,
+          "Errors": 0,
+          "Dropped": 810
+        },
+        {
+          "second": 227,
+          "Success": 251,
+          "Errors": 20,
+          "Dropped": 729
+        },
+        {
+          "second": 228,
+          "Success": 265,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 229,
+          "Success": 122,
+          "Errors": 0,
+          "Dropped": 841
+        },
+        {
+          "second": 230,
+          "Success": 298,
+          "Errors": 0,
+          "Dropped": 713
+        },
+        {
+          "second": 231,
+          "Success": 205,
+          "Errors": 0,
+          "Dropped": 784
+        },
+        {
+          "second": 232,
+          "Success": 217,
+          "Errors": 0,
+          "Dropped": 783
+        },
+        {
+          "second": 233,
+          "Success": 167,
+          "Errors": 0,
+          "Dropped": 833
+        },
+        {
+          "second": 234,
+          "Success": 280,
+          "Errors": 0,
+          "Dropped": 722
+        },
+        {
+          "second": 235,
+          "Success": 213,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 236,
+          "Success": 253,
+          "Errors": 0,
+          "Dropped": 747
+        },
+        {
+          "second": 237,
+          "Success": 196,
+          "Errors": 0,
+          "Dropped": 804
+        },
+        {
+          "second": 238,
+          "Success": 277,
+          "Errors": 0,
+          "Dropped": 723
+        },
+        {
+          "second": 239,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 767
+        },
+        {
+          "second": 240,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 803
+        },
+        {
+          "second": 241,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 242,
+          "Success": 236,
+          "Errors": 0,
+          "Dropped": 764
+        },
+        {
+          "second": 243,
+          "Success": 156,
+          "Errors": 0,
+          "Dropped": 844
+        },
+        {
+          "second": 244,
+          "Success": 261,
+          "Errors": 0,
+          "Dropped": 739
+        },
+        {
+          "second": 245,
+          "Success": 235,
+          "Errors": 0,
+          "Dropped": 765
+        },
+        {
+          "second": 246,
+          "Success": 253,
+          "Errors": 0,
+          "Dropped": 748
+        },
+        {
+          "second": 247,
+          "Success": 200,
+          "Errors": 0,
+          "Dropped": 799
+        },
+        {
+          "second": 248,
+          "Success": 264,
+          "Errors": 0,
+          "Dropped": 736
+        },
+        {
+          "second": 249,
+          "Success": 226,
+          "Errors": 0,
+          "Dropped": 774
+        },
+        {
+          "second": 250,
+          "Success": 223,
+          "Errors": 0,
+          "Dropped": 780
+        },
+        {
+          "second": 251,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 786
+        },
+        {
+          "second": 252,
+          "Success": 219,
+          "Errors": 0,
+          "Dropped": 781
+        },
+        {
+          "second": 253,
+          "Success": 187,
+          "Errors": 0,
+          "Dropped": 813
+        },
+        {
+          "second": 254,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 775
+        },
+        {
+          "second": 255,
+          "Success": 228,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 256,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 257,
+          "Success": 199,
+          "Errors": 0,
+          "Dropped": 803
+        },
+        {
+          "second": 258,
+          "Success": 279,
+          "Errors": 1,
+          "Dropped": 718
+        },
+        {
+          "second": 259,
+          "Success": 251,
+          "Errors": 0,
+          "Dropped": 750
+        },
+        {
+          "second": 260,
+          "Success": 204,
+          "Errors": 0,
+          "Dropped": 795
+        },
+        {
+          "second": 261,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 790
+        },
+        {
+          "second": 262,
+          "Success": 272,
+          "Errors": 0,
+          "Dropped": 727
+        },
+        {
+          "second": 263,
+          "Success": 176,
+          "Errors": 0,
+          "Dropped": 824
+        },
+        {
+          "second": 264,
+          "Success": 254,
+          "Errors": 0,
+          "Dropped": 746
+        },
+        {
+          "second": 265,
+          "Success": 225,
+          "Errors": 7,
+          "Dropped": 768
+        },
+        {
+          "second": 266,
+          "Success": 251,
+          "Errors": 0,
+          "Dropped": 749
+        },
+        {
+          "second": 267,
+          "Success": 204,
+          "Errors": 0,
+          "Dropped": 796
+        },
+        {
+          "second": 268,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 763
+        },
+        {
+          "second": 269,
+          "Success": 235,
+          "Errors": 0,
+          "Dropped": 765
+        },
+        {
+          "second": 270,
+          "Success": 273,
+          "Errors": 0,
+          "Dropped": 731
+        },
+        {
+          "second": 271,
+          "Success": 160,
+          "Errors": 0,
+          "Dropped": 836
+        },
+        {
+          "second": 272,
+          "Success": 244,
+          "Errors": 0,
+          "Dropped": 757
+        },
+        {
+          "second": 273,
+          "Success": 235,
+          "Errors": 1,
+          "Dropped": 763
+        },
+        {
+          "second": 274,
+          "Success": 196,
+          "Errors": 2,
+          "Dropped": 802
+        },
+        {
+          "second": 275,
+          "Success": 233,
+          "Errors": 0,
+          "Dropped": 767
+        },
+        {
+          "second": 276,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 277,
+          "Success": 192,
+          "Errors": 1,
+          "Dropped": 807
+        },
+        {
+          "second": 278,
+          "Success": 240,
+          "Errors": 0,
+          "Dropped": 760
+        },
+        {
+          "second": 279,
+          "Success": 210,
+          "Errors": 0,
+          "Dropped": 790
+        },
+        {
+          "second": 280,
+          "Success": 199,
+          "Errors": 0,
+          "Dropped": 801
+        },
+        {
+          "second": 281,
+          "Success": 250,
+          "Errors": 0,
+          "Dropped": 750
+        },
+        {
+          "second": 282,
+          "Success": 229,
+          "Errors": 0,
+          "Dropped": 771
+        },
+        {
+          "second": 283,
+          "Success": 231,
+          "Errors": 0,
+          "Dropped": 769
+        },
+        {
+          "second": 284,
+          "Success": 248,
+          "Errors": 0,
+          "Dropped": 769
+        },
+        {
+          "second": 285,
+          "Success": 195,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 286,
+          "Success": 250,
+          "Errors": 0,
+          "Dropped": 750
+        },
+        {
+          "second": 287,
+          "Success": 249,
+          "Errors": 0,
+          "Dropped": 751
+        },
+        {
+          "second": 288,
+          "Success": 200,
+          "Errors": 0,
+          "Dropped": 800
+        },
+        {
+          "second": 289,
+          "Success": 218,
+          "Errors": 0,
+          "Dropped": 782
+        },
+        {
+          "second": 290,
+          "Success": 276,
+          "Errors": 0,
+          "Dropped": 728
+        },
+        {
+          "second": 291,
+          "Success": 179,
+          "Errors": 0,
+          "Dropped": 817
+        },
+        {
+          "second": 292,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 780
+        },
+        {
+          "second": 293,
+          "Success": 256,
+          "Errors": 0,
+          "Dropped": 739
+        },
+        {
+          "second": 294,
+          "Success": 250,
+          "Errors": 0,
+          "Dropped": 792
+        },
+        {
+          "second": 295,
+          "Success": 188,
+          "Errors": 0,
+          "Dropped": 770
+        },
+        {
+          "second": 296,
+          "Success": 229,
+          "Errors": 0,
+          "Dropped": 771
+        },
+        {
+          "second": 297,
+          "Success": 203,
+          "Errors": 0,
+          "Dropped": 797
+        },
+        {
+          "second": 298,
+          "Success": 246,
+          "Errors": 0,
+          "Dropped": 754
+        },
+        {
+          "second": 299,
+          "Success": 182,
+          "Errors": 0,
+          "Dropped": 818
+        },
+        {
+          "second": 300,
+          "Success": 307,
+          "Errors": 0,
+          "Dropped": 0
+        },
+        {
+          "second": 301,
+          "Success": 205,
+          "Errors": 0,
+          "Dropped": 0
+        }
+      ],
+      "slo_pass": false
+    },
+    "cpus": 8,
+    "observer_samples": 53,
+    "active_session_samples": 5287,
+    "notification_lock_samples": 4762,
+    "peak_lock_waiters": 125,
+    "peak_connections": 143,
+    "postgres_peak_cores": 20.300224174,
+    "postgres_median_cores": 2.3575243595,
+    "cleanup_first_positive": 98800,
+    "cleanup_zero_utc": "2026-10-23T17:43:29.985312+00:00",
+    "consistency": {
+      "active_agent_keys": 64,
+      "active_upstreams": 300,
+      "active_virtual_servers": 300,
+      "active_virtual_tools": 50182,
+      "duplicate_executions": 0,
+      "failed_calls": 19938,
+      "incomplete_operations": 0,
+      "incomplete_unrelated_to_failed_calls": 0,
+      "matching_admissions": 93259,
+      "matching_ok_outcomes": 93259,
+      "successful_client_calls": 93259,
+      "synthetic_upstream_executions": 93333
+    },
+    "functional": {
+      "cross_node_session_and_paginated_masked_metadata": true,
+      "invalid_keys_rejected_on_both_nodes": true,
+      "key_revocation_propagated_and_rejected_on_both_nodes": false,
+      "session_termination_authoritative_on_both_nodes": true
+    },
+    "binary": "ff16642693740606e9d0f42bc1fd72bdc3c50b8a6f1d2338303cbed18889516e",
+    "resources": {
+      "acceptance-node-1": {
+        "max_metric_label_overflows": 101635,
+        "max_os_reported_cpu_percent": 770.1752955,
+        "max_pool_acquired": 64,
+        "max_pool_cancelled_acquires": 13476,
+        "max_rss_bytes": 1060360192,
+        "median_os_reported_cpu_percent": 755.4403961,
+        "median_rss_bytes": 1003618304,
+        "pool_acquire_seconds_observed": 145581.419601296
+      },
+      "acceptance-node-2": {
+        "max_metric_label_overflows": 79502,
+        "max_os_reported_cpu_percent": 757.3680231,
+        "max_pool_acquired": 64,
+        "max_pool_cancelled_acquires": 240,
+        "max_rss_bytes": 1022140416,
+        "median_os_reported_cpu_percent": 741.8075261,
+        "median_rss_bytes": 981241856,
+        "pool_acquire_seconds_observed": 4526.434599546
+      }
+    }
+  }
+}

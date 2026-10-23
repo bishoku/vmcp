@@ -32,6 +32,7 @@ type series struct {
 	errors        int64
 }
 type Registry struct {
+	background         map[string]uint64
 	operations         map[Operation]*operationSeries
 	operationOverflows uint64
 	operationsPruned   time.Time
@@ -122,6 +123,7 @@ func (r *Registry) Handler(next http.Handler) http.Handler {
 }
 func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	r.backgroundMetrics(w)
 	r.mu.Lock()
 	requests := make(map[string]series, len(r.requests))
 	for label, value := range r.requests {

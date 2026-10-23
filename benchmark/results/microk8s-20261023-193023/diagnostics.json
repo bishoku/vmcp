@@ -1,0 +1,126 @@
+{
+  "cgroup-deltas-after-spike.json": [
+    {
+      "metric": "container_cpu_cfs_periods_total",
+      "pod": "control-plane-b55896456-s4zv5",
+      "container": "control-plane",
+      "delta": 820.0
+    },
+    {
+      "metric": "container_cpu_cfs_periods_total",
+      "pod": "acceptance-node-1-b965b4845-q6945",
+      "container": "data-plane",
+      "delta": 5503.0
+    },
+    {
+      "metric": "container_cpu_cfs_periods_total",
+      "pod": "acceptance-node-2-77fb9758c9-kkwnr",
+      "container": "data-plane",
+      "delta": 5399.0
+    },
+    {
+      "metric": "container_cpu_cfs_periods_total",
+      "pod": "postgres-5d67cc9f84-wtrgp",
+      "container": "postgres",
+      "delta": 5356.0
+    },
+    {
+      "metric": "container_cpu_cfs_periods_total",
+      "pod": "redis-6786984d-hf7g2",
+      "container": "redis",
+      "delta": 4869.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_periods_total",
+      "pod": "control-plane-b55896456-s4zv5",
+      "container": "control-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_periods_total",
+      "pod": "acceptance-node-1-b965b4845-q6945",
+      "container": "data-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_periods_total",
+      "pod": "acceptance-node-2-77fb9758c9-kkwnr",
+      "container": "data-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_periods_total",
+      "pod": "postgres-5d67cc9f84-wtrgp",
+      "container": "postgres",
+      "delta": 2019.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_periods_total",
+      "pod": "redis-6786984d-hf7g2",
+      "container": "redis",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_seconds_total",
+      "pod": "control-plane-b55896456-s4zv5",
+      "container": "control-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_seconds_total",
+      "pod": "acceptance-node-1-b965b4845-q6945",
+      "container": "data-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_seconds_total",
+      "pod": "acceptance-node-2-77fb9758c9-kkwnr",
+      "container": "data-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_seconds_total",
+      "pod": "postgres-5d67cc9f84-wtrgp",
+      "container": "postgres",
+      "delta": 911.076521
+    },
+    {
+      "metric": "container_cpu_cfs_throttled_seconds_total",
+      "pod": "redis-6786984d-hf7g2",
+      "container": "redis",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_oom_events_total",
+      "pod": "control-plane-b55896456-s4zv5",
+      "container": "control-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_oom_events_total",
+      "pod": "acceptance-node-1-b965b4845-q6945",
+      "container": "data-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_oom_events_total",
+      "pod": "acceptance-node-2-77fb9758c9-kkwnr",
+      "container": "data-plane",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_oom_events_total",
+      "pod": "postgres-5d67cc9f84-wtrgp",
+      "container": "postgres",
+      "delta": 0.0
+    },
+    {
+      "metric": "container_oom_events_total",
+      "pod": "redis-6786984d-hf7g2",
+      "container": "redis",
+      "delta": 0.0
+    }
+  ],
+  "postgres-cleanup-plan-mid-soak.txt": "                                                        QUERY PLAN                                                        \n--------------------------------------------------------------------------------------------------------------------------\n Gather  (cost=1000.00..9745.91 rows=1 width=16) (actual time=82.484..91.696 rows=0 loops=1)\n   Workers Planned: 2\n   Workers Launched: 2\n   Buffers: shared hit=5808 read=1148 written=26\n   ->  Parallel Seq Scan on mcp_streams  (cost=0.00..8745.81 rows=1 width=16) (actual time=63.115..63.116 rows=0 loops=3)\n         Filter: (operation_id = '00000000-0000-0000-0000-000000000000'::uuid)\n         Rows Removed by Filter: 117109\n         Buffers: shared hit=5808 read=1148 written=26\n Planning:\n   Buffers: shared hit=96\n Planning Time: 1.673 ms\n Execution Time: 91.768 ms\n(12 rows)\n\n        indexname        |                                                                    indexdef                                                                    \n-------------------------+------------------------------------------------------------------------------------------------------------------------------------------------\n mcp_operations_pkey     | CREATE UNIQUE INDEX mcp_operations_pkey ON public.mcp_operations USING btree (id)\n mcp_operation_request   | CREATE UNIQUE INDEX mcp_operation_request ON public.mcp_operations USING btree (session_id, client_request_id) WHERE (state = 'running'::text)\n mcp_operation_expiry    | CREATE INDEX mcp_operation_expiry ON public.mcp_operations USING btree (lease_until) WHERE (state = 'running'::text)\n mcp_operation_principal | CREATE INDEX mcp_operation_principal ON public.mcp_operations USING btree (principal_hash) WHERE (state = 'running'::text)\n mcp_streams_pkey        | CREATE UNIQUE INDEX mcp_streams_pkey ON public.mcp_streams USING btree (id)\n mcp_get_stream          | CREATE UNIQUE INDEX mcp_get_stream ON public.mcp_streams USING btree (session_id) WHERE ((operation_id IS NULL) AND (NOT closed))\n mcp_stream_expiry       | CREATE INDEX mcp_stream_expiry ON public.mcp_streams USING btree (expires_at)\n(7 rows)\n\n",
+  "postgres-plan-mid-soak.txt": "                                                                  QUERY PLAN                                                                   \n-----------------------------------------------------------------------------------------------------------------------------------------------\n Aggregate  (cost=12.30..12.31 rows=1 width=24) (actual time=0.937..0.938 rows=1 loops=1)\n   Buffers: shared hit=660\n   ->  Index Scan using mcp_operation_expiry on mcp_operations  (cost=0.28..12.29 rows=1 width=48) (actual time=0.439..0.860 rows=347 loops=1)\n         Index Cond: (lease_until > now())\n         Buffers: shared hit=660\n Planning:\n   Buffers: shared hit=183\n Planning Time: 1.500 ms\n Execution Time: 1.001 ms\n(9 rows)\n\n    relname     | n_live_tup | n_dead_tup | autovacuum_count \n----------------+------------+------------+------------------\n audit_events   |     673030 |          0 |               12\n mcp_operations |     336824 |      60464 |               16\n mcp_streams    |     337000 |      25779 |               11\n mcp_events     |     336569 |         23 |               11\n(4 rows)\n\n"
+}

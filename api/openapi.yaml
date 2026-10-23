@@ -279,6 +279,66 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/mock-provider:
+    get:
+      tags: [ Upstreams ]
+      operationId: getMockProvider
+      summary: Shared optional WireMock endpoint configured by the operator
+      responses:
+        "200":
+          description: Integration configuration; no network call to WireMock
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ enabled, url ]
+                properties:
+                  enabled: {type: boolean}
+                  url: {type: string}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/upstreams/{slug}/mock/status:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      tags: [ Upstreams ]
+      operationId: getMockStatus
+      summary: Compare saved mock definitions with scoped WireMock mappings
+      responses:
+        "200":
+          description: Publication status; unavailable does not affect application readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/upstreams/{slug}/mock/sync:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    post:
+      tags: [ Upstreams ]
+      operationId: syncMockDefinitions
+      summary: Admin-only reconciliation of saved mock definitions; never uses global WireMock reset
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "200":
+          description: Publication status after reconciliation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MockStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "502":
+          description: WireMock unavailable or rejected the definition
   /api/v1/upstreams:
     get:
       tags: [ Upstreams ]
@@ -1427,6 +1487,10 @@ paths:
       operationId: listAuditEvents
       summary: List audit events, newest first
       parameters:
+        - name: activity
+          in: query
+          description: Filter by recorded origin. Virtual includes virtual MCP events and explicitly linked upstream attempts; control includes control-plane reads/writes and their linked upstream attempts; system includes background activity; upstream selects upstream-scope events only. Omit for all events, including unclassified legacy events.
+          schema: { type: string, enum: [ virtual, control, system, upstream ] }
         - $ref: "#/components/parameters/Limit"
         - name: cursor
           in: query
@@ -3559,10 +3623,59 @@ components:
         - name
         - in
         - schema
+    MockStatus:
+      type: object
+      required: [ state ]
+      properties:
+        state:
+          type: string
+          enum: [ active, pending, disabled, unavailable ]
+        message: {type: string}
+        ruleCount: {type: integer}
+        namespace: {type: string}
+    MockRule:
+      type: object
+      additionalProperties: false
+      required: [ name, priority, response ]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 128}
+        priority: {type: integer, minimum: 1, maximum: 1000}
+        request:
+          type: object
+          additionalProperties: false
+          properties:
+            headers: {type: object}
+            queryParameters: {type: object}
+            bodyPatterns: {type: array}
+          description: WireMock request matchers. Method, URL path, IDs and namespace are managed by vMCP.
+        response:
+          type: object
+          additionalProperties: false
+          required: [ status ]
+          properties:
+            status: {type: integer, minimum: 200, maximum: 599}
+            headers:
+              type: object
+              additionalProperties: {type: string}
+            jsonBody:
+              description: JSON reply; mutually exclusive with body.
+            body: {type: string}
+            fixedDelayMilliseconds: {type: integer, minimum: 0, maximum: 120000}
+            transformers:
+              type: array
+              minItems: 1
+              maxItems: 1
+              items: {type: string, const: response-template}
     RESTOperation:
       type: object
       additionalProperties: false
       properties:
+        mockRules:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/MockRule"
+          description: Response rules for mock upstreams only. Enabled mock operations require at least one rule; at most 1000 rules per upstream.
         name:
           $ref: "#/components/schemas/ToolName"
         description:
@@ -3634,6 +3747,14 @@ components:
       type: object
       additionalProperties: false
       properties:
+        mock:
+          type: object
+          additionalProperties: false
+          properties:
+            namespace:
+              type: string
+              description: Managed identifier derived from deployment tenant and upstream slug. Supplied values are replaced on save.
+          description: Opt into shared WireMock integration. Requires VMCP_WIREMOCK_URL on the control plane. URL is replaced by the configured endpoint on save; mock mode cannot change after creation. No WireMock call occurs within the configuration transaction.
         auth:
           $ref: "#/components/schemas/RESTAuth"
         forwardIdentity: &a1

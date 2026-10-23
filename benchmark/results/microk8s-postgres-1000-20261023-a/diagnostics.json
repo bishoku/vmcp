@@ -1,0 +1,2119 @@
+{
+  "postgres-cgroup-limits.json": {
+    "cpu.max": "max 100000\n",
+    "memory.max": "max\n",
+    "cpu.stat": "usage_usec 604654969\nuser_usec 386698782\nsystem_usec 217956186\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n"
+  },
+  "postgres-hot-path-counters.json": [
+    {
+      "name": "session_load",
+      "queryid": 6604511598853716124,
+      "query": "SELECT virtual_server, key_slug, protocol_version, last_seen_at, initialized, client_capabilities, owner_mode, credential_id, owner_issuer, owner_subject, COALESCE(logging_level, $2) FROM sessions WHERE id = $1 AND terminated_at IS NULL",
+      "calls": 190532,
+      "total_exec_time": 7103.034957000036,
+      "mean_exec_time": 0.03728001048117915,
+      "max_exec_time": 0.8565769999999999,
+      "rows": 190530,
+      "shared_blks_hit": 584410,
+      "shared_blks_read": 0,
+      "shared_blks_dirtied": 5,
+      "shared_blks_written": 0,
+      "shared_blk_read_time": 0,
+      "shared_blk_write_time": 0,
+      "wal_records": 351,
+      "wal_bytes": 25302
+    },
+    {
+      "name": "delivery_admission",
+      "queryid": 2126979700168528113,
+      "query": "INSERT INTO mcp_operations(id,session_id,client_request_id,principal_hash,virtual_server,fence,lease_until) SELECT $1,$2,$3,$4,$5,$6,now()+interval $7 FROM sessions WHERE id=$2 AND terminated_at IS NULL",
+      "calls": 52543,
+      "total_exec_time": 11363.673248999927,
+      "mean_exec_time": 0.21627378050358603,
+      "max_exec_time": 4.003588,
+      "rows": 52543,
+      "shared_blks_hit": 1113671,
+      "shared_blks_read": 1090,
+      "shared_blks_dirtied": 2728,
+      "shared_blks_written": 1023,
+      "shared_blk_read_time": 11.150060000000012,
+      "shared_blk_write_time": 36.17619200000002,
+      "wal_records": 317555,
+      "wal_bytes": 38556566
+    },
+    {
+      "name": "delivery_admission",
+      "queryid": 6372535292222305415,
+      "query": "INSERT INTO mcp_operations(id,session_id,client_request_id,principal_hash,virtual_server,fence,lease_until) SELECT $1,$2,$3,$4,$5,$6,now()+interval $7 FROM sessions WHERE id=$2 AND terminated_at IS NULL",
+      "calls": 42501,
+      "total_exec_time": 7303.398713999922,
+      "mean_exec_time": 0.17184063231453356,
+      "max_exec_time": 2.102023,
+      "rows": 42501,
+      "shared_blks_hit": 838839,
+      "shared_blks_read": 316,
+      "shared_blks_dirtied": 1104,
+      "shared_blks_written": 480,
+      "shared_blk_read_time": 3.0089870000000016,
+      "shared_blk_write_time": 15.113040000000007,
+      "wal_records": 256943,
+      "wal_bytes": 26010814
+    },
+    {
+      "name": "event_reads",
+      "queryid": -4196225027401025968,
+      "query": "SELECT e.seq,e.id::text,e.payload,e.terminal FROM mcp_events e JOIN mcp_streams s ON s.id=e.stream_id WHERE s.id=$1 AND s.session_id=$2 AND s.owner=$3 AND s.lease_until>now() AND s.expires_at>now() AND e.seq>$4 ORDER BY e.seq LIMIT $5",
+      "calls": 440622,
+      "total_exec_time": 87229.9310519993,
+      "mean_exec_time": 0.1979699857292632,
+      "max_exec_time": 15.710884000000002,
+      "rows": 94970,
+      "shared_blks_hit": 85495977,
+      "shared_blks_read": 38,
+      "shared_blks_dirtied": 0,
+      "shared_blks_written": 0,
+      "shared_blk_read_time": 0.5692880000000001,
+      "shared_blk_write_time": 0,
+      "wal_records": 7047,
+      "wal_bytes": 560678
+    },
+    {
+      "name": "lease_renew",
+      "queryid": 8991559448085845496,
+      "query": "UPDATE mcp_operations SET lease_until=now()+interval $3 WHERE id=$1 AND fence=$2 AND state=$4 AND lease_until>now() RETURNING cancelled",
+      "calls": 55690,
+      "total_exec_time": 1343801.7987929895,
+      "mean_exec_time": 24.1300376870711,
+      "max_exec_time": 601.545168,
+      "rows": 44359,
+      "shared_blks_hit": 24142385,
+      "shared_blks_read": 377,
+      "shared_blks_dirtied": 948,
+      "shared_blks_written": 61,
+      "shared_blk_read_time": 8.983203000000008,
+      "shared_blk_write_time": 3.7225979999999996,
+      "wal_records": 245547,
+      "wal_bytes": 21942342
+    },
+    {
+      "name": "notify",
+      "queryid": 337446833921718062,
+      "query": "SELECT pg_notify($2,$1)",
+      "calls": 95044,
+      "total_exec_time": 322.4794630000003,
+      "mean_exec_time": 0.0033929491919532364,
+      "max_exec_time": 0.052598,
+      "rows": 95044,
+      "shared_blks_hit": 0,
+      "shared_blks_read": 0,
+      "shared_blks_dirtied": 0,
+      "shared_blks_written": 0,
+      "shared_blk_read_time": 0,
+      "shared_blk_write_time": 0,
+      "wal_records": 0,
+      "wal_bytes": 0
+    },
+    {
+      "name": "purge_operations",
+      "queryid": 1013019361072942965,
+      "query": "DELETE FROM mcp_operations WHERE id IN (SELECT id FROM mcp_operations WHERE state<>$1 AND created_at<now()-interval $2 LIMIT $3)",
+      "calls": 753,
+      "total_exec_time": 8561.521899000003,
+      "mean_exec_time": 11.36988300000001,
+      "max_exec_time": 30.445438,
+      "rows": 100000,
+      "shared_blks_hit": 1984025,
+      "shared_blks_read": 1463,
+      "shared_blks_dirtied": 929,
+      "shared_blks_written": 220,
+      "shared_blk_read_time": 7.732021,
+      "shared_blk_write_time": 1.339906,
+      "wal_records": 101934,
+      "wal_bytes": 11494789
+    },
+    {
+      "name": "purge_streams",
+      "queryid": 7782342899613343197,
+      "query": "DELETE FROM mcp_streams WHERE id IN (SELECT id FROM mcp_streams WHERE expires_at<now() LIMIT $1)",
+      "calls": 754,
+      "total_exec_time": 5984.115411000005,
+      "mean_exec_time": 7.936492587533165,
+      "max_exec_time": 23.474715,
+      "rows": 99800,
+      "shared_blks_hit": 1397095,
+      "shared_blks_read": 866,
+      "shared_blks_dirtied": 791,
+      "shared_blks_written": 22,
+      "shared_blk_read_time": 4.4653719999999995,
+      "shared_blk_write_time": 0.217587,
+      "wal_records": 105390,
+      "wal_bytes": 10495125
+    },
+    {
+      "name": "audit_insert",
+      "queryid": 3741886720986316880,
+      "query": "INSERT INTO audit_events\n (event_id,operation_id,request_id,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,\n ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions)\n VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::uuid,$31,$32,$33,$34)\n ON CONFLICT(event_id) DO NOTHING",
+      "calls": 190090,
+      "total_exec_time": 47016.891278999836,
+      "mean_exec_time": 0.2473401613919725,
+      "max_exec_time": 4.204698,
+      "rows": 190090,
+      "shared_blks_hit": 5592975,
+      "shared_blks_read": 3053,
+      "shared_blks_dirtied": 23991,
+      "shared_blks_written": 18291,
+      "shared_blk_read_time": 31.741704999999982,
+      "shared_blk_write_time": 557.7420019999988,
+      "wal_records": 2013945,
+      "wal_bytes": 250518143
+    },
+    {
+      "name": "event_limits",
+      "queryid": 5579597150950763094,
+      "query": "SELECT (SELECT count(*) FROM mcp_events WHERE stream_id=$3),(SELECT COALESCE(sum(octet_length(payload)),$4) FROM mcp_events WHERE stream_id=$3) FROM mcp_operations WHERE id=$1 AND fence=$2 AND state=$5 AND lease_until>now() FOR UPDATE",
+      "calls": 95044,
+      "total_exec_time": 23696.845163000395,
+      "mean_exec_time": 0.24932499855856155,
+      "max_exec_time": 6.891945,
+      "rows": 95044,
+      "shared_blks_hit": 19664437,
+      "shared_blks_read": 0,
+      "shared_blks_dirtied": 23,
+      "shared_blks_written": 0,
+      "shared_blk_read_time": 0,
+      "shared_blk_write_time": 0,
+      "wal_records": 102189,
+      "wal_bytes": 5756521
+    },
+    {
+      "name": "subscription_poll",
+      "queryid": 8791828308311079535,
+      "query": "UPDATE mcp_resource_subscriptions s SET owner=$1,lease_until=now()+interval $2,ready=$3 FROM (SELECT session_id,uri FROM mcp_resource_subscriptions WHERE expires_at>now() AND NOT failed AND (lease_until IS NULL OR lease_until<now()) ORDER BY session_id,uri LIMIT $4 FOR UPDATE SKIP LOCKED) q WHERE s.session_id=q.session_id AND s.uri=q.uri RETURNING s.session_id,s.uri,s.upstream_id::text,s.original_uri",
+      "calls": 24234,
+      "total_exec_time": 557.6850670000034,
+      "mean_exec_time": 0.023012505859536226,
+      "max_exec_time": 0.149533,
+      "rows": 0,
+      "shared_blks_hit": 24234,
+      "shared_blks_read": 0,
+      "shared_blks_dirtied": 0,
+      "shared_blks_written": 0,
+      "shared_blk_read_time": 0,
+      "shared_blk_write_time": 0,
+      "wal_records": 0,
+      "wal_bytes": 0
+    }
+  ],
+  "postgres-index-plans.txt": "mcp_operations|mcp_operation_cleanup|CREATE INDEX mcp_operation_cleanup ON public.mcp_operations USING btree (created_at) WHERE (state <> 'running'::text)\nmcp_operations|mcp_operation_expiry|CREATE INDEX mcp_operation_expiry ON public.mcp_operations USING btree (lease_until) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_principal|CREATE INDEX mcp_operation_principal ON public.mcp_operations USING btree (principal_hash) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_request|CREATE UNIQUE INDEX mcp_operation_request ON public.mcp_operations USING btree (session_id, client_request_id) WHERE (state = 'running'::text)\nmcp_operations|mcp_operations_pkey|CREATE UNIQUE INDEX mcp_operations_pkey ON public.mcp_operations USING btree (id)\nmcp_pending_requests|mcp_pending_operation|CREATE INDEX mcp_pending_operation ON public.mcp_pending_requests USING btree (operation_id)\nmcp_pending_requests|mcp_pending_requests_pkey|CREATE UNIQUE INDEX mcp_pending_requests_pkey ON public.mcp_pending_requests USING btree (id)\nmcp_streams|mcp_get_stream|CREATE UNIQUE INDEX mcp_get_stream ON public.mcp_streams USING btree (session_id) WHERE ((operation_id IS NULL) AND (NOT closed))\nmcp_streams|mcp_stream_expiry|CREATE INDEX mcp_stream_expiry ON public.mcp_streams USING btree (expires_at)\nmcp_streams|mcp_stream_operation|CREATE INDEX mcp_stream_operation ON public.mcp_streams USING btree (operation_id) WHERE (operation_id IS NOT NULL)\nmcp_streams|mcp_streams_pkey|CREATE UNIQUE INDEX mcp_streams_pkey ON public.mcp_streams USING btree (id)\nLimit  (cost=0.12..5.47 rows=1 width=4) (actual time=0.012..0.013 rows=0 loops=1)\n  Buffers: shared hit=2\n  ->  Index Only Scan using mcp_stream_operation on mcp_streams  (cost=0.12..16.16 rows=3 width=4) (actual time=0.011..0.012 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=2\nPlanning:\n  Buffers: shared hit=73\nPlanning Time: 0.665 ms\nExecution Time: 0.032 ms\nLimit  (cost=0.15..5.50 rows=1 width=4) (actual time=0.011..0.011 rows=0 loops=1)\n  Buffers: shared hit=2\n  ->  Index Only Scan using mcp_pending_operation on mcp_pending_requests  (cost=0.15..16.20 rows=3 width=4) (actual time=0.010..0.010 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=2\nPlanning:\n  Buffers: shared hit=27 read=2\n  I/O Timings: shared read=0.030\nPlanning Time: 0.356 ms\nExecution Time: 0.029 ms\nLimit  (cost=4.17..16.43 rows=113 width=16) (actual time=0.005..0.005 rows=0 loops=1)\n  Buffers: shared hit=1\n  ->  Bitmap Heap Scan on mcp_operations  (cost=4.17..16.43 rows=113 width=16) (actual time=0.004..0.005 rows=0 loops=1)\n        Recheck Cond: ((created_at < (now() - '00:15:00'::interval)) AND (state <> 'running'::text))\n        Buffers: shared hit=1\n        ->  Bitmap Index Scan on mcp_operation_cleanup  (cost=0.00..4.14 rows=113 width=0) (actual time=0.002..0.002 rows=0 loops=1)\n              Index Cond: (created_at < (now() - '00:15:00'::interval))\n              Buffers: shared hit=1\nPlanning:\n  Buffers: shared hit=95\nPlanning Time: 0.700 ms\nExecution Time: 0.031 ms\n",
+  "postgres-late-load-plans.txt": "Limit  (cost=0.42..8.44 rows=1 width=4) (actual time=0.055..0.055 rows=0 loops=1)\n  Buffers: shared hit=3\n  ->  Index Only Scan using mcp_stream_operation on mcp_streams  (cost=0.42..8.44 rows=1 width=4) (actual time=0.054..0.054 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=110\nPlanning Time: 1.135 ms\nExecution Time: 0.094 ms\nLimit  (cost=0.00..71.22 rows=200 width=16) (actual time=23.845..23.846 rows=0 loops=1)\n  Buffers: shared hit=2679\n  ->  Seq Scan on mcp_operations  (cost=0.00..4428.04 rows=12435 width=16) (actual time=23.844..23.844 rows=0 loops=1)\n        Filter: ((state <> 'running'::text) AND (created_at < (now() - '00:15:00'::interval)))\n        Rows Removed by Filter: 85422\n        Buffers: shared hit=2679\nPlanning:\n  Buffers: shared hit=108\nPlanning Time: 0.808 ms\nExecution Time: 23.864 ms\nfsync|on|\nfull_page_writes|on|\nmax_connections|256|\npg_stat_statements.track|all|\nshared_buffers|16384|8kB\nsynchronous_commit|on|\ntrack_io_timing|on|\nwork_mem|4096|kB\nmcp_operations|85175|35145|633|11664354|673054|4\nmcp_streams|85345|25547|623|11471147|663414|4\nmcp_events|84976|0|3|0|689960|3\nmcp_pending_requests|0|0|2|0|100172|0\nmcp_discovery_requests|0|0|761|0|0|0\nmcp_resource_subscriptions|0|0|1|0|19880|0\nmcp_client_notifications|0|0|1|0|0|0\n0\n",
+  "postgres-load-summary.json": {
+    "phase": {
+      "name": "steady",
+      "target_rps": 1000,
+      "PlannedSeconds": 300,
+      "ElapsedSeconds": 301.912913715,
+      "Scheduled": 300000,
+      "Offered": 118449,
+      "Success": 94220,
+      "Errors": 24229,
+      "Dropped": 181551,
+      "InvalidResults": 0,
+      "CompletedRPS": 312.0767470348813,
+      "SuccessPercent": 79.54478298677068,
+      "P50MS": 795.660638,
+      "P95MS": 4633.345077,
+      "P99MS": 5060.663092,
+      "MaxMS": 6676.359873,
+      "HTTPStatuses": {
+        "200": 94294,
+        "429": 50,
+        "502": 6,
+        "503": 24099
+      },
+      "Nodes": {
+        "acceptance-node-1": 47576,
+        "acceptance-node-2": 46770
+      },
+      "ErrorExamples": [
+        "HTTP 502",
+        "HTTP 502",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503",
+        "HTTP 503"
+      ],
+      "Seconds": [
+        {
+          "second": 0,
+          "Success": 532,
+          "Errors": 1,
+          "Dropped": 20
+        },
+        {
+          "second": 1,
+          "Success": 561,
+          "Errors": 0,
+          "Dropped": 374
+        },
+        {
+          "second": 2,
+          "Success": 530,
+          "Errors": 62,
+          "Dropped": 461
+        },
+        {
+          "second": 3,
+          "Success": 459,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 4,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 5,
+          "Success": 0,
+          "Errors": 999,
+          "Dropped": 0
+        },
+        {
+          "second": 6,
+          "Success": 0,
+          "Errors": 1001,
+          "Dropped": 0
+        },
+        {
+          "second": 7,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 8,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 9,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 10,
+          "Success": 67,
+          "Errors": 777,
+          "Dropped": 0
+        },
+        {
+          "second": 11,
+          "Success": 532,
+          "Errors": 0,
+          "Dropped": 113
+        },
+        {
+          "second": 12,
+          "Success": 513,
+          "Errors": 342,
+          "Dropped": 301
+        },
+        {
+          "second": 13,
+          "Success": 638,
+          "Errors": 0,
+          "Dropped": 217
+        },
+        {
+          "second": 14,
+          "Success": 501,
+          "Errors": 0,
+          "Dropped": 506
+        },
+        {
+          "second": 15,
+          "Success": 531,
+          "Errors": 18,
+          "Dropped": 451
+        },
+        {
+          "second": 16,
+          "Success": 490,
+          "Errors": 1002,
+          "Dropped": 0
+        },
+        {
+          "second": 17,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 18,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 19,
+          "Success": 0,
+          "Errors": 1001,
+          "Dropped": 0
+        },
+        {
+          "second": 20,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 21,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 22,
+          "Success": 168,
+          "Errors": 598,
+          "Dropped": 0
+        },
+        {
+          "second": 23,
+          "Success": 517,
+          "Errors": 0,
+          "Dropped": 205
+        },
+        {
+          "second": 24,
+          "Success": 635,
+          "Errors": 0,
+          "Dropped": 386
+        },
+        {
+          "second": 25,
+          "Success": 644,
+          "Errors": 0,
+          "Dropped": 335
+        },
+        {
+          "second": 26,
+          "Success": 686,
+          "Errors": 0,
+          "Dropped": 349
+        },
+        {
+          "second": 27,
+          "Success": 499,
+          "Errors": 0,
+          "Dropped": 466
+        },
+        {
+          "second": 28,
+          "Success": 667,
+          "Errors": 0,
+          "Dropped": 333
+        },
+        {
+          "second": 29,
+          "Success": 714,
+          "Errors": 0,
+          "Dropped": 289
+        },
+        {
+          "second": 30,
+          "Success": 701,
+          "Errors": 0,
+          "Dropped": 296
+        },
+        {
+          "second": 31,
+          "Success": 673,
+          "Errors": 0,
+          "Dropped": 357
+        },
+        {
+          "second": 32,
+          "Success": 621,
+          "Errors": 11,
+          "Dropped": 338
+        },
+        {
+          "second": 33,
+          "Success": 612,
+          "Errors": 0,
+          "Dropped": 388
+        },
+        {
+          "second": 34,
+          "Success": 626,
+          "Errors": 0,
+          "Dropped": 374
+        },
+        {
+          "second": 35,
+          "Success": 568,
+          "Errors": 0,
+          "Dropped": 432
+        },
+        {
+          "second": 36,
+          "Success": 628,
+          "Errors": 0,
+          "Dropped": 372
+        },
+        {
+          "second": 37,
+          "Success": 655,
+          "Errors": 20,
+          "Dropped": 348
+        },
+        {
+          "second": 38,
+          "Success": 489,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 39,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 40,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 41,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 42,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 43,
+          "Success": 0,
+          "Errors": 999,
+          "Dropped": 0
+        },
+        {
+          "second": 44,
+          "Success": 0,
+          "Errors": 1001,
+          "Dropped": 0
+        },
+        {
+          "second": 45,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 46,
+          "Success": 0,
+          "Errors": 1000,
+          "Dropped": 0
+        },
+        {
+          "second": 47,
+          "Success": 65,
+          "Errors": 282,
+          "Dropped": 142
+        },
+        {
+          "second": 48,
+          "Success": 533,
+          "Errors": 0,
+          "Dropped": 475
+        },
+        {
+          "second": 49,
+          "Success": 676,
+          "Errors": 0,
+          "Dropped": 325
+        },
+        {
+          "second": 50,
+          "Success": 761,
+          "Errors": 0,
+          "Dropped": 260
+        },
+        {
+          "second": 51,
+          "Success": 606,
+          "Errors": 0,
+          "Dropped": 363
+        },
+        {
+          "second": 52,
+          "Success": 689,
+          "Errors": 0,
+          "Dropped": 322
+        },
+        {
+          "second": 53,
+          "Success": 616,
+          "Errors": 0,
+          "Dropped": 389
+        },
+        {
+          "second": 54,
+          "Success": 618,
+          "Errors": 0,
+          "Dropped": 366
+        },
+        {
+          "second": 55,
+          "Success": 562,
+          "Errors": 0,
+          "Dropped": 438
+        },
+        {
+          "second": 56,
+          "Success": 653,
+          "Errors": 0,
+          "Dropped": 369
+        },
+        {
+          "second": 57,
+          "Success": 623,
+          "Errors": 0,
+          "Dropped": 379
+        },
+        {
+          "second": 58,
+          "Success": 551,
+          "Errors": 0,
+          "Dropped": 425
+        },
+        {
+          "second": 59,
+          "Success": 605,
+          "Errors": 0,
+          "Dropped": 396
+        },
+        {
+          "second": 60,
+          "Success": 682,
+          "Errors": 0,
+          "Dropped": 318
+        },
+        {
+          "second": 61,
+          "Success": 624,
+          "Errors": 0,
+          "Dropped": 375
+        },
+        {
+          "second": 62,
+          "Success": 656,
+          "Errors": 0,
+          "Dropped": 344
+        },
+        {
+          "second": 63,
+          "Success": 537,
+          "Errors": 0,
+          "Dropped": 464
+        },
+        {
+          "second": 64,
+          "Success": 656,
+          "Errors": 0,
+          "Dropped": 346
+        },
+        {
+          "second": 65,
+          "Success": 642,
+          "Errors": 0,
+          "Dropped": 355
+        },
+        {
+          "second": 66,
+          "Success": 603,
+          "Errors": 0,
+          "Dropped": 398
+        },
+        {
+          "second": 67,
+          "Success": 628,
+          "Errors": 0,
+          "Dropped": 372
+        },
+        {
+          "second": 68,
+          "Success": 609,
+          "Errors": 1,
+          "Dropped": 396
+        },
+        {
+          "second": 69,
+          "Success": 624,
+          "Errors": 2,
+          "Dropped": 367
+        },
+        {
+          "second": 70,
+          "Success": 579,
+          "Errors": 0,
+          "Dropped": 421
+        },
+        {
+          "second": 71,
+          "Success": 544,
+          "Errors": 0,
+          "Dropped": 456
+        },
+        {
+          "second": 72,
+          "Success": 698,
+          "Errors": 0,
+          "Dropped": 302
+        },
+        {
+          "second": 73,
+          "Success": 575,
+          "Errors": 1,
+          "Dropped": 424
+        },
+        {
+          "second": 74,
+          "Success": 673,
+          "Errors": 0,
+          "Dropped": 328
+        },
+        {
+          "second": 75,
+          "Success": 550,
+          "Errors": 0,
+          "Dropped": 449
+        },
+        {
+          "second": 76,
+          "Success": 595,
+          "Errors": 1,
+          "Dropped": 408
+        },
+        {
+          "second": 77,
+          "Success": 672,
+          "Errors": 0,
+          "Dropped": 327
+        },
+        {
+          "second": 78,
+          "Success": 566,
+          "Errors": 0,
+          "Dropped": 432
+        },
+        {
+          "second": 79,
+          "Success": 656,
+          "Errors": 0,
+          "Dropped": 343
+        },
+        {
+          "second": 80,
+          "Success": 647,
+          "Errors": 0,
+          "Dropped": 373
+        },
+        {
+          "second": 81,
+          "Success": 610,
+          "Errors": 0,
+          "Dropped": 370
+        },
+        {
+          "second": 82,
+          "Success": 558,
+          "Errors": 0,
+          "Dropped": 443
+        },
+        {
+          "second": 83,
+          "Success": 617,
+          "Errors": 0,
+          "Dropped": 382
+        },
+        {
+          "second": 84,
+          "Success": 626,
+          "Errors": 0,
+          "Dropped": 375
+        },
+        {
+          "second": 85,
+          "Success": 566,
+          "Errors": 0,
+          "Dropped": 433
+        },
+        {
+          "second": 86,
+          "Success": 610,
+          "Errors": 1,
+          "Dropped": 411
+        },
+        {
+          "second": 87,
+          "Success": 607,
+          "Errors": 1,
+          "Dropped": 370
+        },
+        {
+          "second": 88,
+          "Success": 646,
+          "Errors": 0,
+          "Dropped": 354
+        },
+        {
+          "second": 89,
+          "Success": 695,
+          "Errors": 0,
+          "Dropped": 335
+        },
+        {
+          "second": 90,
+          "Success": 685,
+          "Errors": 0,
+          "Dropped": 285
+        },
+        {
+          "second": 91,
+          "Success": 722,
+          "Errors": 0,
+          "Dropped": 294
+        },
+        {
+          "second": 92,
+          "Success": 698,
+          "Errors": 0,
+          "Dropped": 292
+        },
+        {
+          "second": 93,
+          "Success": 702,
+          "Errors": 0,
+          "Dropped": 316
+        },
+        {
+          "second": 94,
+          "Success": 750,
+          "Errors": 0,
+          "Dropped": 259
+        },
+        {
+          "second": 95,
+          "Success": 692,
+          "Errors": 0,
+          "Dropped": 275
+        },
+        {
+          "second": 96,
+          "Success": 653,
+          "Errors": 0,
+          "Dropped": 347
+        },
+        {
+          "second": 97,
+          "Success": 706,
+          "Errors": 0,
+          "Dropped": 294
+        },
+        {
+          "second": 98,
+          "Success": 790,
+          "Errors": 0,
+          "Dropped": 247
+        },
+        {
+          "second": 99,
+          "Success": 688,
+          "Errors": 0,
+          "Dropped": 276
+        },
+        {
+          "second": 100,
+          "Success": 717,
+          "Errors": 0,
+          "Dropped": 319
+        },
+        {
+          "second": 101,
+          "Success": 703,
+          "Errors": 0,
+          "Dropped": 261
+        },
+        {
+          "second": 102,
+          "Success": 741,
+          "Errors": 0,
+          "Dropped": 283
+        },
+        {
+          "second": 103,
+          "Success": 728,
+          "Errors": 0,
+          "Dropped": 254
+        },
+        {
+          "second": 104,
+          "Success": 383,
+          "Errors": 0,
+          "Dropped": 610
+        },
+        {
+          "second": 105,
+          "Success": 246,
+          "Errors": 0,
+          "Dropped": 754
+        },
+        {
+          "second": 106,
+          "Success": 257,
+          "Errors": 0,
+          "Dropped": 743
+        },
+        {
+          "second": 107,
+          "Success": 278,
+          "Errors": 0,
+          "Dropped": 722
+        },
+        {
+          "second": 108,
+          "Success": 318,
+          "Errors": 0,
+          "Dropped": 714
+        },
+        {
+          "second": 109,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 731
+        },
+        {
+          "second": 110,
+          "Success": 287,
+          "Errors": 0,
+          "Dropped": 737
+        },
+        {
+          "second": 111,
+          "Success": 264,
+          "Errors": 0,
+          "Dropped": 712
+        },
+        {
+          "second": 112,
+          "Success": 199,
+          "Errors": 0,
+          "Dropped": 801
+        },
+        {
+          "second": 113,
+          "Success": 270,
+          "Errors": 0,
+          "Dropped": 730
+        },
+        {
+          "second": 114,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 786
+        },
+        {
+          "second": 115,
+          "Success": 221,
+          "Errors": 0,
+          "Dropped": 778
+        },
+        {
+          "second": 116,
+          "Success": 233,
+          "Errors": 0,
+          "Dropped": 768
+        },
+        {
+          "second": 117,
+          "Success": 234,
+          "Errors": 0,
+          "Dropped": 766
+        },
+        {
+          "second": 118,
+          "Success": 170,
+          "Errors": 0,
+          "Dropped": 830
+        },
+        {
+          "second": 119,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 786
+        },
+        {
+          "second": 120,
+          "Success": 189,
+          "Errors": 0,
+          "Dropped": 811
+        },
+        {
+          "second": 121,
+          "Success": 172,
+          "Errors": 0,
+          "Dropped": 829
+        },
+        {
+          "second": 122,
+          "Success": 230,
+          "Errors": 0,
+          "Dropped": 770
+        },
+        {
+          "second": 123,
+          "Success": 194,
+          "Errors": 1,
+          "Dropped": 804
+        },
+        {
+          "second": 124,
+          "Success": 164,
+          "Errors": 1,
+          "Dropped": 835
+        },
+        {
+          "second": 125,
+          "Success": 310,
+          "Errors": 1,
+          "Dropped": 695
+        },
+        {
+          "second": 126,
+          "Success": 218,
+          "Errors": 0,
+          "Dropped": 776
+        },
+        {
+          "second": 127,
+          "Success": 199,
+          "Errors": 0,
+          "Dropped": 801
+        },
+        {
+          "second": 128,
+          "Success": 246,
+          "Errors": 0,
+          "Dropped": 754
+        },
+        {
+          "second": 129,
+          "Success": 172,
+          "Errors": 0,
+          "Dropped": 828
+        },
+        {
+          "second": 130,
+          "Success": 240,
+          "Errors": 0,
+          "Dropped": 760
+        },
+        {
+          "second": 131,
+          "Success": 187,
+          "Errors": 0,
+          "Dropped": 813
+        },
+        {
+          "second": 132,
+          "Success": 259,
+          "Errors": 0,
+          "Dropped": 741
+        },
+        {
+          "second": 133,
+          "Success": 207,
+          "Errors": 1,
+          "Dropped": 792
+        },
+        {
+          "second": 134,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 775
+        },
+        {
+          "second": 135,
+          "Success": 244,
+          "Errors": 0,
+          "Dropped": 756
+        },
+        {
+          "second": 136,
+          "Success": 167,
+          "Errors": 0,
+          "Dropped": 833
+        },
+        {
+          "second": 137,
+          "Success": 288,
+          "Errors": 0,
+          "Dropped": 716
+        },
+        {
+          "second": 138,
+          "Success": 206,
+          "Errors": 0,
+          "Dropped": 790
+        },
+        {
+          "second": 139,
+          "Success": 205,
+          "Errors": 15,
+          "Dropped": 780
+        },
+        {
+          "second": 140,
+          "Success": 248,
+          "Errors": 0,
+          "Dropped": 752
+        },
+        {
+          "second": 141,
+          "Success": 194,
+          "Errors": 0,
+          "Dropped": 806
+        },
+        {
+          "second": 142,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 775
+        },
+        {
+          "second": 143,
+          "Success": 151,
+          "Errors": 0,
+          "Dropped": 849
+        },
+        {
+          "second": 144,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 145,
+          "Success": 202,
+          "Errors": 0,
+          "Dropped": 798
+        },
+        {
+          "second": 146,
+          "Success": 207,
+          "Errors": 0,
+          "Dropped": 793
+        },
+        {
+          "second": 147,
+          "Success": 235,
+          "Errors": 0,
+          "Dropped": 766
+        },
+        {
+          "second": 148,
+          "Success": 229,
+          "Errors": 0,
+          "Dropped": 770
+        },
+        {
+          "second": 149,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 789
+        },
+        {
+          "second": 150,
+          "Success": 204,
+          "Errors": 0,
+          "Dropped": 792
+        },
+        {
+          "second": 151,
+          "Success": 231,
+          "Errors": 0,
+          "Dropped": 769
+        },
+        {
+          "second": 152,
+          "Success": 223,
+          "Errors": 0,
+          "Dropped": 777
+        },
+        {
+          "second": 153,
+          "Success": 231,
+          "Errors": 0,
+          "Dropped": 774
+        },
+        {
+          "second": 154,
+          "Success": 210,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 155,
+          "Success": 169,
+          "Errors": 0,
+          "Dropped": 831
+        },
+        {
+          "second": 156,
+          "Success": 220,
+          "Errors": 1,
+          "Dropped": 779
+        },
+        {
+          "second": 157,
+          "Success": 228,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 158,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 775
+        },
+        {
+          "second": 159,
+          "Success": 227,
+          "Errors": 4,
+          "Dropped": 768
+        },
+        {
+          "second": 160,
+          "Success": 226,
+          "Errors": 1,
+          "Dropped": 774
+        },
+        {
+          "second": 161,
+          "Success": 169,
+          "Errors": 3,
+          "Dropped": 828
+        },
+        {
+          "second": 162,
+          "Success": 253,
+          "Errors": 2,
+          "Dropped": 745
+        },
+        {
+          "second": 163,
+          "Success": 227,
+          "Errors": 0,
+          "Dropped": 773
+        },
+        {
+          "second": 164,
+          "Success": 213,
+          "Errors": 0,
+          "Dropped": 787
+        },
+        {
+          "second": 165,
+          "Success": 143,
+          "Errors": 0,
+          "Dropped": 857
+        },
+        {
+          "second": 166,
+          "Success": 252,
+          "Errors": 0,
+          "Dropped": 748
+        },
+        {
+          "second": 167,
+          "Success": 194,
+          "Errors": 0,
+          "Dropped": 806
+        },
+        {
+          "second": 168,
+          "Success": 243,
+          "Errors": 0,
+          "Dropped": 757
+        },
+        {
+          "second": 169,
+          "Success": 211,
+          "Errors": 0,
+          "Dropped": 805
+        },
+        {
+          "second": 170,
+          "Success": 264,
+          "Errors": 0,
+          "Dropped": 720
+        },
+        {
+          "second": 171,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 775
+        },
+        {
+          "second": 172,
+          "Success": 205,
+          "Errors": 0,
+          "Dropped": 795
+        },
+        {
+          "second": 173,
+          "Success": 175,
+          "Errors": 0,
+          "Dropped": 825
+        },
+        {
+          "second": 174,
+          "Success": 202,
+          "Errors": 0,
+          "Dropped": 797
+        },
+        {
+          "second": 175,
+          "Success": 178,
+          "Errors": 0,
+          "Dropped": 823
+        },
+        {
+          "second": 176,
+          "Success": 211,
+          "Errors": 1,
+          "Dropped": 788
+        },
+        {
+          "second": 177,
+          "Success": 248,
+          "Errors": 1,
+          "Dropped": 751
+        },
+        {
+          "second": 178,
+          "Success": 180,
+          "Errors": 0,
+          "Dropped": 820
+        },
+        {
+          "second": 179,
+          "Success": 260,
+          "Errors": 0,
+          "Dropped": 741
+        },
+        {
+          "second": 180,
+          "Success": 181,
+          "Errors": 0,
+          "Dropped": 817
+        },
+        {
+          "second": 181,
+          "Success": 203,
+          "Errors": 0,
+          "Dropped": 798
+        },
+        {
+          "second": 182,
+          "Success": 244,
+          "Errors": 0,
+          "Dropped": 756
+        },
+        {
+          "second": 183,
+          "Success": 215,
+          "Errors": 0,
+          "Dropped": 785
+        },
+        {
+          "second": 184,
+          "Success": 221,
+          "Errors": 0,
+          "Dropped": 778
+        },
+        {
+          "second": 185,
+          "Success": 171,
+          "Errors": 1,
+          "Dropped": 829
+        },
+        {
+          "second": 186,
+          "Success": 227,
+          "Errors": 0,
+          "Dropped": 773
+        },
+        {
+          "second": 187,
+          "Success": 192,
+          "Errors": 2,
+          "Dropped": 806
+        },
+        {
+          "second": 188,
+          "Success": 233,
+          "Errors": 2,
+          "Dropped": 765
+        },
+        {
+          "second": 189,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 764
+        },
+        {
+          "second": 190,
+          "Success": 209,
+          "Errors": 1,
+          "Dropped": 789
+        },
+        {
+          "second": 191,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 810
+        },
+        {
+          "second": 192,
+          "Success": 245,
+          "Errors": 0,
+          "Dropped": 755
+        },
+        {
+          "second": 193,
+          "Success": 183,
+          "Errors": 0,
+          "Dropped": 816
+        },
+        {
+          "second": 194,
+          "Success": 201,
+          "Errors": 0,
+          "Dropped": 799
+        },
+        {
+          "second": 195,
+          "Success": 232,
+          "Errors": 0,
+          "Dropped": 769
+        },
+        {
+          "second": 196,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 808
+        },
+        {
+          "second": 197,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 809
+        },
+        {
+          "second": 198,
+          "Success": 261,
+          "Errors": 0,
+          "Dropped": 744
+        },
+        {
+          "second": 199,
+          "Success": 168,
+          "Errors": 0,
+          "Dropped": 827
+        },
+        {
+          "second": 200,
+          "Success": 271,
+          "Errors": 0,
+          "Dropped": 736
+        },
+        {
+          "second": 201,
+          "Success": 179,
+          "Errors": 0,
+          "Dropped": 814
+        },
+        {
+          "second": 202,
+          "Success": 295,
+          "Errors": 0,
+          "Dropped": 705
+        },
+        {
+          "second": 203,
+          "Success": 200,
+          "Errors": 0,
+          "Dropped": 800
+        },
+        {
+          "second": 204,
+          "Success": 232,
+          "Errors": 0,
+          "Dropped": 768
+        },
+        {
+          "second": 205,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 809
+        },
+        {
+          "second": 206,
+          "Success": 225,
+          "Errors": 0,
+          "Dropped": 777
+        },
+        {
+          "second": 207,
+          "Success": 171,
+          "Errors": 0,
+          "Dropped": 827
+        },
+        {
+          "second": 208,
+          "Success": 195,
+          "Errors": 0,
+          "Dropped": 805
+        },
+        {
+          "second": 209,
+          "Success": 280,
+          "Errors": 1,
+          "Dropped": 719
+        },
+        {
+          "second": 210,
+          "Success": 233,
+          "Errors": 1,
+          "Dropped": 775
+        },
+        {
+          "second": 211,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 800
+        },
+        {
+          "second": 212,
+          "Success": 242,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 213,
+          "Success": 249,
+          "Errors": 0,
+          "Dropped": 750
+        },
+        {
+          "second": 214,
+          "Success": 217,
+          "Errors": 0,
+          "Dropped": 783
+        },
+        {
+          "second": 215,
+          "Success": 137,
+          "Errors": 0,
+          "Dropped": 863
+        },
+        {
+          "second": 216,
+          "Success": 264,
+          "Errors": 0,
+          "Dropped": 736
+        },
+        {
+          "second": 217,
+          "Success": 160,
+          "Errors": 0,
+          "Dropped": 839
+        },
+        {
+          "second": 218,
+          "Success": 241,
+          "Errors": 0,
+          "Dropped": 760
+        },
+        {
+          "second": 219,
+          "Success": 203,
+          "Errors": 0,
+          "Dropped": 811
+        },
+        {
+          "second": 220,
+          "Success": 234,
+          "Errors": 0,
+          "Dropped": 752
+        },
+        {
+          "second": 221,
+          "Success": 174,
+          "Errors": 0,
+          "Dropped": 827
+        },
+        {
+          "second": 222,
+          "Success": 256,
+          "Errors": 0,
+          "Dropped": 743
+        },
+        {
+          "second": 223,
+          "Success": 218,
+          "Errors": 0,
+          "Dropped": 782
+        },
+        {
+          "second": 224,
+          "Success": 184,
+          "Errors": 0,
+          "Dropped": 816
+        },
+        {
+          "second": 225,
+          "Success": 212,
+          "Errors": 0,
+          "Dropped": 788
+        },
+        {
+          "second": 226,
+          "Success": 105,
+          "Errors": 0,
+          "Dropped": 897
+        },
+        {
+          "second": 227,
+          "Success": 208,
+          "Errors": 2,
+          "Dropped": 789
+        },
+        {
+          "second": 228,
+          "Success": 154,
+          "Errors": 1,
+          "Dropped": 844
+        },
+        {
+          "second": 229,
+          "Success": 200,
+          "Errors": 0,
+          "Dropped": 800
+        },
+        {
+          "second": 230,
+          "Success": 159,
+          "Errors": 0,
+          "Dropped": 843
+        },
+        {
+          "second": 231,
+          "Success": 173,
+          "Errors": 0,
+          "Dropped": 825
+        },
+        {
+          "second": 232,
+          "Success": 171,
+          "Errors": 0,
+          "Dropped": 829
+        },
+        {
+          "second": 233,
+          "Success": 153,
+          "Errors": 2,
+          "Dropped": 845
+        },
+        {
+          "second": 234,
+          "Success": 213,
+          "Errors": 53,
+          "Dropped": 739
+        },
+        {
+          "second": 235,
+          "Success": 152,
+          "Errors": 0,
+          "Dropped": 844
+        },
+        {
+          "second": 236,
+          "Success": 186,
+          "Errors": 1,
+          "Dropped": 818
+        },
+        {
+          "second": 237,
+          "Success": 179,
+          "Errors": 1,
+          "Dropped": 814
+        },
+        {
+          "second": 238,
+          "Success": 205,
+          "Errors": 0,
+          "Dropped": 795
+        },
+        {
+          "second": 239,
+          "Success": 196,
+          "Errors": 0,
+          "Dropped": 804
+        },
+        {
+          "second": 240,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 763
+        },
+        {
+          "second": 241,
+          "Success": 184,
+          "Errors": 0,
+          "Dropped": 816
+        },
+        {
+          "second": 242,
+          "Success": 227,
+          "Errors": 0,
+          "Dropped": 773
+        },
+        {
+          "second": 243,
+          "Success": 233,
+          "Errors": 1,
+          "Dropped": 767
+        },
+        {
+          "second": 244,
+          "Success": 266,
+          "Errors": 2,
+          "Dropped": 731
+        },
+        {
+          "second": 245,
+          "Success": 160,
+          "Errors": 0,
+          "Dropped": 840
+        },
+        {
+          "second": 246,
+          "Success": 224,
+          "Errors": 0,
+          "Dropped": 776
+        },
+        {
+          "second": 247,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 248,
+          "Success": 132,
+          "Errors": 0,
+          "Dropped": 868
+        },
+        {
+          "second": 249,
+          "Success": 269,
+          "Errors": 0,
+          "Dropped": 731
+        },
+        {
+          "second": 250,
+          "Success": 193,
+          "Errors": 0,
+          "Dropped": 807
+        },
+        {
+          "second": 251,
+          "Success": 269,
+          "Errors": 0,
+          "Dropped": 732
+        },
+        {
+          "second": 252,
+          "Success": 217,
+          "Errors": 0,
+          "Dropped": 782
+        },
+        {
+          "second": 253,
+          "Success": 239,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 254,
+          "Success": 242,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 255,
+          "Success": 188,
+          "Errors": 0,
+          "Dropped": 811
+        },
+        {
+          "second": 256,
+          "Success": 214,
+          "Errors": 0,
+          "Dropped": 786
+        },
+        {
+          "second": 257,
+          "Success": 187,
+          "Errors": 0,
+          "Dropped": 813
+        },
+        {
+          "second": 258,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 259,
+          "Success": 172,
+          "Errors": 0,
+          "Dropped": 828
+        },
+        {
+          "second": 260,
+          "Success": 242,
+          "Errors": 0,
+          "Dropped": 757
+        },
+        {
+          "second": 261,
+          "Success": 171,
+          "Errors": 0,
+          "Dropped": 830
+        },
+        {
+          "second": 262,
+          "Success": 253,
+          "Errors": 0,
+          "Dropped": 747
+        },
+        {
+          "second": 263,
+          "Success": 216,
+          "Errors": 0,
+          "Dropped": 784
+        },
+        {
+          "second": 264,
+          "Success": 244,
+          "Errors": 0,
+          "Dropped": 756
+        },
+        {
+          "second": 265,
+          "Success": 166,
+          "Errors": 0,
+          "Dropped": 834
+        },
+        {
+          "second": 266,
+          "Success": 253,
+          "Errors": 0,
+          "Dropped": 747
+        },
+        {
+          "second": 267,
+          "Success": 237,
+          "Errors": 0,
+          "Dropped": 763
+        },
+        {
+          "second": 268,
+          "Success": 187,
+          "Errors": 1,
+          "Dropped": 813
+        },
+        {
+          "second": 269,
+          "Success": 192,
+          "Errors": 0,
+          "Dropped": 807
+        },
+        {
+          "second": 270,
+          "Success": 218,
+          "Errors": 0,
+          "Dropped": 782
+        },
+        {
+          "second": 271,
+          "Success": 221,
+          "Errors": 0,
+          "Dropped": 779
+        },
+        {
+          "second": 272,
+          "Success": 187,
+          "Errors": 0,
+          "Dropped": 815
+        },
+        {
+          "second": 273,
+          "Success": 271,
+          "Errors": 0,
+          "Dropped": 727
+        },
+        {
+          "second": 274,
+          "Success": 172,
+          "Errors": 0,
+          "Dropped": 840
+        },
+        {
+          "second": 275,
+          "Success": 251,
+          "Errors": 0,
+          "Dropped": 737
+        },
+        {
+          "second": 276,
+          "Success": 238,
+          "Errors": 0,
+          "Dropped": 762
+        },
+        {
+          "second": 277,
+          "Success": 230,
+          "Errors": 0,
+          "Dropped": 770
+        },
+        {
+          "second": 278,
+          "Success": 185,
+          "Errors": 0,
+          "Dropped": 815
+        },
+        {
+          "second": 279,
+          "Success": 245,
+          "Errors": 0,
+          "Dropped": 755
+        },
+        {
+          "second": 280,
+          "Success": 189,
+          "Errors": 0,
+          "Dropped": 811
+        },
+        {
+          "second": 281,
+          "Success": 186,
+          "Errors": 0,
+          "Dropped": 814
+        },
+        {
+          "second": 282,
+          "Success": 240,
+          "Errors": 1,
+          "Dropped": 759
+        },
+        {
+          "second": 283,
+          "Success": 122,
+          "Errors": 0,
+          "Dropped": 878
+        },
+        {
+          "second": 284,
+          "Success": 280,
+          "Errors": 1,
+          "Dropped": 719
+        },
+        {
+          "second": 285,
+          "Success": 224,
+          "Errors": 0,
+          "Dropped": 776
+        },
+        {
+          "second": 286,
+          "Success": 260,
+          "Errors": 0,
+          "Dropped": 761
+        },
+        {
+          "second": 287,
+          "Success": 207,
+          "Errors": 0,
+          "Dropped": 772
+        },
+        {
+          "second": 288,
+          "Success": 178,
+          "Errors": 0,
+          "Dropped": 822
+        },
+        {
+          "second": 289,
+          "Success": 241,
+          "Errors": 0,
+          "Dropped": 759
+        },
+        {
+          "second": 290,
+          "Success": 191,
+          "Errors": 0,
+          "Dropped": 809
+        },
+        {
+          "second": 291,
+          "Success": 168,
+          "Errors": 0,
+          "Dropped": 832
+        },
+        {
+          "second": 292,
+          "Success": 226,
+          "Errors": 0,
+          "Dropped": 774
+        },
+        {
+          "second": 293,
+          "Success": 164,
+          "Errors": 0,
+          "Dropped": 837
+        },
+        {
+          "second": 294,
+          "Success": 265,
+          "Errors": 0,
+          "Dropped": 734
+        },
+        {
+          "second": 295,
+          "Success": 197,
+          "Errors": 2,
+          "Dropped": 801
+        },
+        {
+          "second": 296,
+          "Success": 233,
+          "Errors": 0,
+          "Dropped": 767
+        },
+        {
+          "second": 297,
+          "Success": 203,
+          "Errors": 0,
+          "Dropped": 797
+        },
+        {
+          "second": 298,
+          "Success": 223,
+          "Errors": 0,
+          "Dropped": 780
+        },
+        {
+          "second": 299,
+          "Success": 242,
+          "Errors": 0,
+          "Dropped": 755
+        },
+        {
+          "second": 300,
+          "Success": 244,
+          "Errors": 0,
+          "Dropped": 0
+        },
+        {
+          "second": 301,
+          "Success": 268,
+          "Errors": 0,
+          "Dropped": 0
+        }
+      ],
+      "slo_pass": false
+    },
+    "cpus": 2,
+    "observer_samples": 53,
+    "active_session_samples": 5402,
+    "notification_lock_samples": 4854,
+    "peak_lock_waiters": 126,
+    "peak_connections": 142,
+    "postgres_peak_cores": 6.325450232,
+    "postgres_median_cores": 2.432038972,
+    "cleanup_first_positive": 99600,
+    "cleanup_zero_utc": "2026-10-23T17:35:00.776321+00:00",
+    "consistency": {
+      "active_agent_keys": 64,
+      "active_upstreams": 300,
+      "active_virtual_servers": 300,
+      "active_virtual_tools": 51432,
+      "duplicate_executions": 0,
+      "failed_calls": 24229,
+      "incomplete_operations": 0,
+      "incomplete_unrelated_to_failed_calls": 0,
+      "matching_admissions": 94970,
+      "matching_ok_outcomes": 94970,
+      "successful_client_calls": 94970,
+      "synthetic_upstream_executions": 95044
+    },
+    "functional": {
+      "cross_node_session_and_paginated_masked_metadata": true,
+      "invalid_keys_rejected_on_both_nodes": true,
+      "key_revocation_propagated_and_rejected_on_both_nodes": false,
+      "session_termination_authoritative_on_both_nodes": true
+    },
+    "binary": "ff16642693740606e9d0f42bc1fd72bdc3c50b8a6f1d2338303cbed18889516e",
+    "resources": {
+      "acceptance-node-1": {
+        "max_metric_label_overflows": 92068,
+        "max_os_reported_cpu_percent": 199.9736668,
+        "max_pool_acquired": 64,
+        "max_pool_cancelled_acquires": 4143,
+        "max_rss_bytes": 1092538368,
+        "median_os_reported_cpu_percent": 199.7114732,
+        "median_rss_bytes": 1035890688,
+        "pool_acquire_seconds_observed": 26846.016292498003
+      },
+      "acceptance-node-2": {
+        "max_metric_label_overflows": 90740,
+        "max_os_reported_cpu_percent": 200.0481355,
+        "max_pool_acquired": 64,
+        "max_pool_cancelled_acquires": 10386,
+        "max_rss_bytes": 1107054592,
+        "median_os_reported_cpu_percent": 199.8043794,
+        "median_rss_bytes": 1051308032,
+        "pool_acquire_seconds_observed": 123944.700151443
+      }
+    }
+  },
+  "postgres-locks-and-plans-under-load.txt": "[{\"pid\":1499,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[1416],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":1399,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1631,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1640,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689,1690,913,1180],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1363,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1690,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1689,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1458,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1168,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399,1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1516,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1399],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1174,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1638,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689,1690,913,1180,1640,1604,908],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1180,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689,1690,913],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1186,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":471,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":472,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1516,1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":474,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":475,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1661,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1536,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1657,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1658,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1676,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[1660],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":1543,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1560,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[1659],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":1659,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1575,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[1661],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":1604,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689,1690,913,1180,1640],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1416,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":903,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":906,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1416,932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":907,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[932,934,920,1657,910,1659,1658,973,1660,1661],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":908,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689,1690,913,1180,1640,1604],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":910,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[932,934,920,1657],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":911,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":913,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[932,934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903,939,1543,1168,1631,1689,1690],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1670,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[1658],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":1679,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":920,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[932,934],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":921,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":922,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":923,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1660,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":929,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":932,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":933,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":934,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":937,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":939,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[934,920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471,960,1458,903],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":941,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":943,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":942,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":949,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1472,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":960,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972,962,929,1363,1186,1536,471],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":959,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":961,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[920,1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":962,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976,972],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":965,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":951,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":977,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":976,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":974,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":973,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[1657,910,1659,1658],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":972,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937,970,923,949,977,911,472,959,922,976],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":970,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941,968,951,937],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":968,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[910,1659,1658,973,1660,1661,907,967,933,906,474,921,942,965,943,961,974,475,941],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":967,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"blockers\":[910,1659,1658,973,1660,1661,907],\"locktype\":\"object\",\"mode\":\"AccessExclusiveLock\",\"granted\":false,\"database\":\"0\",\"classid\":\"1262\",\"objid\":\"0\",\"objsubid\":0}, \n {\"pid\":1671,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}, \n {\"pid\":1398,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"transactionid\",\"query\":\"UPDATE mcp_operations SET lease_until=now()+interval '15 seconds' WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() RETURNING cancelled\",\"blockers\":[],\"locktype\":null,\"mode\":null,\"granted\":null,\"database\":null,\"classid\":null,\"objid\":null,\"objsubid\":null}]\n[{\"pid\":1637,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.011598}, \n {\"pid\":1577,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.019662}, \n {\"pid\":1631,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.049744}, \n {\"pid\":1616,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.018364}, \n {\"pid\":1640,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.046861}, \n {\"pid\":1636,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.041241}, \n {\"pid\":1363,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.056995}, \n {\"pid\":1690,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.054370}, \n {\"pid\":1689,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.055616}, \n {\"pid\":1458,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.054159}, \n {\"pid\":1168,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.050988}, \n {\"pid\":1638,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.042715}, \n {\"pid\":1180,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.047582}, \n {\"pid\":1186,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.056238}, \n {\"pid\":1495,\"state\":\"idle in transaction\",\"wait_event_type\":\"Client\",\"wait_event\":\"ClientRead\",\"query\":\"SELECT pg_notify('vmcp_delivery',$1)\",\"xact_seconds\":0.017509}, \n {\"pid\":1642,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.018433}, \n {\"pid\":471,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.054690}, \n {\"pid\":472,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.069029}, \n {\"pid\":474,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.109531}, \n {\"pid\":475,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.092376}, \n {\"pid\":1661,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.151207}, \n {\"pid\":1536,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.055400}, \n {\"pid\":1693,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.046539}, \n {\"pid\":1543,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.051776}, \n {\"pid\":1553,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.018629}, \n {\"pid\":1604,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.043374}, \n {\"pid\":1698,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.041924}, \n {\"pid\":903,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.052055}, \n {\"pid\":906,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.122695}, \n {\"pid\":907,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.134402}, \n {\"pid\":908,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.040466}, \n {\"pid\":911,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.069191}, \n {\"pid\":913,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.046120}, \n {\"pid\":921,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.102496}, \n {\"pid\":922,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.063841}, \n {\"pid\":923,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.078155}, \n {\"pid\":1660,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.152940}, \n {\"pid\":1615,\"state\":\"idle in transaction\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"SELECT pg_notify('vmcp_delivery',$1)\",\"xact_seconds\":0.019602}, \n {\"pid\":929,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.057599}, \n {\"pid\":933,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.125537}, \n {\"pid\":937,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.078350}, \n {\"pid\":939,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.051981}, \n {\"pid\":941,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.089821}, \n {\"pid\":943,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.095826}, \n {\"pid\":942,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.102648}, \n {\"pid\":949,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.074000}, \n {\"pid\":960,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.054861}, \n {\"pid\":959,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.066521}, \n {\"pid\":961,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.095750}, \n {\"pid\":962,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.057563}, \n {\"pid\":965,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.102595}, \n {\"pid\":951,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.085766}, \n {\"pid\":977,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.073959}, \n {\"pid\":976,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.063968}, \n {\"pid\":974,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.092548}, \n {\"pid\":973,\"state\":\"active\",\"wait_event_type\":\"LWLock\",\"wait_event\":\"WALWrite\",\"query\":\"commit\",\"xact_seconds\":0.149229}, \n {\"pid\":972,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.057736}, \n {\"pid\":970,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.078284}, \n {\"pid\":968,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.085839}, \n {\"pid\":967,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.128232}, \n {\"pid\":1697,\"state\":\"active\",\"wait_event_type\":\"Lock\",\"wait_event\":\"object\",\"query\":\"commit\",\"xact_seconds\":0.042732}]\nLimit  (cost=0.42..8.44 rows=1 width=4) (actual time=0.077..0.077 rows=0 loops=1)\n  Buffers: shared hit=3\n  ->  Index Only Scan using mcp_stream_operation on mcp_streams  (cost=0.42..8.44 rows=1 width=4) (actual time=0.076..0.076 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=83\nPlanning Time: 0.791 ms\nExecution Time: 0.100 ms\nLimit  (cost=0.00..8.58 rows=200 width=16) (actual time=1.856..1.922 rows=200 loops=1)\n  Buffers: shared hit=306\n  ->  Seq Scan on mcp_operations  (cost=0.00..3613.42 rows=84270 width=16) (actual time=1.855..1.907 rows=200 loops=1)\n        Filter: ((state <> 'running'::text) AND (created_at < (now() - '00:15:00'::interval)))\n        Rows Removed by Filter: 6047\n        Buffers: shared hit=306\nPlanning:\n  Buffers: shared hit=94\nPlanning Time: 0.671 ms\nExecution Time: 1.943 ms\n"
+}

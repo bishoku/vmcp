@@ -26,7 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const version = "0.1.0"
+const version = "1.0.0"
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "control-plane")
@@ -108,19 +108,24 @@ func run(log *slog.Logger) error {
 	}
 	api := &controlplane.Server{
 		OIDC:           provider,
-		Store:          &store.Store{Pool: pool, Box: box},
+		Store:          &store.Store{Pool: pool, Box: box, WireMockURL: strings.TrimSuffix(os.Getenv("VMCP_WIREMOCK_URL"), "/")},
 		AdminToken:     adminToken,
 		Version:        version,
 		Log:            log,
 		TrustedProxies: trusted,
 	}
 	defer func() { cancelBg(); bgWg.Wait(); api.CloseAudit() }()
+	metrics := telemetry.New()
+	api.Metrics = metrics
 	bgWg.Add(1)
 	go func() {
 		defer bgWg.Done()
 		api.RunDiscovery(ctx)
 	}()
-	metrics := telemetry.New()
+	if api.Store.WireMockURL != "" {
+		bgWg.Add(1)
+		go func() { defer bgWg.Done(); api.RunMockUpstreams(ctx) }()
+	}
 	metrics.Gauges = func(gctx context.Context) map[string]float64 {
 		stats := pool.Stat()
 		gauges := map[string]float64{

@@ -15,11 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/fixture"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/store"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"github.com/bishoku/vmcp/core/internal/upstream"
 	"github.com/bishoku/vmcp/core/internal/virtual"
 )
@@ -149,11 +151,10 @@ func newSubscriptionRecoveryHarness(t *testing.T) *subscriptionRecoveryHarness {
 		objects := e.syncer.Snapshot().VirtualServers["recovery-agent"].Catalog
 		return len(objects) == 1, fmt.Sprintf("catalog objects=%d", len(objects))
 	})
-	broker := &delivery.Store{Pool: e.pool, Box: e.syncer.Box}
 	for i := range h.nodes {
 		manager := virtual.NewManager()
 		manager.Store = virtual.PGSessionStore{Pool: e.pool}
-		node := &virtual.Handler{Snap: e.syncer, Sessions: manager, Delivery: broker, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		node := &virtual.Handler{Snap: e.syncer, Sessions: manager, Delivery: &delivery.Store{Pool: e.pool, Box: e.syncer.Box}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 		mux := http.NewServeMux()
 		node.Register(mux)
 		server := httptest.NewServer(mux)
@@ -452,4 +453,32 @@ type subscriptionRecoveryFlusher struct {
 func (w *subscriptionRecoveryFlusher) Flush() {
 	w.ResponseWriter.(http.Flusher).Flush()
 	w.flushed()
+}
+
+// Worker reconnects must not depend on the system audit sink. The client
+// subscription decision remains durably audited through the virtual handler.
+func TestSubscriptionMaintenanceDoesNotWriteSystemAudit(t *testing.T) {
+	h := newSubscriptionRecoveryHarness(t)
+	for _, node := range h.nodes {
+		runtime := audit.NewRuntime(h.ctx, h.pool, h.syncer.Box, slog.New(slog.NewTextHandler(io.Discard, nil)), "strict")
+		node.Audit = runtime
+		node.Metrics = telemetry.New()
+	}
+	if _, err := h.pool.Exec(h.ctx, `CREATE FUNCTION reject_system_maintenance() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.scope='system' THEN RAISE EXCEPTION 'system audit unavailable'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_system_maintenance BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION reject_system_maintenance()`); err != nil {
+		t.Fatal(err)
+	}
+	stop := h.startWorkers(t, 0)
+	h.subscribe(t)
+	owner := h.waitReady(t, "")
+	updates := h.notifications(t)
+	h.expectUpdate(t, updates)
+	stop()
+	stop = h.startWorkers(t, 1)
+	h.waitReady(t, owner)
+	h.expectUpdate(t, updates)
+	stop()
+	var system, client int
+	if err := h.pool.QueryRow(h.ctx, `SELECT count(*) FILTER(WHERE scope='system'),count(*) FILTER(WHERE scope='virtual' AND method='resources/subscribe') FROM audit_events`).Scan(&system, &client); err != nil || system != 0 || client < 2 {
+		t.Fatalf("system=%d virtual subscribe=%d: %v", system, client, err)
+	}
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
+	"github.com/bishoku/vmcp/core/internal/mockupstream"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/tlsconf"
@@ -82,6 +83,9 @@ func (c *Compiled) Build(base, name string, args json.RawMessage, common map[str
 		} else {
 			q.Set(p.Name, value)
 		}
+	}
+	if c.Config.Mock != nil {
+		path = mockupstream.Prefix(c.Config.Mock.Namespace) + path
 	}
 	target := strings.TrimSuffix(base, "/") + path
 	if query := q.Encode(); query != "" {

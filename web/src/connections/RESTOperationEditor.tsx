@@ -1,5 +1,6 @@
-import { useEffect, useState, type InputHTMLAttributes } from 'react'
+import { useEffect, useState, useCallback, type InputHTMLAttributes } from 'react'
 import {hasParameterDefault,initialParameterDefault,parseParameterDefault,parameterValueError} from './rest-parameters'
+import MockRulesEditor from './MockRulesEditor'
 import SchemaEditor from './SchemaEditor'
 import { Wrench } from 'lucide-react'
 import type { RESTOperation } from '../api'
@@ -14,7 +15,8 @@ import { pathParameters, schemaObject, responseSelectionError } from './rest-too
 const json = (value: unknown) => value === undefined ? '' : JSON.stringify(value, null, 2)
 const validName = /^[A-Za-z0-9_.-]{1,128}$/
 
-export default function RESTOperationEditor({ operation, index, onChange, onInvalidChange, names }: {
+export default function RESTOperationEditor({ operation, index, onChange, onInvalidChange, names, mockMode=false }: {
+ mockMode?:boolean
   operation: RESTOperation
   index: number
   onChange?: (operation: RESTOperation) => void
@@ -22,7 +24,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   names: string[]
 }) {
   // Invalid JSON remains local until corrected. Navigation must explicitly discard it.
-  const [view,setView]=useState<'tool'|'parameters'|'schemas'|'advanced'>('tool')
+  const [view,setView]=useState<'tool'|'parameters'|'schemas'|'advanced'|'mock'>('tool')
   const [parameterQuery,setParameterQuery]=useState('')
   const [body, setBody] = useState(json(operation.bodySchema))
   const [response, setResponse] = useState(json(operation.responseSchema))
@@ -30,6 +32,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   const [statuses, setStatuses] = useState((operation.successStatuses ?? []).join(', '))
   const [parametersJSON, setParametersJSON] = useState(json(operation.parameters))
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const mockInvalid=useCallback((invalid:boolean)=>setErrors(previous=>{const value=invalid?'Resolve mock response rule errors.':'';return previous.mock===value?previous:{...previous,mock:value}}),[])
   const invalid = operation.parameters.some(parameter=>!!parameterValueError(parameter)) || Object.values(errors).some(Boolean) || !!responseSelectionError(operation.responseSchema, operation.responseFields, operation.responseFieldPaths)
   // Valid edits belong to the parent's draft, which is cleaned on Save. Only
   // unparsed local text needs a separate navigation guard.
@@ -57,7 +60,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
   const parameter = (position: number, patch: Partial<RESTOperation['parameters'][number]>) =>
     set({ parameters: operation.parameters.map((value, i) => i === position ? { ...value, ...patch } : value) })
   return <ServerPanel title="Request & tool" description={onChange ? 'Changes update the upstream draft. Use Save when ready.' : 'Saved operation definition'} icon={Wrench}>
-    <nav aria-label="Operation editor sections" className="flex flex-wrap gap-2 panel-body border-b border-line">{(['tool','parameters','schemas','advanced'] as const).map(tab=><button key={tab} className={btn} aria-pressed={view===tab} onClick={()=>setView(tab)}>{tab==='tool'?'Request & tool':tab==='parameters'?`Parameters (${operation.parameters.length})`:tab==='schemas'?'Request & response schemas':'Advanced settings'}</button>)}</nav>
+    <nav aria-label="Operation editor sections" className="flex flex-wrap gap-2 panel-body border-b border-line">{(['tool','parameters','schemas',...(mockMode?['mock' as const]:[]),'advanced'] as const).map(tab=><button key={tab} className={btn} aria-pressed={view===tab} onClick={()=>setView(tab)}>{tab==='tool'?'Request & tool':tab==='parameters'?`Parameters (${operation.parameters.length})`:tab==='schemas'?'Request & response schemas':tab==='mock'?'Mock responses':'Advanced settings'}</button>)}</nav>
     <fieldset disabled={!onChange} className="panel-body layout-stack min-w-0">
       <div hidden={view!=='tool'} className="layout-stack"><div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
         <FormField name={field('method')} label="HTTP method"><Select className={input} value={operation.method} onChange={event => set({ method: event.target.value as RESTOperation['method'], readOnly: false })}>{['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(method => <option key={method}>{method}</option>)}</Select></FormField>
@@ -117,6 +120,7 @@ export default function RESTOperationEditor({ operation, index, onChange, onInva
       {operation.method !== 'GET' && <SchemaEditor label="Request body" value={operation.bodySchema} disabled={!!errors.bodySchema} onChange={schema => { setBody(json(schema)); set({ bodySchema: schema }) }}/>}
       <SchemaEditor label="Response" responseFields={operation.responseFields??[]} responseFieldPaths={operation.responseFieldPaths} onFieldsChange={(responseFields,responseSchema,responseFieldPaths)=>{setResponse(json(responseSchema));set({responseFields,responseSchema,responseFieldPaths})}} value={operation.responseSchema} disabled={!!errors.responseSchema} onChange={schema => { setResponse(json(schema)); set({ responseSchema: schema }) }}/>
       </div>
+      {mockMode&&<div hidden={view!=='mock'}><MockRulesEditor bodySchema={operation.bodySchema} rules={operation.mockRules} onChange={mockRules=>set({mockRules})} onInvalidChange={mockInvalid}/></div>}
       <details hidden={view!=='advanced'} open className="border-t border-line pt-4">
         <summary className="cursor-pointer text-sm font-semibold">Advanced · body, response & headers</summary>
         <div className="mt-4 layout-stack">

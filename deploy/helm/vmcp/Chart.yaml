@@ -2,8 +2,8 @@ apiVersion: v2
 name: vmcp
 description: HTTP MCP gateway, management UI and independent audit exporters
 type: application
-version: 0.2.0
-appVersion: development
+version: 1.0.0
+appVersion: v1.0.0
 kubeVersion: ">=1.27.0-0"
 dependencies:
   - name: postgresql

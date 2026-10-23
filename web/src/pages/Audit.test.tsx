@@ -116,3 +116,26 @@ test('details retain raw records and operation links without mixing correlation 
   expect(within(dialog).getByRole('region',{name:'Operation summary'}).textContent).toContain('Upstream timeout')
  }finally{cleanup();Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');Reflect.deleteProperty(HTMLDialogElement.prototype,'close')}
 })
+
+test('activity filter requests virtual calls with their linked upstream records in both views',async()=>{
+ const list=vi.spyOn(api,'listAudit').mockImplementation(async q=>({items:q.activity==='virtual'?[
+  {...event(2,'createOrder'),scope:'upstream',operationId:'child',parentOperationId:'root',stage:'outcome'},
+  {...event(1,'createOrder'),scope:'virtual',operationId:'root',stage:'outcome'},
+ ]:[],nextCursor:'9'}))
+ render(<Audit initialQuery={{activity:'control'}}/>);
+ await waitFor(()=>expect(list).toHaveBeenCalled())
+ expect((screen.getByLabelText('Activity') as HTMLSelectElement).value).toBe('control')
+ fireEvent.change(screen.getByLabelText('Activity'),{target:{value:'virtual'}})
+ await waitFor(()=>expect(list.mock.lastCall?.[0].activity).toBe('virtual'))
+ expect(list.mock.lastCall?.[0].cursor).toBeUndefined()
+ expect(screen.getByRole('button',{name:'Remove Activity filter'})).toBeTruthy()
+ await waitFor(()=>expect(screen.getAllByRole('button',{name:'Details'})).toHaveLength(1))
+ const calls=list.mock.calls.length
+ fireEvent.click(screen.getByText('Raw events'))
+ expect(screen.getAllByRole('button',{name:'Details'})).toHaveLength(2)
+ expect(list.mock.calls.length).toBe(calls)
+ const link=screen.getByRole('button',{name:'Copy audit filter link'})
+ expect(link).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'Remove Activity filter'}))
+ await waitFor(()=>expect(list.mock.lastCall?.[0].activity).toBeUndefined())
+})

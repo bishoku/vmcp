@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
@@ -186,28 +185,21 @@ func (h *Handler) runSubscription(parent context.Context) {
 		})
 	}
 	defer func() { stop(); stopHeartbeat() }()
-	var recorder audit.DurableRecorder = audit.NewDurable(h.Delivery.Pool, h.Log)
-	if runtime, ok := h.Audit.(*audit.Runtime); ok {
-		recorder = runtime
-	}
-	event, err := recorder.Admit(ctx, audit.Event{Time: time.Now().UTC(), ActorType: "system", ActorID: "resource-subscription", Action: "mcp.subscription_reconcile", Method: "resources/subscribe", VirtualServer: sess.slug, Revision: snap.Revision, Target: sid, Upstream: up.Slug, Scope: "system", Boundary: "system", Policy: &snap.Audit})
-	if err != nil {
-		release(false)
-		return
-	}
-	if runtime, ok := h.Audit.(*audit.Runtime); ok {
-		ctx = audit.WithOperation(ctx, runtime, event)
-	}
-	event.Status = "error"
-	event.Reason = "subscription activation failed"
+	// Physical reconnects are maintenance; the user's resources/subscribe call
+	// is audited by the normal virtual request handler.
+	outcome, reason := "error", "activation_failed"
 	defer func() {
 		if ctx.Err() != nil {
-			event.Status = "error"
-			event.Reason = "subscription worker stopped"
+			outcome, reason = "cancelled", "worker_stopped"
 		}
-		bounded, cancel := context.WithTimeout(context.Background(), audit.WriteTimeout)
-		defer cancel()
-		_ = recorder.Complete(bounded, event)
+		h.Metrics.Background("subscription", outcome)
+		if h.Log != nil {
+			if outcome == "error" {
+				h.Log.Warn("background subscription ended", "upstream", up.Slug, "virtual_server", sess.slug, "outcome", outcome, "reason", reason)
+			} else {
+				h.Log.Debug("background subscription ended", "upstream", up.Slug, "virtual_server", sess.slug, "outcome", outcome, "reason", reason)
+			}
+		}
 	}()
 	c, err := upstream.OpenAuth(up.Transport, up.URL, up.Headers, up.TLS, up.OAuth)
 	if err != nil {
@@ -254,12 +246,13 @@ func (h *Handler) runSubscription(parent context.Context) {
 		release(false)
 		return
 	}
-	_, _ = h.Delivery.Pool.Exec(ctx, `SELECT pg_notify('vmcp_delivery',$1)`, sid)
 	h.Delivery.NotifyLocal(sid)
 	// Handshake is complete; the main watch loop below now owns the 1s lease renewal.
 	stopHeartbeat()
-	event.Status = "ok"
-	event.Reason = ""
+	outcome, reason = "ok", "active"
+	if h.Log != nil {
+		h.Log.Debug("background subscription activated", "upstream", up.Slug, "virtual_server", sess.slug)
+	}
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -268,8 +261,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 			release(false)
 			return
 		case watchErr := <-watching:
-			event.Status = "error"
-			event.Reason = "subscription stream interrupted"
+			outcome, reason = "error", "stream_interrupted"
 			release(errors.Is(watchErr, upstream.ErrSubscriptionTransport))
 			return
 		case <-tick.C:
@@ -277,6 +269,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 			live, resolveErr := h.Sessions.Resolve(bounded, sid)
 			fresh, freshErr := h.Snap.AuthorizedSnapshot()
 			if resolveErr != nil || freshErr != nil {
+				outcome, reason = "error", "state_unavailable"
 				cancel()
 				release(false)
 				return
@@ -289,6 +282,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 				valid = ok && subscriptionOwnerAllowed(live.owner, v, fresh) && selected && o.Subscribe && o.UpstreamID == upID && mapped == original && exists && current.Fingerprint() == up.Fingerprint()
 			}
 			if !valid {
+				outcome, reason = "ok", "authorization_or_configuration_changed"
 				cancel()
 				release(true)
 				return
@@ -296,6 +290,7 @@ func (h *Handler) runSubscription(parent context.Context) {
 			tag, err := h.Delivery.Pool.Exec(bounded, `UPDATE mcp_resource_subscriptions SET lease_until=now()+interval '15 seconds' WHERE session_id=$1 AND uri=$2 AND owner=$3 AND lease_until>now() AND expires_at>now()`, sid, uri, owner)
 			cancel()
 			if err != nil || tag.RowsAffected() != 1 {
+				outcome, reason = "error", "lease_lost"
 				release(false)
 				return
 			}

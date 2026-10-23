@@ -1,0 +1,19 @@
+# Local credentials and generated files must never enter the build context.
+.env
+.env.*
+!.env.example
+.git
+.agents
+.idea
+.vscode
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+coverage*
+*.prof
+*.out
+verification.jsonl
+bin
+artifacts

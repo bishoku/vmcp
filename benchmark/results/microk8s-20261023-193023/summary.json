@@ -1,0 +1,358 @@
+{
+  "StartedUTC": "2026-10-23T16:30:41Z",
+  "SourceRevision": "922c16eb3d6571fd11f65ff3add2fe1d0d4ad33d",
+  "BinarySHA256": "9f7dbbb86394ce3b79db91268ccb443c063ea14e5e7fa4fb132082c82cc70f03",
+  "GoVersion": "go1.27.3",
+  "HostOS": "linux",
+  "HostArch": "amd64",
+  "Profile": {
+    "Servers": 300,
+    "Tools": 200,
+    "Resources": 0,
+    "Sessions": 600,
+    "SteadyRPS": 600,
+    "BurstRPS": 2000,
+    "Workers": 512,
+    "REST": true,
+    "Smoke": false
+  },
+  "DataPlaneConfiguration": {
+    "audit": "strict",
+    "cpu_limit_each": "4",
+    "db_acquire_timeout": "2s",
+    "db_pool_max_each": 64,
+    "fault": "scale one test Deployment to zero, then restore; not a physical Kubernetes node failure",
+    "go_soft_memory_limit_each": "768MiB",
+    "gomaxprocs_each": 2,
+    "health_interval": "30s",
+    "memory_limit_each": "3Gi",
+    "memory_measurement": "kubelet container RSS; CPU recent usageNanoCores",
+    "namespace": "vmcp-load-20261023-193023",
+    "nodes": 2,
+    "platform": "MicroK8s Kubernetes",
+    "redis_failure_policy": "strict",
+    "rest_refresh_ms": 25560
+  },
+  "ProxyPolicy": "same host test round-robin proxy, passive 10s cooldown, no POST retries; real Kubernetes NodePort Services/CNI to data-plane pods; no ingress capacity claim",
+  "Thresholds": {
+    "burst_max_p99_ms": 10000,
+    "burst_min_success_percent": 80,
+    "burst_min_target_completion_percent": 80,
+    "fault_phase_min_success_percent": 99,
+    "fault_transition_grace_seconds": 10,
+    "per_node_max_rss_bytes": 1610612736,
+    "post_fault_max_errors_percent": 0.1,
+    "soak_max_rss_growth_percent": 20,
+    "steady_min_target_completion_percent": 95,
+    "steady_p95_ms": 250,
+    "steady_p99_ms": 1000,
+    "steady_success_percent": 99.9
+  },
+  "Resources": {
+    "acceptance-node-1": {
+      "max_metric_label_overflows": 350240,
+      "max_os_reported_cpu_percent": 200.1320575,
+      "max_pool_acquired": 64,
+      "max_pool_cancelled_acquires": 12633,
+      "max_rss_bytes": 1149120512,
+      "median_os_reported_cpu_percent": 199.892945,
+      "median_rss_bytes": 1019494400,
+      "pool_acquire_seconds_observed": 137773.231554104,
+      "soak_first_third_median_rss_bytes": 1019256832,
+      "soak_last_third_median_rss_bytes": 1019273216,
+      "soak_rss_growth_percent": 0.0016074456884288021
+    },
+    "acceptance-node-2": {
+      "max_metric_label_overflows": 473696,
+      "max_os_reported_cpu_percent": 200.4505178,
+      "max_pool_acquired": 64,
+      "max_pool_cancelled_acquires": 83368,
+      "max_rss_bytes": 1257238528,
+      "median_os_reported_cpu_percent": 199.809985,
+      "median_rss_bytes": 1121849344,
+      "pool_acquire_seconds_observed": 1298603.5584171151,
+      "soak_first_third_median_rss_bytes": 1122971648,
+      "soak_last_third_median_rss_bytes": 1122267136,
+      "soak_rss_growth_percent": -0.06273640133789023
+    }
+  },
+  "Consistency": {
+    "active_agent_keys": 64,
+    "active_upstreams": 300,
+    "active_virtual_servers": 300,
+    "active_virtual_tools": 59998,
+    "duplicate_executions": 0,
+    "failed_calls": 73439,
+    "incomplete_operations": 571,
+    "incomplete_unrelated_to_failed_calls": 0,
+    "matching_admissions": 453932,
+    "matching_ok_outcomes": 453932,
+    "successful_client_calls": 453932,
+    "synthetic_upstream_executions": 476554
+  },
+  "Functional": {
+    "configuration_refresh_under_rest_load": false,
+    "cross_node_session_and_paginated_masked_metadata": true,
+    "invalid_keys_rejected_on_both_nodes": true,
+    "key_revocation_propagated_and_rejected_on_both_nodes": false,
+    "session_termination_authoritative_on_both_nodes": true
+  },
+  "Pass": false,
+  "Failures": [
+    "steady capacity/latency SLO failed",
+    "spike capacity/latency SLO failed",
+    "recovery capacity/latency SLO failed",
+    "REST configuration refresh did not reach both nodes",
+    "config-refresh capacity/latency SLO failed",
+    "node-loss capacity/latency SLO failed",
+    "soak capacity/latency SLO failed",
+    "revoked key accepted or snapshot propagation timed out on acceptance-node-1",
+    "revoked key accepted or snapshot propagation timed out on acceptance-node-2"
+  ],
+  "Phases": [
+    {
+      "name": "warmup",
+      "target_rps": 50,
+      "PlannedSeconds": 30,
+      "ElapsedSeconds": 30.035526086,
+      "Scheduled": 1500,
+      "Offered": 1500,
+      "Success": 1500,
+      "Errors": 0,
+      "Dropped": 0,
+      "InvalidResults": 0,
+      "CompletedRPS": 49.94085989055381,
+      "SuccessPercent": 100,
+      "P50MS": 26.601502,
+      "P95MS": 69.051604,
+      "P99MS": 98.544333,
+      "MaxMS": 143.366037,
+      "HTTPStatuses": {
+        "200": 1500
+      },
+      "Nodes": {
+        "acceptance-node-1": 750,
+        "acceptance-node-2": 750
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "baseline",
+      "target_rps": 200,
+      "PlannedSeconds": 90,
+      "ElapsedSeconds": 90.399796108,
+      "Scheduled": 18000,
+      "Offered": 18000,
+      "Success": 18000,
+      "Errors": 0,
+      "Dropped": 0,
+      "InvalidResults": 0,
+      "CompletedRPS": 199.11549334132928,
+      "SuccessPercent": 100,
+      "P50MS": 21.918264,
+      "P95MS": 143.743288,
+      "P99MS": 360.834288,
+      "MaxMS": 478.918699,
+      "HTTPStatuses": {
+        "200": 18000
+      },
+      "Nodes": {
+        "acceptance-node-1": 9000,
+        "acceptance-node-2": 9000
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "steady",
+      "target_rps": 600,
+      "PlannedSeconds": 300,
+      "ElapsedSeconds": 302.031454022,
+      "Scheduled": 180000,
+      "Offered": 59768,
+      "Success": 57760,
+      "Errors": 2008,
+      "Dropped": 120232,
+      "InvalidResults": 0,
+      "CompletedRPS": 191.23836021328017,
+      "SuccessPercent": 96.64034265827868,
+      "P50MS": 2515.685125,
+      "P95MS": 3280.455205,
+      "P99MS": 3629.123965,
+      "MaxMS": 4584.794474,
+      "HTTPStatuses": {
+        "200": 59768
+      },
+      "Nodes": {
+        "acceptance-node-1": 29884,
+        "acceptance-node-2": 29884
+      },
+      "slo_pass": false
+    },
+    {
+      "name": "spike",
+      "target_rps": 2000,
+      "PlannedSeconds": 60,
+      "ElapsedSeconds": 61.879433499,
+      "Scheduled": 120000,
+      "Offered": 12036,
+      "Success": 11387,
+      "Errors": 649,
+      "Dropped": 107964,
+      "InvalidResults": 0,
+      "CompletedRPS": 184.01913779937917,
+      "SuccessPercent": 94.6078431372549,
+      "P50MS": 2296.471621,
+      "P95MS": 5091.667489,
+      "P99MS": 5520.999019,
+      "MaxMS": 6136.591051,
+      "HTTPStatuses": {
+        "200": 12034,
+        "429": 2
+      },
+      "Nodes": {
+        "acceptance-node-1": 6018,
+        "acceptance-node-2": 6018
+      },
+      "slo_pass": false
+    },
+    {
+      "name": "recovery",
+      "target_rps": 600,
+      "PlannedSeconds": 45,
+      "ElapsedSeconds": 47.47769502,
+      "Scheduled": 27000,
+      "Offered": 9367,
+      "Success": 9089,
+      "Errors": 278,
+      "Dropped": 17633,
+      "InvalidResults": 0,
+      "CompletedRPS": 191.43726324901104,
+      "SuccessPercent": 97.03213408775488,
+      "P50MS": 2499.674669,
+      "P95MS": 3312.87875,
+      "P99MS": 3675.626049,
+      "MaxMS": 4147.601159,
+      "HTTPStatuses": {
+        "200": 9367
+      },
+      "Nodes": {
+        "acceptance-node-1": 4684,
+        "acceptance-node-2": 4683
+      },
+      "slo_pass": false
+    },
+    {
+      "name": "config-refresh",
+      "target_rps": 600,
+      "PlannedSeconds": 30,
+      "ElapsedSeconds": 32.025540968,
+      "Scheduled": 18000,
+      "Offered": 6438,
+      "Success": 6087,
+      "Errors": 351,
+      "Dropped": 11562,
+      "InvalidResults": 0,
+      "CompletedRPS": 190.06704698859406,
+      "SuccessPercent": 94.5479962721342,
+      "P50MS": 2429.885685,
+      "P95MS": 4542.361466,
+      "P99MS": 4891.252456,
+      "MaxMS": 5315.564491,
+      "HTTPStatuses": {
+        "200": 6438
+      },
+      "Nodes": {
+        "acceptance-node-1": 3219,
+        "acceptance-node-2": 3219
+      },
+      "fault_second": 5,
+      "slo_pass": false
+    },
+    {
+      "name": "node-loss",
+      "target_rps": 600,
+      "PlannedSeconds": 90,
+      "ElapsedSeconds": 89.999399928,
+      "Scheduled": 54000,
+      "Offered": 53997,
+      "Success": 4042,
+      "Errors": 49955,
+      "Dropped": 3,
+      "InvalidResults": 0,
+      "CompletedRPS": 44.91141055644395,
+      "SuccessPercent": 7.485601051910291,
+      "P50MS": 207.631056,
+      "P95MS": 431.122129,
+      "P99MS": 682.699917,
+      "MaxMS": 830.988603,
+      "HTTPStatuses": {
+        "200": 4113,
+        "502": 7,
+        "503": 49877
+      },
+      "Nodes": {
+        "acceptance-node-1": 6179,
+        "acceptance-node-2": 47811
+      },
+      "fault_second": 20,
+      "slo_pass": false
+    },
+    {
+      "name": "node-rejoin",
+      "target_rps": 600,
+      "PlannedSeconds": 60,
+      "ElapsedSeconds": 60.190720058,
+      "Scheduled": 36000,
+      "Offered": 35941,
+      "Success": 35940,
+      "Errors": 1,
+      "Dropped": 59,
+      "InvalidResults": 0,
+      "CompletedRPS": 597.102011163317,
+      "SuccessPercent": 99.99721766227985,
+      "P50MS": 225.324028,
+      "P95MS": 631.376265,
+      "P99MS": 842.105458,
+      "MaxMS": 1083.038727,
+      "HTTPStatuses": {
+        "200": 35940,
+        "502": 1
+      },
+      "Nodes": {
+        "acceptance-node-1": 14970,
+        "acceptance-node-2": 20970
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "soak",
+      "target_rps": 400,
+      "PlannedSeconds": 1800,
+      "ElapsedSeconds": 1802.216538856,
+      "Scheduled": 720000,
+      "Offered": 330324,
+      "Success": 310127,
+      "Errors": 20197,
+      "Dropped": 389676,
+      "InvalidResults": 0,
+      "CompletedRPS": 172.08087558493972,
+      "SuccessPercent": 93.88570010050738,
+      "P50MS": 838.351999,
+      "P95MS": 5583.794408,
+      "P99MS": 5981.08256,
+      "MaxMS": 10001.140283,
+      "HTTPStatuses": {
+        "200": 330135,
+        "429": 92,
+        "502": 1,
+        "503": 96
+      },
+      "Nodes": {
+        "acceptance-node-1": 163899,
+        "acceptance-node-2": 166424
+      },
+      "slo_pass": false
+    }
+  ],
+  "ReportAvailable": true
+}

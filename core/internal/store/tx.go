@@ -29,19 +29,23 @@ type dbtx interface {
 
 // Store is the control plane's data access layer.
 type Store struct {
-	Pool *pgxpool.Pool
-	Box  *secrets.Box
+	WireMockURL string
+	Pool        *pgxpool.Pool
+	Box         *secrets.Box
 }
 
 // Tx runs queries either inside a transaction (Do) or directly on the pool (Reader).
 type Tx struct {
-	q       dbtx
-	box     *secrets.Box
-	targets map[string]bool
+	// Optional fact staged by background discovery only when its catalog changes.
+	mutation    *audit.Event
+	wireMockURL string
+	q           dbtx
+	box         *secrets.Box
+	targets     map[string]bool
 }
 
 // Reader returns a handle for read-only queries outside a transaction.
-func (s *Store) Reader() *Tx { return &Tx{q: s.Pool, box: s.Box} }
+func (s *Store) Reader() *Tx { return &Tx{q: s.Pool, box: s.Box, wireMockURL: s.WireMockURL} }
 
 // Do runs fn in a transaction. Any error rolls it back.
 func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
@@ -50,7 +54,7 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op after Commit
-	handle := &Tx{q: tx, box: s.Box, targets: map[string]bool{}}
+	handle := &Tx{q: tx, box: s.Box, wireMockURL: s.WireMockURL, targets: map[string]bool{}}
 	// Consistent lock order prevents apply revision checks and row mutations from deadlocking.
 	if _, err := handle.LockRevision(ctx); err != nil {
 		return err
@@ -58,7 +62,11 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 	if err := fn(handle); err != nil {
 		return err
 	}
-	if e, ok := audit.Transaction(ctx); ok {
+	e, ok := audit.Transaction(ctx)
+	if handle.mutation != nil {
+		e, ok = *handle.mutation, true
+	}
+	if ok {
 		// An audit failure rolls the entire configuration transaction back.
 		if e.Mode != "relax" {
 			if _, err := tx.Exec(ctx, `SET LOCAL synchronous_commit=on`); err != nil {
@@ -143,7 +151,7 @@ func (s *Store) View(ctx context.Context, fn func(*Tx) error) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := fn(&Tx{q: tx, box: s.Box}); err != nil {
+	if err := fn(&Tx{q: tx, box: s.Box, wireMockURL: s.WireMockURL}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

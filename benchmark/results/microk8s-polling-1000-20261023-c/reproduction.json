@@ -1,0 +1,210 @@
+{
+  "sourceRevision": "922c16eb3d6571fd11f65ff3add2fe1d0d4ad33d",
+  "sourceTreeSHA256": "ae656f0e44aadf33a65f9f157f79be8bb7cd51ba353f828a876df97fd31da244",
+  "workingTree": " M .github/workflows/ci.yml\n M api/openapi.yaml\n M benchmark/acceptance/report.py\n M benchmark/compose.yaml\n M core/cmd/control-plane/main.go\n M core/cmd/data-plane/main.go\n M core/internal/controlplane/api_test.go\n M core/internal/controlplane/audit.go\n M core/internal/controlplane/discovery.go\n M core/internal/controlplane/server.go\n M core/internal/controlplane/spec/openapi.json\n M core/internal/controlplane/spec/openapi.yaml\n D core/internal/delivery/listener.go\n M core/internal/delivery/resources.go\n M core/internal/delivery/store.go\n M core/internal/delivery/store_test.go\n M core/internal/e2e/acceptance_runtime_test.go\n M core/internal/e2e/acceptance_test.go\n M core/internal/e2e/catalog_test.go\n M core/internal/e2e/subscriptions_recovery_test.go\n M core/internal/restapi/config.go\n M core/internal/restapi/execute.go\n M core/internal/store/audit.go\n M core/internal/store/migrations_test.go\n M core/internal/store/rest.go\n M core/internal/store/tx.go\n M core/internal/telemetry/telemetry.go\n M core/internal/virtual/client_relay_test.go\n M core/internal/virtual/streams_test.go\n M core/internal/virtual/subscriptions.go\n M docs/Audit-Log.md\n M docs/MCP_DELIVERY.md\n M docs/OBSERVABILITY.md\n M docs/Upstreams.md\n M web/src/App.tsx\n M web/src/AuditSettingsPanel.tsx\n M web/src/api.ts\n M web/src/connections/AuditFilters.tsx\n M web/src/connections/RESTOperationEditor.tsx\n M web/src/connections/RESTUpstreamEditor.tsx\n M web/src/pages/Audit.test.tsx\n M web/src/pages/UpstreamDetailForm.tsx\n M web/src/pages/Upstreams.tsx\n?? benchmark/compose.mock.yaml\n?? benchmark/kubernetes/\n?? benchmark/results/microk8s-20261023-192647/\n?? benchmark/results/microk8s-20261023-192851/\n?? benchmark/results/microk8s-20261023-193023/\n?? benchmark/results/microk8s-polling-1000-20261023-c/\n?? benchmark/results/microk8s-postgres-1000-20261023-a/\n?? benchmark/results/microk8s-postgres-1000-20261023-analysis.md\n?? benchmark/results/microk8s-postgres-1000-20261023-b/\n?? core/internal/controlplane/audit_activity_test.go\n?? core/internal/controlplane/discovery_audit_test.go\n?? core/internal/controlplane/mock_upstreams.go\n?? core/internal/controlplane/mock_upstreams_test.go\n?? core/internal/delivery/wake.go\n?? core/internal/delivery/wake_test.go\n?? core/internal/e2e/acceptance_kubernetes_test.go\n?? core/internal/e2e/acceptance_polling_test.go\n?? core/internal/mockupstream/\n?? core/internal/store/discovery.go\n?? core/internal/store/discovery_test.go\n?? core/internal/store/mock.go\n?? core/internal/telemetry/background.go\n?? core/internal/telemetry/background_test.go\n?? core/internal/virtual/mock_upstream_test.go\n?? core/migrations/00032_delivery_cleanup_indexes.sql\n?? deploy/wiremock/\n?? web/browser/audit-activity.spec.ts\n?? web/browser/mock-upstream.spec.ts\n?? web/src/connections/MockRulesEditor.test.tsx\n?? web/src/connections/MockRulesEditor.tsx\n?? web/src/connections/MockUpstreamStatus.tsx\n?? web/src/connections/QuickMockOperation.tsx\n?? web/src/connections/mock-rules.test.ts\n?? web/src/connections/mock-rules.ts\n?? web/src/connections/mock-visual-fixtures.json\n?? web/src/connections/mock-visual.test.ts\n?? web/src/connections/mock-visual.ts\n",
+  "images": {
+    "data-plane": "sha256:ac823ed628cdeb2867b46346c27d10093db413611b8b17d75f158c7bdb0310f0",
+    "control-plane": "sha256:e5615d9c3b66a8a9be7f38ea1483ae9549aafc9740671530c67ddb6ee2a600e7"
+  },
+  "node": {
+    "architecture": "amd64",
+    "containerRuntimeVersion": "containerd://2.1.6",
+    "kernelVersion": "7.0.0-34-generic",
+    "kubeletVersion": "v1.35.6",
+    "operatingSystem": "linux",
+    "osImage": "Ubuntu 24.04.5 LTS"
+  },
+  "capacity": {
+    "cpu": "64",
+    "ephemeral-storage": "959218776Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164651880Ki",
+    "pods": "110"
+  },
+  "allocatable": {
+    "cpu": "64",
+    "ephemeral-storage": "958170200Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164549480Ki",
+    "pods": "110"
+  },
+  "loadDriver": "native host Go process; fixtures bound to selected node IP",
+  "routing": "host test proxy -> dedicated Kubernetes NodePort Services -> data-plane pods",
+  "profileEnvironment": {
+    "VMCP_ACCEPTANCE_KUBERNETES": "1",
+    "VMCP_ACCEPTANCE_REST": "1",
+    "VMCP_ACCEPTANCE_SERVERS": "300",
+    "VMCP_ACCEPTANCE_TOOLS": "200",
+    "VMCP_ACCEPTANCE_WORKERS": "512",
+    "VMCP_ACCEPTANCE_RPS": "1000",
+    "VMCP_ACCEPTANCE_BURST_RPS": "1000",
+    "VMCP_ACCEPTANCE_WARMUP_SECONDS": "30",
+    "VMCP_ACCEPTANCE_STEADY_SECONDS": "300",
+    "VMCP_ACCEPTANCE_SPIKE_SECONDS": "60",
+    "VMCP_ACCEPTANCE_SOAK_RPS": "400",
+    "VMCP_ACCEPTANCE_SOAK_SECONDS": "1800",
+    "VMCP_ACCEPTANCE_AUDIT_CHECK_SECONDS": "180",
+    "VMCP_ACCEPTANCE_POLL_PROBE": "1",
+    "VMCP_ACCEPTANCE_DP_CPUS": "8",
+    "VMCP_ACCEPTANCE_DATABASE_FOCUS": "1",
+    "VMCP_ACCEPTANCE_SMOKE": "0"
+  },
+  "workloads": [
+    {
+      "name": "postgres",
+      "replicas": 1,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "postgres",
+          "image": "docker.io/library/postgres:17-alpine",
+          "resources": {
+            "requests": {
+              "cpu": "2",
+              "memory": "2Gi"
+            }
+          },
+          "args": [
+            "postgres",
+            "-c",
+            "max_connections=256",
+            "-c",
+            "shared_preload_libraries=pg_stat_statements",
+            "-c",
+            "pg_stat_statements.track=all",
+            "-c",
+            "track_io_timing=on",
+            "-c",
+            "track_wal_io_timing=on"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "redis",
+      "replicas": 1,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "redis",
+          "image": "docker.io/library/redis:7-alpine",
+          "resources": {
+            "requests": {
+              "cpu": "250m",
+              "memory": "128Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "512Mi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acceptance-node-1",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "data-plane",
+          "image": "docker.io/vmcp-load/data-plane:ae656f0e44aadf33",
+          "resources": {
+            "requests": {
+              "cpu": "8",
+              "memory": "2Gi"
+            },
+            "limits": {
+              "cpu": "8",
+              "memory": "3Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acceptance-node-2",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "data-plane",
+          "image": "docker.io/vmcp-load/data-plane:ae656f0e44aadf33",
+          "resources": {
+            "requests": {
+              "cpu": "8",
+              "memory": "2Gi"
+            },
+            "limits": {
+              "cpu": "8",
+              "memory": "3Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "control-plane",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "control-plane",
+          "image": "docker.io/vmcp-load/control-plane:ae656f0e44aadf33",
+          "resources": {
+            "requests": {
+              "cpu": "250m",
+              "memory": "256Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "1Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rawArchive": {
+    "filename": "microk8s-polling-1000-20261023-c-706de8e7761e.tar.gz",
+    "sha256": "46bec878a831c3fc34ec823fcb71ffb4576583ad7112cf96cccb165de80dcfdf",
+    "bytes": 748219,
+    "fileCount": 85,
+    "originalBytes": 6912105
+  }
+}
