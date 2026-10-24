@@ -39,7 +39,8 @@ lacks context binding until rotated. See [security operations](SECURITY_OPERATIO
 ## Container images and release verification
 
 Go services use statically linked binaries in a non-root Distroless Debian 13
-runtime; the web image serves built assets with a non-root Nginx process. Builder
+runtime; the web image serves built assets with a non-root Nginx process in the official Alpine slim variant. The minimal runtime
+omits optional modules and their dependencies, including the affected Brotli library. Builder
 and runtime base images are pinned to multi-platform index digests. Weekly
 Dependabot PRs maintain Dockerfile bases, Compose dependencies and GitHub Actions;
 updates must pass CI and are not automatically merged. Go toolchain updates must
@@ -71,3 +72,9 @@ and storage requirements.
 See [release signature verification](Release-Installation.md#verify-image-signatures)
 for the operator verification command. Helm does not enforce registry signatures
 without an external admission policy.
+
+A newly uploaded signature can briefly be absent from registry referrer reads.
+Publishing retries only Cosign exit code 10 with `no signatures found`, at most
+ten attempts ten seconds apart. Wrong signer identity, certificate failures and
+other verification errors fail immediately; the bounded retry never permits an
+unsigned image to pass.
