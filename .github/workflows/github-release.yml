@@ -64,6 +64,8 @@ jobs:
           run-id: ${{ env.SOURCE_RUN_ID }}
           github-token: ${{ github.token }}
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
       - name: Verify all published image signatures
         shell: bash
         env:
@@ -72,8 +74,8 @@ jobs:
           set -euo pipefail
           python3 automation/scripts/prepare-github-release.py stage published-images/images.json verified-images --version "$VERSION"
           jq -r '.images[] | .image + "@" + .digest' verified-images/images.json | while IFS= read -r image; do
-            cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              --certificate-identity "https://github.com/$GH_REPO/.github/workflows/docker-publish.yml@refs/tags/$VERSION" "$image"
+            automation/scripts/verify-image-signature.sh "$image" \
+              "https://github.com/$GH_REPO/.github/workflows/docker-publish.yml@refs/tags/$VERSION"
           done
       - uses: azure/setup-helm@v4.3.0
         with:
