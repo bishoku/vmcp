@@ -22,6 +22,13 @@ integration URLs and run `make verify`. It requires all database/Redis suites,
 runs the pinned MCP SDK fixture, and rejects skipped tests. Individual `go test`
 runs may skip integration tests without those URLs; they are not release evidence.
 
+`cd web && npm run test:browser` builds the app and serves that fresh output with
+Vite preview on port 4174. API mocks disable browser HTTP caching, so using the
+development server repeatedly reloads its large module graph and can exhaust
+test timeouts. Browser tests use four workers locally and two in CI; failed tests
+retain a Playwright trace in `web/test-results/`. The live browser suite remains
+separate.
+
 
 ## Pull requests
 
