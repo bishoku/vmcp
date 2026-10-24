@@ -9,7 +9,7 @@
 # control plane as http://keycloak:8080 (VMCP_OIDC_DISCOVERY_URL), hence KC_HOSTNAME_BACKCHANNEL_DYNAMIC.
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0
+    image: quay.io/keycloak/keycloak:26.8
     command: ["start-dev", "--import-realm"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
