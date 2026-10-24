@@ -83,7 +83,7 @@ jobs:
         run: python3 ../scripts/check-test-results.py ../verification.jsonl
       - name: Upload Go test results
         if: ${{ !cancelled() && hashFiles('verification.jsonl') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: core-test-results
           path: verification.jsonl
@@ -206,7 +206,7 @@ jobs:
         run: scripts/scan-image.sh "vmcp/$SERVICE:security" image-security linux/amd64
       - name: Preserve scan reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: image-security-${{ matrix.service }}
           path: image-security/*.json
