@@ -93,13 +93,18 @@ test('validation, failed saves and dirty dismissal retain entered values', async
  const dialog = page.getByRole('dialog', { name: 'New team', exact: true })
  await dialog.getByRole('button', { name: 'Save team', exact: true }).click()
  await expect(dialog.getByLabel('Identifier', { exact: true })).toHaveAttribute('aria-invalid', 'true')
+ // Validation moves focus on the next animation frame. Wait for that transition
+ // before typing into another field so it cannot redirect Playwright's input.
+ await expect(dialog.getByLabel('Identifier', { exact: true })).toBeFocused()
  await dialog.getByLabel('Name', { exact: true }).fill('My team')
  await dialog.getByLabel('Identifier', { exact: true }).fill('my-team')
  await dialog.getByLabel('OIDC issuer').fill('https://idp.example')
  await dialog.getByLabel('Group claim value').fill('my-group')
  state.failSave = true
+ const failedSave = page.waitForResponse(response => response.url().endsWith('/api/v1/teams') && response.request().method() === 'POST')
  await dialog.getByRole('button', { name: 'Save team', exact: true }).click()
- await expect(dialog.getByRole('alert')).toBeVisible()
+ expect((await failedSave).status()).toBe(500)
+ await expect(dialog.getByRole('alert')).toContainText('Internal Server Error')
  await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('My team')
  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
  const confirm = page.getByRole('dialog', { name: 'Discard unsaved changes?', exact: true })
