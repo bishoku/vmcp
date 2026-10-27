@@ -30,6 +30,10 @@ async function fixture(page: Page, role = 'admin') {
 const section = (page: Page, name: string) => page.getByRole('navigation', { name: 'Ownership sections' }).getByRole('button', { name, exact: true }).click()
 
 for (const width of [390, 1440]) test(`ownership workflow and shared responsive components ${width}`, async ({ page }) => {
+ // This scenario covers team/project creation and the full grant approval/revocation
+ // lifecycle with screenshots. Give the complete workflow a bounded CI budget;
+ // individual Playwright assertions retain their normal timeouts.
+ test.setTimeout(60_000)
  await page.setViewportSize({ width, height: 1000 })
  const state = await fixture(page)
  await page.goto('/ownership')
