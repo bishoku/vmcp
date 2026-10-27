@@ -23,6 +23,27 @@ type Document struct {
 func (d Document) Text() string {
 	return d.ServerName + " " + d.ServerDescription + " " + d.Name + " " + d.Description
 }
+
+func (d Document) StructuredText() string {
+	// Tool purpose comes before shared server context. Bounded fields avoid a
+	// verbose server preamble hiding the capability at provider truncation limits.
+	return "Tool: " + clipText(d.Name, 128) + "\nPurpose: " + clipText(d.Description, 1800) + "\nService: " + clipText(d.ServerName, 128) + "\nContext: " + clipText(d.ServerDescription, 320)
+}
+func clipText(s string, limit int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	cut := limit
+	for n := limit; n > limit*3/4; n-- {
+		if r[n] == ' ' || r[n] == '.' || r[n] == ';' {
+			cut = n
+			break
+		}
+	}
+	return strings.TrimSpace(string(r[:cut]))
+}
 func (d Document) Hash() string {
 	b, _ := json.Marshal(d)
 	h := sha256.Sum256(b)

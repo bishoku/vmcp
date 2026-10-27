@@ -3,6 +3,7 @@ package omni
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"strings"
@@ -15,31 +16,66 @@ type Embedder interface {
 	Embed(context.Context, []string) ([][]float32, error)
 }
 type entry struct {
-	SearchText string
+	SearchText                         string
+	NameText, PurposeText, ContextText string
 	Document
 	Hash   string
 	Vector []float32
 }
 type IndexStatus struct {
-	Ready      bool      `json:"ready"`
-	Mode       string    `json:"mode"`
-	Documents  int       `json:"documents"`
-	Revision   int64     `json:"revision"`
-	UpdatedAt  time.Time `json:"updatedAt"`
-	Error      string    `json:"error,omitempty"`
-	Refreshing bool      `json:"refreshing"`
+	Ready                 bool      `json:"ready"`
+	Mode                  string    `json:"mode"`
+	Documents             int       `json:"documents"`
+	Revision              int64     `json:"revision"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+	Error                 string    `json:"error,omitempty"`
+	Refreshing            bool      `json:"refreshing"`
+	EmbeddedDocuments     int       `json:"embeddedDocuments"`
+	Dimensions            int       `json:"dimensions"`
+	EmbeddingProfile      string    `json:"embeddingProfile,omitempty"`
+	RerankEnabled         bool      `json:"rerankEnabled"`
+	RerankCandidates      int       `json:"rerankCandidates"`
+	RerankMinScore        float64   `json:"rerankMinScore"`
+	RerankNoMatchScore    float64   `json:"rerankNoMatchScore"`
+	RerankConfidenceScore float64   `json:"rerankConfidenceScore"`
+	RerankFailurePolicy   string    `json:"rerankFailurePolicy"`
 }
 type Index struct {
-	mu       sync.RWMutex
-	entries  []entry
-	status   IndexStatus
-	Embedder Embedder
-	refresh  chan struct{}
-	runMu    sync.Mutex
+	mu                    sync.RWMutex
+	entries               []entry
+	status                IndexStatus
+	Embedder              Embedder
+	refresh               chan struct{}
+	runMu                 sync.Mutex
+	catalogLog            failureLog
+	refreshLog            failureLog
+	searchLog             failureLog
+	ranking               string
+	MinSimilarity         float64
+	Reranker              Reranker
+	RerankCandidates      int
+	RerankMinScore        float64
+	RerankNoMatchScore    float64
+	RerankConfidenceScore float64
+	RerankFailurePolicy   string
+	rerankLog             failureLog
 }
 
-func NewIndex(e Embedder) *Index     { return &Index{Embedder: e, refresh: make(chan struct{}, 1)} }
-func (i *Index) Status() IndexStatus { i.mu.RLock(); defer i.mu.RUnlock(); return i.status }
+func NewIndex(e Embedder) *Index {
+	return &Index{Embedder: e, refresh: make(chan struct{}, 1), RerankCandidates: 20, RerankFailurePolicy: "fallback"}
+}
+func (i *Index) Status() IndexStatus {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	status := i.status
+	status.RerankEnabled = i.Reranker != nil
+	status.RerankCandidates = i.RerankCandidates
+	status.RerankMinScore = i.RerankMinScore
+	status.RerankNoMatchScore = i.RerankNoMatchScore
+	status.RerankConfidenceScore = i.RerankConfidenceScore
+	status.RerankFailurePolicy = i.RerankFailurePolicy
+	return status
+}
 func (i *Index) Reindex() {
 	select {
 	case i.refresh <- struct{}{}:
@@ -69,14 +105,22 @@ func (i *Index) Refresh(ctx context.Context, b *Backend) {
 	defer func() { i.mu.Lock(); i.status.Refreshing = false; i.status.Error = errText; i.mu.Unlock() }()
 	var catalog Catalog
 	if err := b.Request(ctx, "GET", "/internal/omni/catalog", "", "", "", nil, &catalog); err != nil {
+		i.catalogLog.report("catalog_refresh", err)
 		errText = "Published catalog unavailable"
 		return
 	}
+	i.catalogLog.report("catalog_refresh", nil)
 	if len(catalog.Documents) > 100000 {
+		i.refreshLog.report("index_refresh", &embeddingError{reason: "catalog_limit_exceeded"}, "documents", len(catalog.Documents))
 		errText = "Catalog exceeds 100000 documents"
 		return
 	}
+	profile := embeddingProfile(i.Embedder)
 	i.mu.RLock()
+	oldProfile, dimension := i.status.EmbeddingProfile, i.status.Dimensions
+	if oldProfile != profile {
+		dimension = expectedDimensions(i.Embedder)
+	}
 	old := make(map[string]entry, len(i.entries))
 	for _, e := range i.entries {
 		old[e.Ref] = e
@@ -85,8 +129,8 @@ func (i *Index) Refresh(ctx context.Context, b *Backend) {
 	next := make([]entry, 0, len(catalog.Documents))
 	pending := []int{}
 	for _, d := range catalog.Documents {
-		e := entry{Document: d, Hash: d.Hash(), SearchText: " " + strings.Join(terms(d.Text()), " ") + " "}
-		if prev, ok := old[d.Ref]; ok && prev.Hash == e.Hash {
+		e := prepareEntry(d)
+		if prev, ok := old[d.Ref]; ok && prev.Hash == e.Hash && oldProfile == profile {
 			e.Vector = prev.Vector
 		}
 		next = append(next, e)
@@ -98,16 +142,28 @@ func (i *Index) Refresh(ctx context.Context, b *Backend) {
 		end := min(start+32, len(pending))
 		texts := []string{}
 		for _, j := range pending[start:end] {
-			texts = append(texts, next[j].Text())
+			texts = append(texts, documentText(next[j].Document, i.Embedder))
 		}
+		started := time.Now()
 		vectors, err := i.Embedder.Embed(ctx, texts)
-		if err != nil || len(vectors) != len(texts) {
+		if err == nil {
+			validatedDimension, validationErr := validateVectors(vectors, len(texts), dimension)
+			err = validationErr
+			if err == nil {
+				dimension = validatedDimension
+			}
+		}
+		if err != nil {
+			i.refreshLog.report("index_refresh", err, "batch_offset", start, "batch_size", len(texts), "pending_documents", len(pending), "documents", len(next), "elapsed_ms", time.Since(started).Milliseconds(), "fallback", "keyword")
 			errText = "Embedding refresh failed; keyword search remains available"
 			break
 		}
 		for n, j := range pending[start:end] {
 			next[j].Vector = vectors[n]
 		}
+	}
+	if errText == "" {
+		i.refreshLog.report("index_refresh", nil, "documents", len(next))
 	}
 	mode := "keyword"
 	if i.Embedder != nil {
@@ -116,9 +172,15 @@ func (i *Index) Refresh(ctx context.Context, b *Backend) {
 			mode = "hybrid-degraded"
 		}
 	}
+	embedded := 0
+	for _, e := range next {
+		if len(e.Vector) > 0 {
+			embedded++
+		}
+	}
 	i.mu.Lock()
 	i.entries = next
-	i.status = IndexStatus{Ready: true, Mode: mode, Documents: len(next), Revision: catalog.Revision, UpdatedAt: time.Now(), Refreshing: true}
+	i.status = IndexStatus{Ready: true, Mode: mode, Documents: len(next), Revision: catalog.Revision, UpdatedAt: time.Now(), Refreshing: true, EmbeddedDocuments: embedded, Dimensions: dimension, EmbeddingProfile: profile}
 	i.mu.Unlock()
 }
 
@@ -128,7 +190,7 @@ type Hit struct {
 }
 
 func terms(s string) []string {
-	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	return strings.FieldsFunc(strings.ToLower(identifierWords(s)), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 func cosine(a, b []float32) float64 {
 	if len(a) == 0 || len(a) != len(b) {
@@ -158,7 +220,7 @@ func (i *Index) SearchServers(ctx context.Context, access Access, query, server,
 // Retain only the best K matches; memory per query does not grow with catalog size.
 func (i *Index) search(ctx context.Context, access Access, query, server, project string, limit int, groupServers bool) ([]Hit, string, error) {
 	i.mu.RLock()
-	entries, ready := i.entries, i.status.Ready
+	entries, ready, dimension, profile := i.entries, i.status.Ready, i.status.Dimensions, i.status.EmbeddingProfile
 	i.mu.RUnlock()
 	if !ready {
 		return nil, "", &HTTPError{503}
@@ -166,18 +228,70 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 	if limit < 1 || limit > 50 {
 		return nil, "", &HTTPError{400}
 	}
+	resultLimit, resultServers := limit, groupServers
+	if i.Reranker != nil {
+		candidates := i.RerankCandidates
+		if candidates <= 0 {
+			candidates = 20
+		}
+		limit = min(100, max(limit, candidates))
+		groupServers = false // Rerank tool candidates before collapsing server results.
+	}
 	var vector []float32
 	mode := "keyword"
+	eligible, embedded := 0, 0
 	if i.Embedder != nil {
-		v, err := i.Embedder.Embed(ctx, []string{query})
-		if err == nil && len(v) == 1 {
-			vector = v[0]
-			mode = "hybrid"
-		} else {
-			mode = "keyword-fallback"
+		for n, e := range entries {
+			if n%256 == 0 && ctx.Err() != nil {
+				return nil, "", ctx.Err()
+			}
+			if access.Refs[e.Ref] != e.Hash || (server != "" && e.Server != server) || (project != "" && e.Project != project) {
+				continue
+			}
+			eligible++
+			if len(e.Vector) > 0 && (dimension == 0 || len(e.Vector) == dimension) {
+				embedded++
+			}
+		}
+	}
+	if i.Embedder != nil {
+		mode = "hybrid-degraded"
+		if eligible > 0 && embedded == eligible && profile == embeddingProfile(i.Embedder) {
+			started := time.Now()
+			embed := i.Embedder.Embed
+			if q, ok := i.Embedder.(interface {
+				EmbedQuery(context.Context, []string) ([][]float32, error)
+			}); ok {
+				embed = q.EmbedQuery
+			}
+			v, err := embed(ctx, []string{query})
+			if err == nil {
+				_, err = validateVectors(v, 1, dimension)
+			}
+			if err == nil {
+				i.searchLog.report("search_embedding", nil)
+				vector = v[0]
+				mode = "hybrid"
+			} else {
+				if !errors.Is(ctx.Err(), context.Canceled) {
+					i.searchLog.report("search_embedding", err, "elapsed_ms", time.Since(started).Milliseconds(), "fallback", "keyword")
+				}
+				mode = "keyword-fallback"
+			}
 		}
 	}
 	words := terms(query)
+	ranking := i.ranking
+	if ranking == "" {
+		ranking = defaultRanking
+	}
+	if ranking == "rrf" {
+		hits, err := rankFusion(ctx, entries, access, query, server, project, words, vector, limit, groupServers)
+		if err != nil {
+			return nil, mode, err
+		}
+		return i.refine(ctx, query, hits, resultLimit, resultServers, mode)
+	}
 	best := make(hitHeap, 0, limit)
 	offer := func(h Hit) {
 		if len(best) < limit {
@@ -188,6 +302,10 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 		}
 	}
 	var servers map[string]Hit
+	var serverCandidates map[string]hitHeap
+	if i.Reranker != nil && resultServers {
+		serverCandidates = map[string]hitHeap{}
+	}
 	if groupServers {
 		servers = map[string]Hit{}
 	}
@@ -198,25 +316,27 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 		if access.Refs[e.Ref] != e.Hash || (server != "" && e.Server != server) || (project != "" && e.Project != project) {
 			continue
 		}
-		lex := 0.0
-		for _, word := range words {
-			if strings.Contains(e.SearchText, " "+word+" ") {
-				lex++
-			}
+		lex := simpleLexical(e, words)
+		if ranking == "weighted" {
+			lex = fieldLexical(e, words)
 		}
-		if len(words) > 0 {
-			lex /= float64(len(words))
+		if len(vector) > 0 && positiveCosine(vector, e.Vector) < i.MinSimilarity {
+			continue
 		}
 		score := lex
 		if len(vector) > 0 && len(e.Vector) == len(vector) {
-			// Intent search is primarily semantic. Exact lexical tokens add a small
-			// signal without substring matches or common words dominating meaning.
-			score = 0.2*lex + 0.8*math.Max(0, cosine(vector, e.Vector))
+			score = 0.2*lex + 0.8*positiveCosine(vector, e.Vector)
 		}
 		if score <= 0 {
 			continue
 		}
 		h := Hit{Document: e.Document, Score: score}
+		if i.Reranker != nil && resultServers {
+			candidates := serverCandidates[e.Server]
+			offerBounded(&candidates, h, 3)
+			serverCandidates[e.Server] = candidates
+			continue
+		}
 		if groupServers {
 			prev, exists := servers[e.Server]
 			if !exists || better(h, prev) {
@@ -229,8 +349,11 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 	for _, h := range servers {
 		offer(h)
 	}
+	if i.Reranker != nil && resultServers {
+		best = hitHeap(balancedServerCandidates(serverCandidates, limit))
+	}
 	sort.Slice(best, func(a, b int) bool { return better(best[a], best[b]) })
-	return []Hit(best), mode, nil
+	return i.refine(ctx, query, []Hit(best), resultLimit, resultServers, mode)
 }
 func better(a, b Hit) bool {
 	if a.Score == b.Score {

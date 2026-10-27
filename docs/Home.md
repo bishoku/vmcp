@@ -40,6 +40,8 @@ before production use.
 
 - [Production deployment](PRODUCTION_DEPLOYMENT.md)
 - [Omni installation without Helm](Omni-MCP-Installation.md)
+- [Omni embedding models](Omni-MCP-Embedding.md)
+- [Omni reranking and calibration](Omni-MCP-Reranking.md)
 - [Security](Security.md)
 - [Network security](MCP_NETWORK_SECURITY.md)
 - [Upstream TLS](Upstream-TLS.md)

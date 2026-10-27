@@ -236,6 +236,11 @@ func run(log *slog.Logger) error {
 	if omniSecret != "" && len(omniSecret) < 32 {
 		return errors.New("VMCP_OMNI_SECRET must contain at least 32 characters")
 	}
+	omniAllowAnonymous, err := strconv.ParseBool(config.Env("VMCP_OMNI_ALLOW_ANONYMOUS", "false"))
+	if err != nil {
+		return errors.New("VMCP_OMNI_ALLOW_ANONYMOUS must be a boolean")
+	}
+	virtualHandler.OmniAllowAnonymous = omniAllowAnonymous
 	virtualHandler.RegisterOmni(mux, omniSecret)
 	defer virtualHandler.StopWorkers()
 

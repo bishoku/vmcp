@@ -316,3 +316,31 @@ credentials are mounted into Omni. Existing vMCPs remain unpublished after
 migration 34. Enable publication in the editor and retain existing runtime grants.
 See [Omni MCP](../../../docs/Omni-MCP.md) for behavior and
 [non-Helm setup](../../../docs/Omni-MCP-Installation.md) for the environment reference.
+
+Anonymous Omni access is opt-in: `omni.allowAnonymous: true` sets
+`VMCP_OMNI_ALLOW_ANONYMOUS=true` on DP and Omni. Only published vMCPs that allow
+anonymous runtime access become public. Defaults remain false; requires images
+v1.2.2 or later. See the
+[anonymous access guide](../../../docs/Omni-MCP-Installation.md#anonymous-published-servers).
+
+Embedding providers may be keyless: leave both `omni.embeddingKey.existingSecret`
+and `omni.embeddingKey.value` empty to omit the provider Authorization header.
+See [model requirements and keyless Helm examples](../../../docs/Omni-MCP-Embedding.md)
+for vector dimensions (1–4,096), API contract, batch/timeouts and model replacement.
+
+The discovery-quality update additionally supports `omni.embeddingDimensions`
+(0 learns; 1–4096 asserts, never resizes), `omni.embeddingRevision`,
+`omni.embeddingQueryPrefix`, `omni.embeddingDocumentPrefix`, and optional
+`omni.minSimilarity` (0 disables). `omni.embeddingTextFormat` defaults to
+`legacy-v1`; `tool-first-v1` is an opt-in evaluated representation. Configure prefixes only as required by the
+model and preserve trailing spaces. Calibrate a similarity floor rather than
+assuming a universal confidence threshold. See the embedding guide for rebuild,
+coverage and fallback semantics; these options require v1.2.2 or later.
+
+Optional `omni.rerank` configures a separate URL/model/key, timeout, candidate pool,
+score floor, failure policy and TLS verification switch. It defaults to disabled
+(empty URL). Provider keys may be empty for keyless on-prem services. For strict
+no-match behavior during outages choose `failurePolicy: closed`; fallback returns
+retrieval results with an explicit fallback search mode. See
+[rerank configuration/calibration](../../../docs/Omni-MCP-Reranking.md). Requires
+v1.2.2 or later.

@@ -44,14 +44,15 @@ type SnapshotProvider interface {
 
 // Handler serves /mcp/v1/virtual/{slug}.
 type Handler struct {
-	omniMu        sync.Mutex
-	omniPublished *omniPublishedCatalog
-	Metrics       *telemetry.Registry
-	Approval      *ApprovalPolicy
-	Snap          SnapshotProvider
-	Sessions      *Manager
-	Delivery      *delivery.Store
-	Log           *slog.Logger
+	OmniAllowAnonymous bool
+	omniMu             sync.Mutex
+	omniPublished      *omniPublishedCatalog
+	Metrics            *telemetry.Registry
+	Approval           *ApprovalPolicy
+	Snap               SnapshotProvider
+	Sessions           *Manager
+	Delivery           *delivery.Store
+	Log                *slog.Logger
 
 	// Audit receives one event per tool call and per denied request. Optional.
 	Audit audit.Recorder

@@ -402,7 +402,7 @@ export interface Team {canManage?:boolean;slug:string;name:string;issuer:string;
 export interface Project {slug:string;name:string;ownerTeam:string;version:number}
 export interface ToolGrant {canDecide?:boolean;virtualServer:string;upstream:string;tool:string;status:'pending'|'approved'|'rejected'|'revoked';reason:string;actor?:string;version:number}
 export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;description:string}
-export interface OmniStatus { configured:boolean; endpoint:string; index?:{ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
+export interface OmniStatus { configured:boolean; endpoint:string; index?:{rerankEnabled?:boolean;rerankNoMatchScore?:number;rerankConfidenceScore?:number;rerankCandidates?:number;rerankMinScore?:number;rerankFailurePolicy?:string;embeddedDocuments?:number;dimensions?:number;embeddingProfile?:string;ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
 export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
 export const api = {
   omniStatus: (signal?:AbortSignal) => request<OmniStatus>('GET','/omni',undefined,undefined,signal),

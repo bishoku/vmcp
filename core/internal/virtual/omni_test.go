@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/bishoku/vmcp/core/internal/agentauth"
+	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/testidp"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -167,6 +169,20 @@ func TestOmniOAuthIPAndStaleSnapshot(t *testing.T) {
 	if w := request(wrong, "10.2.3.4"); w.Code != 401 {
 		t.Fatalf("audience accepted: %d", w.Code)
 	}
+	h.OmniAllowAnonymous = true
+	snap.Bindings[0].Servers = map[string]bool{}
+	if w := request(token, "10.2.3.4"); w.Code != 200 {
+		t.Fatalf("public OAuth with unassigned binding: %d %s", w.Code, w.Body)
+	}
+	if len(snap.Bindings[0].Servers) != 0 {
+		t.Fatal("public auth mutated binding grants")
+	}
+	if w := request(token, "192.0.2.1"); w.Code != 403 {
+		t.Fatalf("public OAuth bypassed binding IP: %d", w.Code)
+	}
+	if w := request(wrong, "10.2.3.4"); w.Code != 401 {
+		t.Fatalf("public OAuth accepted wrong audience: %d", w.Code)
+	}
 	provider.stale.Store(true)
 	if w := request(token, "10.2.3.4"); w.Code != 503 {
 		t.Fatalf("stale authorization accepted: %d", w.Code)
@@ -219,5 +235,144 @@ func TestOmniDoesNotRevealAnotherAssignedProject(t *testing.T) {
 		if w.Code != 403 && w.Code != 404 {
 			t.Fatalf("hidden schema/invocation allowed: %s %d", name, w.Code)
 		}
+	}
+}
+
+type omniAuditCapture struct {
+	mu     sync.Mutex
+	events []audit.Event
+}
+
+func (c *omniAuditCapture) Record(e audit.Event) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.events = append(c.events, e)
+}
+
+func TestOmniAnonymousPublicationAndFreshAuthorization(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	rig := newRig(t)
+	h := rig.handler
+	defer h.Sessions.Close()
+	snap := h.Snap.Snapshot()
+	capture := &omniAuditCapture{}
+	h.Audit = capture
+	public := snap.VirtualServers["support"]
+	public.OmniEnabled = true
+	public.AuthRequired = false
+	snap.VirtualServers[public.Slug] = public
+	private := public
+	private.Slug = "private"
+	private.AuthRequired = true
+	snap.VirtualServers[private.Slug] = private
+	hidden := public
+	hidden.Slug = "hidden"
+	hidden.AuthRequired = true
+	snap.VirtualServers[hidden.Slug] = hidden
+	unpublished := public
+	unpublished.Slug = "unpublished"
+	unpublished.OmniEnabled = false
+	snap.VirtualServers[unpublished.Slug] = unpublished
+	expired := time.Now().Add(-time.Hour)
+	snap.AgentKeys = map[string]config.AgentKey{
+		string(store.HashKey("valid")):    {ID: "valid", Slug: "agent", Servers: map[string]bool{"private": true}},
+		string(store.HashKey("empty")):    {ID: "empty", Slug: "unassigned", Servers: map[string]bool{}},
+		string(store.HashKey("expired")):  {ID: "expired", Servers: map[string]bool{"private": true}, ExpiresAt: &expired},
+		string(store.HashKey("iplocked")): {ID: "iplocked", Servers: map[string]bool{"private": true}, Allowed: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}},
+	}
+	secret := strings.Repeat("x", 32)
+	mux := http.NewServeMux()
+	h.RegisterOmni(mux, secret)
+	dp := httptest.NewServer(mux)
+	defer dp.Close()
+	backend, _ := omni.NewBackend(dp.URL, secret)
+	index := omni.NewIndex(nil)
+	index.Refresh(context.Background(), backend)
+	app := &omni.Server{Backend: backend, Index: index}
+	gateway := app.Handler()
+	call := func(token, name string, args any) *httptest.ResponseRecorder {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+		r := httptest.NewRequest("POST", "/mcp/v1/omni", bytes.NewReader(b))
+		r.Header.Set("Content-Type", "application/json")
+		r.RemoteAddr = "192.0.2.1:1000"
+		if token != "" {
+			r.Header.Set("Authorization", token)
+		}
+		w := httptest.NewRecorder()
+		gateway.ServeHTTP(w, r)
+		return w
+	}
+	query := map[string]any{"query": "tables"}
+	if w := call("", "discover_tools", query); w.Code != 401 {
+		t.Fatalf("default allows anonymous: %d", w.Code)
+	}
+	app.AllowAnonymous = true
+	if w := call("", "discover_tools", query); w.Code != 401 {
+		t.Fatalf("DP opt-in bypassed: %d", w.Code)
+	}
+	h.OmniAllowAnonymous = true
+	for _, name := range []string{"discover_server", "discover_tools"} {
+		w := call("", name, query)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "support") || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "hidden") || strings.Contains(w.Body.String(), "unpublished") {
+			t.Fatalf("public discovery: %d %s", w.Code, w.Body)
+		}
+		w = call("Bearer valid", name, query)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "support") || !strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "hidden") {
+			t.Fatalf("union discovery: %d %s", w.Code, w.Body)
+		}
+	}
+	for _, token := range []string{"Bearer invalid", "Bearer expired", "Basic bad", "Bearer "} {
+		if w := call(token, "discover_tools", query); w.Code != 401 {
+			t.Fatalf("invalid credential downgraded: %q %d", token, w.Code)
+		}
+	}
+	if w := call("Bearer iplocked", "discover_tools", query); w.Code != 403 {
+		t.Fatalf("IP restrictions bypassed: %d", w.Code)
+	}
+	if w := call("Bearer empty", "discover_tools", query); w.Code != 200 || !strings.Contains(w.Body.String(), "support") || strings.Contains(w.Body.String(), "private") {
+		t.Fatalf("unassigned valid credential public access: %d %s", w.Code, w.Body)
+	}
+	for _, name := range []string{"get_tool_schema", "invoke_tool"} {
+		args := map[string]any{"tool_ref": omni.Ref("support", "tables"), "arguments": map[string]any{}}
+		w := call("", name, args)
+		if w.Code != 200 {
+			t.Fatalf("public %s: %d %s", name, w.Code, w.Body)
+		}
+		if name == "invoke_tool" && !strings.Contains(w.Body.String(), "pg:list_tables") {
+			t.Fatal(w.Body)
+		}
+		for _, server := range []string{"private", "hidden", "unpublished"} {
+			args["tool_ref"] = omni.Ref(server, "tables")
+			w = call("", name, args)
+			if w.Code != 401 && w.Code != 403 && w.Code != 404 {
+				t.Fatalf("protected %s %s: %d", server, name, w.Code)
+			}
+		}
+	}
+	capture.mu.Lock()
+	audited := false
+	for _, e := range capture.events {
+		if e.Action == "omni/tools/call" && e.ActorType == "anonymous" && e.ClientIP == "192.0.2.1" && e.VirtualServer == "support" && e.Tool == "tables" && e.Status == "ok" {
+			audited = true
+		}
+	}
+	capture.mu.Unlock()
+	if !audited {
+		t.Fatal("anonymous invocation audit missing identity/IP/target")
+	}
+	// Publication/auth changes are effective even while the search index is stale.
+	public.AuthRequired = true
+	snap.VirtualServers[public.Slug] = public
+	snap.Revision++
+	if w := call("", "discover_tools", query); w.Code != 403 {
+		t.Fatalf("anonymous access survives auth change: %d %s", w.Code, w.Body)
+	}
+	public.AuthRequired = false
+	public.OmniEnabled = false
+	snap.VirtualServers[public.Slug] = public
+	snap.Revision++
+	if w := call("", "discover_tools", query); w.Code != 403 {
+		t.Fatalf("anonymous access survives unpublish: %d", w.Code)
 	}
 }

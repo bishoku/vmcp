@@ -1,0 +1,3678 @@
+{
+  "candidates": 20,
+  "catalog_size": 1000,
+  "confidence_score": 0.1,
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "failure_policy": "closed",
+  "no_match_score": 0.0001,
+  "pre_rerank_acl_refreshes": 90,
+  "provider_timeout": "5s",
+  "queries": 90,
+  "rerank_model": "BAAI/bge-reranker-v2-m3-int8",
+  "results": [
+    {
+      "case": {
+        "language": "en",
+        "query": "Where is my purchase?",
+        "expected": [
+          "get_order"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.33573576464085003,
+          "rerank_score": 0
+        },
+        {
+          "name": "reserve_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2VydmVfc3RvY2siXQ",
+          "retrieval_score": 0.3339799783340924,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlciJd",
+          "retrieval_score": 0.29318004370724565,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.2742865674187088,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.2260803699041652,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1334.073
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Siparişim şu an hangi aşamada?",
+        "expected": [
+          "get_order"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": null,
+      "rerank_elapsed_ms": 1619.878
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Stop my order before it ships",
+        "expected": [
+          "cancel_order"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.9482873948784285,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.001311393632291904,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.0011831467758346703,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.0008931860056287386,
+          "rerank_score": 0
+        },
+        {
+          "name": "track_shipment",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYWNrX3NoaXBtZW50Il0",
+          "retrieval_score": 0.0006045094243471395,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1439.091
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Kargoya verilmeden alışverişimi iptal et",
+        "expected": [
+          "cancel_order"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.33427825745882866,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.023193062104967844,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.0012066500522764866,
+          "rerank_score": 0
+        },
+        {
+          "name": "update_address",
+          "tool_ref": "WyJidXNpbmVzcyIsInVwZGF0ZV9hZGRyZXNzIl0",
+          "retrieval_score": 9.286204271319798e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 5.676406683086577e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1619.349
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Give the customer their money back",
+        "expected": [
+          "refund_payment"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.18056161456361047,
+          "rerank_score": 0
+        },
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 0.0017998985141672015,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.0011231353522229552,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.0003337480770632488,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.00030784226040117335,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1521.204
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "İade edilen ürünün parasını geri yatır",
+        "expected": [
+          "refund_payment"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.4902493518130979,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.3056826557630703,
+          "rerank_score": 0
+        },
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 0.2760236203434395,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.24760665280179173,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.24521771669233786,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1443.411
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "When will my package arrive?",
+        "expected": [
+          "track_shipment"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "track_shipment",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYWNrX3NoaXBtZW50Il0",
+          "retrieval_score": 0.3048783893458343,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_shipments",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfc2hpcG1lbnRzIl0",
+          "retrieval_score": 0.29491913518129304,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_190",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xOTAiXQ",
+          "retrieval_score": 0.19195464433485848,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_390",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zOTAiXQ",
+          "retrieval_score": 0.18987674541361169,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_210",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8yMTAiXQ",
+          "retrieval_score": 0.189178098475328,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1429.956
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Paketim ne zaman teslim edilecek?",
+        "expected": [
+          "track_shipment"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "track_shipment",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYWNrX3NoaXBtZW50Il0",
+          "retrieval_score": 0.339763916420354,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_shipments",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfc2hpcG1lbnRzIl0",
+          "retrieval_score": 0.3394685437162139,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_390",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zOTAiXQ",
+          "retrieval_score": 0.21987479227749748,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_190",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xOTAiXQ",
+          "retrieval_score": 0.2169235130423417,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_210",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8yMTAiXQ",
+          "retrieval_score": 0.2152315828423611,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1456.199
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Issue a bill for this sale",
+        "expected": [
+          "create_invoice"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "create_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV9pbnZvaWNlIl0",
+          "retrieval_score": 0.5550004265296035,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.0022264132809089437,
+          "rerank_score": 0
+        },
+        {
+          "name": "preview_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsInByZXZpZXdfaW52b2ljZSJd",
+          "retrieval_score": 0.002171850397083253,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.00023406015964498253,
+          "rerank_score": 0
+        },
+        {
+          "name": "reserve_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2VydmVfc3RvY2siXQ",
+          "retrieval_score": 0.0001299182942633674,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1525.637
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu satışın faturasını kes",
+        "expected": [
+          "create_invoice"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.3695821128212624,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.3264331253923071,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.2830180622199848,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.2763487853649931,
+          "rerank_score": 0
+        },
+        {
+          "name": "delete_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImRlbGV0ZV9hY2NvdW50Il0",
+          "retrieval_score": 0.26679740255441947,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1547.305
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "How many units are left in storage?",
+        "expected": [
+          "check_stock"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.27071514830563165,
+          "rerank_score": 0
+        },
+        {
+          "name": "reserve_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2VydmVfc3RvY2siXQ",
+          "retrieval_score": 0.25932981081937423,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_462",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80NjIiXQ",
+          "retrieval_score": 0.20203580733788137,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_482",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80ODIiXQ",
+          "retrieval_score": 0.19947647769570945,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_922",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85MjIiXQ",
+          "retrieval_score": 0.19920401289237413,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1390.775
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Depoda bu üründen kaç tane kaldı?",
+        "expected": [
+          "check_stock"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "reserve_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2VydmVfc3RvY2siXQ",
+          "retrieval_score": 0.24770146115015412,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.23389900392100638,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_394",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zOTQiXQ",
+          "retrieval_score": 0.21151032852300006,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_344",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zNDQiXQ",
+          "retrieval_score": 0.2091509450535933,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_384",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zODQiXQ",
+          "retrieval_score": 0.20569364388704506,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1371.795
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Set aside two units for the buyer",
+        "expected": [
+          "reserve_stock"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "reserve_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2VydmVfc3RvY2siXQ",
+          "retrieval_score": 0.3831358945082479,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.33136762914791945,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.3296628675452343,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV9pbnZvaWNlIl0",
+          "retrieval_score": 0.3103968274726114,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.30293397106113756,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1506.154
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Müşteri için iki ürün ayır",
+        "expected": [
+          "reserve_stock"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.3512308292303513,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.3360053055933554,
+          "rerank_score": 0
+        },
+        {
+          "name": "reserve_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2VydmVfc3RvY2siXQ",
+          "retrieval_score": 0.33199542982481517,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV9pbnZvaWNlIl0",
+          "retrieval_score": 0.32305489201478294,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.31970164833235243,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1437.529
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Send future parcels to a different home",
+        "expected": [
+          "update_address"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "list_shipments",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfc2hpcG1lbnRzIl0",
+          "retrieval_score": 0.44832077510522944,
+          "rerank_score": 0
+        },
+        {
+          "name": "send_email",
+          "tool_ref": "WyJidXNpbmVzcyIsInNlbmRfZW1haWwiXQ",
+          "retrieval_score": 0.3786437243521442,
+          "rerank_score": 0
+        },
+        {
+          "name": "update_address",
+          "tool_ref": "WyJidXNpbmVzcyIsInVwZGF0ZV9hZGRyZXNzIl0",
+          "retrieval_score": 0.3760605765377059,
+          "rerank_score": 0
+        },
+        {
+          "name": "track_shipment",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYWNrX3NoaXBtZW50Il0",
+          "retrieval_score": 0.3524885003412278,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.30009692251005543,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1624.262
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Teslimat adresimi değiştir",
+        "expected": [
+          "update_address"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "update_address",
+          "tool_ref": "WyJidXNpbmVzcyIsInVwZGF0ZV9hZGRyZXNzIl0",
+          "retrieval_score": 0.4561602976631305,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 0.3473355803999456,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.2854344847158347,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.27003340749416005,
+          "rerank_score": 0
+        },
+        {
+          "name": "issue_certificate",
+          "tool_ref": "WyJidXNpbmVzcyIsImlzc3VlX2NlcnRpZmljYXRlIl0",
+          "retrieval_score": 0.23928133774658403,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1443.479
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "I forgot my login password",
+        "expected": [
+          "reset_password"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 0.384567672505426,
+          "rerank_score": 0
+        },
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.05161345622158083,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.04036973263694508,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.010276640220645535,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.009237476003355486,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1408.108
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Hesabıma giriş şifremi unuttum",
+        "expected": [
+          "reset_password"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 0.6493711292638213,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.021272559354646225,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.014261527680662245,
+          "rerank_score": 0
+        },
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.010723557130997891,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.0024047683876639416,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1665.849
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Block sign-in for this hacked user",
+        "expected": [
+          "lock_account"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.19327353569580255,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.0017413566287759847,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.00017655211104305305,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 5.017170536902604e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 4.451724381600912e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1709.458
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Ele geçirilen hesabın erişimini engelle",
+        "expected": [
+          "lock_account"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.32781755216325836,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.030108704846326877,
+          "rerank_score": 0
+        },
+        {
+          "name": "delete_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImRlbGV0ZV9hY2NvdW50Il0",
+          "retrieval_score": 0.00038492235922789504,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.00016612921187057213,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 0.00016469425856109466,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1478.981
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Report a problem to customer service",
+        "expected": [
+          "create_ticket"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.4338563203957849,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.42848836823595693,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.421965188512128,
+          "rerank_score": 0
+        },
+        {
+          "name": "send_email",
+          "tool_ref": "WyJidXNpbmVzcyIsInNlbmRfZW1haWwiXQ",
+          "retrieval_score": 0.4026010258295978,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.3976449725379021,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1560.634
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Müşteri hizmetlerine arıza kaydı aç",
+        "expected": [
+          "create_ticket"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.47479431140929185,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.4693472159591964,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.4674392950100905,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.45790929564947486,
+          "rerank_score": 0
+        },
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.4530970195397941,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1664.044
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Mark the support case as solved",
+        "expected": [
+          "close_ticket"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.32273440044040264,
+          "rerank_score": 0
+        },
+        {
+          "name": "archive_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImFyY2hpdmVfdGlja2V0Il0",
+          "retrieval_score": 0.2928057544163314,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_988",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85ODgiXQ",
+          "retrieval_score": 0.29161469618028896,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_928",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85MjgiXQ",
+          "retrieval_score": 0.28875765154292576,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_298",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8yOTgiXQ",
+          "retrieval_score": 0.2802737965353589,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1490.266
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Çözülen destek talebini kapat",
+        "expected": [
+          "close_ticket"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.27789844564126237,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.26561834945485935,
+          "rerank_score": 0
+        },
+        {
+          "name": "request_leave",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlcXVlc3RfbGVhdmUiXQ",
+          "retrieval_score": 0.23113260327686538,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.22000380247072826,
+          "rerank_score": 0
+        },
+        {
+          "name": "archive_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImFyY2hpdmVfdGlja2V0Il0",
+          "retrieval_score": 0.2138643062678217,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1411.061
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Show recent debits and credits",
+        "expected": [
+          "list_transactions"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 0.3670305024505224,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_980",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85ODAiXQ",
+          "retrieval_score": 0.36085145451250256,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_190",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xOTAiXQ",
+          "retrieval_score": 0.3549636075734228,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_780",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83ODAiXQ",
+          "retrieval_score": 0.35409724141185184,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_890",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84OTAiXQ",
+          "retrieval_score": 0.35366801771750767,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1379.545
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Hesabımdaki son para hareketlerini göster",
+        "expected": [
+          "list_transactions"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 0.22608765061412298,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 0.031983390926419476,
+          "rerank_score": 0
+        },
+        {
+          "name": "preview_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsInByZXZpZXdfaW52b2ljZSJd",
+          "retrieval_score": 0.0007125142301217354,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlciJd",
+          "retrieval_score": 0.00032434215063076614,
+          "rerank_score": 0
+        },
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 0.00015881011101286625,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1640.49
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Send money to another account",
+        "expected": [
+          "transfer_funds"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 0.5796030755138922,
+          "rerank_score": 0
+        },
+        {
+          "name": "send_email",
+          "tool_ref": "WyJidXNpbmVzcyIsInNlbmRfZW1haWwiXQ",
+          "retrieval_score": 0.007879371484091834,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.003334337271796647,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.001493625729567462,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 0.001204834849725247,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1531.803
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Başka bir hesaba para gönder",
+        "expected": [
+          "transfer_funds"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 0.24193249717044904,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.001099057162171002,
+          "rerank_score": 0
+        },
+        {
+          "name": "send_email",
+          "tool_ref": "WyJidXNpbmVzcyIsInNlbmRfZW1haWwiXQ",
+          "retrieval_score": 0.0007048018089555541,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 0.0005696377157739246,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 0.0005553735269574628,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1515.093
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "How much money do I have?",
+        "expected": [
+          "check_balance"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 0.12075072836810624,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.00177687861194016,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 8.437600099907328e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 5.0281582085310225e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 4.296378774958184e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1411.467
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Hesabımda ne kadar para var?",
+        "expected": [
+          "check_balance"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 0.2185252920519218,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.001176387220829736,
+          "rerank_score": 0
+        },
+        {
+          "name": "preview_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsInByZXZpZXdfaW52b2ljZSJd",
+          "retrieval_score": 0.00020149751833390116,
+          "rerank_score": 0
+        },
+        {
+          "name": "transfer_funds",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zZmVyX2Z1bmRzIl0",
+          "retrieval_score": 0.00015019859739905843,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 0.00013327315007431083,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1585.493
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Book a call with the team tomorrow",
+        "expected": [
+          "schedule_meeting"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.3941617978060339,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.2934548735548284,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.27903560683473666,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.2645728104615512,
+          "rerank_score": 0
+        },
+        {
+          "name": "preview_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsInByZXZpZXdfaW52b2ljZSJd",
+          "retrieval_score": 0.24842651005782923,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1524.528
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Yarın ekiple toplantı planla",
+        "expected": [
+          "schedule_meeting"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.3845979111746752,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.3441764772564391,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.27580137806130334,
+          "rerank_score": 0
+        },
+        {
+          "name": "summarize_document",
+          "tool_ref": "WyJidXNpbmVzcyIsInN1bW1hcml6ZV9kb2N1bWVudCJd",
+          "retrieval_score": 0.2088258432316198,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.19025700038610854,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1528.097
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Delete tomorrow's appointment",
+        "expected": [
+          "cancel_meeting"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.16814206947087232,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.0029039819507042253,
+          "rerank_score": 0
+        },
+        {
+          "name": "delete_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImRlbGV0ZV9hY2NvdW50Il0",
+          "retrieval_score": 0.0003795059300077126,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.000156124463442855,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.00012234141631623977,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1527.404
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Yarınki toplantıyı iptal et",
+        "expected": [
+          "cancel_meeting"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.4421494434431157,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.4012254853522037,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.2917981374183997,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.26294165813795695,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.25893082108904214,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1535.39
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Ask for a week off work",
+        "expected": [
+          "request_leave"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "request_leave",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlcXVlc3RfbGVhdmUiXQ",
+          "retrieval_score": 0.18553452113443925,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.0002313875107963279,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 8.195862741360251e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 8.056521640946373e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_job_openings",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfam9iX29wZW5pbmdzIl0",
+          "retrieval_score": 4.487570953801205e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1522.085
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bir haftalık yıllık izin talebi oluştur",
+        "expected": [
+          "request_leave"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "request_leave",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlcXVlc3RfbGVhdmUiXQ",
+          "retrieval_score": 0.33778048262122584,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.3236358246931223,
+          "rerank_score": 0
+        },
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.29718602578111647,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.2879684538049009,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_188",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xODgiXQ",
+          "retrieval_score": 0.28673634595711456,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1411.48
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Show my monthly wage breakdown",
+        "expected": [
+          "get_payslip"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "get_payslip",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9wYXlzbGlwIl0",
+          "retrieval_score": 0.24923601152739044,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_718",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83MTgiXQ",
+          "retrieval_score": 9.897692956030116e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_408",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80MDgiXQ",
+          "retrieval_score": 9.614210450369568e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_838",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MzgiXQ",
+          "retrieval_score": 9.599104389392641e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_808",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MDgiXQ",
+          "retrieval_score": 9.134788676819778e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1256.913
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu ayki maaş bordromu getir",
+        "expected": [
+          "get_payslip"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "get_payslip",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9wYXlzbGlwIl0",
+          "retrieval_score": 0.4101649233294419,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_378",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zNzgiXQ",
+          "retrieval_score": 0.2745376440661033,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_188",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xODgiXQ",
+          "retrieval_score": 0.27353674216625246,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_278",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8yNzgiXQ",
+          "retrieval_score": 0.2731572552132331,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_178",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xNzgiXQ",
+          "retrieval_score": 0.2719496598030046,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1293.209
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "What roles are you hiring for?",
+        "expected": [
+          "list_job_openings"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "list_job_openings",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfam9iX29wZW5pbmdzIl0",
+          "retrieval_score": 0.4226014015341995,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.2776214596122669,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_payslip",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9wYXlzbGlwIl0",
+          "retrieval_score": 0.2764328729581339,
+          "rerank_score": 0
+        },
+        {
+          "name": "request_leave",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlcXVlc3RfbGVhdmUiXQ",
+          "retrieval_score": 0.24583188203665926,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.23929478639193924,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1447.179
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Şirkette hangi pozisyonlar için işe alım var?",
+        "expected": [
+          "list_job_openings"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "list_job_openings",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfam9iX29wZW5pbmdzIl0",
+          "retrieval_score": 0.5652942908093077,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.0019143341511599302,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.0014381024525005055,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_payslip",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9wYXlzbGlwIl0",
+          "retrieval_score": 0.0011759687621035384,
+          "rerank_score": 0
+        },
+        {
+          "name": "summarize_document",
+          "tool_ref": "WyJidXNpbmVzcyIsInN1bW1hcml6ZV9kb2N1bWVudCJd",
+          "retrieval_score": 0.0008904600091279307,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1529.426
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Reboot the failing application",
+        "expected": [
+          "restart_service"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.23303396334148216,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.012610204675487818,
+          "rerank_score": 0
+        },
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.004393616995824553,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.00309910760357356,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 0.00025756941485596645,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1378.394
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Çalışmayan uygulama servisini yeniden başlat",
+        "expected": [
+          "restart_service"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.8976515794315119,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.07201939770626863,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.0005789613109720175,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.00027889672563618373,
+          "rerank_score": 0
+        },
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.00022262193723251425,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1402.156
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Find error messages from the application",
+        "expected": [
+          "read_service_logs"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.7964600506950215,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.002533604550601005,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.0004929302747511568,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.00033024873908978617,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 5.264193214604974e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1360.152
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Uygulamanın hata kayıtlarını ara",
+        "expected": [
+          "read_service_logs"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.8881186801429054,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_091",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8wOTEiXQ",
+          "retrieval_score": 0.0002991807583484963,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_991",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85OTEiXQ",
+          "retrieval_score": 0.0002689357914122752,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_911",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85MTEiXQ",
+          "retrieval_score": 0.00023620381718901623,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_831",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MzEiXQ",
+          "retrieval_score": 0.00021698096286568695,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1310.438
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "How busy is this machine's processor?",
+        "expected": [
+          "get_cpu_usage"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "get_cpu_usage",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9jcHVfdXNhZ2UiXQ",
+          "retrieval_score": 0.44482630096724274,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.2043849060056894,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_stock",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX3N0b2NrIl0",
+          "retrieval_score": 0.2015581467759019,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.19463501487063012,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.17496165538181405,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1409.826
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Sunucunun işlemcisi ne kadar kullanılıyor?",
+        "expected": [
+          "get_cpu_usage"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "get_cpu_usage",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9jcHVfdXNhZ2UiXQ",
+          "retrieval_score": 0.44614409199865906,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_981",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85ODEiXQ",
+          "retrieval_score": 0.2154573794404202,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_884",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84ODQiXQ",
+          "retrieval_score": 0.21456597163724078,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_881",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84ODEiXQ",
+          "retrieval_score": 0.20821967895381857,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_481",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80ODEiXQ",
+          "retrieval_score": 0.20686987034240123,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1421.104
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Save a recovery copy of our database",
+        "expected": [
+          "backup_database"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.6158889946106982,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.1248101843423087,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_backups",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfYmFja3VwcyJd",
+          "retrieval_score": 0.002512298643778947,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 0.00046063071301399053,
+          "rerank_score": 0
+        },
+        {
+          "name": "archive_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImFyY2hpdmVfdGlja2V0Il0",
+          "retrieval_score": 0.00044673525594138915,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1345.726
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Veritabanının yedeğini al",
+        "expected": [
+          "backup_database"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": null,
+      "rerank_elapsed_ms": 1091.321
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Recover the data from yesterday's backup",
+        "expected": [
+          "restore_database"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.44880070501683755,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.014329438212278113,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_backups",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfYmFja3VwcyJd",
+          "retrieval_score": 0.0012490876012459884,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_041",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8wNDEiXQ",
+          "retrieval_score": 0.0004415154638740691,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_071",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8wNzEiXQ",
+          "retrieval_score": 0.00026040557574452444,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1378.117
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Dünkü yedekten veritabanını geri yükle",
+        "expected": [
+          "restore_database"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.430466815226368,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.3902088139024821,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_backups",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfYmFja3VwcyJd",
+          "retrieval_score": 0.37392173824945574,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_301",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zMDEiXQ",
+          "retrieval_score": 0.3355108397420916,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_701",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83MDEiXQ",
+          "retrieval_score": 0.3345975461636287,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1439.16
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Generate an HTTPS certificate",
+        "expected": [
+          "issue_certificate"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "issue_certificate",
+          "tool_ref": "WyJidXNpbmVzcyIsImlzc3VlX2NlcnRpZmljYXRlIl0",
+          "retrieval_score": 0.23673234322413444,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.00027294352500591954,
+          "rerank_score": 0
+        },
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 7.51476008677857e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV9pbnZvaWNlIl0",
+          "retrieval_score": 4.5628162505231444e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 4.3474023261215874e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1361.761
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Alan adı için güvenli bağlantı sertifikası üret",
+        "expected": [
+          "issue_certificate"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "issue_certificate",
+          "tool_ref": "WyJidXNpbmVzcyIsImlzc3VlX2NlcnRpZmljYXRlIl0",
+          "retrieval_score": 0.4487664347642646,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_980",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85ODAiXQ",
+          "retrieval_score": 0.30926873792848886,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_930",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85MzAiXQ",
+          "retrieval_score": 0.3061144618723988,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_920",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85MjAiXQ",
+          "retrieval_score": 0.3053074396703796,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_990",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85OTAiXQ",
+          "retrieval_score": 0.3017531021740499,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1399.4
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Disable the compromised access key",
+        "expected": [
+          "revoke_api_key"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.8634308616477375,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.04462848917001034,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.0002730158780262026,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.00010287947871129317,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 7.671767267424041e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1379.461
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Sızdırılan API anahtarını iptal et",
+        "expected": [
+          "revoke_api_key"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.8791568363921453,
+          "rerank_score": 0
+        },
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.0001729311428712039,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 5.8270312886344664e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 5.019333600021853e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "reset_password",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2V0X3Bhc3N3b3JkIl0",
+          "retrieval_score": 4.219583591485073e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1441.868
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Turn this paragraph into French",
+        "expected": [
+          "translate_text"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "translate_text",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zbGF0ZV90ZXh0Il0",
+          "retrieval_score": 0.18780776892763115,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_742",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83NDIiXQ",
+          "retrieval_score": 0.12845907717040336,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_712",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83MTIiXQ",
+          "retrieval_score": 0.1207757617637758,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_442",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80NDIiXQ",
+          "retrieval_score": 0.12060663164367971,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_142",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xNDIiXQ",
+          "retrieval_score": 0.11775700174629365,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1282.985
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu metni Fransızcaya çevir",
+        "expected": [
+          "translate_text"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "translate_text",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYW5zbGF0ZV90ZXh0Il0",
+          "retrieval_score": 0.26992108348188276,
+          "rerank_score": 0
+        },
+        {
+          "name": "summarize_document",
+          "tool_ref": "WyJidXNpbmVzcyIsInN1bW1hcml6ZV9kb2N1bWVudCJd",
+          "retrieval_score": 0.1167517847385876,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_718",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83MTgiXQ",
+          "retrieval_score": 0.10262017715652239,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_712",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83MTIiXQ",
+          "retrieval_score": 0.1007167670283316,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_742",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83NDIiXQ",
+          "retrieval_score": 0.09636931463625725,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1305.696
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Give me the main points of this report",
+        "expected": [
+          "summarize_document"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "dataset_436",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80MzYiXQ",
+          "retrieval_score": 0.33669078709026007,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_434",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80MzQiXQ",
+          "retrieval_score": 0.3365344211026794,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_884",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84ODQiXQ",
+          "retrieval_score": 0.32982528417323786,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_454",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80NTQiXQ",
+          "retrieval_score": 0.3293276734990038,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_834",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MzQiXQ",
+          "retrieval_score": 0.328225091239364,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1090.18
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu uzun raporu kısaca özetle",
+        "expected": [
+          "summarize_document"
+        ],
+        "kind": "positive"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "summarize_document",
+          "tool_ref": "WyJidXNpbmVzcyIsInN1bW1hcml6ZV9kb2N1bWVudCJd",
+          "retrieval_score": 0.6474108990154749,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_147",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xNDciXQ",
+          "retrieval_score": 0.00019437525852604489,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_176",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xNzYiXQ",
+          "retrieval_score": 0.00018087867393041902,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_286",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8yODYiXQ",
+          "retrieval_score": 0.0001470172147651272,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_886",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84ODYiXQ",
+          "retrieval_score": 0.00014057887505023505,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1392.404
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Mail the customer a confirmation",
+        "expected": [
+          "send_email"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.4541217142753432,
+          "rerank_score": 0
+        },
+        {
+          "name": "send_email",
+          "tool_ref": "WyJidXNpbmVzcyIsInNlbmRfZW1haWwiXQ",
+          "retrieval_score": 0.4476905742490482,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.445547615053999,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.4161884353622545,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.4016337708924109,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1491.314
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Müşteriye onay e-postası gönder",
+        "expected": [
+          "send_email"
+        ],
+        "kind": "positive"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "send_email",
+          "tool_ref": "WyJidXNpbmVzcyIsInNlbmRfZW1haWwiXQ",
+          "retrieval_score": 0.47121844694014414,
+          "rerank_score": 0
+        },
+        {
+          "name": "request_leave",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlcXVlc3RfbGVhdmUiXQ",
+          "retrieval_score": 0.37887648641601096,
+          "rerank_score": 0
+        },
+        {
+          "name": "issue_certificate",
+          "tool_ref": "WyJidXNpbmVzcyIsImlzc3VlX2NlcnRpZmljYXRlIl0",
+          "retrieval_score": 0.35684971130277704,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.3520156768254734,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.33685197611860795,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1574.728
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Calculate an invoice without issuing it",
+        "expected": [
+          "preview_invoice"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "preview_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsInByZXZpZXdfaW52b2ljZSJd",
+          "retrieval_score": 0.9610193744905591,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV9pbnZvaWNlIl0",
+          "retrieval_score": 0.003304604577150578,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.00013433058006305078,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 7.933759975972949e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 7.048181808348395e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1661.603
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Faturayı kesmeden tutarını önizle",
+        "expected": [
+          "preview_invoice"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "check_balance",
+          "tool_ref": "WyJidXNpbmVzcyIsImNoZWNrX2JhbGFuY2UiXQ",
+          "retrieval_score": 0.32376113926315564,
+          "rerank_score": 0
+        },
+        {
+          "name": "preview_invoice",
+          "tool_ref": "WyJidXNpbmVzcyIsInByZXZpZXdfaW52b2ljZSJd",
+          "retrieval_score": 0.30949208806191747,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.3043666265781633,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.29445885906516217,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.2910276310325942,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1643.876
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Stop the refund request",
+        "expected": [
+          "cancel_refund"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.9589822954003585,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.0015754565868672488,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.0012425244594572568,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.0003489429059264511,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.0002682842792262399,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1312.316
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Para iadesi talebini iptal et",
+        "expected": [
+          "cancel_refund"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.6478842549059334,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.0007997989040529507,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.00022369729546048276,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.00014604809297033883,
+          "rerank_score": 0
+        },
+        {
+          "name": "revoke_api_key",
+          "tool_ref": "WyJidXNpbmVzcyIsInJldm9rZV9hcGlfa2V5Il0",
+          "retrieval_score": 0.00010007392997064012,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1505.219
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Archive this resolved support ticket",
+        "expected": [
+          "archive_ticket"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "archive_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImFyY2hpdmVfdGlja2V0Il0",
+          "retrieval_score": 0.9952000837711849,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.02630863942235245,
+          "rerank_score": 0
+        },
+        {
+          "name": "create_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNyZWF0ZV90aWNrZXQiXQ",
+          "retrieval_score": 0.0024212535565707695,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_811",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MTEiXQ",
+          "retrieval_score": 0.00010495561027121319,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_621",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF82MjEiXQ",
+          "retrieval_score": 9.994003815669888e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1354.052
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Çözülmüş destek kaydını arşive kaldır",
+        "expected": [
+          "archive_ticket"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "archive_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImFyY2hpdmVfdGlja2V0Il0",
+          "retrieval_score": 0.6506995042639822,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.00012154872675129022,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.00010376690136553581,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_801",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MDEiXQ",
+          "retrieval_score": 7.609130365544932e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_791",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83OTEiXQ",
+          "retrieval_score": 5.7282890677467684e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1395.374
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "List all parcels dispatched yesterday",
+        "expected": [
+          "list_shipments"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "list_shipments",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfc2hpcG1lbnRzIl0",
+          "retrieval_score": 0.3867954739697348,
+          "rerank_score": 0
+        },
+        {
+          "name": "track_shipment",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYWNrX3NoaXBtZW50Il0",
+          "retrieval_score": 0.010437799272661578,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 0.0015724285330212169,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_170",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8xNzAiXQ",
+          "retrieval_score": 0.0006871026139007926,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_070",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8wNzAiXQ",
+          "retrieval_score": 0.0006518177702884376,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1475.944
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Dün gönderilen tüm kargoları listele",
+        "expected": [
+          "list_shipments"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "list_shipments",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3Rfc2hpcG1lbnRzIl0",
+          "retrieval_score": 0.3844988702159505,
+          "rerank_score": 0
+        },
+        {
+          "name": "track_shipment",
+          "tool_ref": "WyJidXNpbmVzcyIsInRyYWNrX3NoaXBtZW50Il0",
+          "retrieval_score": 0.3582611912823973,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_710",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83MTAiXQ",
+          "retrieval_score": 0.2707116015655831,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_510",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF81MTAiXQ",
+          "retrieval_score": 0.2689886213922747,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_310",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zMTAiXQ",
+          "retrieval_score": 0.2668959327699047,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1501.631
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Download my purchase receipt",
+        "expected": [
+          "get_order_receipt"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "get_order_receipt",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlcl9yZWNlaXB0Il0",
+          "retrieval_score": 0.980910584091469,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9vcmRlciJd",
+          "retrieval_score": 0.20281631142819243,
+          "rerank_score": 0
+        },
+        {
+          "name": "get_payslip",
+          "tool_ref": "WyJidXNpbmVzcyIsImdldF9wYXlzbGlwIl0",
+          "retrieval_score": 0.002299937369502117,
+          "rerank_score": 0
+        },
+        {
+          "name": "list_transactions",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfdHJhbnNhY3Rpb25zIl0",
+          "retrieval_score": 0.0022333325647892303,
+          "rerank_score": 0
+        },
+        {
+          "name": "archive_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImFyY2hpdmVfdGlja2V0Il0",
+          "retrieval_score": 0.001855266514014,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1537.655
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Siparişimin makbuzunu indir",
+        "expected": [
+          "get_order_receipt"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "delete_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImRlbGV0ZV9hY2NvdW50Il0",
+          "retrieval_score": 0.33510127200179207,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.3333954389928412,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.3236874806335891,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.3236410012029157,
+          "rerank_score": 0
+        },
+        {
+          "name": "refund_payment",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlZnVuZF9wYXltZW50Il0",
+          "retrieval_score": 0.31925000698965617,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1597.091
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Pause the application temporarily",
+        "expected": [
+          "pause_service"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.9870132554239964,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.02512352395813736,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.001145130935224533,
+          "rerank_score": 0
+        },
+        {
+          "name": "read_service_logs",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlYWRfc2VydmljZV9sb2dzIl0",
+          "retrieval_score": 0.0008435006751067601,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.00041969029612994914,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1482.454
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Uygulamayı geçici olarak duraklat",
+        "expected": [
+          "pause_service"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.9488104407911302,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.017590622840075402,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.0001256058759135459,
+          "rerank_score": 0
+        },
+        {
+          "name": "request_leave",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlcXVlc3RfbGVhdmUiXQ",
+          "retrieval_score": 9.041599804384926e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 3.319089071518667e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1377.998
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Permanently erase this customer account",
+        "expected": [
+          "delete_account"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "delete_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImRlbGV0ZV9hY2NvdW50Il0",
+          "retrieval_score": 0.965029124282173,
+          "rerank_score": 0
+        },
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.0039105659697822055,
+          "rerank_score": 0
+        },
+        {
+          "name": "restart_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RhcnRfc2VydmljZSJd",
+          "retrieval_score": 0.0008183534331821009,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.0006647557688727434,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.0003664890892256817,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1413.046
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Müşteri hesabını kalıcı olarak sil",
+        "expected": [
+          "delete_account"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "delete_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImRlbGV0ZV9hY2NvdW50Il0",
+          "retrieval_score": 0.9383501119914823,
+          "rerank_score": 0
+        },
+        {
+          "name": "lock_account",
+          "tool_ref": "WyJidXNpbmVzcyIsImxvY2tfYWNjb3VudCJd",
+          "retrieval_score": 0.0012566491228395967,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.00045231737081395527,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.0002851351901561669,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.00023304562489611215,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1372.864
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Cancel the pending bank transfer",
+        "expected": [
+          "cancel_transfer"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.9817144669921364,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.5105028421562656,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.004995954070779532,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.0019286419824776765,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.0017064200861549117,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1360.737
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bekleyen banka havalesini iptal et",
+        "expected": [
+          "cancel_transfer"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 0.1279301407724258,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_refund",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9yZWZ1bmQiXQ",
+          "retrieval_score": 0.03493115763772989,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_order",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9vcmRlciJd",
+          "retrieval_score": 0.0013977627551701908,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 0.000658278530205216,
+          "rerank_score": 0
+        },
+        {
+          "name": "pause_service",
+          "tool_ref": "WyJidXNpbmVzcyIsInBhdXNlX3NlcnZpY2UiXQ",
+          "retrieval_score": 0.0003001120726450631,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1573.747
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Show the available database backup copies",
+        "expected": [
+          "list_backups"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "list_backups",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfYmFja3VwcyJd",
+          "retrieval_score": 0.8486416724757203,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.32430812009560284,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.020765082966594482,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_901",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF85MDEiXQ",
+          "retrieval_score": 3.340357599949894e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_740",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83NDAiXQ",
+          "retrieval_score": 3.2231654507890373e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1346.147
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Mevcut veritabanı yedeklerini listele",
+        "expected": [
+          "list_backups"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "validation",
+      "candidates": [
+        {
+          "name": "list_backups",
+          "tool_ref": "WyJidXNpbmVzcyIsImxpc3RfYmFja3VwcyJd",
+          "retrieval_score": 0.19430957703820428,
+          "rerank_score": 0
+        },
+        {
+          "name": "backup_database",
+          "tool_ref": "WyJidXNpbmVzcyIsImJhY2t1cF9kYXRhYmFzZSJd",
+          "retrieval_score": 0.0013172319196988924,
+          "rerank_score": 0
+        },
+        {
+          "name": "restore_database",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc3RvcmVfZGF0YWJhc2UiXQ",
+          "retrieval_score": 0.0005560891409800503,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_411",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF80MTEiXQ",
+          "retrieval_score": 1.91940622852755e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_741",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF83NDEiXQ",
+          "retrieval_score": 1.8410733194606392e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1383.149
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Move the meeting to next week",
+        "expected": [
+          "reschedule_meeting"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.5939474446796825,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.0019167190131808291,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 0.0008378185088988132,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_806",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF84MDYiXQ",
+          "retrieval_score": 1.6767747683680594e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "dataset_386",
+          "tool_ref": "WyJvcGVyYXRpb25zIiwiZGF0YXNldF8zODYiXQ",
+          "retrieval_score": 1.6748282315483724e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1373.442
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Toplantıyı iptal etmeden gelecek haftaya taşı",
+        "expected": [
+          "reschedule_meeting"
+        ],
+        "kind": "near-neighbor"
+      },
+      "split": "calibration",
+      "candidates": [
+        {
+          "name": "reschedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInJlc2NoZWR1bGVfbWVldGluZyJd",
+          "retrieval_score": 0.38667823980468347,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF9tZWV0aW5nIl0",
+          "retrieval_score": 0.0017878047602050721,
+          "rerank_score": 0
+        },
+        {
+          "name": "schedule_meeting",
+          "tool_ref": "WyJidXNpbmVzcyIsInNjaGVkdWxlX21lZXRpbmciXQ",
+          "retrieval_score": 8.042957777463753e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "cancel_transfer",
+          "tool_ref": "WyJidXNpbmVzcyIsImNhbmNlbF90cmFuc2ZlciJd",
+          "retrieval_score": 2.536317948056176e-05,
+          "rerank_score": 0
+        },
+        {
+          "name": "close_ticket",
+          "tool_ref": "WyJidXNpbmVzcyIsImNsb3NlX3RpY2tldCJd",
+          "retrieval_score": 1.9410479637983958e-05,
+          "rerank_score": 0
+        }
+      ],
+      "rerank_elapsed_ms": 1631.799
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Forecast the rainfall in my city tomorrow",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "calibration",
+      "candidates": null,
+      "rerank_elapsed_ms": 1204.485
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Yarın şehrimde yağmur yağacak mı",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "calibration",
+      "candidates": null,
+      "rerank_elapsed_ms": 1124.61
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Identify the plant species in this photograph",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "validation",
+      "candidates": null,
+      "rerank_elapsed_ms": 1155.247
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu fotoğraftaki bitkinin türünü belirle",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "validation",
+      "candidates": null,
+      "rerank_elapsed_ms": 1146.948
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Compose an orchestral melody in D minor",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "calibration",
+      "candidates": null,
+      "rerank_elapsed_ms": 1465.583
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Re minör bir orkestra melodisi bestele",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "calibration",
+      "candidates": null,
+      "rerank_elapsed_ms": 1166.83
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Solve this differential equation symbolically",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "validation",
+      "candidates": null,
+      "rerank_elapsed_ms": 1154.547
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu diferansiyel denklemi sembolik olarak çöz",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "validation",
+      "candidates": null,
+      "rerank_elapsed_ms": 1259.266
+    },
+    {
+      "case": {
+        "language": "en",
+        "query": "Estimate the nutritional calories of this meal",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "calibration",
+      "candidates": null,
+      "rerank_elapsed_ms": 1363.597
+    },
+    {
+      "case": {
+        "language": "tr",
+        "query": "Bu yemeğin besin kalorisini hesapla",
+        "expected": [],
+        "kind": "out-of-catalog"
+      },
+      "split": "calibration",
+      "candidates": null,
+      "rerank_elapsed_ms": 1206.141
+    }
+  ],
+  "scope": "Live Index.Search + embedding + authorized rerank + query-level no-match and confidence guard on known synthetic development data. In-memory fresh-ACL callback; not a Kubernetes/100 TPS acceptance.",
+  "search_latency_ms": {
+    "p50": 1421.104,
+    "p95": 1643.876,
+    "p99": 1709.458
+  },
+  "search_modes": {
+    "hybrid-rerank-uncertain": 34,
+    "hybrid-reranked": 44,
+    "hybrid-reranked-no-match": 12
+  },
+  "summary": {
+    "all": {
+      "en": {
+        "queries": 40,
+        "hit1": 34,
+        "hit5": 39,
+        "mrr_at_5": 0.9041666666666666,
+        "false_positive_queries": 0,
+        "empty_queries": 0
+      },
+      "negative": {
+        "queries": 10,
+        "hit1": 0,
+        "hit5": 0,
+        "mrr_at_5": 0,
+        "false_positive_queries": 0,
+        "empty_queries": 10
+      },
+      "tr": {
+        "queries": 40,
+        "hit1": 31,
+        "hit5": 36,
+        "mrr_at_5": 0.8270833333333334,
+        "false_positive_queries": 0,
+        "empty_queries": 2
+      }
+    },
+    "calibration": {
+      "en": {
+        "queries": 20,
+        "hit1": 18,
+        "hit5": 20,
+        "mrr_at_5": 0.95,
+        "false_positive_queries": 0,
+        "empty_queries": 0
+      },
+      "negative": {
+        "queries": 6,
+        "hit1": 0,
+        "hit5": 0,
+        "mrr_at_5": 0,
+        "false_positive_queries": 0,
+        "empty_queries": 6
+      },
+      "tr": {
+        "queries": 20,
+        "hit1": 17,
+        "hit5": 19,
+        "mrr_at_5": 0.8791666666666668,
+        "false_positive_queries": 0,
+        "empty_queries": 0
+      }
+    },
+    "validation": {
+      "en": {
+        "queries": 20,
+        "hit1": 16,
+        "hit5": 19,
+        "mrr_at_5": 0.8583333333333332,
+        "false_positive_queries": 0,
+        "empty_queries": 0
+      },
+      "negative": {
+        "queries": 4,
+        "hit1": 0,
+        "hit5": 0,
+        "mrr_at_5": 0,
+        "false_positive_queries": 0,
+        "empty_queries": 4
+      },
+      "tr": {
+        "queries": 20,
+        "hit1": 14,
+        "hit5": 17,
+        "mrr_at_5": 0.775,
+        "false_positive_queries": 0,
+        "empty_queries": 2
+      }
+    }
+  },
+  "validation_non_regression_gate": true,
+  "corpus_sha256": "62408589f0a61b6403e9faa9e4fe2dde9f897d3d22dde3b228b7c8502fa75d5a",
+  "rerank_weights_sha256": "912fc1215c2dbff6499700534bd8d31253af01573861abbfc43afd1fab6cce5d",
+  "rerank_weights_bytes": 570727094,
+  "rerank_weights_source": "onnx-community/bge-reranker-v2-m3-ONNX/model_int8.onnx via fastembed 0.9.1"
+}
