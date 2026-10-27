@@ -258,5 +258,6 @@ func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oi
 		ViewerGroups: list("VMCP_OIDC_VIEWER_GROUPS"),
 		SessionKey:   key[:],
 		Sessions:     oidc.PostgresSessions{Pool: pool},
+		TeamLogin:    (&store.Store{Pool: pool}).Reader().CheckTeamLogin,
 	})
 }

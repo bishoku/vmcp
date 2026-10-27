@@ -1,0 +1,169 @@
+{
+  "poll-probe.json": {
+    "values": {
+      "budget_ms": 500,
+      "connection_attempts": 1,
+      "connection_setup_ms": 5.35,
+      "interval_ms": 250,
+      "max_ms": 271.976,
+      "p50_ms": 229.337,
+      "p95_ms": 265.176,
+      "reader": "acceptance-node-2",
+      "samples": 24,
+      "writer": "native host"
+    }
+  },
+  "postgres-cgroup-limits.json": {
+    "cpu.max": "max 100000\n",
+    "memory.max": "max\n",
+    "cpu.stat": "usage_usec 7943203\nuser_usec 3779313\nsystem_usec 4163889\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 0\n"
+  },
+  "postgres-effective-settings.json": [
+    {
+      "name": "autovacuum_analyze_scale_factor",
+      "setting": "0.02",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "autovacuum_naptime",
+      "setting": "10",
+      "unit": "s",
+      "source": "command line"
+    },
+    {
+      "name": "autovacuum_vacuum_scale_factor",
+      "setting": "0.05",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "autovacuum_work_mem",
+      "setting": "131072",
+      "unit": "kB",
+      "source": "command line"
+    },
+    {
+      "name": "checkpoint_completion_target",
+      "setting": "0.9",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "checkpoint_timeout",
+      "setting": "900",
+      "unit": "s",
+      "source": "command line"
+    },
+    {
+      "name": "effective_cache_size",
+      "setting": "524288",
+      "unit": "8kB",
+      "source": "command line"
+    },
+    {
+      "name": "fsync",
+      "setting": "on",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "full_page_writes",
+      "setting": "on",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "jit",
+      "setting": "off",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "maintenance_work_mem",
+      "setting": "131072",
+      "unit": "kB",
+      "source": "command line"
+    },
+    {
+      "name": "max_connections",
+      "setting": "256",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "max_wal_size",
+      "setting": "4096",
+      "unit": "MB",
+      "source": "command line"
+    },
+    {
+      "name": "min_wal_size",
+      "setting": "1024",
+      "unit": "MB",
+      "source": "command line"
+    },
+    {
+      "name": "shared_buffers",
+      "setting": "131072",
+      "unit": "8kB",
+      "source": "command line"
+    },
+    {
+      "name": "synchronous_commit",
+      "setting": "on",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "track_io_timing",
+      "setting": "on",
+      "unit": null,
+      "source": "command line"
+    },
+    {
+      "name": "wal_buffers",
+      "setting": "4096",
+      "unit": "8kB",
+      "source": "command line"
+    },
+    {
+      "name": "work_mem",
+      "setting": "4096",
+      "unit": "kB",
+      "source": "command line"
+    }
+  ],
+  "postgres-index-plans.txt": "autovacuum_analyze_scale_factor|0.02|\nautovacuum_naptime|10|s\nautovacuum_vacuum_scale_factor|0.05|\nautovacuum_work_mem|131072|kB\ncheckpoint_completion_target|0.9|\ncheckpoint_timeout|900|s\neffective_cache_size|524288|8kB\nfsync|on|\nfull_page_writes|on|\njit|off|\nmaintenance_work_mem|131072|kB\nmax_connections|256|\nmax_wal_size|4096|MB\nmin_wal_size|1024|MB\npg_stat_statements.track|all|\nshared_buffers|131072|8kB\nsynchronous_commit|on|\ntrack_io_timing|on|\nwal_buffers|4096|8kB\nwork_mem|4096|kB\nmcp_operations|mcp_operations_pkey|CREATE UNIQUE INDEX mcp_operations_pkey ON public.mcp_operations USING btree (id)\nmcp_operations|mcp_operation_request|CREATE UNIQUE INDEX mcp_operation_request ON public.mcp_operations USING btree (session_id, client_request_id) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_expiry|CREATE INDEX mcp_operation_expiry ON public.mcp_operations USING btree (lease_until) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_principal|CREATE INDEX mcp_operation_principal ON public.mcp_operations USING btree (principal_hash) WHERE (state = 'running'::text)\nmcp_operations|mcp_operation_cleanup|CREATE INDEX mcp_operation_cleanup ON public.mcp_operations USING btree (created_at) WHERE (state <> 'running'::text)\nmcp_streams|mcp_streams_pkey|CREATE UNIQUE INDEX mcp_streams_pkey ON public.mcp_streams USING btree (id)\nmcp_streams|mcp_get_stream|CREATE UNIQUE INDEX mcp_get_stream ON public.mcp_streams USING btree (session_id) WHERE ((operation_id IS NULL) AND (NOT closed))\nmcp_streams|mcp_stream_expiry|CREATE INDEX mcp_stream_expiry ON public.mcp_streams USING btree (expires_at)\nmcp_streams|mcp_stream_operation|CREATE INDEX mcp_stream_operation ON public.mcp_streams USING btree (operation_id) WHERE (operation_id IS NOT NULL)\nmcp_pending_requests|mcp_pending_requests_pkey|CREATE UNIQUE INDEX mcp_pending_requests_pkey ON public.mcp_pending_requests USING btree (id)\nmcp_pending_requests|mcp_pending_operation|CREATE INDEX mcp_pending_operation ON public.mcp_pending_requests USING btree (operation_id)\nLimit  (cost=0.42..8.44 rows=1 width=4) (actual time=0.058..0.058 rows=0 loops=1)\n  Buffers: shared hit=3\n  ->  Index Only Scan using mcp_stream_operation on mcp_streams  (cost=0.42..8.44 rows=1 width=4) (actual time=0.057..0.057 rows=0 loops=1)\n        Index Cond: (operation_id = '00000000-0000-4000-8000-000000000000'::uuid)\n        Heap Fetches: 0\n        Buffers: shared hit=3\nPlanning:\n  Buffers: shared hit=59\nPlanning Time: 0.457 ms\nExecution Time: 0.080 ms\nLimit  (cost=0.00..7.31 rows=200 width=16) (actual time=0.504..0.578 rows=200 loops=1)\n  Buffers: shared hit=109\n  ->  Seq Scan on mcp_operations  (cost=0.00..3617.34 rows=98906 width=16) (actual time=0.504..0.560 rows=200 loops=1)\n        Filter: ((state <> 'running'::text) AND (created_at < (now() - '00:15:00'::interval)))\n        Rows Removed by Filter: 1257\n        Buffers: shared hit=109\nPlanning:\n  Buffers: shared hit=63\nPlanning Time: 0.603 ms\nExecution Time: 0.598 ms",
+  "postgres-profile.json": {
+    "tuned": true,
+    "sampled_slow_plans": false,
+    "settings": {
+      "max_connections": "256",
+      "shared_preload_libraries": "pg_stat_statements",
+      "pg_stat_statements.track": "all",
+      "track_io_timing": "on",
+      "track_wal_io_timing": "on",
+      "shared_buffers": "1GB",
+      "effective_cache_size": "4GB",
+      "work_mem": "4MB",
+      "maintenance_work_mem": "128MB",
+      "autovacuum_work_mem": "128MB",
+      "wal_buffers": "32MB",
+      "min_wal_size": "1GB",
+      "max_wal_size": "4GB",
+      "checkpoint_timeout": "15min",
+      "checkpoint_completion_target": "0.9",
+      "autovacuum_naptime": "10s",
+      "autovacuum_vacuum_scale_factor": "0.05",
+      "autovacuum_analyze_scale_factor": "0.02",
+      "jit": "off",
+      "fsync": "on",
+      "synchronous_commit": "on",
+      "full_page_writes": "on"
+    },
+    "cpu_memory_limits": "none",
+    "data_storage": "ephemeral emptyDir on node filesystem; not production persistence"
+  }
+}

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "vMCP Control Plane API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -58,6 +58,223 @@
     }
   ],
   "paths": {
+    "/teams": {
+      "get": {
+        "operationId": "listTeams",
+        "summary": "List visible teams",
+        "responses": {
+          "200": {
+            "description": "Visible records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Team"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveTeam",
+        "summary": "Create or update a team; version required for existing records",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Team"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "403": {
+            "description": "Outside caller ownership scope"
+          },
+          "412": {
+            "description": "Stale version"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "summary": "List visible projects",
+        "responses": {
+          "200": {
+            "description": "Visible records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveProject",
+        "summary": "Create or update a project; version required for existing records",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Project"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "403": {
+            "description": "Outside caller ownership scope"
+          },
+          "412": {
+            "description": "Stale version"
+          }
+        }
+      }
+    },
+    "/tool-grants": {
+      "get": {
+        "operationId": "listToolGrants",
+        "summary": "List visible tool-grants",
+        "responses": {
+          "200": {
+            "description": "Visible records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ToolGrant"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveToolGrant",
+        "summary": "Create or update a tool grant; version required for existing records",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolGrant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "403": {
+            "description": "Outside caller ownership scope"
+          },
+          "412": {
+            "description": "Stale version"
+          }
+        }
+      }
+    },
+    "/tool-catalog": {
+      "get": {
+        "operationId": "listSharedToolMetadata",
+        "summary": "List tool metadata without upstream connection details",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tool metadata page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "upstream": {
+                            "type": "string"
+                          },
+                          "ownerTeam": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/audit-settings": {
       "get": {
         "tags": [
@@ -3306,6 +3523,108 @@
       }
     },
     "schemas": {
+      "Team": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "name",
+          "issuer",
+          "group"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "name": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "canManage": {
+            "type": "boolean",
+            "readOnly": true
+          },
+          "version": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "name"
+        ],
+        "properties": {
+          "slug": {
+            "$ref": "#/components/schemas/Slug"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerTeam": {
+            "type": "string",
+            "default": ""
+          },
+          "version": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      },
+      "ToolGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "virtualServer",
+          "upstream",
+          "tool",
+          "status"
+        ],
+        "properties": {
+          "virtualServer": {
+            "type": "string"
+          },
+          "upstream": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "revoked"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "actor": {
+            "type": "string",
+            "readOnly": true
+          },
+          "canDecide": {
+            "type": "boolean",
+            "readOnly": true
+          },
+          "version": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      },
       "AuditMaskRule": {
         "type": "object",
         "additionalProperties": false,
@@ -3639,6 +3958,10 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "ownerTeam": {
+            "type": "string",
+            "description": "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin."
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -3703,6 +4026,10 @@
       "UpstreamCreate": {
         "type": "object",
         "properties": {
+          "ownerTeam": {
+            "type": "string",
+            "description": "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin."
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -3778,6 +4105,10 @@
         "additionalProperties": false,
         "description": "Any subset of the writable fields. `headers` values may be `null` to delete one header.",
         "properties": {
+          "ownerTeam": {
+            "type": "string",
+            "description": "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin."
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -4061,6 +4392,10 @@
           "updatedAt"
         ],
         "properties": {
+          "ownerTeam": {
+            "type": "string",
+            "description": "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin."
+          },
           "slug": {
             "$ref": "#/components/schemas/Slug"
           },
@@ -4421,6 +4756,10 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
+          },
           "guidance": {
             "$ref": "#/components/schemas/Guidance"
           },
@@ -4480,6 +4819,10 @@
       "VirtualServerCreate": {
         "type": "object",
         "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
+          },
           "guidance": {
             "$ref": "#/components/schemas/Guidance"
           },
@@ -4548,6 +4891,10 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
+          },
           "guidance": {
             "$ref": "#/components/schemas/GuidancePatch"
           },
@@ -4612,6 +4959,10 @@
           "updatedAt"
         ],
         "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
+          },
           "hasGuidance": {
             "type": "boolean",
             "readOnly": true,
@@ -5692,6 +6043,24 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "teams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Team"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "toolGrants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolGrant"
+            }
+          },
           "auditSettings": {
             "$ref": "#/components/schemas/AuditSettings"
           },
@@ -5755,7 +6124,11 @@
                   "enum": [
                     "upstream",
                     "virtualServer",
-                    "identityBinding"
+                    "identityBinding",
+                    "team",
+                    "project",
+                    "toolGrant",
+                    "auditSettings"
                   ]
                 },
                 "slug": {

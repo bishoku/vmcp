@@ -29,12 +29,16 @@ class ReportContract(unittest.TestCase):
             self.assertIn('python3 benchmark/kubernetes/run.py',text)
     def test_database_focus_reports_unlimited_postgres_without_fault_claim(self):
         data=json.loads((ROOT/'benchmark/results/rest-release-20261020/after-fix/report.json').read_text())
-        data['DataPlaneConfiguration'].update(platform='MicroK8s Kubernetes', database_focus=True, postgres_limits='none')
+        data['DataPlaneConfiguration'].update(platform='MicroK8s Kubernetes', database_focus=True, postgres_limits='none', steady_seconds=600, nodes=1, go_soft_memory_limit_each='4GiB', memory_limit_each='12Gi')
+        next(p for p in data['Phases'] if p['name']=='steady')['target_rps']=1200
         with tempfile.TemporaryDirectory() as directory:
             source=pathlib.Path(directory)/'report.json';source.write_text(json.dumps(data))
             text=reports.render(source).read_text()
             self.assertIn('PostgreSQL CPU/bellek limiti yok',text)
-            self.assertIn('300 saniye 1.000 TPS',text)
+            self.assertIn('600 saniye 1200 TPS',text)
+            self.assertIn('GOMEMLIMIT=4GiB',text)
+            self.assertIn('bellek limiti 12GiB',text)
+            self.assertIn('tek data-plane podu',text)
             self.assertIn('pod kapatma veya konfigürasyon mutasyonu yapılmaz',text)
             self.assertIn('run.py --database-focus',text)
             self.assertNotIn('PostgreSQL limiti 4 CPU',text)

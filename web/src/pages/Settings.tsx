@@ -28,7 +28,7 @@ const slugify = (s: string) =>
 
 const tokenState=(token:AdminToken)=>token.revokedAt || token.status==='revoked'?'revoked':token.status==='expired' || (token.expiresAt && new Date(token.expiresAt).getTime()<=Date.now())?'expired':token.status
 
-export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'admin' }) {
+export default function SettingsPage({ role }: { role: 'viewer' | 'editor' | 'admin' | 'team' }) {
   const {notify}=useNotifications()
   const confirm=useConfirm()
   const canManage = role === 'admin'

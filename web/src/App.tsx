@@ -25,6 +25,7 @@ import VirtualServers from './pages/VirtualServers'
 import AgentKeys from './pages/AgentKeys'
 import Identities from './pages/Identities'
 import Audit from './pages/Audit'
+import Ownership from './pages/Ownership'
 import SettingsPage from './pages/Settings'
 
 function SignOut({onDone}:{onDone:()=>void}) {
@@ -53,7 +54,7 @@ function Application() {
   if (me === undefined) return <div className="grid h-full place-items-center p-6"><LoadingState label="Checking session…" detail="Verifying access to your workspace."/></div>
   if (me === null) return <SignIn onDone={signedIn} />
   return (
-    <RoleContext.Provider value={me.role}><ConfirmationProvider><InteractionProvider>
+    <RoleContext.Provider value={me.role==='viewer' && me.teamMember?'team':me.role}><ConfirmationProvider><InteractionProvider>
       {expired && <SessionRecovery onDone={signedIn}/>}
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <AppNavigation me={me} sessionExpired={expired} signOut={<SignOut onDone={()=>setMe(null)}/>}/>
@@ -61,6 +62,7 @@ function Application() {
           {!capabilities(me.role).edit && <p role="status" className="mx-4 mt-4 surface-inset surface-white px-4 py-3 text-xs leading-relaxed text-ink-muted sm:mx-6 lg:mx-10">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
 
           <Routes>
+ <Route path="/ownership" element={<Ownership/>}/>
             <Route path="/connections" element={<Connections/>}/>
             <Route path="/setup" element={<ConnectionSetup/>}/>
             <Route path="/upstreams/new" element={<UpstreamDetail key="new" create/>}/>

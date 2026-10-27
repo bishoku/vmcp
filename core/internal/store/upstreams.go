@@ -22,6 +22,7 @@ import (
 
 // Upstream is the API read model of a physical MCP server. Header values are never exposed.
 type Upstream struct {
+	OwnerTeam             string                        `json:"ownerTeam"`
 	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
 	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                  string                        `json:"kind"`
@@ -47,6 +48,7 @@ type Upstream struct {
 
 // UpstreamInput is the writable part of an upstream.
 type UpstreamInput struct {
+	OwnerTeam             *string
 	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
 	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                  string
@@ -81,6 +83,7 @@ type TLSPatch struct {
 
 // UpstreamPatch is a JSON merge patch. A nil header value deletes that header.
 type UpstreamPatch struct {
+	OwnerTeam                         *string
 	RequestHeaderMappings             []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
 	CallerContext                     *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                              *string
@@ -127,7 +130,7 @@ const upstreamSelect = `
 	       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret,
 	       (SELECT COALESCE(jsonb_agg(jsonb_build_object('node', h.node, 'state', h.state, 'breaker', h.breaker,
 	           'url', h.url, 'latencyMs', h.latency_ms, 'error', h.error, 'checkedAt', h.checked_at)), '[]'::jsonb)
-	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.kind,u.encrypted_rest_config,u.caller_context,u.request_header_mappings
+	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.kind,u.encrypted_rest_config,u.caller_context,u.request_header_mappings,COALESCE((SELECT slug FROM teams WHERE id=u.owner_team_id),'')
 	FROM upstreams u LEFT JOIN upstream_status s ON s.upstream_id = u.id
 	WHERE u.tenant_id = ` + tenantSQL
 
@@ -141,7 +144,7 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.URL, &r.Transport, &r.Enabled, &enc,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &count, &r.LastRefreshAt, &r.LastRefreshError, &r.FallbackURLs,
 		&r.tls.CAPEM, &r.tls.ServerName, &r.tls.ClientCertPEM, &encKey,
-		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Kind, &encREST, &r.CallerContext, &r.RequestHeaderMappings); err != nil {
+		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Kind, &encREST, &r.CallerContext, &r.RequestHeaderMappings, &r.OwnerTeam); err != nil {
 		return nil, err
 	}
 	if len(encKey) > 0 {
@@ -193,7 +196,10 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 }
 
 func (t *Tx) getUpstream(ctx context.Context, slug string, lock bool) (*upstreamRow, error) {
-	q := upstreamSelect + ` AND u.slug = $1`
+	if err := t.checkUpstreamAccess(ctx, slug); err != nil {
+		return nil, err
+	}
+	q := upstreamSelect + ` AND u.slug = $1 AND ` + ownerPredicate(ctx, "u.owner_team_id")
 	if lock {
 		q += ` FOR UPDATE OF u`
 	}
@@ -224,7 +230,7 @@ func (t *Tx) GetUpstream(ctx context.Context, slug string) (*Upstream, error) {
 
 // ListUpstreams pages through upstreams ordered by slug.
 func (t *Tx) ListUpstreams(ctx context.Context, after string, limit int, enabled *bool) ([]Upstream, bool, error) {
-	rows, err := t.q.Query(ctx, upstreamSelect+`
+	rows, err := t.q.Query(ctx, upstreamSelect+` AND `+ownerPredicate(ctx, "u.owner_team_id")+`
 		AND u.slug > $1 AND ($2::boolean IS NULL OR u.enabled = $2)
 		ORDER BY u.slug LIMIT $3`, after, enabled, limit+1)
 	if err != nil {
@@ -465,7 +471,7 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	if err != nil {
 		return nil, err
 	}
-	in := UpstreamInput{RequestHeaderMappings: cur.RequestHeaderMappings, CallerContext: cur.CallerContext, Kind: cur.Kind, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
+	in := UpstreamInput{OwnerTeam: p.OwnerTeam, RequestHeaderMappings: cur.RequestHeaderMappings, CallerContext: cur.CallerContext, Kind: cur.Kind, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
 	if p.FallbackURLs != nil {
 		in.FallbackURLs = *p.FallbackURLs
 	}

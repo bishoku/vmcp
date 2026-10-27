@@ -8,6 +8,7 @@ import UpstreamDetail from './UpstreamDetail'
 import { RoleContext } from '../interaction'
 
 beforeEach(()=>{
+ vi.spyOn(api,"teams").mockResolvedValue({items:[]})
  vi.spyOn(api,'auditSettings').mockResolvedValue({mode:'',retentionDays:7,maxPayloadBytes:65536,revision:1,scopes:{},rules:[],virtualServers:{},upstreams:{},exportPayloads:{}})
 
   vi.spyOn(api,'listUpstreams').mockResolvedValue([upstream])

@@ -272,3 +272,28 @@ func TestSplitHorizonDiscovery(t *testing.T) {
 		t.Fatalf("end session url: %s", u)
 	}
 }
+
+func TestExternalTeamLoginAndClaimFreshness(t *testing.T) {
+	f := newFakeIdP(t)
+	f.claims = map[string]any{"groups": []string{"product-owners"}}
+	p := provider(t, f)
+	p.cfg.TeamLogin = func(ctx context.Context, issuer string, groups []string) (bool, error) {
+		return len(groups) == 1 && groups[0] == "product-owners", nil
+	}
+	rec, _ := signIn(t, p, f)
+	if rec.Code != 302 {
+		t.Fatalf("team sign in: %d %s", rec.Code, rec.Body.String())
+	}
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	for _, c := range rec.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	s, ok := p.Session(req)
+	if !ok || s.Role != "team" || len(s.Groups) != 1 {
+		t.Fatalf("team identity lost: %+v", s)
+	}
+	p.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
+	if _, ok := p.Session(req); ok {
+		t.Fatal("stale team membership retained")
+	}
+}

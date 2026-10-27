@@ -12,11 +12,19 @@ def render(directory):
         path=root/'comparison.md'
         path.write_text('# MicroK8s fonksiyonel smoke testi\n\nBu kısa ve küçük envanterli koşu kapasite karşılaştırması değildir. [Ayrıntılı smoke raporu](report.md) ve [ham ölçümler](report.json) Kubernetes test düzeneğini doğrular.\n')
         return path
+    if current.get('DataPlaneConfiguration',{}).get('capacity_search'):
+        cfg=current['DataPlaneConfiguration'];path=root/'comparison.md'
+        tool_count=current['Profile']['Servers']*current['Profile']['Tools']
+        lines=[f'# {tool_count:,} tool kapasite taraması','',f"Data-plane: {cfg['nodes']}; routing: {cfg.get('routing')}; arama sonucu: {cfg['capacity_search']}",'','| Aşama | Süre s | Hedef TPS | Başarılı TPS | p95 / p99 ms | Hata / gönderilemeyen | SLO |','|---|---:|---:|---:|---:|---:|---|']
+        for p in current['Phases']:
+            lines.append(f"| {p['name']} | {p['PlannedSeconds']:.0f} | {p['target_rps']} | {p['CompletedRPS']:.1f} | {p['P95MS']:.1f} / {p['P99MS']:.1f} | {p['Errors']} / {p['Dropped']} | {p['slo_pass']} |")
+        lines+=['','Tarama aşamaları kısa süreli sınır aramasıdır; sürdürülebilir kapasite için steady doğrulaması esas alınmalıdır. [Ayrıntılı rapor](report.md).']
+        path.write_text('\n'.join(lines)+'\n');return path
     if current.get('DataPlaneConfiguration',{}).get('database_focus'):
         phase=next(p for p in current['Phases'] if p['name']=='steady')
         cpus=current['DataPlaneConfiguration'].get('gomaxprocs_each',2)
         path=root/'comparison.md'
-        path.write_text(f"# PostgreSQL odaklı MicroK8s koşusu\n\n300 saniye, hedef {phase['target_rps']} TPS; başarılı {phase['CompletedRPS']:.1f} TPS; p95 {phase['P95MS']:.1f} ms; hata {phase['Errors']}, gönderilemeyen {phase['Dropped']}.\n\nPostgreSQL CPU/bellek limitsiz, üç yeni delivery indeksi var. Data-plane başına GOMAXPROCS={cpus}. Süresi dolmuş 100.000 operation/stream fixture’ı temizliği çalıştırır. Fault ve trafik altında config mutasyonu kapsam dışıdır. Önceki 42 dakikalık koşuyla süre/yük/bakım kuyruğu farklıdır; doğrudan Kubernetes hızlanması iddiası değildir.\n\n[Ayrıntılı rapor](report.md), [SQL örnekleri](postgres-samples.jsonl), [sorgu sayaçları](postgres-statements-latest.json).\n")
+        path.write_text(f"# PostgreSQL odaklı MicroK8s koşusu\n\n{current.get('DataPlaneConfiguration',{}).get('steady_seconds',300)} saniye, hedef {phase['target_rps']} TPS; başarılı {phase['CompletedRPS']:.1f} TPS; p95 {phase['P95MS']:.1f} ms; hata {phase['Errors']}, gönderilemeyen {phase['Dropped']}.\n\nPostgreSQL CPU/bellek limitsiz, üç yeni delivery indeksi var. Data-plane başına GOMAXPROCS={cpus}. Süresi dolmuş 100.000 operation/stream fixture’ı temizliği çalıştırır. Fault ve trafik altında config mutasyonu kapsam dışıdır. Önceki 42 dakikalık koşuyla süre/yük/bakım kuyruğu farklıdır; doğrudan Kubernetes hızlanması iddiası değildir.\n\n[Ayrıntılı rapor](report.md), [SQL örnekleri](postgres-samples.jsonl), [sorgu sayaçları](postgres-statements-latest.json).\n")
         return path
     before={p['name']:p for p in previous['Phases']}
     after={p['name']:p for p in current['Phases']}

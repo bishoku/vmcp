@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--smoke', action='store_true')
     parser.add_argument('--output')
     parser.add_argument('--data-plane-cpus', type=int, choices=(2,4,8), default=2, help='GOMAXPROCS and Kubernetes CPU request; limit at least 4')
+    parser.add_argument('--data-plane-memory-limit', choices=('3Gi','6Gi','12Gi'), default='3Gi', help='Kubernetes hard memory limit; independent of VMCP_ACCEPTANCE_GOMEMLIMIT')
     parser.add_argument('--postgres-explain', action='store_true', help='Sample 1%% of slow PostgreSQL execution plans for diagnosis')
     parser.add_argument('--postgres-tuned', action='store_true', help='Explicit bounded OLTP cache/WAL/autovacuum profile; preserves durability')
     parser.add_argument('--database-focus', action='store_true', help='1000 TPS for five minutes, expired cleanup fixtures, PostgreSQL diagnostics')
@@ -53,7 +54,7 @@ def main():
         runtime_image = [line.split()[1] for line in (ROOT/'core/Dockerfile').read_text().splitlines() if line.startswith('FROM ')][-1]
         digest.update(runtime_image.encode())
         source_hash = digest.hexdigest()
-        (output/'environment.json').write_text(json.dumps({'namespace':namespace,'node':node,'sourceRevision':capture(['git','rev-parse','HEAD']).strip(),'workingTree':capture(['git','status','--short']),'sourceTreeSHA256':source_hash,'loadDriver':'native host Go process; fixtures bound to selected node IP','routing':'host test proxy -> dedicated Kubernetes NodePort Services -> data-plane pods','smoke':args.smoke,'databaseFocus':args.database_focus},indent=2))
+        (output/'environment.json').write_text(json.dumps({'namespace':namespace,'node':node,'sourceRevision':capture(['git','rev-parse','HEAD']).strip(),'workingTree':capture(['git','status','--short']),'sourceTreeSHA256':source_hash,'loadDriver':'native host Go process; fixtures bound to selected node IP','routing':('host test proxy -> direct PodIP/CNI' if os.environ.get('VMCP_ACCEPTANCE_ROUTING') == 'pod' else 'host test proxy -> dedicated Kubernetes NodePort Services -> data-plane pods'),'smoke':args.smoke,'databaseFocus':args.database_focus},indent=2))
         binary = temporary/'data-plane'
         env = dict(os.environ, CGO_ENABLED='0')
         command(['go','build','-trimpath','-o',str(binary),'./cmd/data-plane'],cwd=ROOT/'core',env=env)
@@ -88,9 +89,11 @@ def main():
         service('redis',6379)
         for name,component,port in [('acceptance-node-1','data-plane',8080),('acceptance-node-2','data-plane',8080),('control-plane','control-plane',8081)]:
             envs={'GOMAXPROCS':str(args.data_plane_cpus if component=='data-plane' else 2),'GOMEMLIMIT':'768MiB','VMCP_TENANT_ID':'default','VMCP_SKIP_MIGRATIONS':'true','VMCP_AUDIT_MODE':'strict','VMCP_EGRESS_ALLOW_CIDRS':f'{address}/32','VMCP_NODE_ID':name,'VMCP_REDIS_URL':'redis://redis:6379/0','VMCP_REDIS_FAILURE_POLICY':'strict','VMCP_HEALTH_INTERVAL':'30s'}
+            if component == 'data-plane':envs['GOMEMLIMIT']=os.environ.get('VMCP_ACCEPTANCE_GOMEMLIMIT','768MiB')
+            if os.environ.get('VMCP_ACCEPTANCE_DIAGNOSTICS') == '1' and component == 'data-plane':envs['GODEBUG']='gctrace=1'
             envs['VMCP_DP_ADDR' if component=='data-plane' else 'VMCP_CP_ADDR']=f':{port}'
             if component=='control-plane':envs['VMCP_ADMIN_TOKEN']='synthetic-load-admin-only'
-            container={'name':component,'image':images[component],'imagePullPolicy':'Never','env':[{'name':k,'value':v} for k,v in envs.items()]+[{'name':key,'valueFrom':{'secretKeyRef':{'name':'runtime','key':ref}}} for key,ref in [('VMCP_DATABASE_URL','database-url'),('VMCP_MASTER_KEY','master-key')]],'ports':[{'containerPort':port}],'resources':{'requests':{'cpu':str(args.data_plane_cpus) if component=='data-plane' else '250m','memory':'2Gi' if component=='data-plane' else '256Mi'},'limits':{'cpu':str(max(4,args.data_plane_cpus)) if component=='data-plane' else '1','memory':'3Gi' if component=='data-plane' else '1Gi'}},'securityContext':{'runAsNonRoot':True,'runAsUser':65532,'readOnlyRootFilesystem':True,'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},'readinessProbe':{'httpGet':{'path':'/readyz','port':port},'periodSeconds':2,'timeoutSeconds':2},'startupProbe':{'httpGet':{'path':'/healthz','port':port},'periodSeconds':2,'failureThreshold':90}}
+            container={'name':component,'image':images[component],'imagePullPolicy':'Never','env':[{'name':k,'value':v} for k,v in envs.items()]+[{'name':key,'valueFrom':{'secretKeyRef':{'name':'runtime','key':ref}}} for key,ref in [('VMCP_DATABASE_URL','database-url'),('VMCP_MASTER_KEY','master-key')]],'ports':[{'containerPort':port}],'resources':{'requests':{'cpu':str(args.data_plane_cpus) if component=='data-plane' else '250m','memory':'2Gi' if component=='data-plane' else '256Mi'},'limits':{'cpu':str(max(4,args.data_plane_cpus)) if component=='data-plane' else '1','memory':args.data_plane_memory_limit if component=='data-plane' else '1Gi'}},'securityContext':{'runAsNonRoot':True,'runAsUser':65532,'readOnlyRootFilesystem':True,'allowPrivilegeEscalation':False,'capabilities':{'drop':['ALL']}},'readinessProbe':{'httpGet':{'path':'/readyz','port':port},'periodSeconds':2,'timeoutSeconds':2},'startupProbe':{'httpGet':{'path':'/healthz','port':port},'periodSeconds':2,'failureThreshold':90}}
             deployment(name,container,0);service(name,port,component=='data-plane')
         manifest=output/'manifest.json';manifest.write_text(json.dumps({'apiVersion':'v1','kind':'List','items':items},indent=2))
         command(kubectl+['apply','-f',str(manifest)])
@@ -105,7 +108,7 @@ def main():
                 with socket.create_connection(('127.0.0.1',pg_port),timeout=.2):break
             except OSError:time.sleep(.1)
         else:raise RuntimeError('PostgreSQL port-forward not ready')
-        run_env=dict(os.environ,VMCP_RUN_ACCEPTANCE='1',VMCP_ACCEPTANCE_KUBERNETES='1',VMCP_ACCEPTANCE_NAMESPACE=namespace,VMCP_ACCEPTANCE_NODE_IP=address,VMCP_ACCEPTANCE_KUBE_NODE=node['metadata']['name'],VMCP_ACCEPTANCE_BINARY=str(binary),VMCP_ACCEPTANCE_OUTPUT=str(output),VMCP_TEST_DATABASE_URL=f'postgres://acceptance:acceptance-only@127.0.0.1:{pg_port}/acceptance?sslmode=disable',VMCP_ACCEPTANCE_REDIS_URL='redis://redis:6379/0',VMCP_ACCEPTANCE_REST='1',GOMAXPROCS='8')
+        run_env=dict(os.environ,VMCP_ACCEPTANCE_MEMORY_LIMIT=args.data_plane_memory_limit,VMCP_RUN_ACCEPTANCE='1',VMCP_ACCEPTANCE_KUBERNETES='1',VMCP_ACCEPTANCE_NAMESPACE=namespace,VMCP_ACCEPTANCE_NODE_IP=address,VMCP_ACCEPTANCE_KUBE_NODE=node['metadata']['name'],VMCP_ACCEPTANCE_BINARY=str(binary),VMCP_ACCEPTANCE_OUTPUT=str(output),VMCP_TEST_DATABASE_URL=f'postgres://acceptance:acceptance-only@127.0.0.1:{pg_port}/acceptance?sslmode=disable',VMCP_ACCEPTANCE_REDIS_URL='redis://redis:6379/0',VMCP_ACCEPTANCE_REST='1',GOMAXPROCS='8')
         defaults={'SERVERS':'300','TOOLS':'200','WORKERS':'512','RPS':'600','BURST_RPS':'2000','WARMUP_SECONDS':'30','STEADY_SECONDS':'300','SPIKE_SECONDS':'60','SOAK_RPS':'400','SOAK_SECONDS':'1800','AUDIT_CHECK_SECONDS':'180'}
         if args.database_focus:defaults.update(RPS='1000',BURST_RPS='1000')
         if args.smoke:defaults.update(SERVERS='8',TOOLS='20',RPS='20',BURST_RPS='60')
@@ -136,7 +139,7 @@ def main():
         if created:
             for name in ('acceptance-node-1','acceptance-node-2','control-plane','postgres','redis'):
                 with (output/f'{name}.log').open('a') as log:
-                    subprocess.run(kubectl+['logs','deployment/'+name,'--all-containers=true','--tail=3000','--pod-running-timeout=3s'],stdout=log,stderr=subprocess.STDOUT)
+                    subprocess.run(kubectl+['logs','deployment/'+name,'--all-containers=true','--tail='+('-1' if os.environ.get('VMCP_ACCEPTANCE_DIAGNOSTICS') == '1' else '3000'),'--pod-running-timeout=3s'],stdout=log,stderr=subprocess.STDOUT)
             for resource in ('pods','events'):
                 with (output/f'kubernetes-{resource}.json').open('w') as file:
                     subprocess.run(kubectl+['get',resource,'-o','json'],stdout=file,stderr=subprocess.STDOUT)

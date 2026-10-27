@@ -162,6 +162,9 @@ func (t *Tx) getKey(ctx context.Context, slug string, lock bool) (*keyRow, error
 	if err != nil {
 		return nil, err
 	}
+	if err := t.checkCredential(ctx, "key", r.id); err != nil {
+		return nil, err
+	}
 	if err := t.loadKeyServers(ctx, []*keyRow{r}); err != nil {
 		return nil, err
 	}
@@ -188,7 +191,7 @@ func (t *Tx) GetAgentKey(ctx context.Context, slug string) (*AgentKey, error) {
 
 // ListAgentKeys pages through keys ordered by slug.
 func (t *Tx) ListAgentKeys(ctx context.Context, after string, limit int) ([]AgentKey, bool, error) {
-	rows, err := t.q.Query(ctx, keySelect+` AND k.slug > $1 ORDER BY k.slug LIMIT $2`, after, limit+1)
+	rows, err := t.q.Query(ctx, keySelect+` AND `+credentialPredicate(ctx, "key", "k")+` AND k.slug > $1 ORDER BY k.slug LIMIT $2`, after, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
@@ -241,6 +244,14 @@ func (t *Tx) checkServers(ctx context.Context, slugs []string) ([]apierror.Field
 }
 
 func (t *Tx) resolveServers(ctx context.Context, slugs []string) (map[string]string, []apierror.FieldError, error) {
+	if a, ok := AccessFrom(ctx); ok && (a.Role == "team" || (a.Role == "viewer" && a.Write)) && len(slugs) == 0 {
+		return nil, nil, apierror.Forbidden("team credentials require virtual server grants")
+	}
+	for _, s := range slugs {
+		if err := t.checkVSAccess(ctx, s); err != nil {
+			return nil, nil, err
+		}
+	}
 	rows, err := t.q.Query(ctx, `SELECT slug, id::text FROM virtual_servers WHERE tenant_id = `+tenantSQL+` AND slug = ANY($1)`, slugs)
 	if err != nil {
 		return nil, nil, err

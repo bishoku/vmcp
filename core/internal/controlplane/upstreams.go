@@ -13,6 +13,7 @@ import (
 
 // upstreamWire is the JSON body of upstream create/put (and an apply entry).
 type upstreamWire struct {
+	OwnerTeam             *string                       `json:"ownerTeam"`
 	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
 	CallerContext         *callercontext.Config         `json:"callerContext"`
 	Kind                  string                        `json:"kind"`
@@ -95,7 +96,7 @@ func required(field string) apierror.FieldError {
 
 // input applies the API defaults and reports missing required fields.
 func (w *upstreamWire) input() (store.UpstreamInput, []apierror.FieldError) {
-	in := store.UpstreamInput{RequestHeaderMappings: w.RequestHeaderMappings, CallerContext: w.CallerContext, Kind: w.Kind, REST: w.REST, Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
+	in := store.UpstreamInput{OwnerTeam: w.OwnerTeam, RequestHeaderMappings: w.RequestHeaderMappings, CallerContext: w.CallerContext, Kind: w.Kind, REST: w.REST, Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
 	var errs []apierror.FieldError
 	if w.Name == nil {
 		errs = append(errs, required("/name"))
@@ -120,6 +121,7 @@ func (w *upstreamWire) input() (store.UpstreamInput, []apierror.FieldError) {
 }
 
 type upstreamPatchWire struct {
+	OwnerTeam             *string                       `json:"ownerTeam"`
 	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
 	CallerContext         *callercontext.Config         `json:"callerContext"`
 	Kind                  *string                       `json:"kind"`
@@ -244,7 +246,7 @@ func (s *Server) patchUpstream(w http.ResponseWriter, r *http.Request) error {
 	)
 	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{RequestHeaderMappings: body.RequestHeaderMappings, CallerContext: body.CallerContext, Kind: body.Kind, REST: body.REST,
+		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{OwnerTeam: body.OwnerTeam, RequestHeaderMappings: body.RequestHeaderMappings, CallerContext: body.CallerContext, Kind: body.Kind, REST: body.REST,
 			Name: body.Name, Description: body.Description, URL: body.URL, FallbackURLs: body.FallbackURLs, Transport: body.Transport,
 			Enabled: body.Enabled, Headers: body.Headers, TLS: body.TLS.patch(), OAuth: body.Auth.patch(),
 		}, ifMatch)

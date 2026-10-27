@@ -58,15 +58,18 @@ type Config struct {
 	// HTTPClient is used for discovery and token exchange (tests only).
 	HTTPClient *http.Client
 	Sessions   SessionStore
+	TeamLogin  func(context.Context, string, []string) (bool, error)
 }
 
 // Session is the signed-in user.
 type Session struct {
-	ID      string    `json:"sid,omitempty"`
-	Subject string    `json:"sub"`
-	Name    string    `json:"name"`
-	Role    string    `json:"role"`
-	Expires time.Time `json:"exp"`
+	Groups       []string  `json:"groups,omitempty"`
+	GroupsExpire time.Time `json:"groupsExp,omitempty"`
+	ID           string    `json:"sid,omitempty"`
+	Subject      string    `json:"sub"`
+	Name         string    `json:"name"`
+	Role         string    `json:"role"`
+	Expires      time.Time `json:"exp"`
 }
 
 // Provider runs the sign-in flow.
@@ -88,7 +91,7 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	if len(cfg.SessionKey) < 32 {
 		return nil, errors.New("oidc: session key must be at least 32 bytes")
 	}
-	if len(cfg.AdminGroups)+len(cfg.EditorGroups)+len(cfg.ViewerGroups) == 0 {
+	if len(cfg.AdminGroups)+len(cfg.EditorGroups)+len(cfg.ViewerGroups) == 0 && cfg.TeamLogin == nil {
 		return nil, errors.New("oidc: configure at least one group-to-role mapping, otherwise nobody could sign in")
 	}
 	if cfg.GroupsClaim == "" {
@@ -181,6 +184,16 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := p.RoleFor(Groups(claims, p.cfg.GroupsClaim))
+	if role == "" && p.cfg.TeamLogin != nil {
+		ok, err := p.cfg.TeamLogin(ctx, p.cfg.Issuer, Groups(claims, p.cfg.GroupsClaim))
+		if err != nil {
+			http.Error(w, "team authorization unavailable", 503)
+			return
+		}
+		if ok {
+			role = "team"
+		}
+	}
 	if role == "" {
 		http.Error(w, "your account is not in any group allowed to use vMCP", http.StatusForbidden)
 		return
@@ -192,7 +205,7 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = idt.Subject
 	}
-	s := Session{ID: random(), Subject: idt.Subject, Name: name, Role: role, Expires: p.now().Add(p.cfg.SessionTTL)}
+	s := Session{Groups: Groups(claims, p.cfg.GroupsClaim), GroupsExpire: p.now().Add(15 * time.Minute), ID: random(), Subject: idt.Subject, Name: name, Role: role, Expires: p.now().Add(p.cfg.SessionTTL)}
 	if p.cfg.Sessions != nil {
 		if err := p.cfg.Sessions.Save(r.Context(), s); err != nil {
 			http.Error(w, "session storage unavailable", http.StatusServiceUnavailable)
@@ -254,6 +267,12 @@ func (p *Provider) Session(r *http.Request) (Session, bool) {
 		if err != nil || !valid {
 			return Session{}, false
 		}
+	}
+	if !s.GroupsExpire.IsZero() && p.now().After(s.GroupsExpire) {
+		if s.Role == "team" {
+			return Session{}, false
+		}
+		s.Groups = nil
 	}
 	return s, true
 }

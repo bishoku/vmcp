@@ -28,6 +28,7 @@ type ToolSelection struct {
 
 // ResolvedSelection adds the name agents see.
 type ResolvedSelection struct {
+	ApprovalStatus string `json:"approvalStatus"`
 	ToolSelection
 	ExposedName string `json:"exposedName"`
 	// UpstreamDescription is the current upstream text; DescriptionDrift is true when an override
@@ -39,6 +40,8 @@ type ResolvedSelection struct {
 
 // VirtualServer is the API read model.
 type VirtualServer struct {
+	Project        string                     `json:"project"`
+	OwnerTeam      string                     `json:"ownerTeam"`
 	Guidance       *config.Guidance           `json:"guidance,omitempty"`
 	HasGuidance    bool                       `json:"hasGuidance"`
 	Slug           string                     `json:"slug"`
@@ -60,6 +63,7 @@ type VirtualServer struct {
 
 // VirtualServerInput is the writable part of a virtual server.
 type VirtualServerInput struct {
+	Project        *string
 	Guidance       *config.Guidance
 	Name           string
 	Description    string
@@ -75,6 +79,7 @@ type VirtualServerInput struct {
 
 // VirtualServerPatch is a JSON merge patch; a non-nil Tools replaces the list.
 type VirtualServerPatch struct {
+	Project           *string
 	Guidance          *config.GuidancePatch
 	Name, Description *string
 	Enabled           *bool
@@ -94,13 +99,13 @@ type vsRow struct {
 }
 
 const vsSelect = `
-	SELECT v.id::text, v.slug, v.name, v.description, v.enabled, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.version, v.created_at, v.updated_at, v.guidance
+	SELECT v.id::text, v.slug, v.name, v.description, v.enabled, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.version, v.created_at, v.updated_at, v.guidance, (SELECT slug FROM projects WHERE id=v.project_id), COALESCE((SELECT t.slug FROM projects p JOIN teams t ON t.id=p.owner_team_id WHERE p.id=v.project_id),'')
 	FROM virtual_servers v WHERE v.tenant_id = ` + tenantSQL
 
 func scanVS(row scanner) (*vsRow, error) {
 	var r vsRow
 	var piiRaw, polRaw, features, guidance []byte
-	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.Enabled, &r.AuthRequired, &piiRaw, &polRaw, &features, &r.RateLimit, &r.Version, &r.CreatedAt, &r.UpdatedAt, &guidance); err != nil {
+	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.Enabled, &r.AuthRequired, &piiRaw, &polRaw, &features, &r.RateLimit, &r.Version, &r.CreatedAt, &r.UpdatedAt, &guidance, &r.Project, &r.OwnerTeam); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(piiRaw, &r.PII); err != nil {
@@ -139,9 +144,15 @@ func (t *Tx) loadSelections(ctx context.Context, vs []*vsRow) error {
 	}
 	rows, err := t.q.Query(ctx, `
 		SELECT vt.virtual_server_id::text, u.slug, vt.tool_name, COALESCE(vt.alias, ''), COALESCE(vt.description, ''), COALESCE(ut.description,''),
-		       vt.description IS NOT NULL AND vt.description_basis IS DISTINCT FROM ut.description, ut.name IS NULL
+		       vt.description IS NOT NULL AND vt.description_basis IS DISTINCT FROM ut.description, ut.name IS NULL,
+ CASE WHEN u.owner_team_id IS NULL THEN 'not_required'
+ WHEN COALESCE(g.status,'') IN ('revoked','rejected') THEN g.status
+ WHEN g.status='approved' THEN 'approved'
+ WHEN u.owner_team_id=(SELECT owner_team_id FROM projects WHERE id=(SELECT project_id FROM virtual_servers WHERE id=vt.virtual_server_id)) THEN 'same_team'
+ ELSE COALESCE(g.status,'required') END
 		FROM virtual_server_tools vt JOIN upstreams u ON u.id = vt.upstream_id
 		LEFT JOIN upstream_tools ut ON ut.upstream_id = vt.upstream_id AND ut.name = vt.tool_name
+ LEFT JOIN tool_grants g ON g.virtual_server_id=vt.virtual_server_id AND g.upstream_id=vt.upstream_id AND g.tool_name=vt.tool_name
 		WHERE vt.virtual_server_id = ANY($1::uuid[])
 		ORDER BY vt.virtual_server_id, vt.position`, ids)
 	if err != nil {
@@ -151,13 +162,13 @@ func (t *Tx) loadSelections(ctx context.Context, vs []*vsRow) error {
 	for rows.Next() {
 		var id string
 		var s ToolSelection
-		var upDesc string
+		var upDesc, approval string
 		var drift, orphan bool
-		if err := rows.Scan(&id, &s.Upstream, &s.Tool, &s.Alias, &s.Description, &upDesc, &drift, &orphan); err != nil {
+		if err := rows.Scan(&id, &s.Upstream, &s.Tool, &s.Alias, &s.Description, &upDesc, &drift, &orphan, &approval); err != nil {
 			return err
 		}
 		v := byID[id]
-		v.Tools = append(v.Tools, ResolvedSelection{ToolSelection: s, ExposedName: config.ExposedName(s.Upstream, s.Tool, s.Alias),
+		v.Tools = append(v.Tools, ResolvedSelection{ApprovalStatus: approval, ToolSelection: s, ExposedName: config.ExposedName(s.Upstream, s.Tool, s.Alias),
 			UpstreamDescription: upDesc, DescriptionDrift: drift, Orphaned: orphan})
 	}
 	if err := rows.Err(); err != nil {
@@ -168,7 +179,10 @@ func (t *Tx) loadSelections(ctx context.Context, vs []*vsRow) error {
 }
 
 func (t *Tx) getVS(ctx context.Context, slug string, lock bool) (*vsRow, error) {
-	q := vsSelect + ` AND v.slug = $1`
+	if err := t.checkVSAccess(ctx, slug); err != nil {
+		return nil, err
+	}
+	q := vsSelect + ` AND v.slug = $1 AND ` + vsPredicate(ctx, "v")
 	if lock {
 		q += ` FOR UPDATE OF v`
 	}
@@ -205,7 +219,7 @@ func (t *Tx) GetVirtualServer(ctx context.Context, slug string) (*VirtualServer,
 
 // ListVirtualServers pages through virtual servers ordered by slug.
 func (t *Tx) ListVirtualServers(ctx context.Context, after string, limit int, enabled *bool) ([]VirtualServer, bool, error) {
-	rows, err := t.q.Query(ctx, vsSelect+`
+	rows, err := t.q.Query(ctx, vsSelect+` AND `+vsPredicate(ctx, "v")+`
 		AND v.slug > $1 AND ($2::boolean IS NULL OR v.enabled = $2)
 		ORDER BY v.slug LIMIT $3`, after, enabled, limit+1)
 	if err != nil {
@@ -341,7 +355,7 @@ func (t *Tx) writeSelections(ctx context.Context, vsID string, sels []ToolSelect
 }
 
 // PutVirtualServer creates or replaces a virtual server and its tool list atomically.
-func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServerInput, ifMatch *int64, createOnly bool) (*VirtualServer, Outcome, error) {
+func (t *Tx) putVirtualServer(ctx context.Context, slug string, in VirtualServerInput, ifMatch *int64, createOnly bool) (*VirtualServer, Outcome, error) {
 	t.auditTarget("virtual-server", slug)
 	if in.Tools == nil {
 		in.Tools = []ToolSelection{}
@@ -446,7 +460,7 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 	if err != nil {
 		return nil, err
 	}
-	in := VirtualServerInput{Guidance: cur.Guidance, ClientFeatures: cur.ClientFeatures, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
+	in := VirtualServerInput{Project: p.Project, Guidance: cur.Guidance, ClientFeatures: cur.ClientFeatures, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
 	if p.RateLimitSet {
 		in.RateLimit = p.RateLimit
 	}

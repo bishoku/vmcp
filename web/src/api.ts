@@ -88,6 +88,7 @@ export interface CallerContextConfig {
 }
 
 export interface Upstream {
+ ownerTeam?: string
   requestHeaderMappings?: RequestHeaderMapping[]
   callerContext?: CallerContextConfig
   kind?: "mcp" | "rest"
@@ -110,6 +111,7 @@ export interface Upstream {
 }
 
 export interface UpstreamInput {
+ ownerTeam?: string
   requestHeaderMappings?: RequestHeaderMapping[]
   callerContext?: CallerContextConfig
   kind?: "mcp" | "rest"
@@ -286,6 +288,8 @@ export interface GuidanceMessage {role:'user'|'assistant';text:string}
 export interface GuidancePrompt {name:string;title:string;description:string;enabled:boolean;arguments:GuidanceArgument[];messages:GuidanceMessage[]}
 export interface Guidance {instructions:string;resources:GuidanceResource[];prompts:GuidancePrompt[];upstreamInstructions:string[];toolReferences:{key:string;upstream:string;tool:string}[]}
 export interface VirtualServer {
+ project?: string
+ ownerTeam?: string
  guidance?:Guidance
  hasGuidance?:boolean
   version: number
@@ -301,7 +305,7 @@ export interface VirtualServer {
   clientFeatures?:ClientFeatures
   endpoint: string
  catalog?: (CatalogSelection & {exposedName:string;orphaned:boolean;descriptionDrift:boolean;upstreamDescription:string})[]
-  tools: (ToolSelection & { exposedName: string; upstreamDescription: string; descriptionDrift: boolean; orphaned: boolean })[]
+  tools: (ToolSelection & { exposedName: string; approvalStatus?:string; upstreamDescription: string; descriptionDrift: boolean; orphaned: boolean })[]
 }
 
 export interface ValidationProblem {
@@ -312,7 +316,8 @@ export interface ValidationProblem {
 
 export interface Me {
   name: string
-  role: 'viewer' | 'editor' | 'admin'
+  role: 'viewer' | 'editor' | 'admin' | 'team'
+ teamMember?: boolean
   via: 'bootstrap-token' | 'admin-token' | 'oidc'
 }
 
@@ -389,9 +394,20 @@ async function listAll<T>(path: string, signal?: AbortSignal): Promise<T[]> {
  return all
 }
 
-export interface ConfigDocument { apiVersion: string; upstreams: unknown[]; virtualServers: unknown[]; bindings?: unknown[];auditSettings?:AuditSettings }
+export interface ConfigDocument { teams?:Team[];projects?:Project[];toolGrants?:ToolGrant[]; apiVersion: string; upstreams: unknown[]; virtualServers: unknown[]; bindings?: unknown[];auditSettings?:AuditSettings }
 export interface ApplyResult { changes: {kind:string;slug:string;action:string}[]; configRevision?: number | null }
+export interface Team {canManage?:boolean;slug:string;name:string;issuer:string;group:string;version:number}
+export interface Project {slug:string;name:string;ownerTeam:string;version:number}
+export interface ToolGrant {canDecide?:boolean;virtualServer:string;upstream:string;tool:string;status:'pending'|'approved'|'rejected'|'revoked';reason:string;actor?:string;version:number}
+export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;description:string}
 export const api = {
+ teams:()=>request<{items:Team[]}>('GET','/teams'),
+ saveTeam:(team:Team)=>request('POST','/teams',team),
+ projects:()=>request<{items:Project[]}>('GET','/projects'),
+ saveProject:(project:Project)=>request('POST','/projects',project),
+ toolGrants:()=>request<{items:ToolGrant[]}>('GET','/tool-grants'),
+ saveToolGrant:(grant:ToolGrant)=>request('POST','/tool-grants',grant),
+ toolCatalog:(signal?:AbortSignal)=>listAll<ToolCatalogEntry>('/tool-catalog',signal),
  auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),
  saveAuditSettings:(settings:AuditSettings)=>request<AuditSettings>('PUT','/audit-settings',settings),
  previewAudit:(body:{editScope?:'global'|'virtual'|'upstream';settings:AuditSettings;scope:string;direction:string;virtualServer:string;upstream:string;payload:unknown})=>request<AuditPreview>('POST','/audit-preview',body),
@@ -427,7 +443,7 @@ export const api = {
     listAll<VirtualServer>('/virtual-servers', signal),
   putVirtualServer: (
     slug: string,
-    v: { guidance?:Guidance; name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
+    v: { project?:string; guidance?:Guidance; name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
     version?: number,
   ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v, version),
   deleteVirtualServer: (slug: string, version?: number) =>

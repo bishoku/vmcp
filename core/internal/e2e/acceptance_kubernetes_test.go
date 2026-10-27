@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -65,6 +66,24 @@ func (n *acceptanceNode) startKubernetes(t *testing.T) {
 	n.url = fmt.Sprintf("http://%s:%d", os.Getenv("VMCP_ACCEPTANCE_NODE_IP"), service.Spec.Ports[0].NodePort)
 	n.alive = true
 	n.mu.Unlock()
+	if os.Getenv("VMCP_ACCEPTANCE_ROUTING") == "pod" {
+		if _, err := acceptanceKubectl(ctx, nil, "rollout", "status", "deployment/"+n.name, "--timeout=110s"); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := acceptanceKubectl(ctx, nil, "get", "pods", "-l", "app="+n.name, "-o", "json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var pods struct {
+			Items []struct{ Status struct{ PodIP string } }
+		}
+		if json.Unmarshal(raw, &pods) != nil || len(pods.Items) != 1 || pods.Items[0].Status.PodIP == "" {
+			t.Fatal("expected one ready test pod")
+		}
+		n.mu.Lock()
+		n.url = "http://" + net.JoinHostPort(pods.Items[0].Status.PodIP, "8080")
+		n.mu.Unlock()
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
 	for ctx.Err() == nil {
 		response, err := client.Get(n.url + "/readyz")
@@ -82,7 +101,11 @@ func (n *acceptanceNode) startKubernetes(t *testing.T) {
 func (n *acceptanceNode) killKubernetes() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if logs, err := acceptanceKubectl(ctx, nil, "logs", "deployment/"+n.name, "--all-containers=true", "--tail=3000"); err == nil {
+	tail := "--tail=3000"
+	if os.Getenv("VMCP_ACCEPTANCE_DIAGNOSTICS") == "1" {
+		tail = "--tail=-1"
+	}
+	if logs, err := acceptanceKubectl(ctx, nil, "logs", "deployment/"+n.name, "--all-containers=true", tail); err == nil {
 		if file, err := os.OpenFile(filepath.Join(n.output, n.name+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600); err == nil {
 			_, _ = file.Write(logs)
 			_ = file.Close()
@@ -114,7 +137,7 @@ func acceptanceKubeSamples(ctx context.Context) map[string]acceptanceNodeSample 
 			PodRef     struct{ Namespace, Name string }
 			Containers []struct {
 				Name   string
-				Memory struct{ RSSBytes int64 }
+				Memory struct{ RSSBytes, UsageBytes int64 }
 				CPU    struct{ UsageNanoCores uint64 }
 			}
 		}
@@ -137,6 +160,7 @@ func acceptanceKubeSamples(ctx context.Context) map[string]acceptanceNodeSample 
 					previous.Name = name
 					previous.Alive = true
 					previous.RSSBytes += container.Memory.RSSBytes
+					previous.MemoryUsageBytes += container.Memory.UsageBytes
 					previous.ReportedCPUPercent += float64(container.CPU.UsageNanoCores) / 1e7
 					result[name] = previous
 				}

@@ -1,0 +1,611 @@
+{
+  "StartedUTC": "2026-10-27T06:20:47Z",
+  "SourceRevision": "b0b3fd97e2bb454cb0d5ef12b42c1d2908ea3934",
+  "BinarySHA256": "821f108e62ab4dd49d0d8f4be299115b742005c45183f0dae5976773ad4d12e1",
+  "GoVersion": "go1.27.3",
+  "HostOS": "linux",
+  "HostArch": "amd64",
+  "Profile": {
+    "Servers": 300,
+    "Tools": 200,
+    "Resources": 0,
+    "Sessions": 600,
+    "SteadyRPS": 1000,
+    "BurstRPS": 1000,
+    "Workers": 1024,
+    "REST": true,
+    "Smoke": false
+  },
+  "DataPlaneConfiguration": {
+    "audit": "strict",
+    "cpu_limit_each": "8",
+    "database_focus": true,
+    "db_acquire_timeout": "2s",
+    "db_pool_max_each": 64,
+    "delivery_wakeup": "local channel; cross-replica polling; no delivery NOTIFY",
+    "expired_fixture_operations": 100000,
+    "fault": "none; focused database capacity run",
+    "go_soft_memory_limit_each": "4GiB",
+    "gomaxprocs_each": 8,
+    "health_interval": "30s",
+    "loaded_revocation": {
+      "budget_seconds": 5,
+      "committed_utc": "2026-10-27T06:26:50.475693375Z",
+      "first_401_seconds": 3.42546117,
+      "key_slug": "accept-key-64",
+      "observations": [
+        {
+          "ready_status": 200,
+          "seconds": 0.011287633,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.118794092,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.22674595,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.335395709,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.445608747,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.554741525,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.662159727,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.772609597,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.880320722,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.987560527,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.102573031,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.211394234,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.3223014659999999,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.431659301,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.539683931,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.650637599,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.759772088,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.8718685590000002,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.985225491,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.095486079,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.202869402,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.314812366,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.428220602,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.536155633,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.643557276,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.752200325,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.865707115,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.974079603,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.082420546,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.190471596,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.298745168,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.42546117,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.551345675,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.6667399830000003,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.782735965,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.904899803,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.026153486,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.147280733,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.26854511,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.403908217,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.523519816,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.645076342,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.762757856,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.880436727,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.00509473,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.121941735,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.241285599,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.356388227,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.474542033,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.601921767,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.714189976,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.837302315,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.952322943,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.072837953,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.190275865,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.307966799,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.428616672,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.546978227,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.670029013,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.78642538,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.9041306030000005,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.022934058,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.146040189,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.26320488,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.379097508,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.499870943,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.624506525,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.7385798900000005,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.859210495,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.976800396,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.09588012,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.221356449,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.338032542,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.460740081,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.578735812,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.691764043,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.806999984,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.92961566,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.053676394,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.176979252,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.298778331,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.416454634,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.531905421,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.645761347,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.764358025,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.881349967,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.997843063,
+          "status": 401
+        }
+      ],
+      "readiness_healthy": true,
+      "rejection_stable": true
+    },
+    "memory_limit_each": "6Gi",
+    "memory_measurement": "kubelet container RSS; CPU recent usageNanoCores",
+    "namespace": "vmcp-load-20261027-092020",
+    "nodes": 1,
+    "platform": "MicroK8s Kubernetes",
+    "postgres_limits": "none",
+    "postgres_tuned": true,
+    "redis_failure_policy": "strict",
+    "remote_poll_probe": {
+      "budget_ms": 500,
+      "connection_attempts": 1,
+      "connection_setup_ms": 10.738,
+      "interval_ms": 250,
+      "max_ms": 254.459,
+      "p50_ms": 248.584,
+      "p95_ms": 250.208,
+      "reader": "acceptance-node-1",
+      "samples": 24,
+      "writer": "native host"
+    },
+    "routing": "nodeport",
+    "steady_seconds": 600,
+    "team_ownership": true
+  },
+  "ProxyPolicy": "same host test round-robin proxy, passive 10s cooldown, no POST retries; real Kubernetes NodePort Services/CNI to data-plane pods; no ingress capacity claim",
+  "Thresholds": {
+    "burst_max_p99_ms": 10000,
+    "burst_min_success_percent": 80,
+    "burst_min_target_completion_percent": 80,
+    "fault_phase_min_success_percent": 99,
+    "fault_transition_grace_seconds": 10,
+    "loaded_revocation_max_seconds": 5,
+    "per_node_max_container_usage_bytes": 5798205849,
+    "per_node_max_rss_bytes": 5368709120,
+    "post_fault_max_errors_percent": 0.1,
+    "soak_max_rss_growth_percent": 20,
+    "steady_max_rss_growth_percent": 20,
+    "steady_min_target_completion_percent": 99,
+    "steady_p95_ms": 250,
+    "steady_p99_ms": 1000,
+    "steady_success_percent": 99.9
+  },
+  "Resources": {
+    "acceptance-node-1": {
+      "max_container_usage_bytes": 1972838400,
+      "max_metric_label_overflows": 1178922,
+      "max_os_reported_cpu_percent": 202.9426096,
+      "max_pool_acquired": 64,
+      "max_pool_cancelled_acquires": 0,
+      "max_rss_bytes": 1955483648,
+      "median_os_reported_cpu_percent": 177.8239836,
+      "median_rss_bytes": 1835945984,
+      "pool_acquire_seconds_observed": 24.716888534,
+      "steady_rss_growth_percent": 7.446317689449437
+    }
+  },
+  "Consistency": {
+    "active_agent_keys": 64,
+    "active_upstreams": 300,
+    "active_virtual_servers": 300,
+    "active_virtual_tools": 60000,
+    "duplicate_executions": 0,
+    "failed_calls": 30,
+    "incomplete_operations": 0,
+    "incomplete_unrelated_to_failed_calls": 0,
+    "matching_admissions": 600702,
+    "matching_ok_outcomes": 600702,
+    "successful_client_calls": 600702,
+    "synthetic_upstream_executions": 600702
+  },
+  "Functional": {
+    "cross_replica_polling_under_500ms": true,
+    "invalid_keys_rejected_on_both_nodes": true,
+    "key_revocation_propagated_and_rejected_on_single_node": true,
+    "key_revocation_under_load_within_5s": true,
+    "no_data_plane_restart_or_oom": true,
+    "session_termination_authoritative_on_both_nodes": true,
+    "single_node_session_and_paginated_masked_metadata": true
+  },
+  "Pass": true,
+  "Failures": null,
+  "Phases": [
+    {
+      "name": "warmup",
+      "target_rps": 50,
+      "PlannedSeconds": 15,
+      "ElapsedSeconds": 14.997466883,
+      "Scheduled": 750,
+      "Offered": 750,
+      "Success": 750,
+      "Errors": 0,
+      "Dropped": 0,
+      "InvalidResults": 0,
+      "CompletedRPS": 50.00844514950345,
+      "SuccessPercent": 100,
+      "P50MS": 16.419718,
+      "P95MS": 19.914615,
+      "P99MS": 27.918768,
+      "MaxMS": 38.872109,
+      "HTTPStatuses": {
+        "200": 750
+      },
+      "Nodes": {
+        "acceptance-node-1": 750
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "steady",
+      "target_rps": 1000,
+      "PlannedSeconds": 600,
+      "ElapsedSeconds": 600.042578535,
+      "Scheduled": 600000,
+      "Offered": 599982,
+      "Success": 599952,
+      "Errors": 30,
+      "Dropped": 18,
+      "InvalidResults": 0,
+      "CompletedRPS": 999.8490464872991,
+      "SuccessPercent": 99.9949998499955,
+      "P50MS": 53.705849,
+      "P95MS": 81.29142,
+      "P99MS": 107.818296,
+      "MaxMS": 213.460541,
+      "HTTPStatuses": {
+        "200": 599982
+      },
+      "Nodes": {
+        "acceptance-node-1": 599982
+      },
+      "fault_second": 300,
+      "slo_pass": true
+    }
+  ],
+  "ReportAvailable": true
+}

@@ -1,0 +1,160 @@
+{
+  "StartedUTC": "2026-10-27T05:57:42Z",
+  "SourceRevision": "b0b3fd97e2bb454cb0d5ef12b42c1d2908ea3934",
+  "BinarySHA256": "821f108e62ab4dd49d0d8f4be299115b742005c45183f0dae5976773ad4d12e1",
+  "GoVersion": "go1.27.3",
+  "HostOS": "linux",
+  "HostArch": "amd64",
+  "Profile": {
+    "Servers": 300,
+    "Tools": 200,
+    "Resources": 0,
+    "Sessions": 600,
+    "SteadyRPS": 1000,
+    "BurstRPS": 1000,
+    "Workers": 1024,
+    "REST": true,
+    "Smoke": false
+  },
+  "DataPlaneConfiguration": {
+    "audit": "strict",
+    "cpu_limit_each": "8",
+    "database_focus": true,
+    "db_acquire_timeout": "2s",
+    "db_pool_max_each": 64,
+    "delivery_wakeup": "local channel; cross-replica polling; no delivery NOTIFY",
+    "expired_fixture_operations": 100000,
+    "fault": "none; focused database capacity run",
+    "go_soft_memory_limit_each": "8GiB",
+    "gomaxprocs_each": 8,
+    "health_interval": "30s",
+    "memory_limit_each": "12Gi",
+    "memory_measurement": "kubelet container RSS; CPU recent usageNanoCores",
+    "namespace": "vmcp-load-20261027-085716",
+    "nodes": 1,
+    "platform": "MicroK8s Kubernetes",
+    "postgres_limits": "none",
+    "postgres_tuned": true,
+    "redis_failure_policy": "strict",
+    "remote_poll_probe": {
+      "budget_ms": 500,
+      "connection_attempts": 1,
+      "connection_setup_ms": 6.089,
+      "interval_ms": 250,
+      "max_ms": 250.2,
+      "p50_ms": 249.56,
+      "p95_ms": 250.066,
+      "reader": "acceptance-node-1",
+      "samples": 24,
+      "writer": "native host"
+    },
+    "routing": "pod",
+    "steady_seconds": 600,
+    "team_ownership": true
+  },
+  "ProxyPolicy": "host round-robin proxy to direct Kubernetes PodIP; passive 10s cooldown; no POST retries; excludes Service/NodePort/ingress capacity",
+  "Thresholds": {
+    "burst_max_p99_ms": 10000,
+    "burst_min_success_percent": 80,
+    "burst_min_target_completion_percent": 80,
+    "fault_phase_min_success_percent": 99,
+    "fault_transition_grace_seconds": 10,
+    "per_node_max_rss_bytes": 1610612736,
+    "post_fault_max_errors_percent": 0.1,
+    "soak_max_rss_growth_percent": 20,
+    "steady_min_target_completion_percent": 95,
+    "steady_p95_ms": 250,
+    "steady_p99_ms": 1000,
+    "steady_success_percent": 99.9
+  },
+  "Resources": {
+    "acceptance-node-1": {
+      "max_metric_label_overflows": 1177348,
+      "max_os_reported_cpu_percent": 209.5958147,
+      "max_pool_acquired": 50,
+      "max_pool_cancelled_acquires": 0,
+      "max_rss_bytes": 1829961728,
+      "median_os_reported_cpu_percent": 180.3689253,
+      "median_rss_bytes": 1827856384,
+      "pool_acquire_seconds_observed": 21.319876418
+    }
+  },
+  "Consistency": {
+    "active_agent_keys": 64,
+    "active_upstreams": 300,
+    "active_virtual_servers": 300,
+    "active_virtual_tools": 60000,
+    "duplicate_executions": 0,
+    "failed_calls": 0,
+    "incomplete_operations": 0,
+    "incomplete_unrelated_to_failed_calls": 0,
+    "matching_admissions": 600738,
+    "matching_ok_outcomes": 600738,
+    "successful_client_calls": 600738,
+    "synthetic_upstream_executions": 600738
+  },
+  "Functional": {
+    "cross_replica_polling_under_500ms": true,
+    "invalid_keys_rejected_on_both_nodes": true,
+    "key_revocation_propagated_and_rejected_on_single_node": true,
+    "session_termination_authoritative_on_both_nodes": true,
+    "single_node_session_and_paginated_masked_metadata": true
+  },
+  "Pass": false,
+  "Failures": [
+    "node RSS budget exceeded"
+  ],
+  "Phases": [
+    {
+      "name": "warmup",
+      "target_rps": 50,
+      "PlannedSeconds": 15,
+      "ElapsedSeconds": 14.997276029,
+      "Scheduled": 750,
+      "Offered": 750,
+      "Success": 750,
+      "Errors": 0,
+      "Dropped": 0,
+      "InvalidResults": 0,
+      "CompletedRPS": 50.009081552525714,
+      "SuccessPercent": 100,
+      "P50MS": 16.602132,
+      "P95MS": 19.283501,
+      "P99MS": 26.29795,
+      "MaxMS": 35.966689,
+      "HTTPStatuses": {
+        "200": 750
+      },
+      "Nodes": {
+        "acceptance-node-1": 750
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "steady",
+      "target_rps": 1000,
+      "PlannedSeconds": 600,
+      "ElapsedSeconds": 600.045408779,
+      "Scheduled": 600000,
+      "Offered": 599988,
+      "Success": 599988,
+      "Errors": 0,
+      "Dropped": 12,
+      "InvalidResults": 0,
+      "CompletedRPS": 999.9043259424035,
+      "SuccessPercent": 100,
+      "P50MS": 54.054102,
+      "P95MS": 81.182526,
+      "P99MS": 106.616007,
+      "MaxMS": 181.874896,
+      "HTTPStatuses": {
+        "200": 599988
+      },
+      "Nodes": {
+        "acceptance-node-1": 599988
+      },
+      "slo_pass": true
+    }
+  ],
+  "ReportAvailable": true
+}

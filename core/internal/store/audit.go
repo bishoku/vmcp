@@ -61,6 +61,9 @@ type AuditFilter struct {
 // ListAudit returns events newest first.
 func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEvent, bool, error) {
 	var where []string
+	if a, ok := AccessFrom(ctx); ok && a.Role != "admin" {
+		where = append(where, `(EXISTS(SELECT 1 FROM virtual_servers v WHERE v.slug=audit_events.virtual_server AND `+vsPredicate(ctx, "v")+`) OR actor_id=`+literal(a.Actor)+`)`)
+	}
 	var args []any
 	add := func(cond string, v any) {
 		args = append(args, v)
