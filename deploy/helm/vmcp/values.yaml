@@ -78,11 +78,29 @@ controlPlane: {enabled: true}
 dataPlane: {enabled: true}
 # Optional gradual discovery service. It shares the gateway's runtime audience.
 omni:
+  allowAnonymous: false
+  minSimilarity: 0 # Optional cosine floor; calibrate per model, 0 disables it.
   enabled: false
   publicURL: ""
   secret: {existingSecret: "", key: value, value: ""}
+  rerank:
+    url: ""
+    model: ""
+    key: {existingSecret: "", key: value, value: ""}
+    timeout: 5s
+    candidates: 20
+    minScore: 0
+    noMatchScore: 0
+    confidenceScore: 0
+    failurePolicy: fallback
+    insecureSkipVerify: false
   embeddingURL: ""
   embeddingModel: ""
+  embeddingTextFormat: legacy-v1 # tool-first-v1 is an opt-in evaluated candidate.
+  embeddingDimensions: 0 # 0 learns the first vector dimension; 1-4096 asserts provider output.
+  embeddingRevision: ""
+  embeddingQueryPrefix: ""
+  embeddingDocumentPrefix: ""
   embeddingInsecureSkipVerify: false
   embeddingKey: {existingSecret: "", key: value, value: ""}
   refreshInterval: 30s

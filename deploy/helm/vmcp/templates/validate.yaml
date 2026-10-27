@@ -37,3 +37,5 @@
 {{- if and $v.omni.enabled (not $v.dataPlane.enabled) }}{{ fail "omni requires dataPlane.enabled" }}{{ end -}}
 {{- if and $v.omni.enabled $v.omni.secret.value (lt (len $v.omni.secret.value) 32) }}{{ fail "omni.secret.value must contain at least 32 characters" }}{{ end -}}
 {{- if and $v.omni.enabled $v.omni.embeddingURL (not $v.omni.embeddingModel) }}{{ fail "omni.embeddingModel is required with embeddingURL" }}{{ end -}}
+
+{{- if and $v.omni.enabled $v.omni.rerank.url (not $v.omni.rerank.model) }}{{ fail "omni.rerank.model is required with rerank.url" }}{{ end -}}

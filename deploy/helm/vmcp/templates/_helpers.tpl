@@ -27,7 +27,7 @@ app.kubernetes.io/component: {{ .component | quote }}
 {{- define "vmcp.sources" -}}
 {{- $v := .Values -}}
 {{- $s := dict -}}
-{{- if $v.omni.enabled }}{{ $_ := set $s "omni-secret" $v.omni.secret }}{{ if or $v.omni.embeddingKey.value $v.omni.embeddingKey.existingSecret }}{{ $_ := set $s "omni-embedding-key" $v.omni.embeddingKey }}{{ end }}{{ end -}}
+{{- if $v.omni.enabled }}{{ $_ := set $s "omni-secret" $v.omni.secret }}{{ if or $v.omni.rerank.key.value $v.omni.rerank.key.existingSecret }}{{ $_ := set $s "omni-rerank-key" $v.omni.rerank.key }}{{ end }}{{ if or $v.omni.embeddingKey.value $v.omni.embeddingKey.existingSecret }}{{ $_ := set $s "omni-embedding-key" $v.omni.embeddingKey }}{{ end }}{{ end -}}
 {{- if or $v.controlPlane.enabled $v.dataPlane.enabled }}{{ $_ := set $s "master-key" $v.credentials.masterKey }}{{ end -}}
 {{- if $v.controlPlane.enabled }}{{ $_ := set $s "admin-token" $v.credentials.adminToken }}{{ $_ := set $s "database-control-plane" $v.database.controlPlane }}{{ end -}}
 {{- if $v.dataPlane.enabled }}{{ $_ := set $s "database-data-plane" $v.database.dataPlane }}{{ if or $v.database.listener.value $v.database.listener.existingSecret }}{{ $_ := set $s "database-listener" $v.database.listener }}{{ end }}{{ if $v.rateLimit.enabled }}{{ $_ := set $s "redis-url" $v.rateLimit.redisURL }}{{ end }}{{ end -}}

@@ -48,6 +48,11 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 	if !vs.AuthRequired {
 		return Owner{Mode: "anonymous"}, true
 	}
+	return h.authenticateRuntime(w, r, vs, snap, true)
+}
+
+// authenticateRuntime validates credentials and IP restrictions even for public Omni targets.
+func (h *Handler) authenticateRuntime(w http.ResponseWriter, r *http.Request, vs config.VirtualServer, snap *config.Snapshot, requireAssignment bool) (Owner, bool) {
 	deny := func(status int, msg, subject string, invalidToken bool) (Owner, bool) {
 		h.record(audit.Event{VirtualServer: vs.Slug, ClientIP: h.ipString(r), Method: r.Method, Subject: subject, Status: "denied", Reason: msg})
 		if status == http.StatusUnauthorized {
@@ -74,7 +79,14 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 			return deny(http.StatusUnauthorized, "invalid access token", "", true)
 		}
 		ip, ipKnown := h.clientIP(r)
-		b, outcome := agentauth.Resolve(snap.Bindings, id.Claims, vs.Slug, func(b config.Binding) bool {
+		bindings := snap.Bindings
+		if !requireAssignment {
+			bindings = append([]config.Binding(nil), bindings...)
+			for n := range bindings {
+				bindings[n].Servers = map[string]bool{vs.Slug: true}
+			}
+		}
+		b, outcome := agentauth.Resolve(bindings, id.Claims, vs.Slug, func(b config.Binding) bool {
 			return len(b.Allowed) == 0 || (ipKnown && anyContains(b.Allowed, ip))
 		})
 		switch outcome {
@@ -91,7 +103,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 	if !ok || (key.ExpiresAt != nil && !key.ExpiresAt.After(time.Now())) {
 		return deny(http.StatusUnauthorized, "invalid agent key", "", false)
 	}
-	if !key.Servers[vs.Slug] {
+	if requireAssignment && !key.Servers[vs.Slug] {
 		return deny(http.StatusForbidden, "agent key is not allowed on this virtual server", "", false)
 	}
 	if len(key.Allowed) > 0 {

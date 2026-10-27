@@ -128,3 +128,9 @@ No broker configuration is required by the control plane or data plane.
 Omni has no database or master-key credentials. Its internal bridge, embedding
 provider, refresh, rate limit, proxy and OAuth settings are listed in the
 [complete Omni environment reference](Omni-MCP-Installation.md#environment-variables).
+
+For model API compatibility, vector sizes and provider authentication (including
+on-prem services without API keys), see [Omni embedding models](Omni-MCP-Embedding.md).
+
+Optional rerank model settings and separate query-level/per-tool score policies
+are documented in [Omni reranking and calibration](Omni-MCP-Reranking.md).

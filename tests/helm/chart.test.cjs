@@ -100,3 +100,32 @@ test('Omni is optional, has no database credentials and exposes only its MCP rou
  assert.ok(!paths.some(p=>p.path.startsWith('/internal')));
  assert.match(render({omni:{enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'}},dataPlane:{enabled:false}},[],false),/omni requires dataPlane/);
 });
+
+test('Anonymous Omni access is opt-in on both DP and Omni',()=>{
+ for(const enabled of [false,true]){
+  const docs=render({omni:{enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'},...(enabled?{allowAnonymous:true}:{})}});
+  for(const component of ['data-plane','omni-mcp']){
+   const d=deployments(docs).find(d=>d.metadata.name.endsWith(component));
+   assert.equal(env(d).find(e=>e.name==='VMCP_OMNI_ALLOW_ANONYMOUS').value,String(enabled));
+  }
+ }
+});
+
+test('Omni embedding profile passes expected dimensions and model-specific prefixes',()=>{
+ const omni={enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'},embeddingDimensions:768,embeddingRevision:'model-v2',embeddingQueryPrefix:'query: ',embeddingDocumentPrefix:'passage: '};
+ const d=deployments(render({omni})).find(d=>d.metadata.name.endsWith('omni-mcp'));
+ for(const [name,value]of Object.entries({VMCP_OMNI_EMBEDDING_DIMENSIONS:'768',VMCP_OMNI_EMBEDDING_REVISION:'model-v2',VMCP_OMNI_EMBEDDING_QUERY_PREFIX:'query: ',VMCP_OMNI_EMBEDDING_DOCUMENT_PREFIX:'passage: '})){assert.equal(env(d).find(e=>e.name===name).value,value);}
+ assert.match(render({omni:{...omni,embeddingDimensions:4097}},[],false),/4,?096/);
+});
+
+test('Optional reranker wires its own provider key and validated controls only to Omni',()=>{
+ const omni={enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'},rerank:{url:'https://models.example/v1/rerank',model:'model',key:{existingSecret:'rerank-provider',key:'api-key'},timeout:'3s',candidates:40,minScore:0.1,noMatchScore:0.0001,confidenceScore:0.1,failurePolicy:'closed'}};
+ const ds=deployments(render({omni})),d=ds.find(d=>d.metadata.name.endsWith('omni-mcp'));
+ for(const [name,value]of Object.entries({VMCP_OMNI_RERANK_URL:'https://models.example/v1/rerank',VMCP_OMNI_RERANK_TIMEOUT:'3s',VMCP_OMNI_RERANK_CANDIDATES:'40',VMCP_OMNI_RERANK_MIN_SCORE:'0.1',VMCP_OMNI_RERANK_NO_MATCH_SCORE:'0.0001',VMCP_OMNI_RERANK_CONFIDENCE_SCORE:'0.1',VMCP_OMNI_RERANK_FAILURE_POLICY:'closed'})){assert.equal(env(d).find(e=>e.name===name).value,value);}
+ assert.deepEqual(env(d).find(e=>e.name==='VMCP_OMNI_RERANK_KEY').valueFrom.secretKeyRef,{name:'rerank-provider',key:'api-key'});
+ assert.ok(ds.filter(x=>x!==d).every(x=>!env(x).some(e=>e.name==='VMCP_OMNI_RERANK_KEY')));
+ for(const invalid of [{candidates:101},{minScore:1.1},{noMatchScore:-1},{confidenceScore:2},{failurePolicy:'ignore'}]){assert.match(render({omni:{...omni,rerank:{...omni.rerank,...invalid}}},[],false),/rerank/);}
+ assert.match(render({omni:{...omni,rerank:{...omni.rerank,model:''}}},[],false),/rerank.model is required/);
+ const keyless=deployments(render({omni:{...omni,rerank:{...omni.rerank,key:{existingSecret:'',value:''}}}})).find(d=>d.metadata.name.endsWith('omni-mcp'));
+ assert.ok(!env(keyless).some(e=>e.name==='VMCP_OMNI_RERANK_KEY'));
+});

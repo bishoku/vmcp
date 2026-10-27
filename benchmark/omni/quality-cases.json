@@ -1,0 +1,869 @@
+{
+  "scope": "Synthetic development challenge corpus frozen before ranking comparison; not held-out production evidence.",
+  "documents": [
+    {
+      "name": "get_order",
+      "description": "Retrieve purchase order details and fulfillment status."
+    },
+    {
+      "name": "cancel_order",
+      "description": "Cancel a purchase before shipment."
+    },
+    {
+      "name": "refund_payment",
+      "description": "Return money to the original payment method after a return."
+    },
+    {
+      "name": "track_shipment",
+      "description": "Find parcel location and expected delivery date."
+    },
+    {
+      "name": "create_invoice",
+      "description": "Generate an itemized billing document for a sale."
+    },
+    {
+      "name": "check_stock",
+      "description": "Check available inventory quantity in a warehouse."
+    },
+    {
+      "name": "reserve_stock",
+      "description": "Hold product inventory for a pending purchase."
+    },
+    {
+      "name": "update_address",
+      "description": "Change a customer's shipping destination."
+    },
+    {
+      "name": "reset_password",
+      "description": "Send an account password recovery link."
+    },
+    {
+      "name": "lock_account",
+      "description": "Disable a compromised user login to prevent access."
+    },
+    {
+      "name": "create_ticket",
+      "description": "Open a customer support issue with a priority."
+    },
+    {
+      "name": "close_ticket",
+      "description": "Resolve an existing help desk incident."
+    },
+    {
+      "name": "list_transactions",
+      "description": "Retrieve bank account movements for a date range."
+    },
+    {
+      "name": "transfer_funds",
+      "description": "Move money between authorized bank accounts."
+    },
+    {
+      "name": "check_balance",
+      "description": "Read the available money in a bank account."
+    },
+    {
+      "name": "schedule_meeting",
+      "description": "Create a calendar appointment with participants."
+    },
+    {
+      "name": "cancel_meeting",
+      "description": "Remove a calendar appointment and notify attendees."
+    },
+    {
+      "name": "request_leave",
+      "description": "Submit an employee vacation request for approval."
+    },
+    {
+      "name": "get_payslip",
+      "description": "Download an employee monthly salary statement."
+    },
+    {
+      "name": "list_job_openings",
+      "description": "Find available employment positions in the company."
+    },
+    {
+      "name": "restart_service",
+      "description": "Restart an unhealthy application service."
+    },
+    {
+      "name": "read_service_logs",
+      "description": "Search application error logs for a time window."
+    },
+    {
+      "name": "get_cpu_usage",
+      "description": "Read server processor utilization metrics."
+    },
+    {
+      "name": "backup_database",
+      "description": "Create a recoverable backup copy of a database."
+    },
+    {
+      "name": "restore_database",
+      "description": "Recover a database from a backup snapshot."
+    },
+    {
+      "name": "issue_certificate",
+      "description": "Create and sign a TLS certificate for a domain."
+    },
+    {
+      "name": "revoke_api_key",
+      "description": "Invalidate a leaked application access credential."
+    },
+    {
+      "name": "translate_text",
+      "description": "Convert text from one human language to another."
+    },
+    {
+      "name": "summarize_document",
+      "description": "Produce a short summary of a long document."
+    },
+    {
+      "name": "send_email",
+      "description": "Deliver an email message to a recipient."
+    },
+    {
+      "name": "preview_invoice",
+      "description": "Preview an invoice calculation without creating or issuing a billing document."
+    },
+    {
+      "name": "cancel_refund",
+      "description": "Cancel a pending refund request; does not cancel the purchase order."
+    },
+    {
+      "name": "archive_ticket",
+      "description": "Archive a resolved support ticket without changing its resolution."
+    },
+    {
+      "name": "list_shipments",
+      "description": "List parcels shipped during a date range; does not track a single parcel."
+    },
+    {
+      "name": "get_order_receipt",
+      "description": "Download the purchase receipt for an existing order."
+    },
+    {
+      "name": "pause_service",
+      "description": "Temporarily pause an application service without restarting it."
+    },
+    {
+      "name": "delete_account",
+      "description": "Permanently delete a customer account and its profile."
+    },
+    {
+      "name": "cancel_transfer",
+      "description": "Cancel a bank transfer that has not yet been executed."
+    },
+    {
+      "name": "list_backups",
+      "description": "List available database backups and their creation timestamps."
+    },
+    {
+      "name": "reschedule_meeting",
+      "description": "Move an existing calendar meeting to another date without canceling it."
+    }
+  ],
+  "queries": [
+    {
+      "language": "en",
+      "query": "Where is my purchase?",
+      "expected": [
+        "get_order"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Siparişim şu an hangi aşamada?",
+      "expected": [
+        "get_order"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Stop my order before it ships",
+      "expected": [
+        "cancel_order"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Kargoya verilmeden alışverişimi iptal et",
+      "expected": [
+        "cancel_order"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Give the customer their money back",
+      "expected": [
+        "refund_payment"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "İade edilen ürünün parasını geri yatır",
+      "expected": [
+        "refund_payment"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "When will my package arrive?",
+      "expected": [
+        "track_shipment"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Paketim ne zaman teslim edilecek?",
+      "expected": [
+        "track_shipment"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Issue a bill for this sale",
+      "expected": [
+        "create_invoice"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Bu satışın faturasını kes",
+      "expected": [
+        "create_invoice"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "How many units are left in storage?",
+      "expected": [
+        "check_stock"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Depoda bu üründen kaç tane kaldı?",
+      "expected": [
+        "check_stock"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Set aside two units for the buyer",
+      "expected": [
+        "reserve_stock"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Müşteri için iki ürün ayır",
+      "expected": [
+        "reserve_stock"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Send future parcels to a different home",
+      "expected": [
+        "update_address"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Teslimat adresimi değiştir",
+      "expected": [
+        "update_address"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "I forgot my login password",
+      "expected": [
+        "reset_password"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Hesabıma giriş şifremi unuttum",
+      "expected": [
+        "reset_password"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Block sign-in for this hacked user",
+      "expected": [
+        "lock_account"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Ele geçirilen hesabın erişimini engelle",
+      "expected": [
+        "lock_account"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Report a problem to customer service",
+      "expected": [
+        "create_ticket"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Müşteri hizmetlerine arıza kaydı aç",
+      "expected": [
+        "create_ticket"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Mark the support case as solved",
+      "expected": [
+        "close_ticket"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Çözülen destek talebini kapat",
+      "expected": [
+        "close_ticket"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Show recent debits and credits",
+      "expected": [
+        "list_transactions"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Hesabımdaki son para hareketlerini göster",
+      "expected": [
+        "list_transactions"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Send money to another account",
+      "expected": [
+        "transfer_funds"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Başka bir hesaba para gönder",
+      "expected": [
+        "transfer_funds"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "How much money do I have?",
+      "expected": [
+        "check_balance"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Hesabımda ne kadar para var?",
+      "expected": [
+        "check_balance"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Book a call with the team tomorrow",
+      "expected": [
+        "schedule_meeting"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Yarın ekiple toplantı planla",
+      "expected": [
+        "schedule_meeting"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Delete tomorrow's appointment",
+      "expected": [
+        "cancel_meeting"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Yarınki toplantıyı iptal et",
+      "expected": [
+        "cancel_meeting"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Ask for a week off work",
+      "expected": [
+        "request_leave"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Bir haftalık yıllık izin talebi oluştur",
+      "expected": [
+        "request_leave"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Show my monthly wage breakdown",
+      "expected": [
+        "get_payslip"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Bu ayki maaş bordromu getir",
+      "expected": [
+        "get_payslip"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "What roles are you hiring for?",
+      "expected": [
+        "list_job_openings"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Şirkette hangi pozisyonlar için işe alım var?",
+      "expected": [
+        "list_job_openings"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Reboot the failing application",
+      "expected": [
+        "restart_service"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Çalışmayan uygulama servisini yeniden başlat",
+      "expected": [
+        "restart_service"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Find error messages from the application",
+      "expected": [
+        "read_service_logs"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Uygulamanın hata kayıtlarını ara",
+      "expected": [
+        "read_service_logs"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "How busy is this machine's processor?",
+      "expected": [
+        "get_cpu_usage"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Sunucunun işlemcisi ne kadar kullanılıyor?",
+      "expected": [
+        "get_cpu_usage"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Save a recovery copy of our database",
+      "expected": [
+        "backup_database"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Veritabanının yedeğini al",
+      "expected": [
+        "backup_database"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Recover the data from yesterday's backup",
+      "expected": [
+        "restore_database"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Dünkü yedekten veritabanını geri yükle",
+      "expected": [
+        "restore_database"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Generate an HTTPS certificate",
+      "expected": [
+        "issue_certificate"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Alan adı için güvenli bağlantı sertifikası üret",
+      "expected": [
+        "issue_certificate"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Disable the compromised access key",
+      "expected": [
+        "revoke_api_key"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Sızdırılan API anahtarını iptal et",
+      "expected": [
+        "revoke_api_key"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Turn this paragraph into French",
+      "expected": [
+        "translate_text"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Bu metni Fransızcaya çevir",
+      "expected": [
+        "translate_text"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Give me the main points of this report",
+      "expected": [
+        "summarize_document"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Bu uzun raporu kısaca özetle",
+      "expected": [
+        "summarize_document"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Mail the customer a confirmation",
+      "expected": [
+        "send_email"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "tr",
+      "query": "Müşteriye onay e-postası gönder",
+      "expected": [
+        "send_email"
+      ],
+      "kind": "positive"
+    },
+    {
+      "language": "en",
+      "query": "Calculate an invoice without issuing it",
+      "expected": [
+        "preview_invoice"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Faturayı kesmeden tutarını önizle",
+      "expected": [
+        "preview_invoice"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Stop the refund request",
+      "expected": [
+        "cancel_refund"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Para iadesi talebini iptal et",
+      "expected": [
+        "cancel_refund"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Archive this resolved support ticket",
+      "expected": [
+        "archive_ticket"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Çözülmüş destek kaydını arşive kaldır",
+      "expected": [
+        "archive_ticket"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "List all parcels dispatched yesterday",
+      "expected": [
+        "list_shipments"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Dün gönderilen tüm kargoları listele",
+      "expected": [
+        "list_shipments"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Download my purchase receipt",
+      "expected": [
+        "get_order_receipt"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Siparişimin makbuzunu indir",
+      "expected": [
+        "get_order_receipt"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Pause the application temporarily",
+      "expected": [
+        "pause_service"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Uygulamayı geçici olarak duraklat",
+      "expected": [
+        "pause_service"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Permanently erase this customer account",
+      "expected": [
+        "delete_account"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Müşteri hesabını kalıcı olarak sil",
+      "expected": [
+        "delete_account"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Cancel the pending bank transfer",
+      "expected": [
+        "cancel_transfer"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Bekleyen banka havalesini iptal et",
+      "expected": [
+        "cancel_transfer"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Show the available database backup copies",
+      "expected": [
+        "list_backups"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Mevcut veritabanı yedeklerini listele",
+      "expected": [
+        "list_backups"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "en",
+      "query": "Move the meeting to next week",
+      "expected": [
+        "reschedule_meeting"
+      ],
+      "kind": "near-neighbor"
+    },
+    {
+      "language": "tr",
+      "query": "Toplantıyı iptal etmeden gelecek haftaya taşı",
+      "expected": [
+        "reschedule_meeting"
+      ],
+      "kind": "near-neighbor"
+    }
+  ],
+  "negative_queries": [
+    {
+      "language": "en",
+      "query": "Forecast the rainfall in my city tomorrow",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "tr",
+      "query": "Yarın şehrimde yağmur yağacak mı",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "en",
+      "query": "Identify the plant species in this photograph",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "tr",
+      "query": "Bu fotoğraftaki bitkinin türünü belirle",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "en",
+      "query": "Compose an orchestral melody in D minor",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "tr",
+      "query": "Re minör bir orkestra melodisi bestele",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "en",
+      "query": "Solve this differential equation symbolically",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "tr",
+      "query": "Bu diferansiyel denklemi sembolik olarak çöz",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "en",
+      "query": "Estimate the nutritional calories of this meal",
+      "expected": [],
+      "kind": "out-of-catalog"
+    },
+    {
+      "language": "tr",
+      "query": "Bu yemeğin besin kalorisini hesapla",
+      "expected": [],
+      "kind": "out-of-catalog"
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+{
+  "scope": "Second exploratory iteration after strict per-tool calibration failed. Same known synthetic corpus and development split. No independent holdout claim.",
+  "method": "Reject entire query below no_match_score; keep retrieval order below confidence_score; otherwise rerank. Tool score floor is disabled for this experiment.",
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "rerank_model": "BAAI/bge-reranker-v2-m3-int8",
+  "no_match_grid": [
+    0,
+    1e-05,
+    2e-05,
+    5e-05,
+    0.0001,
+    0.0002,
+    0.0005,
+    0.001,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1
+  ],
+  "confidence_grid": [
+    0,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    0.9,
+    0.99
+  ],
+  "selected_no_match_score": 0.0001,
+  "selected_confidence_score": 0.1,
+  "calibration_candidate_found": true,
+  "validation_non_regression_gate": true,
+  "summary": {
+    "calibration": {
+      "baseline": {
+        "en": {
+          "queries": 20,
+          "hit1": 18,
+          "hit5": 20,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.95
+        },
+        "tr": {
+          "queries": 20,
+          "hit1": 15,
+          "hit5": 19,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.8208333333333334
+        },
+        "negative": {
+          "queries": 6,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 6,
+          "empty_queries": 0,
+          "mrr_at_5": 0.0
+        }
+      },
+      "query_gate": {
+        "en": {
+          "queries": 20,
+          "hit1": 17,
+          "hit5": 20,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.925
+        },
+        "tr": {
+          "queries": 20,
+          "hit1": 20,
+          "hit5": 20,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 1.0
+        },
+        "negative": {
+          "queries": 6,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 0,
+          "empty_queries": 6,
+          "mrr_at_5": 0.0
+        }
+      },
+      "guarded_rerank": {
+        "en": {
+          "queries": 20,
+          "hit1": 18,
+          "hit5": 20,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.95
+        },
+        "tr": {
+          "queries": 20,
+          "hit1": 17,
+          "hit5": 19,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.8791666666666668
+        },
+        "negative": {
+          "queries": 6,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 0,
+          "empty_queries": 6,
+          "mrr_at_5": 0.0
+        }
+      }
+    },
+    "validation": {
+      "baseline": {
+        "en": {
+          "queries": 20,
+          "hit1": 15,
+          "hit5": 19,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.8333333333333333
+        },
+        "tr": {
+          "queries": 20,
+          "hit1": 14,
+          "hit5": 17,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.775
+        },
+        "negative": {
+          "queries": 4,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 4,
+          "empty_queries": 0,
+          "mrr_at_5": 0.0
+        }
+      },
+      "query_gate": {
+        "en": {
+          "queries": 20,
+          "hit1": 18,
+          "hit5": 19,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.925
+        },
+        "tr": {
+          "queries": 20,
+          "hit1": 18,
+          "hit5": 18,
+          "false_positive_queries": 0,
+          "empty_queries": 2,
+          "mrr_at_5": 0.9
+        },
+        "negative": {
+          "queries": 4,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 0,
+          "empty_queries": 4,
+          "mrr_at_5": 0.0
+        }
+      },
+      "guarded_rerank": {
+        "en": {
+          "queries": 20,
+          "hit1": 16,
+          "hit5": 19,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.8583333333333332
+        },
+        "tr": {
+          "queries": 20,
+          "hit1": 14,
+          "hit5": 17,
+          "false_positive_queries": 0,
+          "empty_queries": 2,
+          "mrr_at_5": 0.775
+        },
+        "negative": {
+          "queries": 4,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 0,
+          "empty_queries": 4,
+          "mrr_at_5": 0.0
+        }
+      }
+    },
+    "all": {
+      "baseline": {
+        "en": {
+          "queries": 40,
+          "hit1": 33,
+          "hit5": 39,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.8916666666666666
+        },
+        "tr": {
+          "queries": 40,
+          "hit1": 29,
+          "hit5": 36,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.7979166666666667
+        },
+        "negative": {
+          "queries": 10,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 10,
+          "empty_queries": 0,
+          "mrr_at_5": 0.0
+        }
+      },
+      "query_gate": {
+        "en": {
+          "queries": 40,
+          "hit1": 35,
+          "hit5": 39,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.925
+        },
+        "tr": {
+          "queries": 40,
+          "hit1": 38,
+          "hit5": 38,
+          "false_positive_queries": 0,
+          "empty_queries": 2,
+          "mrr_at_5": 0.95
+        },
+        "negative": {
+          "queries": 10,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 0,
+          "empty_queries": 10,
+          "mrr_at_5": 0.0
+        }
+      },
+      "guarded_rerank": {
+        "en": {
+          "queries": 40,
+          "hit1": 34,
+          "hit5": 39,
+          "false_positive_queries": 0,
+          "empty_queries": 0,
+          "mrr_at_5": 0.9041666666666666
+        },
+        "tr": {
+          "queries": 40,
+          "hit1": 31,
+          "hit5": 36,
+          "false_positive_queries": 0,
+          "empty_queries": 2,
+          "mrr_at_5": 0.8270833333333334
+        },
+        "negative": {
+          "queries": 10,
+          "hit1": 0,
+          "hit5": 0,
+          "false_positive_queries": 0,
+          "empty_queries": 10,
+          "mrr_at_5": 0.0
+        }
+      }
+    }
+  },
+  "corpus_sha256": "62408589f0a61b6403e9faa9e4fe2dde9f897d3d22dde3b228b7c8502fa75d5a"
+}

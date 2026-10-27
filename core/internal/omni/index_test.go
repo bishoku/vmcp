@@ -70,7 +70,7 @@ func TestReferenceRoundTrip(t *testing.T) {
 }
 
 func BenchmarkAuthorizedSearch(b *testing.B) {
-	for _, size := range []int{6000, 60000} {
+	for _, size := range []int{1000, 6000, 60000} {
 		b.Run(fmt.Sprint(size), func(b *testing.B) {
 			i := NewIndex(nil)
 			i.status.Ready = true
@@ -78,7 +78,7 @@ func BenchmarkAuthorizedSearch(b *testing.B) {
 			for n := 0; n < size; n++ {
 				d := Document{Ref: Ref("chat", fmt.Sprint(n)), Server: "chat", Name: fmt.Sprintf("orders_%d", n), Description: "Read customer orders and shipment status"}
 				hash := d.Hash()
-				i.entries = append(i.entries, entry{Document: d, Hash: hash, SearchText: strings.ToLower(d.Text())})
+				i.entries = append(i.entries, prepareEntry(d))
 				access.Refs[d.Ref] = hash
 			}
 			b.ReportAllocs()
@@ -104,7 +104,7 @@ func TestSearchTopKAndDistinctServers(t *testing.T) {
 	a := Access{Refs: map[string]string{}}
 	for _, d := range docs {
 		hash := d.Hash()
-		i.entries = append(i.entries, entry{Document: d, Hash: hash, SearchText: strings.ToLower(d.Text())})
+		i.entries = append(i.entries, prepareEntry(d))
 		a.Refs[d.Ref] = hash
 	}
 	hits, _, err := i.Search(context.Background(), a, "customer orders", "", "", 3)
@@ -137,7 +137,7 @@ func TestDiscoveryRechecksAuthorizationAfterRanking(t *testing.T) {
 	b, _ := NewBackend(backend.URL, strings.Repeat("x", 32))
 	i := NewIndex(nil)
 	i.status.Ready = true
-	i.entries = []entry{{Document: d, Hash: d.Hash(), SearchText: strings.ToLower(d.Text())}}
+	i.entries = []entry{{Document: d, Hash: d.Hash(), SearchText: " " + strings.Join(terms(d.Text()), " ") + " "}}
 	s := &Server{Backend: b, Index: i}
 	handler := s.Handler()
 	r := httptest.NewRequest("POST", "/mcp/v1/omni", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"discover_tools","arguments":{"query":"orders"}}}`))

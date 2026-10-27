@@ -64,6 +64,9 @@
 {{- if and $v.omni.enabled (or (eq $c "control-plane") (eq $c "data-plane") (eq $c "omni-mcp")) }}
 {{ include "vmcp.secretEnv" (dict "root" $r "id" "omni-secret" "source" $v.omni.secret "env" "VMCP_OMNI_SECRET") }}
 {{- end }}
+{{- if and $v.omni.enabled (or (eq $c "data-plane") (eq $c "omni-mcp")) }}
+- {name: VMCP_OMNI_ALLOW_ANONYMOUS, value: {{ $v.omni.allowAnonymous | quote }}}
+{{- end }}
 {{- if and $v.omni.enabled (or (eq $c "control-plane") (eq $c "omni-mcp")) }}
 - {name: VMCP_OMNI_PUBLIC_URL, value: {{ default $v.runtime.publicGatewayURL $v.omni.publicURL | quote }}}
 {{- end }}
@@ -73,9 +76,27 @@
 {{- if eq $c "omni-mcp" }}
 - {name: VMCP_LISTEN, value: ":8080"}
 - {name: VMCP_OMNI_DATA_PLANE_URL, value: {{ printf "http://%s:8080" (include "vmcp.name" (dict "root" $r "component" "data-plane")) | quote }}}
+- {name: VMCP_OMNI_MIN_SIMILARITY, value: {{ $v.omni.minSimilarity | quote }}}
 - {name: VMCP_OMNI_REFRESH_INTERVAL, value: {{ $v.omni.refreshInterval | quote }}}
+- {name: VMCP_OMNI_RERANK_URL, value: {{ $v.omni.rerank.url | quote }}}
+- {name: VMCP_OMNI_RERANK_MODEL, value: {{ $v.omni.rerank.model | quote }}}
+- {name: VMCP_OMNI_RERANK_TIMEOUT, value: {{ $v.omni.rerank.timeout | quote }}}
+- {name: VMCP_OMNI_RERANK_CANDIDATES, value: {{ $v.omni.rerank.candidates | quote }}}
+- {name: VMCP_OMNI_RERANK_NO_MATCH_SCORE, value: {{ $v.omni.rerank.noMatchScore | quote }}}
+- {name: VMCP_OMNI_RERANK_CONFIDENCE_SCORE, value: {{ $v.omni.rerank.confidenceScore | quote }}}
+- {name: VMCP_OMNI_RERANK_MIN_SCORE, value: {{ $v.omni.rerank.minScore | quote }}}
+- {name: VMCP_OMNI_RERANK_FAILURE_POLICY, value: {{ $v.omni.rerank.failurePolicy | quote }}}
+- {name: VMCP_OMNI_RERANK_INSECURE_SKIP_VERIFY, value: {{ $v.omni.rerank.insecureSkipVerify | quote }}}
+{{- if or $v.omni.rerank.key.value $v.omni.rerank.key.existingSecret }}
+{{ include "vmcp.secretEnv" (dict "root" $r "id" "omni-rerank-key" "source" $v.omni.rerank.key "env" "VMCP_OMNI_RERANK_KEY") }}
+{{- end }}
 - {name: VMCP_OMNI_EMBEDDING_URL, value: {{ $v.omni.embeddingURL | quote }}}
 - {name: VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY, value: {{ $v.omni.embeddingInsecureSkipVerify | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_TEXT_FORMAT, value: {{ $v.omni.embeddingTextFormat | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_DIMENSIONS, value: {{ $v.omni.embeddingDimensions | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_REVISION, value: {{ $v.omni.embeddingRevision | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_QUERY_PREFIX, value: {{ $v.omni.embeddingQueryPrefix | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_DOCUMENT_PREFIX, value: {{ $v.omni.embeddingDocumentPrefix | quote }}}
 - {name: VMCP_OMNI_EMBEDDING_MODEL, value: {{ $v.omni.embeddingModel | quote }}}
 - {name: VMCP_AGENT_OIDC_ISSUER, value: {{ $v.runtime.agentOIDC.issuer | quote }}}
 - {name: VMCP_ALLOWED_ORIGINS, value: {{ join "," $v.runtime.allowedOrigins | quote }}}

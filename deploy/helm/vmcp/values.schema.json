@@ -532,12 +532,33 @@
         "secret": {
           "$ref": "#/definitions/secretSource"
         },
+        "minSimilarity": {"type":"number", "minimum":0, "maximum":1},
+        "allowAnonymous": {"type": "boolean"},
+        "rerank": {
+          "type":"object", "additionalProperties":false,
+          "properties": {
+            "url":{"type":"string"}, "model":{"type":"string"},
+            "key":{"$ref":"#/definitions/secretSource"},
+            "timeout":{"type":"string"},
+            "candidates":{"type":"integer","minimum":1,"maximum":100},
+            "minScore":{"type":"number","minimum":0,"maximum":1},
+            "noMatchScore":{"type":"number","minimum":0,"maximum":1},
+            "confidenceScore":{"type":"number","minimum":0,"maximum":1},
+            "failurePolicy":{"enum":["fallback","closed"]},
+            "insecureSkipVerify":{"type":"boolean"}
+          }
+        },
         "embeddingURL": {
           "type": "string"
         },
         "embeddingInsecureSkipVerify": {
           "type": "boolean"
         },
+        "embeddingTextFormat": {"type":"string", "enum":["legacy-v1","tool-first-v1"]},
+        "embeddingDimensions": {"type": "integer", "minimum": 0, "maximum": 4096},
+        "embeddingRevision": {"type": "string"},
+        "embeddingQueryPrefix": {"type": "string"},
+        "embeddingDocumentPrefix": {"type": "string"},
         "embeddingModel": {
           "type": "string"
         },

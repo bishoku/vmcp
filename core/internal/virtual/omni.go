@@ -118,17 +118,25 @@ func (h *Handler) omniAccess(w http.ResponseWriter, r *http.Request) {
 	out := omni.Access{Revision: snap.Revision, Refs: map[string]string{}}
 	// A fresh auth-only handler avoids copying locks and suppresses per-server denial audit.
 	auth := &Handler{JWT: h.JWT, PublicURL: h.PublicURL, Log: h.Log, TrustedProxies: h.TrustedProxies}
-	probe := &discardResponse{header: http.Header{}}
-	auth.authenticate(probe, r, config.VirtualServer{Slug: "__omni_auth_probe__", AuthRequired: true}, snap)
-	if probe.status == http.StatusUnauthorized {
+	anonymous := r.Header.Get("Authorization") == ""
+	if anonymous && !h.OmniAllowAnonymous {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="vmcp"`)
-		http.Error(w, "invalid runtime credential", 401)
+		http.Error(w, "runtime credential required", 401)
 		return
+	}
+	if !anonymous {
+		probe := &discardResponse{header: http.Header{}}
+		if _, ok := auth.authenticateRuntime(probe, r, config.VirtualServer{Slug: "__omni_auth_probe__"}, snap, false); !ok {
+			if probe.status == 401 {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="vmcp"`)
+			}
+			http.Error(w, "invalid or disallowed runtime credential", probe.status)
+			return
+		}
 	}
 	matched := false
 	for _, v := range snap.VirtualServers {
-		v.AuthRequired = true // Omni always authenticates, including anonymously exposed vMCPs.
-		if _, ok := auth.authenticate(&discardResponse{header: http.Header{}}, r, v, snap); !ok {
+		if _, ok := h.authenticateOmni(auth, &discardResponse{header: http.Header{}}, r, v, snap); !ok {
 			continue
 		}
 		matched = true
@@ -184,8 +192,7 @@ func (h *Handler) omniTarget(w http.ResponseWriter, r *http.Request) (omniInput,
 		http.NotFound(w, r)
 		return p, nil, v, Owner{}, nil, false
 	}
-	v.AuthRequired = true
-	owner, ok := h.authenticate(w, r, v, snap)
+	owner, ok := h.authenticateOmni(h, w, r, v, snap)
 	if !ok {
 		return p, nil, v, owner, nil, false
 	}
@@ -203,6 +210,16 @@ func (h *Handler) omniTarget(w http.ResponseWriter, r *http.Request) (omniInput,
 	http.NotFound(w, r)
 	return p, nil, v, owner, nil, false
 }
+
+// Public access is a DP decision; the private bridge secret cannot grant publication.
+func (h *Handler) authenticateOmni(auth *Handler, w http.ResponseWriter, r *http.Request, v config.VirtualServer, snap *config.Snapshot) (Owner, bool) {
+	public := h.OmniAllowAnonymous && v.OmniEnabled && !v.AuthRequired
+	if public && r.Header.Get("Authorization") == "" {
+		return Owner{Mode: "anonymous"}, true
+	}
+	return auth.authenticateRuntime(w, r, v, snap, !public)
+}
+
 func (h *Handler) omniSchema(w http.ResponseWriter, r *http.Request) {
 	_, _, _, _, b, ok := h.omniTarget(w, r)
 	if !ok {
@@ -246,7 +263,7 @@ func (h *Handler) omniInvoke(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "configuration changed; retry", 409)
 			return errAuthorizationChanged
 		}
-		verified, ok := h.authenticate(w, r.WithContext(c), v, current)
+		verified, ok := h.authenticateOmni(h, w, r.WithContext(c), v, current)
 		if !ok {
 			return errAuthorizationChanged
 		}

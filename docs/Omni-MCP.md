@@ -13,8 +13,11 @@ overrides can improve search without maintaining another catalog.
 
 Publication does not grant access. Agent keys and OAuth identity bindings retain
 their virtual-server assignments, IP restrictions and expiration/revocation rules.
-Omni always requires a runtime credential, including for vMCPs allowing anonymous
-direct access. Projects remain organizational boundaries, not an additional set
+Omni requires a runtime credential by default. With `VMCP_OMNI_ALLOW_ANONYMOUS=true`
+on both DP and Omni, published vMCPs allowing anonymous direct access also permit
+anonymous discovery, schema retrieval and invocation. Valid credentials see public
+tools plus their assigned protected tools; supplied invalid credentials are rejected.
+Anonymous search quotas use the verified client IP. Projects remain organizational boundaries, not an additional set
 of runtime grants. Upstream ownership approvals, policy filtering and PII-safe
 published tool schemas remain authoritative.
 
@@ -37,6 +40,7 @@ Minimum settings:
 
 | Process | Setting | Purpose |
 |---|---|---|
+| DP, Omni | `VMCP_OMNI_ALLOW_ANONYMOUS` | `false`; explicit opt-in for published anonymous vMCPs (since v1.2.2) |
 | All three | `VMCP_OMNI_SECRET` | Random shared internal credential, at least 32 characters |
 | Omni | `VMCP_OMNI_DATA_PLANE_URL` | Fixed internal data-plane URL |
 | Control-plane | `VMCP_OMNI_URL` | Fixed internal Omni URL |
@@ -83,11 +87,17 @@ batch size (32) and dimensions (4,096). It contains metadata and optional vector
 not full schemas or compiled upstream clients. The data-plane caches only its published
 metadata and hashes by snapshot revision; it never caches caller authorization.
 Changed documents are re-embedded;
-unchanged vectors are reused. Restart rebuilds the index. Each replica builds its
+unchanged vectors are reused only within the same embedding profile. The quality
+update checks a consistent vector dimension across batches and queries and exposes
+embedded-document coverage. Incomplete authorized coverage uses a uniform lexical
+`hybrid-degraded` path instead of mixing incompatible scores. Restart rebuilds the index. Each replica builds its
 own index; large replica counts may justify a persistent shared index later.
 
 Configure an OpenAI-compatible embeddings API, including a self-hosted model, to
 use hybrid keyword + cosine search. There is **no implicit external provider**.
+See [embedding model requirements and configuration](Omni-MCP-Embedding.md) for
+vector dimensions, API-key-free on-prem setup, API compatibility, fixed limits
+and model changes.
 Without configuration the service explicitly reports `keyword`; provider failures
 report degraded/fallback mode. Metadata and search queries are sent to the selected
 embedding provider, never tool results or gateway credentials. Choose a provider
@@ -128,6 +138,13 @@ The generic `invoke_tool` is conservatively marked potentially destructive and
 non-idempotent. Agents must inspect the discovered schema/annotations and obtain
 any necessary user approval. Search descriptions are untrusted metadata, not
 instructions. Existing runtime approval hooks continue to apply.
+
+## Optional reranking
+
+After bounded authorized retrieval, the optional rerank stage can reorder a small
+candidate pool and omit scores below a model-calibrated floor. It refreshes access
+before external model dispatch and retains the final access check. Rerank is off
+by default; see the [rerank API/configuration and calibration guide](Omni-MCP-Reranking.md).
 
 ## UI and operations
 
