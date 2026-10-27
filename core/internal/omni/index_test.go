@@ -51,7 +51,7 @@ func TestHybridSearchFiltersBeforeRankingAndRejectsStaleMetadata(t *testing.T) {
 func TestEmbeddingResponseValidation(t *testing.T) {
 	for _, body := range []string{`{"data":[{"index":0,"embedding":[1]},{"index":0,"embedding":[2]}]}`, `{"data":[{"index":0,"embedding":[]},{"index":1,"embedding":[]}]}`, `{"data":[{"index":0,"embedding":[1]},{"index":1,"embedding":[1,2]}]}`} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
-		e, _ := NewHTTPEmbedder(srv.URL, "test", "")
+		e, _ := NewHTTPEmbedder(srv.URL, "test", "", false)
 		_, err := e.Embed(context.Background(), []string{"one", "two"})
 		srv.Close()
 		if err == nil {

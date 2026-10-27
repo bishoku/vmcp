@@ -44,6 +44,7 @@ Minimum settings:
 | Omni | `VMCP_AGENT_OIDC_ISSUER` | Same issuer as the gateway when OAuth is enabled |
 | Omni | `VMCP_OMNI_EMBEDDING_URL` | Explicit embeddings HTTP endpoint, including its path |
 | Omni | `VMCP_OMNI_EMBEDDING_MODEL` | Explicit model name |
+| Omni | `VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY` | `false`; explicit opt-in to skip embedding TLS certificate and hostname verification (since v1.2.1) |
 | Omni | `VMCP_OMNI_EMBEDDING_KEY` | Optional provider credential |
 | Omni | `VMCP_OMNI_REFRESH_INTERVAL` | Catalog refresh interval, default `30s` |
 | Omni | `VMCP_OMNI_SEARCH_LIMIT` | Searches per credential per minute per replica, default `120` |

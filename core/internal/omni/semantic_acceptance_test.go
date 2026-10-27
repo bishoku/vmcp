@@ -50,7 +50,7 @@ func TestRealModelSemanticAcceptance(t *testing.T) {
 	}))
 	defer srv.Close()
 	backend, _ := NewBackend(srv.URL, strings.Repeat("x", 32))
-	embedder, err := NewHTTPEmbedder(endpoint, model, "")
+	embedder, err := NewHTTPEmbedder(endpoint, model, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

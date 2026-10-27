@@ -535,6 +535,9 @@
         "embeddingURL": {
           "type": "string"
         },
+        "embeddingInsecureSkipVerify": {
+          "type": "boolean"
+        },
         "embeddingModel": {
           "type": "string"
         },

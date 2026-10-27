@@ -83,6 +83,7 @@ omni:
   secret: {existingSecret: "", key: value, value: ""}
   embeddingURL: ""
   embeddingModel: ""
+  embeddingInsecureSkipVerify: false
   embeddingKey: {existingSecret: "", key: value, value: ""}
   refreshInterval: 30s
 web:

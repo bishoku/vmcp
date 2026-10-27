@@ -28,9 +28,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	insecureEmbeddingTLS, err := strconv.ParseBool(config.Env("VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY", "false"))
+	if err != nil {
+		return errors.New("VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY must be a boolean")
+	}
 	var embedder omni.Embedder
 	if endpoint := config.Env("VMCP_OMNI_EMBEDDING_URL", ""); endpoint != "" {
-		e, err := omni.NewHTTPEmbedder(endpoint, config.Env("VMCP_OMNI_EMBEDDING_MODEL", ""), config.Env("VMCP_OMNI_EMBEDDING_KEY", ""))
+		e, err := omni.NewHTTPEmbedder(endpoint, config.Env("VMCP_OMNI_EMBEDDING_MODEL", ""), config.Env("VMCP_OMNI_EMBEDDING_KEY", ""), insecureEmbeddingTLS)
 		if err != nil {
 			return err
 		}

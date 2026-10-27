@@ -3,6 +3,7 @@ package omni
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -19,12 +20,15 @@ type HTTPEmbedder struct {
 	Client               *http.Client
 }
 
-func NewHTTPEmbedder(endpoint, model, key string) (*HTTPEmbedder, error) {
+func NewHTTPEmbedder(endpoint, model, key string, insecureSkipVerify bool) (*HTTPEmbedder, error) {
 	u, e := url.Parse(endpoint)
 	if e != nil || u.Host == "" || u.User != nil || (u.Scheme != "https" && u.Scheme != "http") || model == "" {
 		return nil, errors.New("valid embedding endpoint and model required")
 	}
-	return &HTTPEmbedder{Endpoint: endpoint, Model: model, Key: key, Client: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	// Use a private transport: this setting must not affect data-plane or other HTTP clients.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecureSkipVerify} // Explicit operator opt-in for private embedding endpoints.
+	return &HTTPEmbedder{Endpoint: endpoint, Model: model, Key: key, Client: &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 func (e *HTTPEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	input := make([]string, len(texts))
