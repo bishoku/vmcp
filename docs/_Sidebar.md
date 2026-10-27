@@ -46,3 +46,5 @@
 - [Negotiated client features](MCP_CLIENT_FEATURES.md)
 - [Authorization consistency](AUTHORIZATION_CONSISTENCY.md)
 - [Audit durability](AUDIT_DURABILITY.md)
+
+- [Teams and projects](Teams-and-Projects.md)

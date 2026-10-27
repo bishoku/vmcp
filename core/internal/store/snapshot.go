@@ -325,6 +325,9 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 	if err := loadVirtualCatalog(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}
+	if err := applyOwnership(ctx, tx, snap); err != nil {
+		return nil, err
+	}
 	for slug, vs := range snap.VirtualServers {
 		snap.VirtualServers[slug] = vs.WithGuidance(snap.Upstreams).WithPreparedMetadata()
 	}

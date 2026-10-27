@@ -113,15 +113,30 @@ func acceptanceSeed(t *testing.T, p acceptanceProfile, fixtures []*httptest.Serv
 	execSQL(`UPDATE upstreams SET mcp_capabilities='{"tools":{},"resources":{}}'::jsonb`)
 	execSQL(`INSERT INTO upstream_catalog(upstream_id,kind,name,definition) SELECT u.id,'resource','test://resource/'||n,jsonb_build_object('uri','test://resource/'||n,'name','Synthetic resource '||n,'description','Contact support@example.com') FROM upstreams u CROSS JOIN generate_series(0,$1-1) n`, p.Resources)
 	execSQL(`INSERT INTO virtual_servers(tenant_id,slug,name,pii_config) SELECT $1::uuid,'accept-vs-'||lpad(n::text,4,'0'),'Synthetic virtual server '||n,CASE WHEN n%10=0 THEN '{"enabled":true,"detectors":["email"],"maskArguments":false}'::jsonb ELSE '{}'::jsonb END FROM generate_series(0,$2-1) n`, tenant, p.Servers)
+	if os.Getenv("VMCP_ACCEPTANCE_OWNERSHIP") == "1" {
+		execSQL(`INSERT INTO teams(slug,name,issuer,group_value) VALUES('benchmark-provider','Provider','https://benchmark.invalid','provider'),('benchmark-consumer','Consumer','https://benchmark.invalid','consumer')`)
+		execSQL(`INSERT INTO projects(slug,name,owner_team_id) SELECT 'benchmark-chat','Chat',id FROM teams WHERE slug='benchmark-consumer'`)
+		execSQL(`UPDATE upstreams SET owner_team_id=(SELECT id FROM teams WHERE slug='benchmark-provider')`)
+		execSQL(`UPDATE virtual_servers SET project_id=(SELECT id FROM projects WHERE slug='benchmark-chat')`)
+	}
+
 	execSQL(`INSERT INTO virtual_server_tools(virtual_server_id,upstream_id,tool_name,alias,position) SELECT v.id,u.id,t.name,t.name,substring(t.name from 6)::int FROM virtual_servers v JOIN upstreams u ON right(v.slug,4)=right(u.slug,4) JOIN upstream_tools t ON t.upstream_id=u.id`)
 	execSQL(`INSERT INTO virtual_catalog(virtual_server_id,upstream_id,kind,name,position) SELECT v.id,u.id,c.kind,c.name,substring(c.name from 17)::int FROM virtual_servers v JOIN upstreams u ON right(v.slug,4)=right(u.slug,4) JOIN upstream_catalog c ON c.upstream_id=u.id`)
-	tokens := make([]string, 64)
+	keyCount := 64
+	if os.Getenv("VMCP_ACCEPTANCE_MEMORY_PROFILE") == "4g6g" {
+		keyCount++
+	}
+	tokens := make([]string, keyCount)
 	for i := range tokens {
 		nonce, _ := audit.NewID()
 		tokens[i] = "acceptance-" + nonce
 		execSQL(`INSERT INTO agent_keys(tenant_id,slug,key_hash,key_prefix) VALUES($1::uuid,$2,$3,'synthetic')`, tenant, fmt.Sprintf("accept-key-%02d", i), store.HashKey(tokens[i]))
 	}
 	execSQL(`INSERT INTO agent_key_servers(agent_key_id,virtual_server_id) SELECT k.id,v.id FROM agent_keys k CROSS JOIN virtual_servers v`)
+	if os.Getenv("VMCP_ACCEPTANCE_OWNERSHIP") == "1" {
+		execSQL(`INSERT INTO tool_grants(virtual_server_id,upstream_id,tool_name,status,actor) SELECT virtual_server_id,upstream_id,tool_name,'approved','benchmark' FROM virtual_server_tools`)
+	}
+
 	return pool, database, master, tokens
 }
 
@@ -233,8 +248,12 @@ func acceptanceBalancer(nodes []*acceptanceNode) *httptest.Server {
 		proxy := httputil.NewSingleHostReverseProxy(u)
 		proxy.Transport = transport
 		proxy.ErrorLog = log.New(io.Discard, "", 0)
+		if os.Getenv("VMCP_ACCEPTANCE_DIAGNOSTICS") == "1" {
+			proxy.ErrorLog = log.New(os.Stderr, "acceptance proxy response: ", log.LstdFlags|log.LUTC)
+		}
 		proxy.ModifyResponse = func(resp *http.Response) error { resp.Header.Set("X-Acceptance-Node", n.name); return nil }
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			log.Printf("acceptance proxy transport error: utc=%s node=%s method=%s path=%s error_type=%T error=%q context_error=%v", time.Now().UTC().Format(time.RFC3339Nano), n.name, r.Method, r.URL.Path, err, err, r.Context().Err())
 			if r.Context().Err() == nil {
 				down[i].Store(time.Now().Add(10 * time.Second).UnixNano())
 			}

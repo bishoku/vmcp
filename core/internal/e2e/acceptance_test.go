@@ -33,7 +33,9 @@ type acceptanceNodeSample struct {
 	PID                int
 	Alive              bool
 	RSSBytes           int64
+	MemoryUsageBytes   int64
 	ReportedCPUPercent float64
+	Readiness          json.RawMessage `json:"readiness,omitempty"`
 	Metrics            map[string]float64
 	Error              string `json:"error,omitempty"`
 }
@@ -92,6 +94,7 @@ func acceptanceMonitor(ctx context.Context, nodes []*acceptanceNode, pool *pgxpo
 					if acceptanceKubernetes() {
 						if measured, ok := kubeSamples[node.name]; ok {
 							item.RSSBytes = measured.RSSBytes
+							item.MemoryUsageBytes = measured.MemoryUsageBytes
 							item.ReportedCPUPercent = measured.ReportedCPUPercent
 						} else {
 							item.Error = "kubelet RSS sample unavailable"
@@ -116,6 +119,16 @@ func acceptanceMonitor(ctx context.Context, nodes []*acceptanceNode, pool *pgxpo
 							item.Error = "metrics read failed"
 						} else {
 							item.Metrics = acceptanceMetricValues(string(raw))
+							if os.Getenv("VMCP_ACCEPTANCE_DIAGNOSTICS") == "1" {
+								_ = os.WriteFile(filepath.Join(os.Getenv("VMCP_ACCEPTANCE_OUTPUT"), fmt.Sprintf("metrics-%s-%06d.prom", node.name, int(sample.Seconds))), raw, 0600)
+								if ready, err := client.Get(node.url + "/readyz"); err == nil {
+									data, _ := io.ReadAll(io.LimitReader(ready.Body, 16384))
+									ready.Body.Close()
+									if json.Valid(data) {
+										item.Readiness = data
+									}
+								}
+							}
 						}
 					}
 				}
@@ -160,8 +173,15 @@ func acceptanceMonitor(ctx context.Context, nodes []*acceptanceNode, pool *pgxpo
 }
 func acceptanceResources(samples []acceptanceSample) map[string]any {
 	result := map[string]any{}
-	for _, name := range []string{"acceptance-node-1", "acceptance-node-2"} {
-		var rss, cpu []float64
+	names := map[string]bool{}
+	for _, sample := range samples {
+		for _, node := range sample.Nodes {
+			names[node.Name] = true
+		}
+	}
+	for name := range names {
+		var rss, cpu, usage []float64
+		var steadyRSS []float64
 		maxPool, waitStart, waitEnd, cancelled, overflow := float64(0), float64(-1), float64(0), float64(0), float64(0)
 		var soakRSS []float64
 		for _, sample := range samples {
@@ -170,6 +190,10 @@ func acceptanceResources(samples []acceptanceSample) map[string]any {
 					continue
 				}
 				rss = append(rss, float64(node.RSSBytes))
+				usage = append(usage, float64(node.MemoryUsageBytes))
+				if sample.Phase == "steady" {
+					steadyRSS = append(steadyRSS, float64(node.RSSBytes))
+				}
 				cpu = append(cpu, node.ReportedCPUPercent)
 				if sample.Phase == "soak" {
 					soakRSS = append(soakRSS, float64(node.RSSBytes))
@@ -183,9 +207,12 @@ func acceptanceResources(samples []acceptanceSample) map[string]any {
 				overflow = max(overflow, node.Metrics["vmcp_operation_label_overflows_total"])
 			}
 		}
+		sort.Float64s(usage)
 		sort.Float64s(rss)
 		sort.Float64s(cpu)
 		item := map[string]any{"max_rss_bytes": acceptanceQuantile(rss, 1), "median_rss_bytes": acceptanceQuantile(rss, .5), "max_os_reported_cpu_percent": acceptanceQuantile(cpu, 1), "median_os_reported_cpu_percent": acceptanceQuantile(cpu, .5), "max_pool_acquired": maxPool, "max_pool_cancelled_acquires": cancelled, "pool_acquire_seconds_observed": waitEnd - max(waitStart, 0), "max_metric_label_overflows": overflow}
+		item["max_container_usage_bytes"] = acceptanceQuantile(usage, 1)
+		item["steady_rss_growth_percent"] = acceptanceRSSGrowth(steadyRSS)
 		if len(soakRSS) >= 6 {
 			part := len(soakRSS) / 3
 			first := append([]float64(nil), soakRSS[:part]...)
@@ -223,10 +250,32 @@ func TestScaleAcceptance(t *testing.T) {
 		profile.Resources = 0
 	}
 	profile.Sessions = profile.Servers * 2
+	nodeCount := acceptanceNumber("VMCP_ACCEPTANCE_NODES", 2, 1, 2)
+	if nodeCount == 1 && os.Getenv("VMCP_ACCEPTANCE_DATABASE_FOCUS") != "1" {
+		t.Fatal("single-node profile requires database focus")
+	}
 	started := time.Now()
 	report := acceptanceReport{StartedUTC: started.UTC().Format(time.RFC3339), Profile: profile, GoVersion: runtime.Version(), HostOS: runtime.GOOS, HostArch: runtime.GOARCH, Functional: map[string]any{}, DataPlaneConfiguration: map[string]any{"nodes": 2, "gomaxprocs_each": 2, "go_soft_memory_limit_each": "768MiB", "db_pool_max_each": 64, "db_acquire_timeout": "2s", "audit": "strict", "redis_failure_policy": "strict", "health_interval": "30s"}, ProxyPolicy: "test round-robin proxy; passive 10s failure cooldown; no request retries; not the production ingress", Thresholds: map[string]any{"steady_success_percent": 99.9, "steady_min_target_completion_percent": 95, "steady_p95_ms": 250, "steady_p99_ms": 1000, "burst_min_target_completion_percent": 80, "burst_min_success_percent": 80, "burst_max_p99_ms": 10000, "fault_phase_min_success_percent": 99, "fault_transition_grace_seconds": 10, "post_fault_max_errors_percent": 0.1, "per_node_max_rss_bytes": int64(1536 << 20), "soak_max_rss_growth_percent": 20}}
+	memoryProfile := os.Getenv("VMCP_ACCEPTANCE_MEMORY_PROFILE") == "4g6g"
+	if memoryProfile {
+		if !acceptanceKubernetes() || os.Getenv("VMCP_ACCEPTANCE_GOMEMLIMIT") != "4GiB" || os.Getenv("VMCP_ACCEPTANCE_MEMORY_LIMIT") != "6Gi" || nodeCount != 1 || os.Getenv("VMCP_ACCEPTANCE_CAPACITY_RATES") != "" || os.Getenv("VMCP_ACCEPTANCE_DATABASE_FOCUS") != "1" {
+			t.Fatal("4g6g requires Kubernetes, one node, 4GiB Go / 6Gi container, fixed database-focus load")
+		}
+		report.Thresholds["per_node_max_rss_bytes"] = int64(5 << 30)
+		report.Thresholds["per_node_max_container_usage_bytes"] = int64(6<<30) * 9 / 10
+		report.Thresholds["steady_min_target_completion_percent"] = 99
+		report.Thresholds["steady_max_rss_growth_percent"] = 20
+		report.Thresholds["loaded_revocation_max_seconds"] = 5
+	}
 	source, _ := exec.Command("git", "rev-parse", "HEAD").Output()
 	report.SourceRevision = strings.TrimSpace(string(source))
+	report.DataPlaneConfiguration["nodes"] = nodeCount
+	report.DataPlaneConfiguration["routing"] = os.Getenv("VMCP_ACCEPTANCE_ROUTING")
+	report.DataPlaneConfiguration["steady_seconds"] = acceptanceNumber("VMCP_ACCEPTANCE_STEADY_SECONDS", 300, 5, 7200)
+	if value := os.Getenv("VMCP_ACCEPTANCE_GOMEMLIMIT"); value != "" {
+		report.DataPlaneConfiguration["go_soft_memory_limit_each"] = value
+	}
+	report.DataPlaneConfiguration["team_ownership"] = os.Getenv("VMCP_ACCEPTANCE_OWNERSHIP") == "1"
 	if acceptanceKubernetes() {
 		report.DataPlaneConfiguration["platform"] = "MicroK8s Kubernetes"
 		report.DataPlaneConfiguration["postgres_limits"] = "none"
@@ -235,8 +284,14 @@ func TestScaleAcceptance(t *testing.T) {
 		report.DataPlaneConfiguration["gomaxprocs_each"] = acceptanceNumber("VMCP_ACCEPTANCE_DP_CPUS", 2, 2, 8)
 		report.DataPlaneConfiguration["cpu_limit_each"] = fmt.Sprint(max(4, acceptanceNumber("VMCP_ACCEPTANCE_DP_CPUS", 2, 2, 8)))
 		report.DataPlaneConfiguration["memory_limit_each"] = "3Gi"
+		if value := os.Getenv("VMCP_ACCEPTANCE_MEMORY_LIMIT"); value != "" {
+			report.DataPlaneConfiguration["memory_limit_each"] = value
+		}
 		report.DataPlaneConfiguration["fault"] = "scale one test Deployment to zero, then restore; not a physical Kubernetes node failure"
 		report.ProxyPolicy = "same host test round-robin proxy, passive 10s cooldown, no POST retries; real Kubernetes NodePort Services/CNI to data-plane pods; no ingress capacity claim"
+		if os.Getenv("VMCP_ACCEPTANCE_ROUTING") == "pod" {
+			report.ProxyPolicy = "host round-robin proxy to direct Kubernetes PodIP; passive 10s cooldown; no POST retries; excludes Service/NodePort/ingress capacity"
+		}
 	}
 	file, err := os.Open(binary)
 	if err != nil {
@@ -275,6 +330,7 @@ func TestScaleAcceptance(t *testing.T) {
 	t.Logf("Seeding %d upstreams, %d virtual servers, %d tools and %d resources", profile.Servers, profile.Servers, profile.Servers*profile.Tools, profile.Servers*profile.Resources)
 	pool, database, master, tokens := acceptanceSeed(t, profile, fixtures)
 	nodes := []*acceptanceNode{{name: "acceptance-node-1", binary: binary, database: database, master: master, redis: os.Getenv("VMCP_ACCEPTANCE_REDIS_URL"), output: output}, {name: "acceptance-node-2", binary: binary, database: database, master: master, redis: os.Getenv("VMCP_ACCEPTANCE_REDIS_URL"), output: output}}
+	nodes = nodes[:nodeCount]
 	for _, node := range nodes {
 		node.start(t)
 		defer node.kill()
@@ -288,7 +344,7 @@ func TestScaleAcceptance(t *testing.T) {
 	t.Logf("Initializing %d cross-node persistent sessions", len(clients))
 	for i := range clients {
 		server := i % profile.Servers
-		c := &acceptanceClient{url: balancer.URL + fmt.Sprintf("/mcp/v1/virtual/accept-vs-%04d", server), token: tokens[i%len(tokens)], http: httpClient, server: server, rest: profile.REST}
+		c := &acceptanceClient{url: balancer.URL + fmt.Sprintf("/mcp/v1/virtual/accept-vs-%04d", server), token: tokens[i%64], http: httpClient, server: server, rest: profile.REST}
 		if response := c.request(ctx, mcp.MethodInitialize, map[string]any{"protocolVersion": mcp.SupportedVersions[0], "capabilities": map[string]any{}, "clientInfo": map[string]string{"name": "acceptance-driver", "version": "1"}}, -1); response.err != nil {
 			t.Fatal(response.err)
 		}
@@ -329,7 +385,11 @@ func TestScaleAcceptance(t *testing.T) {
 			}
 		}
 	}
-	report.Functional["cross_node_session_and_paginated_masked_metadata"] = true
+	metadataCheck := "cross_node_session_and_paginated_masked_metadata"
+	if nodeCount == 1 {
+		metadataCheck = "single_node_session_and_paginated_masked_metadata"
+	}
+	report.Functional[metadataCheck] = true
 	var phase atomic.Value
 	phase.Store("setup")
 	stopMonitor := acceptanceMonitor(ctx, nodes, pool, &phase, started)
@@ -339,12 +399,15 @@ func TestScaleAcceptance(t *testing.T) {
 		t.Logf("Phase %s: %d req/s for %ds", name, rps, seconds)
 		result := acceptanceRunPhase(ctx, name, rps, time.Duration(seconds)*time.Second, clients, profile.Workers, profile.Tools, tracker, fault, time.Duration(faultSecond)*time.Second)
 		acceptanceSummarizeSLO(&result)
+		if memoryProfile && name == "steady" && result.CompletedRPS < float64(rps)*.99 {
+			result.SLOPass = false
+		}
 		report.Phases = append(report.Phases, result)
 		t.Logf("%s: completed %.1f/s, success %.3f%%, p95 %.1fms, p99 %.1fms, errors %d, dropped %d, pass=%t", name, result.CompletedRPS, result.SuccessPercent, result.P95MS, result.P99MS, result.Errors, result.Dropped, result.SLOPass)
 		if result.InvalidResults > 0 {
 			report.Failures = append(report.Failures, name+" result validation failed")
 		}
-		if !profile.Smoke && !result.SLOPass {
+		if !profile.Smoke && !result.SLOPass && !strings.HasPrefix(name, "capacity-") && !strings.HasPrefix(name, "refine-") {
 			report.Failures = append(report.Failures, name+" capacity/latency SLO failed")
 		}
 	}
@@ -367,9 +430,44 @@ ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
 		run("warmup", 50, 15, nil, 0)
 		var pollProbe func() (map[string]any, error)
 		if os.Getenv("VMCP_ACCEPTANCE_POLL_PROBE") == "1" {
-			pollProbe = acceptancePollingProbe(ctx, nodes[1], clients[len(clients)-1], pool, master)
+			pollProbe = acceptancePollingProbe(ctx, nodes[len(nodes)-1], clients[len(clients)-1], pool, master)
 		}
-		run("steady", profile.SteadyRPS, 300, nil, 0)
+		if raw := os.Getenv("VMCP_ACCEPTANCE_CAPACITY_RATES"); raw != "" {
+			rates, rateErr := acceptanceCapacityRates(raw)
+			if rateErr != nil {
+				t.Fatal(rateErr)
+			}
+			result := acceptanceCapacitySearch(rates, acceptanceNumber("VMCP_ACCEPTANCE_CAPACITY_SECONDS", 60, 30, 300), func(name string, rps, seconds int) acceptancePhase {
+				run(name, rps, seconds, nil, 0)
+				return report.Phases[len(report.Phases)-1]
+			})
+			report.DataPlaneConfiguration["capacity_search"] = result
+			if result.PassingRPS > 0 {
+				run("recovery", 100, 30, nil, 0)
+				run("steady", result.PassingRPS, acceptanceNumber("VMCP_ACCEPTANCE_STEADY_SECONDS", 600, 30, 7200), nil, 0)
+			} else {
+				report.Failures = append(report.Failures, "no passing capacity stage")
+			}
+		} else {
+			seconds := acceptanceNumber("VMCP_ACCEPTANCE_STEADY_SECONDS", 300, 5, 7200)
+			if memoryProfile {
+				probe := acceptanceLoadedRevocationClient(t, ctx, nodes[0], tokens[64], httpClient)
+				var evidence map[string]any
+				var revokeErr error
+				run("steady", profile.SteadyRPS, seconds, func() {
+					t.Log("loaded key revocation: starting dedicated-key probe")
+					evidence, revokeErr = acceptanceLoadedRevocation(ctx, pool, nodes[0], probe)
+					t.Logf("loaded key revocation: first401=%v healthy=%v stable=%v error=%v", evidence["first_401_seconds"], evidence["readiness_healthy"], evidence["rejection_stable"], revokeErr)
+				}, seconds/2)
+				report.DataPlaneConfiguration["loaded_revocation"] = evidence
+				report.Functional["key_revocation_under_load_within_5s"] = revokeErr == nil
+				if revokeErr != nil {
+					report.Failures = append(report.Failures, revokeErr.Error())
+				}
+			} else {
+				run("steady", profile.SteadyRPS, seconds, nil, 0)
+			}
+		}
 		if pollProbe != nil {
 			values, probeErr := pollProbe()
 			report.DataPlaneConfiguration["remote_poll_probe"] = values
@@ -513,9 +611,13 @@ ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
 		t.Fatal(err)
 	}
 	var revision int64
-	_ = pool.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&revision)
+	if err := pool.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&revision); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("key revocation: utc=%s target_revision=%d", time.Now().UTC().Format(time.RFC3339Nano), revision)
 	deadline := time.Now().Add(30 * time.Second)
 	refreshed := false
+	lastRevision := map[string]float64{}
 	for time.Now().Before(deadline) {
 		refreshed = true
 		for _, node := range nodes {
@@ -526,7 +628,12 @@ ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
 			}
 			raw, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 			resp.Body.Close()
-			if acceptanceMetricValues(string(raw))["vmcp_snapshot_revision"] < float64(revision) {
+			observed := acceptanceMetricValues(string(raw))["vmcp_snapshot_revision"]
+			if previous, ok := lastRevision[node.name]; !ok || previous != observed {
+				t.Logf("key revocation: node=%s metrics_status=%d observed_revision=%g target_revision=%d", node.name, resp.StatusCode, observed, revision)
+				lastRevision[node.name] = observed
+			}
+			if observed < float64(revision) {
 				refreshed = false
 			}
 		}
@@ -535,19 +642,60 @@ ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	rejected := true
 	for _, node := range nodes {
+		for _, path := range []string{"/metrics", "/readyz"} {
+			resp, getErr := httpClient.Get(node.url + path)
+			if getErr == nil {
+				raw, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+				resp.Body.Close()
+				_ = os.WriteFile(filepath.Join(output, "revocation-"+node.name+strings.ReplaceAll(path, "/", "-")+".txt"), raw, 0600)
+				t.Logf("key revocation: node=%s path=%s status=%d", node.name, path, resp.StatusCode)
+			}
+		}
 		copy := *clients[0]
 		copy.url = node.url + fmt.Sprintf("/mcp/v1/virtual/accept-vs-%04d", copy.server)
-		if response := copy.request(ctx, mcp.MethodToolsList, nil, -5); response.status != 401 || !refreshed {
-			report.Failures = append(report.Failures, "revoked key accepted or snapshot propagation timed out on "+node.name)
+		response := copy.request(ctx, mcp.MethodToolsList, nil, -5)
+		t.Logf("key revocation: node=%s refreshed=%v http_status=%d error=%v", node.name, refreshed, response.status, response.err)
+		if response.status != 401 {
+			rejected = false
+		}
+		if !refreshed {
+			report.Failures = append(report.Failures, fmt.Sprintf("snapshot propagation timed out on %s: target=%d observed=%g", node.name, revision, lastRevision[node.name]))
+		}
+		if response.status != 401 {
+			report.Failures = append(report.Failures, fmt.Sprintf("revoked key expected HTTP 401 on %s: status=%d error=%v", node.name, response.status, response.err))
 		}
 	}
-	report.Functional["key_revocation_propagated_and_rejected_on_both_nodes"] = refreshed
+	keyCheck := "key_revocation_propagated_and_rejected_on_both_nodes"
+	if nodeCount == 1 {
+		keyCheck = "key_revocation_propagated_and_rejected_on_single_node"
+	}
+	report.Functional[keyCheck] = refreshed && rejected
+	if os.Getenv("VMCP_ACCEPTANCE_DIAGNOSTICS") == "1" {
+		acceptanceSnapshotDiagnostic(t, ctx, pool, master, output)
+	}
+	if memoryProfile {
+		restartErr := acceptanceKubeNoRestarts(ctx)
+		report.Functional["no_data_plane_restart_or_oom"] = restartErr == nil
+		if err := restartErr; err != nil {
+			report.Failures = append(report.Failures, err.Error())
+		}
+	}
 	if !profile.Smoke {
 		for _, value := range report.Resources {
 			item := value.(map[string]any)
-			if item["max_rss_bytes"].(float64) > float64(1536<<20) {
+			if item["max_rss_bytes"].(float64) > float64(report.Thresholds["per_node_max_rss_bytes"].(int64)) {
 				report.Failures = append(report.Failures, "node RSS budget exceeded")
+			}
+			if memoryProfile {
+				usage := item["max_container_usage_bytes"].(float64)
+				if usage <= 0 || usage > float64(report.Thresholds["per_node_max_container_usage_bytes"].(int64)) {
+					report.Failures = append(report.Failures, "container memory usage missing or budget exceeded")
+				}
+				if item["steady_rss_growth_percent"].(float64) > 20 {
+					report.Failures = append(report.Failures, "steady RSS growth requires investigation")
+				}
 			}
 			if growth, ok := item["soak_rss_growth_percent"].(float64); ok && growth > 20 {
 				report.Failures = append(report.Failures, "soak RSS growth requires investigation")

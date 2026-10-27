@@ -5,6 +5,7 @@ settings, query plans, or application data are changed by the observer.
 """
 import datetime
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -82,6 +83,12 @@ class DatabaseObserver:
                     if phases and value['phase']+': completed ' in log[phases[-1].end():]:
                         value['phase']='verification'
                     samples.write(json.dumps(value)+'\n');samples.flush()
+                    if os.environ.get('VMCP_ACCEPTANCE_DIAGNOSTICS') == '1':
+                        host={'utc':value['utc'],'phase':value['phase']}
+                        for name in ('stat','meminfo','loadavg','pressure/cpu','pressure/memory','pressure/io','net/sockstat','net/netstat'):
+                            try:host[name]=pathlib.Path('/proc',name).read_text()
+                            except OSError:pass
+                        with (self.output/'host-samples.jsonl').open('a') as host_file:host_file.write(json.dumps(host)+'\n')
                     if value['phase']=='steady' and not plans_saved:
                         plans=self.sql(database, """SET statement_timeout='3s';
 SELECT name,setting,unit FROM pg_settings WHERE name IN ('max_connections','shared_buffers','effective_cache_size','work_mem','maintenance_work_mem','autovacuum_work_mem','wal_buffers','min_wal_size','max_wal_size','checkpoint_timeout','checkpoint_completion_target','autovacuum_naptime','autovacuum_vacuum_scale_factor','autovacuum_analyze_scale_factor','jit','synchronous_commit','fsync','full_page_writes','track_io_timing','pg_stat_statements.track');

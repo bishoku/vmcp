@@ -127,6 +127,12 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/v1/openapi.json", s.getOpenAPI)
 	api("GET /api/v1/openapi.yaml", s.getOpenAPI)
 	api("GET /api/v1/info", s.getInfo)
+	for _, method := range []string{"GET", "POST"} {
+		api(method+" /api/v1/teams", s.teams)
+		api(method+" /api/v1/projects", s.projects)
+		api(method+" /api/v1/tool-grants", s.toolGrants)
+	}
+	api("GET /api/v1/tool-catalog", s.toolCatalog)
 	api("GET /api/v1/me", s.getMe)
 
 	api("GET /api/v1/mock-provider", s.mockProvider)
@@ -194,11 +200,13 @@ func (s *Server) Handler() http.Handler {
 
 // principal is the authenticated caller.
 type principal struct {
-	Name    string `json:"name"`
-	ID      string `json:"id,omitempty"`
-	Subject string `json:"subject,omitempty"`
-	Issuer  string `json:"issuer,omitempty"`
-	Role    string `json:"role"`
+	Groups     []string `json:"-"`
+	TeamMember bool     `json:"teamMember"`
+	Name       string   `json:"name"`
+	ID         string   `json:"id,omitempty"`
+	Subject    string   `json:"subject,omitempty"`
+	Issuer     string   `json:"issuer,omitempty"`
+	Role       string   `json:"role"`
 	// Via is "bootstrap-token", "admin-token" or "oidc".
 	Via string `json:"via"`
 }
@@ -211,13 +219,30 @@ func (s *Server) wrap(h handlerFunc) http.Handler {
 			err = apierror.Unauthorized()
 		}
 		if err == nil {
-			err = permit(p.Role, r)
+			if p.Role == "team" && (strings.HasPrefix(r.URL.Path, "/api/v1/admin-tokens") || strings.HasPrefix(r.URL.Path, "/api/v1/revocations")) {
+				err = apierror.Forbidden("platform role required")
+			}
+			role := p.Role
+			if p.TeamMember && role != "admin" {
+				role = "editor"
+			}
+			if err == nil {
+				err = permit(role, r)
+			}
+			if err == nil && p.Role != "admin" && (r.URL.Path == "/api/v1/apply" || r.URL.Path == "/api/v1/export" || r.URL.Path == "/api/v1/audit-status") {
+				var managed bool
+				err = s.Store.Pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM teams)`).Scan(&managed)
+				if err == nil && (managed || p.Role == "team") {
+					err = apierror.Forbidden("tenant-wide GitOps and audit status require platform admin when teams are configured; use scoped resource APIs")
+				}
+			}
 		}
 		if err != nil {
 			s.recordDenial(r, p, err)
 			apierror.Write(w, r, err, s.Log)
 			return
 		}
+		r = r.WithContext(store.WithAccess(r.Context(), store.Access{Role: p.Role, Issuer: p.Issuer, Groups: p.Groups, Actor: p.ID, Write: r.Method != "GET" && r.Method != "HEAD"}))
 		if err := s.audited(h, w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)), p); err != nil {
 			apierror.Write(w, r, err, s.Log)
 		}
@@ -278,7 +303,14 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 	if !ok {
 		return nil, nil
 	}
-	p := &principal{Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}
+	member, err := s.Store.Reader().CheckTeamLogin(r.Context(), s.OIDC.Issuer(), sess.Groups)
+	if err != nil {
+		return nil, err
+	}
+	if sess.Role == "team" && !member {
+		return nil, apierror.Forbidden("team membership no longer grants access")
+	}
+	p := &principal{Groups: sess.Groups, TeamMember: member, Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}
 	// Cookies are sent automatically by browsers; demand a header a cross-site form cannot set.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-VMCP-CSRF") == "" {
 		return p, apierror.Forbidden("missing X-VMCP-CSRF header")

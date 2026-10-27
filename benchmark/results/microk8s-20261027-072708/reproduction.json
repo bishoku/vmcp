@@ -1,0 +1,249 @@
+{
+  "sourceRevision": "b0b3fd97e2bb454cb0d5ef12b42c1d2908ea3934",
+  "sourceTreeSHA256": "3828d900c182e4b6cd8435493f53e9f9a937434905eaa7968dcdf4dd358f27bc",
+  "workingTree": " M api/openapi.yaml\n M benchmark/acceptance/report.py\n M benchmark/compose.yaml\n M benchmark/kubernetes/README.md\n M benchmark/kubernetes/compare.py\n M benchmark/kubernetes/postgres_observe.py\n M benchmark/kubernetes/run.py\n M benchmark/results/microk8s-polling-1000-20261023-analysis.md\n M core/cmd/control-plane/main.go\n M core/internal/controlplane/declarative.go\n M core/internal/controlplane/server.go\n M core/internal/controlplane/spec/openapi.json\n M core/internal/controlplane/spec/openapi.yaml\n M core/internal/controlplane/upstreams.go\n M core/internal/controlplane/virtualservers.go\n M core/internal/e2e/acceptance_fixture_test.go\n M core/internal/e2e/acceptance_kubernetes_test.go\n M core/internal/e2e/acceptance_runtime_test.go\n M core/internal/e2e/acceptance_test.go\n M core/internal/oidc/oidc.go\n M core/internal/oidc/oidc_test.go\n M core/internal/store/agentkeys.go\n M core/internal/store/audit.go\n M core/internal/store/bindings.go\n M core/internal/store/migrations_test.go\n M core/internal/store/rest.go\n M core/internal/store/snapshot.go\n M core/internal/store/upstreams.go\n M core/internal/store/virtualservers.go\n M docs/SSO-and-RBAC.md\n M docs/_Sidebar.md\n M web/browser/navigation-design.spec.ts\n M web/src/App.tsx\n M web/src/AppNavigation.tsx\n M web/src/api.ts\n M web/src/pages/Settings.tsx\n M web/src/pages/UpstreamDetail.test.tsx\n M web/src/pages/UpstreamDetailForm.tsx\n M web/src/pages/VirtualServerEditor.tsx\n?? benchmark/results/microk8s-20261026-215339/\n?? benchmark/results/microk8s-20261026-223317/\n?? benchmark/results/microk8s-20261026-224955/\n?? benchmark/results/microk8s-20261027-054711/\n?? benchmark/results/microk8s-20261027-060146/\n?? benchmark/results/microk8s-20261027-070807/\n?? benchmark/results/team-project-ownership-20261026-analysis.md\n?? benchmark/results/team-project-performance-diagnosis-20261027.md\n?? core/internal/controlplane/ownership.go\n?? core/internal/controlplane/ownership_test.go\n?? core/internal/e2e/acceptance_capacity_test.go\n?? core/internal/e2e/acceptance_diagnostics_test.go\n?? core/internal/e2e/ownership_test.go\n?? core/internal/store/ownership.go\n?? core/internal/store/ownership_snapshot.go\n?? core/internal/store/ownership_test.go\n?? core/internal/store/tool_grants.go\n?? core/migrations/00033_team_projects.sql\n?? docs/Teams-and-Projects.md\n?? web/browser/ownership.spec.ts\n?? web/src/OwnershipSelect.tsx\n?? web/src/pages/Ownership.tsx\n",
+  "images": {
+    "data-plane": "sha256:b00c7f54680f446005ae45df04450ba5e571b9d2a4dc633870eff311d9a46965",
+    "control-plane": "sha256:b638d182d29b9231474b2d7335df1033ec9bddb42d533e71ec24070d75df9cb1"
+  },
+  "node": {
+    "architecture": "amd64",
+    "containerRuntimeVersion": "containerd://2.1.6",
+    "kernelVersion": "7.0.0-34-generic",
+    "kubeletVersion": "v1.35.6",
+    "operatingSystem": "linux",
+    "osImage": "Ubuntu 24.04.5 LTS"
+  },
+  "capacity": {
+    "cpu": "64",
+    "ephemeral-storage": "959218776Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164651880Ki",
+    "pods": "110"
+  },
+  "allocatable": {
+    "cpu": "64",
+    "ephemeral-storage": "958170200Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164549480Ki",
+    "pods": "110"
+  },
+  "loadDriver": "native host Go process; fixtures bound to selected node IP",
+  "routing": "host test proxy -> direct PodIP/CNI",
+  "profileEnvironment": {
+    "VMCP_ACCEPTANCE_SERVERS": "300",
+    "VMCP_ACCEPTANCE_TOOLS": "20",
+    "VMCP_ACCEPTANCE_NODES": "1",
+    "VMCP_ACCEPTANCE_ROUTING": "pod",
+    "VMCP_ACCEPTANCE_RPS": "1200",
+    "VMCP_ACCEPTANCE_STEADY_SECONDS": "600",
+    "VMCP_ACCEPTANCE_WORKERS": "1024",
+    "VMCP_ACCEPTANCE_OWNERSHIP": "1",
+    "VMCP_ACCEPTANCE_DIAGNOSTICS": "1",
+    "VMCP_ACCEPTANCE_KUBERNETES": "1",
+    "VMCP_ACCEPTANCE_REST": "1",
+    "VMCP_ACCEPTANCE_BURST_RPS": "1000",
+    "VMCP_ACCEPTANCE_WARMUP_SECONDS": "30",
+    "VMCP_ACCEPTANCE_SPIKE_SECONDS": "60",
+    "VMCP_ACCEPTANCE_SOAK_RPS": "400",
+    "VMCP_ACCEPTANCE_SOAK_SECONDS": "1800",
+    "VMCP_ACCEPTANCE_AUDIT_CHECK_SECONDS": "180",
+    "VMCP_ACCEPTANCE_POSTGRES_TUNED": "1",
+    "VMCP_ACCEPTANCE_POLL_PROBE": "1",
+    "VMCP_ACCEPTANCE_DP_CPUS": "8",
+    "VMCP_ACCEPTANCE_DATABASE_FOCUS": "1",
+    "VMCP_ACCEPTANCE_SMOKE": "0"
+  },
+  "workloads": [
+    {
+      "name": "postgres",
+      "replicas": 1,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "postgres",
+          "image": "docker.io/library/postgres:17-alpine",
+          "resources": {
+            "requests": {
+              "cpu": "2",
+              "memory": "2Gi"
+            }
+          },
+          "args": [
+            "postgres",
+            "-c",
+            "max_connections=256",
+            "-c",
+            "shared_preload_libraries=pg_stat_statements",
+            "-c",
+            "pg_stat_statements.track=all",
+            "-c",
+            "track_io_timing=on",
+            "-c",
+            "track_wal_io_timing=on",
+            "-c",
+            "shared_buffers=1GB",
+            "-c",
+            "effective_cache_size=4GB",
+            "-c",
+            "work_mem=4MB",
+            "-c",
+            "maintenance_work_mem=128MB",
+            "-c",
+            "autovacuum_work_mem=128MB",
+            "-c",
+            "wal_buffers=32MB",
+            "-c",
+            "min_wal_size=1GB",
+            "-c",
+            "max_wal_size=4GB",
+            "-c",
+            "checkpoint_timeout=15min",
+            "-c",
+            "checkpoint_completion_target=0.9",
+            "-c",
+            "autovacuum_naptime=10s",
+            "-c",
+            "autovacuum_vacuum_scale_factor=0.05",
+            "-c",
+            "autovacuum_analyze_scale_factor=0.02",
+            "-c",
+            "jit=off",
+            "-c",
+            "fsync=on",
+            "-c",
+            "synchronous_commit=on",
+            "-c",
+            "full_page_writes=on"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "redis",
+      "replicas": 1,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "redis",
+          "image": "docker.io/library/redis:7-alpine",
+          "resources": {
+            "requests": {
+              "cpu": "250m",
+              "memory": "128Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "512Mi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acceptance-node-1",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "data-plane",
+          "image": "docker.io/vmcp-load/data-plane:3828d900c182e4b6",
+          "resources": {
+            "requests": {
+              "cpu": "8",
+              "memory": "2Gi"
+            },
+            "limits": {
+              "cpu": "8",
+              "memory": "3Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acceptance-node-2",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "data-plane",
+          "image": "docker.io/vmcp-load/data-plane:3828d900c182e4b6",
+          "resources": {
+            "requests": {
+              "cpu": "8",
+              "memory": "2Gi"
+            },
+            "limits": {
+              "cpu": "8",
+              "memory": "3Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "control-plane",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "control-plane",
+          "image": "docker.io/vmcp-load/control-plane:3828d900c182e4b6",
+          "resources": {
+            "requests": {
+              "cpu": "250m",
+              "memory": "256Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "1Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rawArchive": {
+    "filename": "capacity-6000-single-1200-20261027-51d3f2756a54.tar.gz",
+    "sha256": "59e737b1117167dcf0226c3315fdf21474a22276851184f9e6a4a7e3b5258f93",
+    "bytes": 19514050,
+    "fileCount": 235,
+    "originalBytes": 534915735
+  }
+}

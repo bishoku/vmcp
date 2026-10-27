@@ -1,3 +1,4 @@
+import { TeamSelect } from '../OwnershipSelect'
 import ConfigurationGroup from '../connections/ConfigurationGroup'
 import RequestHeaderMappings from '../connections/RequestHeaderMappings'
 import CallerContextEditor from '../connections/CallerContextEditor'
@@ -43,6 +44,7 @@ export default function UpstreamDetailForm({
   const { edit: canEdit } = useCapabilities()
   const [editing, setEditing] = useState(!upstream)
   const editable = canEdit && editing
+  const [ownerTeam,setOwnerTeam]=useState(upstream?.ownerTeam??'')
   const [slug, setSlug] = useState(upstream?.slug ?? '')
   const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
   const [rest,setRest]=useState(upstream?.rest??emptyREST())
@@ -106,7 +108,7 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
-  const unsaved = useUnsaved({requestHeaderMappings,callerContext,kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
+  const unsaved = useUnsaved({ownerTeam,requestHeaderMappings,callerContext,kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
   const [tools, setTools] = useState<Tool[]>([])
@@ -140,7 +142,7 @@ export default function UpstreamDetailForm({
         const headers: Record<string, string | null> = { ...replaced }
         removed.forEach((h) => (headers[h] = null))
         if (upstream) {
-          saved = await api.patchUpstream(upstream.slug, {
+          saved = await api.patchUpstream(upstream.slug, {ownerTeam,
             requestHeaderMappings,
             callerContext,
             name,
@@ -153,7 +155,7 @@ export default function UpstreamDetailForm({
             ...(Object.keys(headers).length && { headers }),
           },upstream.version)
         } else {
-          saved = await api.createUpstream(slug, {
+          saved = await api.createUpstream(slug, {ownerTeam,
             requestHeaderMappings,
             callerContext,
             name: name || slug,
@@ -211,6 +213,7 @@ export default function UpstreamDetailForm({
     <div className={clsx("grid items-start layout-grid",kind==='mcp'&&"xl:grid-cols-[1.4fr_1fr]")}>
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
         <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 panel-body m-0">
+ <TeamSelect value={ownerTeam} onChange={setOwnerTeam} existing={!!upstream}/>
           {!upstream && (
             <FormField name="slug" label="Slug" required hint="Stable identifier: lowercase letters, numbers and hyphens, up to 63 characters."><input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" /></FormField>
           )}

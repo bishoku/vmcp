@@ -1,3 +1,4 @@
+import { ProjectSelect } from '../OwnershipSelect'
 import ConfigurationGroup from '../connections/ConfigurationGroup'
 import GuidanceEditor from '../GuidanceEditor'
 import { normalizeGuidance } from '../guidance'
@@ -56,6 +57,7 @@ const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
 
 interface Draft {
+ project:string
  guidance:Guidance
  version?: number
   isNew: boolean
@@ -82,9 +84,9 @@ const DETECTORS = [
   ['us_ssn', 'US SSN'],
 ]
 
-const blank: Draft = { guidance:normalizeGuidance(), isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
+const blank: Draft = { project:"default", guidance:normalizeGuidance(), isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
 const fromServer = (v: VirtualServer): Draft => ({
- guidance:normalizeGuidance(v.guidance),
+ project:v.project??"default", guidance:normalizeGuidance(v.guidance),
   isNew: false,
   version:v.version,
  slug: v.slug,
@@ -123,7 +125,8 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const { edit: canEdit } = useCapabilities()
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [upstreams, setUpstreams] = useState<Upstream[]>([])
-  const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
+  const [sharedTools,setSharedTools]=useState<import("../api").ToolCatalogEntry[]>([])
+ const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
   const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(initialSelection ? null : blank, d => d ? d.isNew ? 'new' : d.slug : null)
   const validation=useFormValidation()
   const problems=validation.issues.map(issue=>issue.message)
@@ -134,7 +137,8 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const { busy, run } = useOperation()
 
   const { load, loading, readError } = useSources(() => [source('Virtual servers', async signal => { const items=await api.listVirtualServers(signal); const selected=items.find(v=>v.slug===initialSelection); if(selected?.hasGuidance){const full=await api.getVirtualServer(selected.slug,signal); return items.map(v=>v.slug===full.slug?full:v)} return items }, setServers),
-    {name:'Upstreams',load:async signal=>{
+    source('Shared tools',signal=>api.toolCatalog(signal),setSharedTools),
+ {name:'Upstreams',load:async signal=>{
       const us=await api.listUpstreams(signal)
       if(signal.aborted)return
       setUpstreams(us)
@@ -196,7 +200,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
       if(!validation.check({name:requiredText(draft.name,'Name',120),slug:slugError(draft.slug),description:draft.description.length>1000?'Use 1,000 characters or fewer.':undefined,rateLimitPerMinute:rateError(draft.rateLimit),tools:dupes.size?'Resolve duplicate exposed tool names before saving.':undefined}))return
       try {
         await api.putVirtualServer(draft.slug, {
-          name: draft.name,
+          project:draft.project, name: draft.name,
           description: draft.description,
           enabled: draft.enabled,
           authRequired: draft.authRequired,
@@ -245,7 +249,9 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SummaryTile label="Selected tools" value={draft.tools.length} detail="Explicit tool selections in this draft" icon={Wrench}/><SummaryTile label="Resources & prompts" value={draft.catalog.length} detail="Resources, templates and prompt selections" icon={ListChecks}/><SummaryTile label="Upstream servers" value={new Set([...draft.tools,...draft.catalog].map(item=>item.upstream)).size} detail="Sources composed into this draft" icon={Layers}/><SummaryTile label="Authentication" value={draft.authRequired?'Required':'Anonymous'} detail="Draft client access requirement" icon={Fingerprint}/></div>
             <fieldset disabled={!canEdit || busy} className="min-w-0 layout-stack border-0 p-0 m-0">
             <ServerPanel title="Server identity" description="Name, stable identifier and client access settings" icon={Layers}><div className="space-y-4 panel-body">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <ProjectSelect value={draft.project} onChange={project=>setDraft({...draft,project})} existing={!draft.isNew}/>
+ <p className="text-xs text-ink-muted">Tools from another owner team require approval. After saving, request access in Teams &amp; projects.</p>
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField name="name" label="Name" required hint="Display name shown to users; up to 120 characters."><input
                   className={clsx(input, 'mt-1')}
                   value={draft.name}
@@ -270,7 +276,8 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
 
 <div><h2 className="section-title">Capability composition</h2><p className="section-description mt-1 text-sm text-ink-muted">Select tools, resources, templates and prompts from stored upstream discovery.</p></div>
  <div className="grid grid-cols-1 xl:grid-cols-2 layout-grid">
-              <ServerPanel title="Available tools" description="Add tools from stored upstream discovery; selection is explicit" icon={Wrench}>
+              <ServerPanel title="Shared tools" description="Tool metadata from other teams; connections remain private" icon={Wrench}><div className="space-y-2 panel-body">{sharedTools.filter(t=>!upstreams.some(u=>u.slug===t.upstream)&&`${t.name} ${t.description}`.toLowerCase().includes(filter.toLowerCase())).slice(0,availableLimit).map(t=><div key={`${t.upstream}/${t.name}`} className="flex items-center justify-between gap-2"><span className="text-sm">{t.upstream}/{t.name} · {t.ownerTeam||'Default'}</span><button type="button" className={btn} disabled={selected.has(`${t.upstream}\u0000${t.name}`)} onClick={()=>setDraft({...draft,tools:[...draft.tools,{upstream:t.upstream,tool:t.name}]})}>Select</button></div>)}</div></ServerPanel>
+ <ServerPanel title="Available tools" description="Add tools from stored upstream discovery; selection is explicit" icon={Wrench}>
                 <div className="space-y-3 border-b border-line panel-body"><SearchField label="Filter tools" value={filter} onChange={value=>{setFilter(value);setAvailableLimit(50)}} placeholder="Search tools or descriptions" className="block text-xs font-medium" visibleLabel/><label className="block text-xs font-medium">Tool upstream<Select className={`${input} mt-2`} value={toolUpstream} onChange={e=>setToolUpstream(e.target.value)}><option value="">All upstreams</option>{upstreams.map(u=><option key={u.slug} value={u.slug}>{u.name}</option>)}</Select></label></div>
                 <ActiveFilters className="border-b border-line panel-inset py-3" label="Active tool picker filters" items={[filterItem('Search',filter,()=>{setFilter('');setAvailableLimit(50)}),filterItem('Upstream',upstreams.find(u=>u.slug===toolUpstream)?.name??toolUpstream,()=>{setToolUpstream('');setAvailableLimit(50)})]} onReset={()=>{setFilter('');setToolUpstream('');setAvailableLimit(50)}}><ResultCount matched={upstreams.filter(u=>!toolUpstream||u.slug===toolUpstream).reduce((sum,u)=>sum+(catalog[u.slug]??[]).filter(t=>`${t.name} ${t.description??''}`.toLowerCase().includes(filter.trim().toLowerCase())).length,0)} total={upstreams.reduce((sum,u)=>sum+(catalog[u.slug]??[]).length,0)} noun="tools" busy={loading}/></ActiveFilters>
                 <div className="space-y-4 panel-body">
@@ -310,7 +317,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                     <SortableContext items={draft.tools.map(key)} strategy={verticalListSortingStrategy}>
                       {draft.tools.slice(0,validation.issues.some(issue=>issue.field?.startsWith('tools.'))?draft.tools.length:exposedLimit).map((t,index) => (
-                        <div key={key(t)}>{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row index={index} key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[key(t)] ?? draft.policy.default} inherited={!(key(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(key(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? servers.find(s => s.slug === draft.slug)?.tools.find(x => key(x) === key(t))?.upstreamDescription ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
+                        <div key={key(t)}>{["required","pending","rejected","revoked"].includes(servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus??"")&&<p className="text-sm text-amber-700">Upstream owner approval: {servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus}. This tool is not available to agents. <Link to="/ownership" className="underline">Manage access requests</Link></p>}{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row index={index} key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[key(t)] ?? draft.policy.default} inherited={!(key(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(key(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? servers.find(s => s.slug === draft.slug)?.tools.find(x => key(x) === key(t))?.upstreamDescription ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
                       ))}
                     </SortableContext>
                   </DndContext>

@@ -147,3 +147,92 @@ The optimized runs pass the steady capacity/latency gate; the final run also
 passes the sampled 500ms remote-polling gate. Overall acceptance remains nonzero
 because the existing large-catalog key-revocation propagation check fails. The
 report preserves the failed baseline and first probe setup failure as evidence.
+
+## Team ownership regression
+
+`VMCP_ACCEPTANCE_STEADY_SECONDS=600` runs the focused steady phase for ten minutes
+(the default remains 300 seconds). Add `VMCP_ACCEPTANCE_OWNERSHIP=1` to seed
+separate provider/consumer teams, an owned project, and explicit approved tool
+grants for the same 60,000 selections. Omitting this flag exercises the Default
+compatibility path. Run the profiles sequentially with `--database-focus
+--data-plane-cpus 8 --postgres-tuned`. This measures tool execution and snapshot
+costs, not OIDC/LDAP login or management API throughput.
+
+### Ownership diagnostics
+
+`VMCP_ACCEPTANCE_DIAGNOSTICS=1` retains sampled raw metrics/readiness, host
+pressure/TCP counters, and data-plane GC logs. After traffic and key revocation
+checks it profiles a host-side initial snapshot load and a cached refresh with a
+5-second deadline. This profile is separate from load latency measurements and
+does not reproduce pod memory limits. The test proxy records transport failures
+without authorization headers, and key checks log target/observed revisions and
+HTTP results separately. Use only synthetic benchmark data for diagnostic logs.
+
+`VMCP_ACCEPTANCE_GOMEMLIMIT` overrides only the data-plane Go soft memory target
+(default `768MiB`); Kubernetes memory limits remain unchanged. Record this value
+when comparing runs. A very short steady phase cannot complete the independent
+24-event polling probe and is diagnostic evidence, not full acceptance.
+
+### Single-instance and scale-out capacity search
+
+The database-focus profile supports `VMCP_ACCEPTANCE_NODES=1` or `2` (default).
+Only the selected data-plane Deployments run; the shared control plane/database
+remain unchanged. `VMCP_ACCEPTANCE_ROUTING=pod` routes the test proxy directly to
+PodIP/CNI, isolating data-plane capacity from NodePort/Service/ingress behavior.
+This is not a production ingress benchmark and is not a zero-downtime scaling drill.
+
+For 6,000 tools while preserving 300 upstreams/virtual servers, use
+`VMCP_ACCEPTANCE_SERVERS=300 VMCP_ACCEPTANCE_TOOLS=20`. Set
+`VMCP_ACCEPTANCE_CAPACITY_RATES=500,1000,1500,2000,3000,4000,6000,8000` to enable
+capacity search. Each increasing stage runs for `VMCP_ACCEPTANCE_CAPACITY_SECONDS`
+(default 60, minimum 30). The first failing stage bounds the search; up to three
+refinements narrow the gap to 250 TPS or less. Recovery stages separate refinements.
+The highest passing candidate then runs as `steady` for
+`VMCP_ACCEPTANCE_STEADY_SECONDS` (use 600 for a ten-minute confirmation).
+
+Exploration failures are expected and remain visible in phase results. Invalid
+results always fail acceptance; the final steady confirmation must meet the normal
+SLO. A passing top rate with no failing stage is only a lower bound, not a measured
+maximum. The workload is fixed REST latency, strict durable audit/delivery, and a
+shared PostgreSQL instance, so the limit belongs to this end-to-end profile rather
+than pure data-plane CPU. Run topologies sequentially to avoid host interference.
+
+For Go soft-limit comparisons, set `VMCP_ACCEPTANCE_GOMEMLIMIT=2GiB`, `4GiB`, or `8GiB` and use `--data-plane-memory-limit 12Gi` consistently. This changes only the isolated data-plane hard limit (default `3Gi`); memory requests remain `2Gi`. Keep inventory, offered TPS, CPU, GOGC and duration fixed and run profiles sequentially. GOMEMLIMIT is a soft cap, not a heap reservation or a target the runtime must fill. Effective configuration is preserved in the manifest and report.
+
+### 60,000-tool memory acceptance profile
+
+`VMCP_ACCEPTANCE_MEMORY_PROFILE=4g6g` selects the agreed fixed-load acceptance
+budget: one data-plane, `GOMEMLIMIT=4GiB`, container limit `6Gi`, RSS at most
+5 GiB, kubelet `memory.usageBytes` at most 90% of the container limit (5.4 GiB),
+and steady successful throughput at least 99% of target. Existing success
+(99.9%), p95 (250 ms), p99 (1,000 ms), and result-integrity gates remain.
+The profile requires Kubernetes database-focus mode without capacity search.
+
+Steady RSS growth is compared using first/last third medians; growth above 20%
+requires investigation. Kubelet resource observations are sampled every five
+seconds: reported maxima are sampled maxima, not continuous high-water marks.
+The profile also checks data-plane restart/OOM evidence before cleanup.
+
+A separate 65th key is created only for revocation probes; the traffic still
+uses 64 keys. At the midpoint of steady load, the dedicated key is revoked.
+A previously valid session is probed for ten seconds: first HTTP 401 must arrive
+within five seconds of the committed update, subsequent probes must remain
+rejected, and readiness must remain HTTP 200. The original post-load revocation
+check remains separate. Probe calls use tools/list and do not contaminate the
+measured tools/call audit counts. Diagnostic mode also retains reverse-proxy
+response-copy errors.
+
+```sh
+VMCP_ACCEPTANCE_SERVERS=300 VMCP_ACCEPTANCE_TOOLS=200 \
+VMCP_ACCEPTANCE_NODES=1 VMCP_ACCEPTANCE_ROUTING=nodeport \
+VMCP_ACCEPTANCE_RPS=1000 VMCP_ACCEPTANCE_STEADY_SECONDS=600 \
+VMCP_ACCEPTANCE_WORKERS=1024 VMCP_ACCEPTANCE_OWNERSHIP=1 \
+VMCP_ACCEPTANCE_DIAGNOSTICS=1 VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB \
+VMCP_ACCEPTANCE_MEMORY_PROFILE=4g6g \
+python3 benchmark/kubernetes/run.py --database-focus --data-plane-cpus 8 \
+  --data-plane-memory-limit 6Gi --postgres-tuned \
+  --output artifacts/benchmark-runs/acceptance-60000-single-4g6g-repeat
+```
+
+This exercises the NodePort/CNI path via the test proxy, not a production ingress.
+Changing `VMCP_ACCEPTANCE_ROUTING=pod` excludes NodePort from the experiment.

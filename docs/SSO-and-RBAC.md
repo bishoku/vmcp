@@ -61,3 +61,7 @@ to admin.
   the next sign-in; see [security operations](SECURITY_OPERATIONS.md).
 - Cookie-authenticated writes must send the header `X-VMCP-CSRF: 1` (the UI does). Bearer-token calls do not need it.
 - Tokens keep working with SSO enabled; use them for automation.
+
+## Team ownership
+
+OIDC groups can also map to [teams and projects](Teams-and-Projects.md). Team membership adds scoped management access without a local user directory. Global editor/viewer roles retain unmanaged-resource access; platform admins manage ownership mappings.

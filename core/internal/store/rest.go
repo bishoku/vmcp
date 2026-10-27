@@ -14,7 +14,7 @@ import (
 
 // PutUpstream shares the existing transactional connection write and publishes REST
 // tool definitions atomically with the encrypted operation configuration.
-func (t *Tx) PutUpstream(ctx context.Context, slug string, in UpstreamInput, ifMatch *int64, createOnly bool) (*Upstream, Outcome, error) {
+func (t *Tx) putUpstream(ctx context.Context, slug string, in UpstreamInput, ifMatch *int64, createOnly bool) (*Upstream, Outcome, error) {
 	current, err := t.getUpstream(ctx, slug, true)
 	var notFound *apierror.Error
 	if err != nil && (!errors.As(err, &notFound) || notFound.Code != apierror.CodeNotFound) {

@@ -172,7 +172,8 @@ func (c *acceptanceClient) request(ctx context.Context, method string, params an
 	defer resp.Body.Close()
 	out := acceptanceResponse{status: resp.StatusCode, requestID: resp.Header.Get("X-Request-Id"), node: resp.Header.Get("X-Acceptance-Node")}
 	if resp.StatusCode >= 400 {
-		out.err = fmt.Errorf("HTTP %d", resp.StatusCode)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		out.err = fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 		return out
 	}
 	if method == mcp.MethodInitialize {

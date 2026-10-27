@@ -28,6 +28,9 @@ const apiVersion = "vmcp/v1"
 const everything = 1_000_000
 
 type desiredWire struct {
+	Teams          []store.Team        `json:"teams,omitempty"`
+	Projects       []store.Project     `json:"projects,omitempty"`
+	ToolGrants     []store.ToolGrant   `json:"toolGrants,omitempty"`
 	AuditSettings  *audit.Settings     `json:"auditSettings"`
 	APIVersion     string              `json:"apiVersion"`
 	Upstreams      []upstreamWire      `json:"upstreams"`
@@ -37,6 +40,7 @@ type desiredWire struct {
 }
 
 type exportUpstream struct {
+	OwnerTeam             string                        `json:"ownerTeam"`
 	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings"`
 	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                  string                        `json:"kind"`
@@ -61,6 +65,7 @@ type exportTLS struct {
 }
 
 type exportVirtualServer struct {
+	Project        string                   `json:"project"`
 	Guidance       *config.Guidance         `json:"guidance"`
 	Slug           string                   `json:"slug"`
 	Name           string                   `json:"name"`
@@ -88,18 +93,33 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		doc := struct {
+			Teams          []store.Team          `json:"teams,omitempty"`
+			Projects       []store.Project       `json:"projects,omitempty"`
+			ToolGrants     []store.ToolGrant     `json:"toolGrants,omitempty"`
 			AuditSettings  audit.Settings        `json:"auditSettings"`
 			APIVersion     string                `json:"apiVersion"`
 			Upstreams      []exportUpstream      `json:"upstreams"`
 			VirtualServers []exportVirtualServer `json:"virtualServers"`
 			Bindings       []bindingWire         `json:"bindings"`
 		}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}, Bindings: []bindingWire{}}
+		doc.Teams, err = rd.ListTeams(r.Context())
+		if err != nil {
+			return err
+		}
+		doc.Projects, err = rd.ListProjects(r.Context())
+		if err != nil {
+			return err
+		}
+		doc.ToolGrants, err = rd.ListToolGrants(r.Context())
+		if err != nil {
+			return err
+		}
 		doc.AuditSettings, err = rd.AuditSettings(r.Context())
 		if err != nil {
 			return err
 		}
 		for _, u := range ups {
-			doc.Upstreams = append(doc.Upstreams, exportUpstream{RequestHeaderMappings: u.RequestHeaderMappings, CallerContext: u.CallerContext, Kind: u.Kind, REST: u.REST, Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
+			doc.Upstreams = append(doc.Upstreams, exportUpstream{OwnerTeam: u.OwnerTeam, RequestHeaderMappings: u.RequestHeaderMappings, CallerContext: u.CallerContext, Kind: u.Kind, REST: u.REST, Slug: u.Slug, Name: u.Name, Description: u.Description, URL: u.URL, FallbackURLs: u.FallbackURLs, Transport: u.Transport, Enabled: u.Enabled})
 			if u.TLS.CAPEM != "" || u.TLS.ServerName != "" || u.TLS.ClientCertPEM != "" {
 				doc.Upstreams[len(doc.Upstreams)-1].TLS = &exportTLS{u.TLS.CAPEM, u.TLS.ServerName, u.TLS.ClientCertPEM}
 			}
@@ -110,7 +130,7 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 		for _, v := range vss {
-			ev := exportVirtualServer{Guidance: v.Guidance, ClientFeatures: v.ClientFeatures, Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
+			ev := exportVirtualServer{Project: v.Project, Guidance: v.Guidance, ClientFeatures: v.ClientFeatures, Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
 			for _, t := range v.Tools {
 				ev.Tools = append(ev.Tools, t.ToolSelection)
 			}
@@ -295,6 +315,15 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 		}
 		ctx := r.Context()
 		changes = []change{}
+		if err := tx.ApplyGovernance(ctx, doc.Teams, doc.Projects); err != nil {
+			return err
+		}
+		for _, v := range doc.Teams {
+			changes = append(changes, change{"team", v.Slug, store.Updated})
+		}
+		for _, v := range doc.Projects {
+			changes = append(changes, change{"project", v.Slug, store.Updated})
+		}
 		if doc.AuditSettings != nil {
 			current, err := tx.AuditSettings(ctx)
 			if err != nil {
@@ -330,6 +359,12 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 				return apierror.PrefixFields(err, fmt.Sprintf("/virtualServers/%d", j))
 			}
 			changes = append(changes, change{"virtualServer", v.Slug, outcome})
+		}
+		if err := tx.ApplyToolGrants(ctx, doc.ToolGrants); err != nil {
+			return err
+		}
+		for _, v := range doc.ToolGrants {
+			changes = append(changes, change{"toolGrant", v.VirtualServer + "/" + v.Upstream + "/" + v.Tool, store.Updated})
 		}
 		bindingSlugs := map[string]bool{}
 		if doc.Bindings != nil {

@@ -443,3 +443,39 @@ func TestDeliveryCleanupIndexesUpgradeAndRollback(t *testing.T) {
 		t.Fatalf("cascade failed: %d %v", count, err)
 	}
 }
+
+func TestOwnershipMigrationUpgradeAndRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := goose.DownToContext(ctx, db, ".", 32); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO virtual_servers(tenant_id,slug,name) SELECT id,'legacy-owner','Legacy' FROM tenants WHERE slug='default'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	var project string
+	if err := db.QueryRowContext(ctx, `SELECT p.slug FROM virtual_servers v JOIN projects p ON p.id=v.project_id WHERE v.slug='legacy-owner'`).Scan(&project); err != nil || project != "default" {
+		t.Fatalf("migration: %s %v", project, err)
+	}
+	if err := goose.DownToContext(ctx, db, ".", 32); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM virtual_servers WHERE slug='legacy-owner'`).Scan(&n); err != nil || n != 1 {
+		t.Fatal("rollback lost legacy resource", err)
+	}
+	if err := Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+}

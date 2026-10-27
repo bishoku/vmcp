@@ -117,6 +117,9 @@ func (t *Tx) getBinding(ctx context.Context, slug string, lock bool) (*bindingRo
 	if err != nil {
 		return nil, err
 	}
+	if err := t.checkCredential(ctx, "binding", r.id); err != nil {
+		return nil, err
+	}
 	return r, t.loadBindingServers(ctx, []*bindingRow{r})
 }
 
@@ -140,7 +143,7 @@ func (t *Tx) GetBinding(ctx context.Context, slug string) (*Binding, error) {
 
 // ListBindings pages through bindings ordered by slug.
 func (t *Tx) ListBindings(ctx context.Context, after string, limit int) ([]Binding, bool, error) {
-	rows, err := t.q.Query(ctx, bindingSelect+` AND b.slug > $1 ORDER BY b.slug LIMIT $2`, after, limit+1)
+	rows, err := t.q.Query(ctx, bindingSelect+` AND `+credentialPredicate(ctx, "binding", "b")+` AND b.slug > $1 ORDER BY b.slug LIMIT $2`, after, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
