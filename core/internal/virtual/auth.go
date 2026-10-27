@@ -136,6 +136,9 @@ func anyContains(ps []netip.Prefix, ip netip.Addr) bool {
 // direct peer is a trusted proxy; it is read right to left, stopping at the first
 // address that is not itself a trusted proxy.
 func (h *Handler) clientIP(r *http.Request) (netip.Addr, bool) {
+	if ip, ok := r.Context().Value(verifiedOmniIPKey{}).(netip.Addr); ok {
+		return ip, ip.IsValid()
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr

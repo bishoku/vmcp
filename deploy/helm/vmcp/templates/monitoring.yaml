@@ -1,7 +1,7 @@
 {{- if .Values.monitoring.serviceMonitor.enabled }}
 {{- if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") }}{{ fail "ServiceMonitor CRD is required" }}{{ end }}
-{{- range $c := list "control-plane" "data-plane" }}
-{{- $enabled := index $.Values (index (dict "control-plane" "controlPlane" "data-plane" "dataPlane") $c) }}
+{{- range $c := list "control-plane" "data-plane" "omni-mcp" }}
+{{- $enabled := index $.Values (index (dict "control-plane" "controlPlane" "data-plane" "dataPlane" "omni-mcp" "omni") $c) }}
 {{- if $enabled.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1

@@ -1,6 +1,6 @@
 """Real install/upgrade/restart smoke test in a disposable Kind context only.
 
-Build/load vmcp/{control-plane,data-plane,migrate,fixture-mcp,web}:helm-test first.
+Build/load vmcp/{control-plane,data-plane,omni-mcp,migrate,fixture-mcp,web}:helm-test first.
 Requires Helm, kubectl, a running Kind cluster, and HELM_BIN/KUBECONFIG as needed.
 """
 import base64
@@ -119,14 +119,43 @@ try:
         cp_url, dp_url = f'http://127.0.0.1:{web_port}', f'http://127.0.0.1:{dp_port}'
         raw, headers = wait_request(cp_url + '/runtime-config.js')
         assert b'https://mcp.example.test' in raw and headers.get('Cache-Control') == 'no-store'
-        verify(cp_url, dp_url)
+        runtime_headers, direct_endpoint = verify(cp_url, dp_url)
+        # Enable Omni only during upgrade: old virtual servers must remain unpublished.
+        values['omni'] = {'enabled': True, 'image': 'vmcp/omni-mcp:helm-test', 'secret': {'value': 'isolated-smoke-omni-secret-at-least-32-characters'}, 'refreshInterval': '1s'}
+        file.write_text(json.dumps(values))
         run([*common, 'upgrade', 'smoke', 'deploy/helm/vmcp', '-f', str(file), '--wait', '--wait-for-jobs', '--timeout', '10m'])
+        omni_port = port()
+        forwarders.append(subprocess.Popen(['kubectl', '--context', CONTEXT, '-n', NS, 'port-forward', 'service/smoke-vmcp-omni-mcp', f'{omni_port}:8080'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        omni_url = f'http://127.0.0.1:{omni_port}'
+        wait_request(omni_url + '/readyz')
+        admin = {'Authorization': 'Bearer smoke-admin-only-for-tests', 'Content-Type': 'application/json'}
+        raw, _ = wait_request(cp_url + '/api/v1/virtual-servers/smoke', headers=admin)
+        assert json.loads(raw)['omniEnabled'] is False, raw
+        wait_request(cp_url + '/api/v1/virtual-servers/smoke', method='PATCH', headers=admin, data=json.dumps({'omniEnabled': True}).encode())
+        omni_headers = {'Authorization': runtime_headers['Authorization'], 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
+        def omni_call(name, arguments):
+            raw, _ = wait_request(omni_url + '/mcp/v1/omni', method='POST', headers=omni_headers, data=json.dumps({'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':arguments}}).encode())
+            result = json.loads(raw)
+            assert 'error' not in result, result
+            return result['result']
+        deadline = time.monotonic() + 30
+        while True:
+            found = omni_call('discover_tools', {'query':'echo','limit':5})
+            payload = json.loads(found['content'][0]['text'])
+            if payload['tools']: break
+            assert time.monotonic() < deadline, found
+            time.sleep(1)
+        ref = payload['tools'][0]['tool_ref']
+        schema = omni_call('get_tool_schema', {'tool_ref':ref})
+        assert 'schema_version' in json.dumps(schema), schema
+        result = omni_call('invoke_tool', {'tool_ref':ref, 'arguments':{'message':'omni-helm-smoke'}})
+        assert 'omni-helm-smoke' in json.dumps(result), result
         kube('rollout', 'restart', 'deployment/smoke-vmcp-data-plane')
         kube('rollout', 'status', 'deployment/smoke-vmcp-data-plane', '--timeout=180s')
         # Check persistence through the management proxy after the rolling restart.
         raw, _ = wait_request(cp_url + '/api/v1/virtual-servers', headers={'Authorization': 'Bearer smoke-admin-only-for-tests'})
         assert b'"smoke"' in raw
-        print('Passed real Helm install, HTTP MCP tool call, upgrade, runtime web configuration and rolling restart.')
+        print('Passed real Helm install, HTTP MCP tool call, upgrade with optional Omni discovery/schema/invocation, runtime web configuration and rolling restart.')
 except Exception:
     subprocess.run(['kubectl', '--context', CONTEXT, '-n', NS, 'get', 'pods,jobs', '-o', 'wide'])
     subprocess.run(['kubectl', '--context', CONTEXT, '-n', NS, 'get', 'events', '--sort-by=.lastTimestamp'])

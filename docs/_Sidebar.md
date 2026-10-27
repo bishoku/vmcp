@@ -48,3 +48,6 @@
 - [Audit durability](AUDIT_DURABILITY.md)
 
 - [Teams and projects](Teams-and-Projects.md)
+
+- [Omni MCP](Omni-MCP.md)
+- [Omni installation without Helm](Omni-MCP-Installation.md)

@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bishoku/vmcp/core/internal/omni"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -51,7 +52,11 @@ func (a *acceptanceTracker) call(ctx context.Context, c *acceptanceClient, tool 
 	if c.rest {
 		args = map[string]any{"body": args}
 	}
-	response := c.request(ctx, "tools/call", map[string]any{"name": fmt.Sprintf("tool-%03d", tool), "arguments": args}, id)
+	params := map[string]any{"name": fmt.Sprintf("tool-%03d", tool), "arguments": args}
+	if c.omni {
+		params = map[string]any{"name": "invoke_tool", "arguments": map[string]any{"tool_ref": omni.Ref(fmt.Sprintf("accept-vs-%04d", c.server), fmt.Sprintf("tool-%03d", tool)), "arguments": args}}
+	}
+	response := c.request(ctx, "tools/call", params, id)
 	valid := false
 	if response.err == nil {
 		var result struct {

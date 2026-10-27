@@ -65,3 +65,6 @@ before production use.
 For source builds, tests, CI and publishing, see the repository's
 [Contributing guide](../CONTRIBUTING.md) and [maintainer documentation](../maintainer/README.md).
 The API contract is [OpenAPI](../api/openapi.yaml).
+
+- [Omni MCP](Omni-MCP.md)
+- [Omni installation without Helm](Omni-MCP-Installation.md)

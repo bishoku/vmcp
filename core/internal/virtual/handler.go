@@ -44,12 +44,14 @@ type SnapshotProvider interface {
 
 // Handler serves /mcp/v1/virtual/{slug}.
 type Handler struct {
-	Metrics  *telemetry.Registry
-	Approval *ApprovalPolicy
-	Snap     SnapshotProvider
-	Sessions *Manager
-	Delivery *delivery.Store
-	Log      *slog.Logger
+	omniMu        sync.Mutex
+	omniPublished *omniPublishedCatalog
+	Metrics       *telemetry.Registry
+	Approval      *ApprovalPolicy
+	Snap          SnapshotProvider
+	Sessions      *Manager
+	Delivery      *delivery.Store
+	Log           *slog.Logger
 
 	// Audit receives one event per tool call and per denied request. Optional.
 	Audit audit.Recorder
@@ -412,6 +414,9 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	start := time.Now()
 	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
 		ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: "tools/call", Target: vs.Slug, TraceID: audit.TraceFrom(ctx)}
+	if via, _ := ctx.Value(omniContextKey{}).(bool); via {
+		ev.Action = "omni/tools/call"
+	}
 	ev.Scope = "virtual"
 	ev.Boundary = "virtual"
 	ev.RawPayload = msg.Params

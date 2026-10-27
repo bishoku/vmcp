@@ -297,6 +297,7 @@ export interface VirtualServer {
   name: string
   description: string
   enabled: boolean
+  omniEnabled?: boolean
   authRequired: boolean
   // The server omits empty lists and optional masking settings in read responses.
   pii?: Pick<PiiConfig, 'enabled'> & Partial<Omit<PiiConfig, 'enabled'>>
@@ -352,7 +353,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown, version?: number, signal?: AbortSignal, responseType: 'json' | 'blob' = 'json'): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, version?: number, signal?: AbortSignal, responseType: 'json' | 'blob' = 'json', extraHeaders: Record<string,string> = {}): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     method,
     signal,
@@ -360,6 +361,7 @@ async function request<T>(method: string, path: string, body?: unknown, version?
       // With SSO there is no token: the session cookie authenticates and the CSRF header is required.
       ...(getToken() && { Authorization: `Bearer ${getToken()}` }),
       'X-VMCP-CSRF': '1',
+      ...extraHeaders,
       ...(version !== undefined && { 'If-Match': `"${version}"` }),
       ...(body !== undefined && {
         'Content-Type': method === 'PATCH' ? 'application/merge-patch+json' : 'application/json',
@@ -400,12 +402,17 @@ export interface Team {canManage?:boolean;slug:string;name:string;issuer:string;
 export interface Project {slug:string;name:string;ownerTeam:string;version:number}
 export interface ToolGrant {canDecide?:boolean;virtualServer:string;upstream:string;tool:string;status:'pending'|'approved'|'rejected'|'revoked';reason:string;actor?:string;version:number}
 export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;description:string}
+export interface OmniStatus { configured:boolean; endpoint:string; index?:{ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
+export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
 export const api = {
- teams:()=>request<{items:Team[]}>('GET','/teams'),
+  omniStatus: (signal?:AbortSignal) => request<OmniStatus>('GET','/omni',undefined,undefined,signal),
+  omniReindex: () => request<{accepted:boolean}>('POST','/omni/reindex'),
+  omniPreview: (token:string, query:string, ref?:string) => request<{tools?:OmniHit[];search_mode?:string;tool?:unknown;schema_version?:string}>('POST','/omni/preview',{query,tool_ref:ref},undefined,undefined,'json',{'X-VMCP-Runtime-Authorization':`Bearer ${token}`}),
+ teams:(signal?:AbortSignal)=>request<{items:Team[]}>('GET','/teams',undefined,undefined,signal),
  saveTeam:(team:Team)=>request('POST','/teams',team),
- projects:()=>request<{items:Project[]}>('GET','/projects'),
+ projects:(signal?:AbortSignal)=>request<{items:Project[]}>('GET','/projects',undefined,undefined,signal),
  saveProject:(project:Project)=>request('POST','/projects',project),
- toolGrants:()=>request<{items:ToolGrant[]}>('GET','/tool-grants'),
+ toolGrants:(signal?:AbortSignal)=>request<{items:ToolGrant[]}>('GET','/tool-grants',undefined,undefined,signal),
  saveToolGrant:(grant:ToolGrant)=>request('POST','/tool-grants',grant),
  toolCatalog:(signal?:AbortSignal)=>listAll<ToolCatalogEntry>('/tool-catalog',signal),
  auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),
@@ -443,7 +450,7 @@ export const api = {
     listAll<VirtualServer>('/virtual-servers', signal),
   putVirtualServer: (
     slug: string,
-    v: { project?:string; guidance?:Guidance; name: string; description?: string; enabled: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
+    v: { project?:string; guidance?:Guidance; name: string; description?: string; enabled: boolean; omniEnabled?: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
     version?: number,
   ) => request<VirtualServer>('PUT', `/virtual-servers/${encodeURIComponent(slug)}`, v, version),
   deleteVirtualServer: (slug: string, version?: number) =>

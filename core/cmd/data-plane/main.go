@@ -232,6 +232,11 @@ func run(log *slog.Logger) error {
 		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}
 	virtualHandler.RunSubscriptions(ctx)
 	virtualHandler.Register(mux)
+	omniSecret := config.Env("VMCP_OMNI_SECRET", "")
+	if omniSecret != "" && len(omniSecret) < 32 {
+		return errors.New("VMCP_OMNI_SECRET must contain at least 32 characters")
+	}
+	virtualHandler.RegisterOmni(mux, omniSecret)
 	defer virtualHandler.StopWorkers()
 
 	metrics.Gauges = func(ctx context.Context) map[string]float64 {

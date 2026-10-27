@@ -11,6 +11,7 @@ import (
 )
 
 type virtualServerWire struct {
+	OmniEnabled    *bool                    `json:"omniEnabled"`
 	Project        *string                  `json:"project"`
 	Guidance       *config.Guidance         `json:"guidance"`
 	Slug           string                   `json:"slug"`
@@ -27,7 +28,7 @@ type virtualServerWire struct {
 }
 
 func (w *virtualServerWire) input() (store.VirtualServerInput, []apierror.FieldError) {
-	in := store.VirtualServerInput{Project: w.Project, Guidance: w.Guidance, Enabled: true, AuthRequired: true, Tools: w.Tools, Catalog: w.Catalog}
+	in := store.VirtualServerInput{OmniEnabled: w.OmniEnabled, Project: w.Project, Guidance: w.Guidance, Enabled: true, AuthRequired: true, Tools: w.Tools, Catalog: w.Catalog}
 	if w.ClientFeatures != nil {
 		in.ClientFeatures = *w.ClientFeatures
 	}
@@ -57,6 +58,7 @@ func (w *virtualServerWire) input() (store.VirtualServerInput, []apierror.FieldE
 }
 
 type virtualServerPatchWire struct {
+	OmniEnabled    *bool                     `json:"omniEnabled"`
 	Project        *string                   `json:"project"`
 	Guidance       *config.GuidancePatch     `json:"guidance"`
 	Name           *string                   `json:"name"`
@@ -183,7 +185,7 @@ func (s *Server) patchVirtualServer(w http.ResponseWriter, r *http.Request) erro
 	)
 	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		v, err = tx.PatchVirtualServer(r.Context(), slug, store.VirtualServerPatch{Project: body.Project,
+		v, err = tx.PatchVirtualServer(r.Context(), slug, store.VirtualServerPatch{OmniEnabled: body.OmniEnabled, Project: body.Project,
 			Guidance: body.Guidance, Name: body.Name, Description: body.Description, Enabled: body.Enabled, AuthRequired: body.AuthRequired, PII: body.PII, Policy: body.Policy, RateLimitSet: body.RateLimit.Set, RateLimit: body.RateLimit.Value, Tools: body.Tools, Catalog: body.Catalog, ClientFeatures: body.ClientFeatures,
 		}, ifMatch)
 		if err != nil {

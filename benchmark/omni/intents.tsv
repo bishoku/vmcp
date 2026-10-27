@@ -1,0 +1,30 @@
+get_order	Retrieve purchase order details and fulfillment status.	Where is my purchase?	Siparişim şu an hangi aşamada?
+cancel_order	Cancel a purchase before shipment.	Stop my order before it ships	Kargoya verilmeden alışverişimi iptal et
+refund_payment	Return money to the original payment method after a return.	Give the customer their money back	İade edilen ürünün parasını geri yatır
+track_shipment	Find parcel location and expected delivery date.	When will my package arrive?	Paketim ne zaman teslim edilecek?
+create_invoice	Generate an itemized billing document for a sale.	Issue a bill for this sale	Bu satışın faturasını kes
+check_stock	Check available inventory quantity in a warehouse.	How many units are left in storage?	Depoda bu üründen kaç tane kaldı?
+reserve_stock	Hold product inventory for a pending purchase.	Set aside two units for the buyer	Müşteri için iki ürün ayır
+update_address	Change a customer's shipping destination.	Send future parcels to a different home	Teslimat adresimi değiştir
+reset_password	Send an account password recovery link.	I forgot my login password	Hesabıma giriş şifremi unuttum
+lock_account	Disable a compromised user login to prevent access.	Block sign-in for this hacked user	Ele geçirilen hesabın erişimini engelle
+create_ticket	Open a customer support issue with a priority.	Report a problem to customer service	Müşteri hizmetlerine arıza kaydı aç
+close_ticket	Resolve an existing help desk incident.	Mark the support case as solved	Çözülen destek talebini kapat
+list_transactions	Retrieve bank account movements for a date range.	Show recent debits and credits	Hesabımdaki son para hareketlerini göster
+transfer_funds	Move money between authorized bank accounts.	Send money to another account	Başka bir hesaba para gönder
+check_balance	Read the available money in a bank account.	How much money do I have?	Hesabımda ne kadar para var?
+schedule_meeting	Create a calendar appointment with participants.	Book a call with the team tomorrow	Yarın ekiple toplantı planla
+cancel_meeting	Remove a calendar appointment and notify attendees.	Delete tomorrow's appointment	Yarınki toplantıyı iptal et
+request_leave	Submit an employee vacation request for approval.	Ask for a week off work	Bir haftalık yıllık izin talebi oluştur
+get_payslip	Download an employee monthly salary statement.	Show my monthly wage breakdown	Bu ayki maaş bordromu getir
+list_job_openings	Find available employment positions in the company.	What roles are you hiring for?	Şirkette hangi pozisyonlar için işe alım var?
+restart_service	Restart an unhealthy application service.	Reboot the failing application	Çalışmayan uygulama servisini yeniden başlat
+read_service_logs	Search application error logs for a time window.	Find error messages from the application	Uygulamanın hata kayıtlarını ara
+get_cpu_usage	Read server processor utilization metrics.	How busy is this machine's processor?	Sunucunun işlemcisi ne kadar kullanılıyor?
+backup_database	Create a recoverable backup copy of a database.	Save a recovery copy of our database	Veritabanının yedeğini al
+restore_database	Recover a database from a backup snapshot.	Recover the data from yesterday's backup	Dünkü yedekten veritabanını geri yükle
+issue_certificate	Create and sign a TLS certificate for a domain.	Generate an HTTPS certificate	Alan adı için güvenli bağlantı sertifikası üret
+revoke_api_key	Invalidate a leaked application access credential.	Disable the compromised access key	Sızdırılan API anahtarını iptal et
+translate_text	Convert text from one human language to another.	Turn this paragraph into French	Bu metni Fransızcaya çevir
+summarize_document	Produce a short summary of a long document.	Give me the main points of this report	Bu uzun raporu kısaca özetle
+send_email	Deliver an email message to a recipient.	Mail the customer a confirmation	Müşteriye onay e-postası gönder

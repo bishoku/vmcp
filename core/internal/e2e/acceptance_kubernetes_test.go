@@ -151,7 +151,7 @@ func acceptanceKubeSamples(ctx context.Context) map[string]acceptanceNodeSample 
 		}
 		for _, container := range pod.Containers {
 			if container.Name != "data-plane" {
-				result[container.Name] = acceptanceNodeSample{Name: container.Name, Alive: true, RSSBytes: container.Memory.RSSBytes, ReportedCPUPercent: float64(container.CPU.UsageNanoCores) / 1e7}
+				result[container.Name] = acceptanceNodeSample{Name: container.Name, Alive: true, RSSBytes: container.Memory.RSSBytes, MemoryUsageBytes: container.Memory.UsageBytes, ReportedCPUPercent: float64(container.CPU.UsageNanoCores) / 1e7}
 				continue
 			}
 			for _, name := range []string{"acceptance-node-1", "acceptance-node-2"} {

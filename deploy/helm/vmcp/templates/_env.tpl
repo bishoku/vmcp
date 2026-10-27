@@ -61,6 +61,28 @@
 {{ include "vmcp.secretEnv" (dict "root" $r "id" (printf "database-%s" $c) "source" $cfg.database "env" "VMCP_AUDIT_EXPORT_DATABASE_URL") }}
 - {name: VMCP_AUDIT_EXPORT_CONSUMER, value: {{ $cfg.consumer | quote }}}
 {{- end }}
+{{- if and $v.omni.enabled (or (eq $c "control-plane") (eq $c "data-plane") (eq $c "omni-mcp")) }}
+{{ include "vmcp.secretEnv" (dict "root" $r "id" "omni-secret" "source" $v.omni.secret "env" "VMCP_OMNI_SECRET") }}
+{{- end }}
+{{- if and $v.omni.enabled (or (eq $c "control-plane") (eq $c "omni-mcp")) }}
+- {name: VMCP_OMNI_PUBLIC_URL, value: {{ default $v.runtime.publicGatewayURL $v.omni.publicURL | quote }}}
+{{- end }}
+{{- if and $v.omni.enabled (eq $c "control-plane") }}
+- {name: VMCP_OMNI_URL, value: {{ printf "http://%s:8080" (include "vmcp.name" (dict "root" $r "component" "omni-mcp")) | quote }}}
+{{- end }}
+{{- if eq $c "omni-mcp" }}
+- {name: VMCP_LISTEN, value: ":8080"}
+- {name: VMCP_OMNI_DATA_PLANE_URL, value: {{ printf "http://%s:8080" (include "vmcp.name" (dict "root" $r "component" "data-plane")) | quote }}}
+- {name: VMCP_OMNI_REFRESH_INTERVAL, value: {{ $v.omni.refreshInterval | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_URL, value: {{ $v.omni.embeddingURL | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_MODEL, value: {{ $v.omni.embeddingModel | quote }}}
+- {name: VMCP_AGENT_OIDC_ISSUER, value: {{ $v.runtime.agentOIDC.issuer | quote }}}
+- {name: VMCP_ALLOWED_ORIGINS, value: {{ join "," $v.runtime.allowedOrigins | quote }}}
+- {name: VMCP_TRUSTED_PROXIES, value: {{ join "," $v.runtime.trustedProxies | quote }}}
+{{- if or $v.omni.embeddingKey.value $v.omni.embeddingKey.existingSecret }}
+{{ include "vmcp.secretEnv" (dict "root" $r "id" "omni-embedding-key" "source" $v.omni.embeddingKey "env" "VMCP_OMNI_EMBEDDING_KEY") }}
+{{- end }}
+{{- end }}
 {{- range $name, $value := $cfg.env }}
 - {name: {{ $name }}, value: {{ $value | toString | quote }}}
 {{- end }}

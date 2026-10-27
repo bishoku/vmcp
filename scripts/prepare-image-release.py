@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 
 SERVICES = {
-    'web', 'control-plane', 'data-plane', 'migrate', 'audit-exporter',
+    'web', 'control-plane', 'data-plane', 'omni-mcp', 'migrate', 'audit-exporter',
     'audit-exporter-kafka', 'audit-exporter-rabbitmq', 'tenant-router', 'rotate-secrets',
 }
 
@@ -31,7 +31,7 @@ def assemble(directory, output, version):
     references = {name: f"{record['image']}@{record['digest']}" for name, record in records.items()}
     # JSON-quoted scalar values are valid YAML without a third-party YAML dependency.
     lines = [f'# Docker Hub images for {version}; layer over your production configuration.']
-    for key, name in [('web', 'web'), ('controlPlane', 'control-plane'), ('dataPlane', 'data-plane'), ('migration', 'migrate'), ('tenantRouter', 'tenant-router')]:
+    for key, name in [('web', 'web'), ('controlPlane', 'control-plane'), ('dataPlane', 'data-plane'), ('omni', 'omni-mcp'), ('migration', 'migrate'), ('tenantRouter', 'tenant-router')]:
         lines.extend([f'{key}:', f'  image: {json.dumps(references[name])}'])
     lines.append('exporters:')
     for key, name in [('http', 'audit-exporter'), ('kafka', 'audit-exporter-kafka'), ('rabbitmq', 'audit-exporter-rabbitmq')]:
