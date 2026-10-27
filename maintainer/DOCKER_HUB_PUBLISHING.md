@@ -2,30 +2,31 @@
 
 The workflow `.github/workflows/docker-publish.yml` publishes application images
 under the Docker Hub namespace **barishoku** when you push a version tag such as
-`v0.0.1`. It first calls the existing CI workflow against the tagged commit.
+`v1.2.0`. It first calls the existing CI workflow against the tagged commit.
 No image is published unless all verification jobs succeed.
 
 ## Images
 
 Every image supports `linux/amd64` and `linux/arm64`:
 
-- `barishoku/vmcp-web:v0.0.1`
-- `barishoku/vmcp-control-plane:v0.0.1`
-- `barishoku/vmcp-data-plane:v0.0.1`
-- `barishoku/vmcp-migrate:v0.0.1`
-- `barishoku/vmcp-audit-exporter:v0.0.1`
-- `barishoku/vmcp-audit-exporter-kafka:v0.0.1`
-- `barishoku/vmcp-audit-exporter-rabbitmq:v0.0.1`
-- `barishoku/vmcp-tenant-router:v0.0.1`
-- `barishoku/vmcp-rotate-secrets:v0.0.1`
+- `barishoku/vmcp-web:v1.2.0`
+- `barishoku/vmcp-control-plane:v1.2.0`
+- `barishoku/vmcp-data-plane:v1.2.0`
+- `barishoku/vmcp-migrate:v1.2.0`
+- `barishoku/vmcp-omni-mcp:v1.2.0`
+- `barishoku/vmcp-audit-exporter:v1.2.0`
+- `barishoku/vmcp-audit-exporter-kafka:v1.2.0`
+- `barishoku/vmcp-audit-exporter-rabbitmq:v1.2.0`
+- `barishoku/vmcp-tenant-router:v1.2.0`
+- `barishoku/vmcp-rotate-secrets:v1.2.0`
 
-The first four serve the standard Helm installation. Enable exporters or the
+The first four serve the standard Helm installation. Enable Omni, exporters or the
 router only when needed. The rotation image is an operational utility; the Helm
 chart does not run rotation automatically. Test fixtures and third-party databases
 or brokers are not published by this workflow.
 
 Only the exact Git tag is pushed as an image tag. There is no `latest`, major, or
-minor alias to move accidentally. Prerelease tags such as `v0.0.1-rc.1` work too.
+minor alias to move accidentally. Prerelease tags such as `v1.2.0-rc.1` work too.
 Version components must not have leading zeroes; build-metadata suffixes containing
 `+` are excluded because Docker tags do not support that character. Never move a
 published Git tag. Registry version tags can still be overwritten on a rerun unless
@@ -35,7 +36,7 @@ you configure Docker Hub immutable-tag rules; deploy by digest for a stable iden
 
 Sign in as `barishoku` and set the default repository privacy to **Public** for
 this public project. Docker Hub creates missing repositories on the first push;
-creating the nine repositories above manually is optional if you want to choose
+creating the ten repositories above manually is optional if you want to choose
 their visibility individually. See [Docker Hub privacy settings](https://docs.docker.com/docker-hub/settings/).
 No Docker Hub automated-build integration or GitHub account linking is required.
 
@@ -73,12 +74,12 @@ commit you intend to publish:
 ```sh
 git switch main
 git pull --ff-only
-git tag -a v0.0.1 -m "vMCP v0.0.1"
-git push origin v0.0.1
+git tag -a v1.2.0 -m "vMCP v1.2.0"
+git push origin v1.2.0
 ```
 
 Open **Actions → publish-docker-hub**. The run validates the tag, reruns core,
-frontend and Helm CI for that commit, then builds/pushes the nine images with a
+frontend and Helm CI for that commit, then builds/pushes the ten images with a
 maximum of three concurrent publishing jobs. Multi-platform Go binaries are
 cross-compiled on the native builder; the web assets also build natively.
 The workflow attaches build provenance, SBOMs and source/version labels.
@@ -91,7 +92,7 @@ Kubernetes application. Pushing a version tag does publish images; ordinary push
 to `main` only run CI/wiki workflows.
 
 If a matrix job fails, some other images may already have been pushed. A complete
-image set is ready only after all nine publishing jobs and the `helm-values` job
+image set is ready only after all ten publishing jobs and the `helm-values` job
 succeed; the public GitHub Release appears after its separate packaging job succeeds. Re-run failed jobs for transient errors. Fix source defects with a new
 version tag rather than moving the old tag. Image publication is not atomic across
 Docker Hub repositories.
@@ -102,12 +103,12 @@ After successful publication, open [GitHub Releases](https://github.com/bishoku/
 and download `helm-images.yaml`, `images.json`, the `vmcp-<chart-version>.tgz` chart
 and `SHA256SUMS` for your version. Public release assets require no GitHub login
 and do not expire like Actions artifacts. The Actions artifact
-**docker-images-v0.0.1** remains available for troubleshooting.
+**docker-images-v1.2.0** remains available for troubleshooting.
 It contains:
 
 - `helm-images.yaml`: immutable multi-platform manifest references for web, both
-  planes, migrations, router and exporters.
-- `images.json`: version, image repository and digest for all nine images,
+  planes, Omni, migrations, router and exporters.
+- `images.json`: version, image repository and digest for all ten images,
   including the secret rotation utility.
 
 Keep your existing deployment configuration and layer the image overlay last:
@@ -124,7 +125,7 @@ helm upgrade --install vmcp deploy/helm/vmcp \
 
 The overlay changes image references only: it does not enable optional exporters
 or the router, create credentials, or configure external infrastructure. The chart
-requires digests by default; a plain `:v0.0.1` image reference will be rejected.
+requires digests by default; a plain `:v1.2.0` image reference will be rejected.
 Public repositories do not require image pull credentials. For private repositories,
 create a Kubernetes registry pull Secret using a separate read-only token and set
 `imagePullSecrets`; do not distribute the publishing token to cluster workloads.
@@ -132,8 +133,8 @@ create a Kubernetes registry pull Secret using a separate read-only token and se
 You can also inspect the registry directly:
 
 ```sh
-docker buildx imagetools inspect barishoku/vmcp-data-plane:v0.0.1
-docker pull barishoku/vmcp-data-plane:v0.0.1
+docker buildx imagetools inspect barishoku/vmcp-data-plane:v1.2.0
+docker pull barishoku/vmcp-data-plane:v1.2.0
 ```
 
 See the [Helm deployment guide](../deploy/helm/vmcp/README.md) for configuration,

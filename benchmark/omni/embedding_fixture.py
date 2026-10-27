@@ -15,15 +15,25 @@ parser.add_argument('--host', default='127.0.0.1')
 parser.add_argument('--port', type=int, default=18091)
 parser.add_argument('--cache', default='/tmp/vmcp-omni-model')
 parser.add_argument('--model', default='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+parser.add_argument('--concurrency', type=int, default=16)
 args = parser.parse_args()
 model_name = args.model
 model = TextEmbedding(model_name, cache_dir=args.cache, threads=2)
-slots = threading.BoundedSemaphore(16)
+slots = threading.BoundedSemaphore(args.concurrency)
+stats = {'success': 0, 'busy_429': 0}
+stats_lock = threading.Lock()
 failing = threading.Event()
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
+
+    def do_GET(self):
+        if self.path != '/test/stats':
+            self.send_error(404); return
+        with stats_lock:
+            body = json.dumps(stats).encode()
+        self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
 
     def do_POST(self):
         if self.path in ('/test/fail', '/test/recover'):
@@ -41,9 +51,13 @@ class Handler(BaseHTTPRequestHandler):
         if data['model'] != model_name or not isinstance(texts, list) or not 1 <= len(texts) <= 32:
             self.send_error(400); return
         if not slots.acquire(blocking=False):
+            with stats_lock:
+                stats['busy_429'] += 1
             self.send_error(429); return
         try:
             vectors = list(model.embed(texts))
+            with stats_lock:
+                stats['success'] += 1
             body = json.dumps({'data': [{'index': i, 'embedding': v.tolist()} for i,v in enumerate(vectors)]}).encode()
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
         finally:

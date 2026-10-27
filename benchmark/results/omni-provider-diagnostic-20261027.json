@@ -1,0 +1,35 @@
+{
+  "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "scope": "60s direct provider diagnostic, not a replacement for the 10min gateway test; uncached repeated query",
+  "runs": [
+    {
+      "concurrency_limit": 16,
+      "offered": 6000,
+      "target_rps": 100,
+      "elapsed_seconds": 60.10137026198208,
+      "statuses": {
+        "200": 5940,
+        "429": 60
+      },
+      "provider_counters": {
+        "success": 5940,
+        "busy_429": 60
+      },
+      "success_p95_ms": 168.28144621104002
+    },
+    {
+      "concurrency_limit": 32,
+      "offered": 6000,
+      "target_rps": 100,
+      "elapsed_seconds": 60.06381382001564,
+      "statuses": {
+        "200": 6000
+      },
+      "provider_counters": {
+        "success": 6000,
+        "busy_429": 0
+      },
+      "success_p95_ms": 154.63110199198127
+    }
+  ]
+}

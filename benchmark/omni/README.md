@@ -84,3 +84,19 @@ it is **not a held-out institution-specific relevance benchmark**. Validate your
 own metadata and model with a separate held-out corpus before making quality SLAs.
 Models are operator-selected; the product has no bundled model or default provider.
 See [FastEmbed supported models](https://qdrant.github.io/fastembed/examples/Supported_Models/).
+
+## Governance changes under load
+
+Run the same command with `VMCP_OMNI_FUNCTIONAL_ONLY=1` for a separate 30-second,
+100 TPS fault exercise. Traffic uses other vMCPs while an owned upstream tool grant
+and a vMCP's Omni publication are removed. Each must become inaccessible within
+5 seconds, stay undiscoverable/uninvocable, and leave direct access to the
+unpublished vMCP intact. Fault traffic allows the known global-revision guard
+rejections (at least 99% success); this is not a steady-state latency benchmark.
+Use a new output directory. The normal ten-minute phases remain unchanged.
+
+For the separate 16/32 provider concurrency diagnostic, run
+`/tmp/vmcp-omni-embed-venv/bin/python benchmark/omni/provider_diagnostic.py --output /tmp/omni-provider.json`.
+It runs two 60-second 100 RPS windows directly against local model fixtures.
+This diagnostic does not replace the ten-minute gateway acceptance. The fixture's
+`--concurrency` setting is independent of Omni's request bound and search quota.

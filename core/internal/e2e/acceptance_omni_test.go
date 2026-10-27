@@ -32,8 +32,15 @@ func TestOmniAcceptance(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	output := os.Getenv("VMCP_ACCEPTANCE_OUTPUT")
+	functionalOnly := os.Getenv("VMCP_OMNI_FUNCTIONAL_ONLY") == "1"
 	seconds := acceptanceNumber("VMCP_OMNI_ACCEPTANCE_SECONDS", 600, 30, 1800)
-	report := map[string]any{"tools": 1000, "servers": 10, "target_tps": 100, "seconds_per_phase": seconds, "routing": "NodePort/CNI; synthetic upstreams on host", "omni_resources": "2 CPU, GOMEMLIMIT=512MiB, hard limit=1Gi", "workload": "50% REST, 50% native MCP; strict audit; separate 100 TPS discovery interference phase"}
+	if functionalOnly {
+		seconds = 30
+	}
+	report := map[string]any{"functional_only": functionalOnly, "tools": 1000, "servers": 10, "target_tps": 100, "seconds_per_phase": seconds, "routing": "NodePort/CNI; synthetic upstreams on host", "omni_resources": "2 CPU, GOMEMLIMIT=512MiB, hard limit=1Gi", "workload": "50% REST, 50% native MCP; strict audit; separate 100 TPS discovery interference phase"}
+	if functionalOnly {
+		report["workload"] = "100 TPS across nine unaffected vMCPs: four REST and five native MCP; grant and publication revocation"
+	}
 	defer func() {
 		report["pass"] = !t.Failed()
 		b, _ := json.MarshalIndent(report, "", "  ")
@@ -106,6 +113,7 @@ func TestOmniAcceptance(t *testing.T) {
 	}
 	tracker := &acceptanceTracker{}
 	phases := []acceptancePhase{}
+	report["phases"] = phases
 	run := func(name string, clients []*acceptanceClient, fault func()) {
 		phase.Store(name)
 		t.Logf("%s: 100 TPS for %ds", name, seconds)
@@ -114,13 +122,16 @@ func TestOmniAcceptance(t *testing.T) {
 		r.SLOPass = r.SLOPass && r.CompletedRPS >= 99
 		phases = append(phases, r)
 		report["phases"] = phases
+		phase.Store("setup") // Exclude index startup/transition from load resource samples.
 		t.Logf("%s: %.3f TPS, success %.3f%% p95 %.2fms p99 %.2fms errors=%d drops=%d", name, r.CompletedRPS, r.SuccessPercent, r.P95MS, r.P99MS, r.Errors, r.Dropped)
 		if !r.SLOPass {
 			t.Errorf("%s failed SLO: %v", name, r.ErrorExamples)
 		}
 	}
 	// First phase has neither published Omni metadata nor an Omni process.
-	run("direct-baseline", direct, nil)
+	if !functionalOnly {
+		run("direct-baseline", direct, nil)
+	}
 	execSQL(`UPDATE virtual_servers SET omni_enabled=true`)
 	kube := func(args ...string) {
 		t.Helper()
@@ -213,63 +224,125 @@ func TestOmniAcceptance(t *testing.T) {
 			t.Error("loaded key revocation failed")
 		}
 	}
-	run("omni-invoke", routed, revoke)
-	// Keep direct calls at 100 TPS, add a separately measured 100 search calls/s.
-	var searchOK, searchFail, hybrid, fallback atomic.Int64
-	var searchMu sync.Mutex
-	var searchLatencies []float64
-	searchCtx, searchCancel := context.WithCancel(ctx)
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		ticker := time.NewTicker(10 * time.Millisecond)
-		defer ticker.Stop()
-		slots := make(chan struct{}, 32)
-		var workers sync.WaitGroup
-		defer workers.Wait()
-		for {
-			select {
-			case <-searchCtx.Done():
-				return
-			case <-ticker.C:
+	if !functionalOnly {
+		run("omni-invoke", routed, revoke)
+		// Keep direct calls at 100 TPS, add a separately measured 100 search calls/s.
+		var searchOK, searchFail, hybrid, fallback atomic.Int64
+		var searchMu sync.Mutex
+		var searchLatencies []float64
+		searchCtx, searchCancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+			slots := make(chan struct{}, 32)
+			var workers sync.WaitGroup
+			defer workers.Wait()
+			for {
 				select {
-				case slots <- struct{}{}:
-					workers.Go(func() {
-						defer func() { <-slots }()
-						began := time.Now()
-						r := rpc(routed[0], "discover_tools", map[string]any{"query": "Synthetic tool", "limit": 5})
-						if r.err == nil {
-							searchOK.Add(1)
-							var value struct {
-								Structured struct {
-									Mode string `json:"search_mode"`
-								} `json:"structuredContent"`
-							}
-							_ = json.Unmarshal(r.result, &value)
-							if value.Structured.Mode == "hybrid" {
-								hybrid.Add(1)
+				case <-searchCtx.Done():
+					return
+				case <-ticker.C:
+					select {
+					case slots <- struct{}{}:
+						workers.Go(func() {
+							defer func() { <-slots }()
+							began := time.Now()
+							r := rpc(routed[0], "discover_tools", map[string]any{"query": "Synthetic tool", "limit": 5})
+							if r.err == nil {
+								searchOK.Add(1)
+								var value struct {
+									Structured struct {
+										Mode string `json:"search_mode"`
+									} `json:"structuredContent"`
+								}
+								_ = json.Unmarshal(r.result, &value)
+								if value.Structured.Mode == "hybrid" {
+									hybrid.Add(1)
+								} else {
+									fallback.Add(1)
+								}
+								searchMu.Lock()
+								searchLatencies = append(searchLatencies, float64(time.Since(began))/float64(time.Millisecond))
+								searchMu.Unlock()
 							} else {
-								fallback.Add(1)
+								searchFail.Add(1)
 							}
-							searchMu.Lock()
-							searchLatencies = append(searchLatencies, float64(time.Since(began))/float64(time.Millisecond))
-							searchMu.Unlock()
-						} else {
-							searchFail.Add(1)
-						}
-					})
-				default:
-					searchFail.Add(1)
+						})
+					default:
+						searchFail.Add(1)
+					}
 				}
 			}
+		})
+		run("direct-with-discovery", direct, nil)
+		searchCancel()
+		wg.Wait()
+		sort.Float64s(searchLatencies)
+		report["discovery_interference"] = map[string]any{"success": searchOK.Load(), "errors_or_dropped": searchFail.Load(), "hybrid": hybrid.Load(), "keyword_or_fallback": fallback.Load(), "p95_ms": acceptanceQuantile(searchLatencies, .95), "p99_ms": acceptanceQuantile(searchLatencies, .99)}
+		if searchFail.Load() > searchOK.Load()/999 {
+			t.Error("discovery success below 99.9%")
 		}
-	})
-	run("direct-with-discovery", direct, nil)
-	searchCancel()
-	wg.Wait()
-	sort.Float64s(searchLatencies)
-	report["discovery_interference"] = map[string]any{"success": searchOK.Load(), "errors_or_dropped": searchFail.Load(), "hybrid": hybrid.Load(), "keyword_or_fallback": fallback.Load(), "p95_ms": acceptanceQuantile(searchLatencies, .95), "p99_ms": acceptanceQuantile(searchLatencies, .99)}
-	if searchFail.Load() > searchOK.Load()/999 {
-		t.Error("discovery success below 99.9%")
+	}
+
+	if functionalOnly {
+		phase.Store("loaded-governance-revocation")
+		unaffected := []*acceptanceClient{}
+		for _, c := range routed {
+			if c.server != 0 {
+				unaffected = append(unaffected, c)
+			}
+		}
+		checkDenied := func(label, reference string) {
+			began := time.Now()
+			first := time.Duration(0)
+			deadline := time.Now().Add(7 * time.Second)
+			for time.Now().Before(deadline) {
+				r := rpc(routed[0], "get_tool_schema", map[string]any{"tool_ref": reference})
+				if r.status == 404 {
+					first = time.Since(began)
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			report[label+"_seconds_under_load"] = first.Seconds()
+			if first == 0 || first > 5*time.Second {
+				t.Error(label + " propagation exceeded 5s")
+				return
+			}
+			for n := 0; n < 20; n++ {
+				r := rpc(routed[0], "invoke_tool", map[string]any{"tool_ref": reference, "arguments": map[string]any{"body": map[string]string{"call_id": fmt.Sprintf("denied-%s-%d", label, n), "message": "must not execute"}}})
+				if r.status != 404 {
+					t.Errorf("%s invoke after effective revocation returned %d", label, r.status)
+				}
+				r = rpc(routed[0], "discover_tools", map[string]any{"query": "tool-099", "server_id": "accept-vs-0000", "limit": 5})
+				if r.err != nil || strings.Contains(string(r.result), reference) {
+					t.Errorf("%s discovery retained revoked reference", label)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+		fault := func() {
+			if _, err := pool.Exec(ctx, `DELETE FROM tool_grants WHERE tool_name='tool-099' AND virtual_server_id=(SELECT id FROM virtual_servers WHERE slug='accept-vs-0000')`); err != nil {
+				t.Error(err)
+				return
+			}
+			checkDenied("grant", omni.Ref("accept-vs-0000", "tool-099"))
+			if _, err := pool.Exec(ctx, `UPDATE virtual_servers SET omni_enabled=false WHERE slug='accept-vs-0000'`); err != nil {
+				t.Error(err)
+				return
+			}
+			checkDenied("publication", ref)
+			if r, valid := tracker.call(ctx, direct[0], 1); r.err != nil || !valid {
+				t.Error("unpublication changed direct vMCP access", r.err)
+			}
+		}
+		r := acceptanceRunPhase(ctx, "loaded-governance-revocation", 100, 30*time.Second, unaffected, 64, 100, tracker, fault, 5*time.Second)
+		acceptanceSummarizeSLO(&r)
+		report["loaded_governance_traffic"] = r
+		if r.InvalidResults != 0 || r.SuccessPercent < 99 {
+			t.Error("governance fault traffic failed", r.ErrorExamples)
+		}
 	}
 	// Preserve original-pod GC evidence before deliberate replacements.
 	for _, name := range []string{"acceptance-node-1", "omni-mcp"} {

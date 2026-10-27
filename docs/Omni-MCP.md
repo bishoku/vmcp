@@ -156,11 +156,12 @@ load is additional data-plane work and is covered by the 1,000-tool acceptance p
   tools, publication disablement and stale authorization snapshots covered by tests.
 - A revocation between ranking and result delivery is tested explicitly.
 - All Go packages passed `go test -race ./...` with PostgreSQL and WireMock available.
-  External Redis/Kafka/RabbitMQ integration services were not supplied in this run.
+  Release CI additionally passed the Redis/Kafka/RabbitMQ integration suites.
 - Web: 250 unit tests, 158 browser tests, build/lint and 73 OpenAPI operations passed.
 - Helm rendering/regression and release artifact assembly tests passed.
 
-A local keyword-search microbenchmark (Intel Xeon Silver 4216, amd64) measured the
+An earlier development microbenchmark (before the final lexical-token correction;
+Intel Xeon Silver 4216, amd64) measured the
 ranking loop with an already-built index and authorization manifest, excluding
 network, embedding, authorization fetch and tool execution:
 
@@ -171,6 +172,10 @@ network, embedding, authorization fetch and tool execution:
 
 These single local runs are diagnostic, not production latency/TPS acceptance.
 Reproduce with `go test ./internal/omni -run '^$' -bench BenchmarkAuthorizedSearch -benchmem`
-from `core/`. Live semantic relevance with the institution's model and end-to-end
-load/GC tests remain deployment acceptance work; no embedding endpoint was configured
-against a real external model during development.
+from `core/`.
+
+The v1.2.0 end-to-end acceptance used 1,000 tools and 100 TPS in three ten-minute
+phases, plus live bilingual relevance and loaded governance revocation checks.
+See [results, provider fallback and resource costs](../benchmark/results/omni-1000-100-20261027.md).
+The synthetic development corpus passed with the tested multilingual MPNet model;
+institution-specific held-out relevance still requires separate validation.

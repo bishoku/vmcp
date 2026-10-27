@@ -33,10 +33,25 @@ def gc_summary(path):
 def summarize(root):
     raw = json.loads((root/'omni-report.json').read_text())
     result = {k: v for k,v in raw.items() if k not in ('samples','phases')}
+    if result.get('functional_only'):
+        result['workload']='100 TPS across nine unaffected vMCPs: four REST and five native MCP; grant and publication revocation'
+    if 'loaded_governance_traffic' in result:
+        result['loaded_governance_traffic']=dict(result['loaded_governance_traffic'])
+        result['loaded_governance_traffic'].pop('slo_pass',None)
+        result['loaded_governance_traffic'].pop('Seconds',None)
+        result['loaded_governance_traffic']['gate']='functional fault exercise: no invalid results and success >=99%; not a steady-state latency gate'
     result['phases'] = [{k:v for k,v in p.items() if k not in ('Seconds','Nodes','ErrorExamples')} for p in raw['phases']]
+    # The initial driver retained the preceding phase label while building the
+    # index. Trim resource samples to the measured traffic duration (5s resolution).
+    starts={}
+    durations={p['name']:p['PlannedSeconds'] for p in raw['phases']}
+    for sample in raw['samples']:
+        starts.setdefault(sample['Phase'], max(0,sample['Seconds']-5))
     groups = {}
     for sample in raw['samples']:
         if sample['Phase'] in ('setup','faults'):
+            continue
+        if sample['Phase'] in durations and sample['Seconds'] > starts[sample['Phase']]+durations[sample['Phase']]:
             continue
         for node in sample['Nodes']:
             if not node['Alive']:
@@ -56,6 +71,13 @@ def summarize(root):
                           'rss_growth_percent':100*(after/before-1)})
     result['resources']=resources
     result['gc']={name:gc_summary(root/(name+'-original-pod.log')) for name in ('acceptance-node-1','omni-mcp')}
+    if (root/'omni-mcp-gc.log').exists():
+        result['gc']['omni-mcp']=gc_summary(root/'omni-mcp-gc.log')
+    if (root/'index-loaded.json').exists():
+        result['loaded_index']=json.loads((root/'index-loaded.json').read_text())
+    if (root/'embedding-process.jsonl').exists():
+        model=[json.loads(line) for line in (root/'embedding-process.jsonl').read_text().splitlines()]
+        result['embedding_process']={'sample_count':len(model),'max_rss_MiB':max(p['rss_bytes'] for p in model)/2**20,'peak_sample_cpu_cores':max(p['cpu_cores'] for p in model),'scope':'host process, separate from Omni pod limits; includes initial indexing'}
     if (root/'audit-observations.jsonl').exists():
         lines=(root/'audit-observations.jsonl').read_text().splitlines()
         if lines:result['audit_transport_latency_cumulative']=json.loads(lines[-1])
