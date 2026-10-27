@@ -124,6 +124,16 @@ try:
         values['omni'] = {'enabled': True, 'image': 'vmcp/omni-mcp:helm-test', 'secret': {'value': 'isolated-smoke-omni-secret-at-least-32-characters'}, 'refreshInterval': '1s'}
         file.write_text(json.dumps(values))
         run([*common, 'upgrade', 'smoke', 'deploy/helm/vmcp', '-f', str(file), '--wait', '--wait-for-jobs', '--timeout', '10m'])
+        # kubectl port-forward pins a pod; enabling the shared secret rolls the
+        # existing workloads, so reconnect forwards after the successful upgrade.
+        for proc in forwarders:
+            proc.terminate()
+            proc.wait(timeout=10)
+        forwarders.clear()
+        for svc, local in [('smoke-vmcp-web', web_port), ('smoke-vmcp-data-plane', dp_port)]:
+            forwarders.append(subprocess.Popen(['kubectl', '--context', CONTEXT, '-n', NS, 'port-forward', 'service/' + svc, f'{local}:8080'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        raw, _ = wait_request(direct_endpoint, method='POST', headers=runtime_headers, data=json.dumps({'jsonrpc':'2.0','id':4,'method':'tools/call','params':{'name':'echo','arguments':{'message':'direct-after-omni-upgrade'}}}).encode())
+        assert b'direct-after-omni-upgrade' in raw, raw
         omni_port = port()
         forwarders.append(subprocess.Popen(['kubectl', '--context', CONTEXT, '-n', NS, 'port-forward', 'service/smoke-vmcp-omni-mcp', f'{omni_port}:8080'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
         omni_url = f'http://127.0.0.1:{omni_port}'

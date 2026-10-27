@@ -12,6 +12,7 @@
 
 - [Upstreams](Upstreams.md)
 - [Virtual servers](Virtual-Servers.md)
+- [Omni MCP](Omni-MCP.md)
 - [Resources and prompts](MCP_CATALOGS.md)
 - [Agent keys and authentication](Agent-Keys-and-Authentication.md)
 - [OAuth for agents](OAuth-for-Agents.md)
@@ -25,6 +26,7 @@
 ## Deploy and operate
 
 - [Production deployment](PRODUCTION_DEPLOYMENT.md)
+- [Omni installation without Helm](Omni-MCP-Installation.md)
 - [Security](Security.md)
 - [Network security](MCP_NETWORK_SECURITY.md)
 - [Upstream TLS](Upstream-TLS.md)
@@ -48,6 +50,3 @@
 - [Audit durability](AUDIT_DURABILITY.md)
 
 - [Teams and projects](Teams-and-Projects.md)
-
-- [Omni MCP](Omni-MCP.md)
-- [Omni installation without Helm](Omni-MCP-Installation.md)

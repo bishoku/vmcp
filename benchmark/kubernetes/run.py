@@ -107,7 +107,7 @@ def main():
                 container['env'].append({'name':'VMCP_OMNI_SECRET','valueFrom':{'secretKeyRef':{'name':'omni','key':'secret'}}})
             deployment(name,container,0);service(name,port,component=='data-plane')
         if args.omni:
-            omni_env={'VMCP_LISTEN':':8090','VMCP_OMNI_DATA_PLANE_URL':'http://acceptance-node-1:8080','VMCP_OMNI_REFRESH_INTERVAL':'2s','VMCP_OMNI_SEARCH_LIMIT':'12000','GOMAXPROCS':'2','GOMEMLIMIT':'512MiB'}
+            omni_env={'VMCP_LISTEN':':8090','VMCP_OMNI_DATA_PLANE_URL':'http://acceptance-node-1:8080','VMCP_OMNI_REFRESH_INTERVAL':'2s','VMCP_OMNI_SEARCH_LIMIT':'12000','GOMAXPROCS':'2','GOMEMLIMIT':'512MiB','GODEBUG':'gctrace=1'}
             for key in ('VMCP_OMNI_EMBEDDING_URL','VMCP_OMNI_EMBEDDING_MODEL'):
                 if os.environ.get(key): omni_env[key]=os.environ[key]
             deployment('omni-mcp',{'name':'omni-mcp','image':images['omni-mcp'],'imagePullPolicy':'Never','env':[{'name':k,'value':v} for k,v in omni_env.items()]+[{'name':'VMCP_OMNI_SECRET','valueFrom':{'secretKeyRef':{'name':'omni','key':'secret'}}}],'resources':{'requests':{'cpu':'250m','memory':'128Mi'},'limits':{'cpu':'2','memory':'1Gi'}},'readinessProbe':{'httpGet':{'path':'/readyz','port':8090},'periodSeconds':2}},0)

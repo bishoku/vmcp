@@ -25,6 +25,7 @@ before production use.
 
 - [Upstreams](Upstreams.md)
 - [Virtual servers](Virtual-Servers.md)
+- [Omni MCP](Omni-MCP.md)
 - [Resources and prompts](MCP_CATALOGS.md)
 - [Agent keys and authentication](Agent-Keys-and-Authentication.md)
 - [OAuth for agents](OAuth-for-Agents.md)
@@ -38,6 +39,7 @@ before production use.
 ## Deploy and operate
 
 - [Production deployment](PRODUCTION_DEPLOYMENT.md)
+- [Omni installation without Helm](Omni-MCP-Installation.md)
 - [Security](Security.md)
 - [Network security](MCP_NETWORK_SECURITY.md)
 - [Upstream TLS](Upstream-TLS.md)
@@ -65,6 +67,3 @@ before production use.
 For source builds, tests, CI and publishing, see the repository's
 [Contributing guide](../CONTRIBUTING.md) and [maintainer documentation](../maintainer/README.md).
 The API contract is [OpenAPI](../api/openapi.yaml).
-
-- [Omni MCP](Omni-MCP.md)
-- [Omni installation without Helm](Omni-MCP-Installation.md)

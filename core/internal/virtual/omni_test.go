@@ -172,3 +172,52 @@ func TestOmniOAuthIPAndStaleSnapshot(t *testing.T) {
 		t.Fatalf("stale authorization accepted: %d", w.Code)
 	}
 }
+
+func TestOmniDoesNotRevealAnotherAssignedProject(t *testing.T) {
+	rig := newRig(t)
+	h := rig.handler
+	defer h.Sessions.Close()
+	snap := h.Snap.Snapshot()
+	v := snap.VirtualServers["support"]
+	v.OmniEnabled = true
+	v.Project = "chat"
+	snap.VirtualServers[v.Slug] = v
+	hidden := v
+	hidden.Slug = "payroll"
+	hidden.Name = "Confidential payroll"
+	hidden.Project = "finance"
+	snap.VirtualServers[hidden.Slug] = hidden
+	key := "chat-only-key"
+	snap.AgentKeys = map[string]config.AgentKey{string(store.HashKey(key)): {ID: "chat-key", Slug: "chat-agent", Servers: map[string]bool{"support": true}}}
+	secret := strings.Repeat("x", 32)
+	mux := http.NewServeMux()
+	h.RegisterOmni(mux, secret)
+	dp := httptest.NewServer(mux)
+	defer dp.Close()
+	backend, _ := omni.NewBackend(dp.URL, secret)
+	index := omni.NewIndex(nil)
+	index.Refresh(context.Background(), backend)
+	app := (&omni.Server{Backend: backend, Index: index}).Handler()
+	call := func(name string, args any) *httptest.ResponseRecorder {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+		r := httptest.NewRequest("POST", "/mcp/v1/omni", bytes.NewReader(b))
+		r.Header.Set("Authorization", "Bearer "+key)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, r)
+		return w
+	}
+	for _, name := range []string{"discover_server", "discover_tools"} {
+		w := call(name, map[string]any{"query": "tables", "project": "finance"})
+		if w.Code != 200 || strings.Contains(w.Body.String(), "payroll") || strings.Contains(w.Body.String(), "Confidential") {
+			t.Fatalf("hidden project discovered: %d %s", w.Code, w.Body)
+		}
+	}
+	for _, name := range []string{"get_tool_schema", "invoke_tool"} {
+		w := call(name, map[string]any{"tool_ref": omni.Ref("payroll", "tables"), "arguments": map[string]any{}})
+		if w.Code != 403 && w.Code != 404 {
+			t.Fatalf("hidden schema/invocation allowed: %s %d", name, w.Code)
+		}
+	}
+}

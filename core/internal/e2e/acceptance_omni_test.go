@@ -271,6 +271,14 @@ func TestOmniAcceptance(t *testing.T) {
 	if searchFail.Load() > searchOK.Load()/999 {
 		t.Error("discovery success below 99.9%")
 	}
+	// Preserve original-pod GC evidence before deliberate replacements.
+	for _, name := range []string{"acceptance-node-1", "omni-mcp"} {
+		if logs, err := acceptanceKubectl(ctx, nil, "logs", "deployment/"+name, "--tail=-1"); err == nil {
+			_ = os.WriteFile(filepath.Join(output, name+"-original-pod.log"), logs, 0600)
+		} else {
+			t.Error(err)
+		}
+	}
 	phase.Store("faults")
 	if control := os.Getenv("VMCP_TEST_EMBEDDING_CONTROL_URL"); control != "" {
 		response, err := client.Post(control+"/test/fail", "application/json", nil)
