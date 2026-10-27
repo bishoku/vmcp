@@ -1,19 +1,19 @@
 # Install Omni MCP without Helm
 
 Omni MCP is an optional third process, alongside the control plane and data plane.
-Use matching **v1.2.0** binaries/images for all three. The new image is
-`barishoku/vmcp-omni-mcp:v1.2.0` (linux/amd64 and linux/arm64); pin the release
+Use matching **v1.2.1** binaries/images for all three. The new image is
+`barishoku/vmcp-omni-mcp:v1.2.1` (linux/amd64 and linux/arm64); pin the release
 manifest's digest in production. Existing vMCP endpoints continue to work.
 See [Omni behavior and security](Omni-MCP.md) before publishing tools.
 
 ## Upgrade an existing installation
 
 1. Back up PostgreSQL and retain the existing master encryption key.
-2. Apply migrations using the v1.2.0 `migrate` binary/image and the migration DB
+2. Apply migrations using the v1.2.1 `migrate` binary/image and the migration DB
    credential. Migration 34 adds `omni_enabled DEFAULT false`; migration 33 adds
    teams/projects if upgrading from before v1.1.0. Never run a second migration
    job concurrently. Existing control-plane automatic migration is also supported.
-3. Upgrade control plane, data plane and web to v1.2.0. Set
+3. Upgrade control plane, data plane and web to v1.2.1. Set
    `VMCP_SKIP_MIGRATIONS=true` on the control plane if a separate migration job
    applied the schema. Keep existing DB, master key, OAuth, Redis and audit settings.
 4. Generate a new internal Omni secret (`openssl rand -hex 32`) and distribute it
@@ -41,6 +41,7 @@ rollback; retain the upgraded schema and backup.
 | `VMCP_OMNI_SEARCH_LIMIT` | Omni | `120` searches per credential per minute **per replica**, positive integer |
 | `VMCP_OMNI_EMBEDDING_URL` | Omni | Optional complete OpenAI-compatible embeddings URL, including `/v1/embeddings` |
 | `VMCP_OMNI_EMBEDDING_MODEL` | Omni | Required when an embedding URL is set |
+| `VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY` | Omni | `false`; set `true` to skip TLS certificate-chain and hostname verification for embedding requests only |
 | `VMCP_OMNI_EMBEDDING_KEY` | Omni | Optional provider bearer credential; never a runtime agent key |
 | `VMCP_AGENT_OIDC_ISSUER` | Omni | Same issuer as DP when using OAuth; advertises resource metadata |
 | `VMCP_TRUSTED_PROXIES` | Omni | Empty by default; comma-separated CIDRs of actual trusted ingress peers only |
@@ -53,6 +54,24 @@ DP remains responsible for issuer/audience validation, IP rules, ownership
 approvals, quotas, audit and upstream credentials. Do not set a provider API key
 unless that provider is approved to receive tool descriptions and search queries.
 Without an embedding URL the service explicitly operates in `keyword` mode.
+
+### Self-signed embedding endpoints
+
+For an embedding service with a self-signed certificate, set this on the Omni
+process and restart/recreate it:
+
+```sh
+VMCP_OMNI_EMBEDDING_URL=https://embeddings.internal/v1/embeddings
+VMCP_OMNI_EMBEDDING_MODEL=your-model
+VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY=true
+```
+
+In a shell, export these variables; in Docker, put them in `omni.env`. The Compose
+overlay passes the flag through. TLS remains encrypted, but the server certificate
+and hostname are not verified. This applies only to the embedding client, not
+Omni’s data-plane connection or upstream settings. The default is `false`; invalid
+boolean values stop startup. Plain `http://` embedding URLs are already supported
+and do not need this flag. This option is available from **v1.2.1**; v1.2.0 does not support it.
 
 ### Docker on an existing private network
 
@@ -83,7 +102,7 @@ docker run -d --name vmcp-omni --restart unless-stopped \
   --env-file ./omni.env --read-only --cap-drop ALL \
   --security-opt no-new-privileges --memory 1g --cpus 2 \
   -p 127.0.0.1:8090:8090 \
-  barishoku/vmcp-omni-mcp:v1.2.0
+  barishoku/vmcp-omni-mcp:v1.2.1
 curl --fail http://127.0.0.1:8090/readyz
 ```
 
@@ -95,7 +114,7 @@ provider requests. Each replica has its own index and search quota.
 
 ### Local Docker Compose
 
-The repository overlay builds the current source. Checkout the v1.2.0 tag to
+The repository overlay builds the current source. Checkout the v1.2.1 tag to
 reproduce the release; these development Compose files are not a hardened
 production database/proxy installation.
 

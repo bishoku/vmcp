@@ -286,7 +286,11 @@ without evidence from the intended infrastructure.
 The v1.2.0 image inventory includes `omni-mcp`, but `omni.enabled` defaults to false.
 Set `omni.enabled: true`, supply `omni.secret` through an existing Secret (same
 secret is wired to CP/DP/Omni), and optionally set `omni.embeddingURL`,
-`omni.embeddingModel` and `omni.embeddingKey`. `omni.publicURL` defaults to
+`omni.embeddingModel` and `omni.embeddingKey`. For self-signed embedding HTTPS
+endpoints, `omni.embeddingInsecureSkipVerify: true` sets
+`VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY=true` on Omni only (default `false`).
+It disables certificate-chain and hostname verification; TLS encryption remains.
+This option requires Omni v1.2.1 or later; v1.2.0 ignores the flag. `omni.publicURL` defaults to
 `runtime.publicGatewayURL`; public ingress uses the existing gateway host.
 Only the exact Omni MCP and OAuth metadata paths are routed publicly.
 

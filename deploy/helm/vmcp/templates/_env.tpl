@@ -75,6 +75,7 @@
 - {name: VMCP_OMNI_DATA_PLANE_URL, value: {{ printf "http://%s:8080" (include "vmcp.name" (dict "root" $r "component" "data-plane")) | quote }}}
 - {name: VMCP_OMNI_REFRESH_INTERVAL, value: {{ $v.omni.refreshInterval | quote }}}
 - {name: VMCP_OMNI_EMBEDDING_URL, value: {{ $v.omni.embeddingURL | quote }}}
+- {name: VMCP_OMNI_EMBEDDING_INSECURE_SKIP_VERIFY, value: {{ $v.omni.embeddingInsecureSkipVerify | quote }}}
 - {name: VMCP_OMNI_EMBEDDING_MODEL, value: {{ $v.omni.embeddingModel | quote }}}
 - {name: VMCP_AGENT_OIDC_ISSUER, value: {{ $v.runtime.agentOIDC.issuer | quote }}}
 - {name: VMCP_ALLOWED_ORIGINS, value: {{ join "," $v.runtime.allowedOrigins | quote }}}
