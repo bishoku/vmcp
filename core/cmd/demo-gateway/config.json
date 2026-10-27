@@ -1,0 +1,20 @@
+{
+  "description": "vMCP Enterprise Gateway Declarative Topology Configuration (Managed by DevOps / Infra Team, NOT by Agents)",
+  "gateways": {
+    "devops-gateway": {
+      "name": "DevOps & Infrastructure Gateway",
+      "upstreams": ["upstream-devops", "upstream-database", "upstream-crm"],
+      "allowed_roles": ["admin", "devops", "developer"]
+    },
+    "finance-gateway": {
+      "name": "Finance & Billing Gateway",
+      "upstreams": ["upstream-billing"],
+      "allowed_roles": ["admin", "finance-officer"]
+    },
+    "secops-gateway": {
+      "name": "Security & Audit Gateway",
+      "upstreams": ["upstream-secops"],
+      "allowed_roles": ["admin", "secops-lead"]
+    }
+  }
+}

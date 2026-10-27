@@ -20,6 +20,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/delivery"
+	"github.com/bishoku/vmcp/core/internal/discovery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
@@ -47,6 +48,9 @@ type Handler struct {
 	Sessions *Manager
 	Delivery *delivery.Store
 	Log      *slog.Logger
+
+	// Discovery provides vector-based semantic tool search and metadata filtering. Optional.
+	Discovery *discovery.Service
 
 	// Audit receives one event per tool call and per denied request. Optional.
 	Audit audit.Recorder
@@ -304,7 +308,39 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	case mcp.MethodPing:
 		h.reply(w, msg.ID, struct{}{})
 	case mcp.MethodToolsList:
-		tools := make([]mcp.Tool, 0, len(vs.Tools))
+		tools := make([]mcp.Tool, 0, len(vs.Tools)+1)
+		if h.Discovery != nil {
+			var listParams struct {
+				Query  string `json:"query"`
+				Domain string `json:"domain"`
+				Limit  int    `json:"limit"`
+			}
+			if len(msg.Params) > 0 {
+				_ = json.Unmarshal(msg.Params, &listParams)
+			}
+			if listParams.Query != "" {
+				userRole := sess.owner.Mode
+				if userRole == "" {
+					userRole = "admin"
+				}
+				results, err := h.Discovery.SearchTools(ctx, discovery.SearchQuery{
+					Query:    listParams.Query,
+					UserRole: userRole,
+					Domain:   listParams.Domain,
+					Limit:    listParams.Limit,
+				})
+				if err == nil && len(results) > 0 {
+					discovered := make([]mcp.Tool, 0, len(results))
+					for _, r := range results {
+						discovered = append(discovered, r.Tool.ToMCPTool())
+					}
+					h.reply(w, msg.ID, mcp.ListToolsResult{Tools: discovered})
+					return
+				}
+			}
+			// Expose search_tools meta-tool for dynamic AI agent discovery
+			tools = append(tools, discovery.GetSearchToolsMetaTool())
+		}
 		for _, t := range vs.Tools {
 			tools = append(tools, t.Tool)
 		}
@@ -426,6 +462,27 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			return
 		}
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "tool not permitted: "+p.Name))
+		return
+	}
+	if h.Discovery != nil && p.Name == discovery.MetaToolName {
+		userRole := sess.owner.Mode
+		if userRole == "" || (!vs.AuthRequired && (userRole == "anonymous" || userRole == "native")) {
+			userRole = "admin"
+		}
+		res, err := discovery.ExecuteSearchMetaTool(ctx, h.Discovery, userRole, p.Arguments)
+		if err != nil {
+			if !finish("error", err.Error()) {
+				http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+				return
+			}
+			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, err.Error()))
+			return
+		}
+		if !finish("ok", "") {
+			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
+			return
+		}
+		h.reply(w, msg.ID, res)
 		return
 	}
 	vt, ok := vs.Lookup(p.Name)

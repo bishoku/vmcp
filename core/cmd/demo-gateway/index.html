@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>vMCP Çoklu Gateway & Kurumsal Güvenlik Laboratuvarı</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #38bdf8;
+      --accent: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --purple: #a855f7;
+      --code-bg: #030712;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px 14px; min-height: 100vh; display: flex; justify-content: center; }
+    .container { max-width: 1200px; width: 100%; }
+    .header { text-align: center; margin-bottom: 18px; }
+    .header h1 { font-size: 24px; font-weight: 800; color: var(--primary); margin-bottom: 4px; }
+    .header p { color: var(--muted); font-size: 13px; }
+
+    /* TABS */
+    .nav-tabs { display: flex; gap: 8px; border-bottom: 2px solid var(--border); margin-bottom: 18px; flex-wrap: wrap; }
+    .nav-tab { padding: 10px 18px; font-weight: 700; font-size: 13px; cursor: pointer; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; border-radius: 6px 6px 0 0; }
+    .nav-tab.active { color: var(--primary); border-bottom-color: var(--primary); background: #131d31; }
+    .nav-tab:hover { color: #fff; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+
+    /* DASHBOARD CONTROLS GRID */
+    .controls-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px;
+    }
+    .ctrl-box { background: #0f172a; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .ctrl-label { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; }
+    select, input, textarea { width: 100%; background: #030712; border: 1px solid var(--border); border-radius: 6px; color: #fff; padding: 8px 10px; font-size: 13px; outline: none; }
+    select:focus, input:focus, textarea:focus { border-color: var(--primary); }
+    
+    .toggle-btn {
+      width: 100%; padding: 8px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer;
+      border: 1px solid transparent; transition: all 0.2s; text-align: center;
+    }
+    .toggle-on { background: #064e3b; color: #6ee7b7; border-color: #059669; }
+    .toggle-off { background: #450a0a; color: #fca5a5; border-color: #dc2626; }
+
+    /* CASE BUTTONS GRID (10 CASES) */
+    .cases-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 8px; margin-bottom: 18px;
+    }
+    .btn-case {
+      background: #1e293b; border: 1px solid #475569; color: #f1f5f9;
+      padding: 10px 12px; border-radius: 8px; font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: all 0.15s; text-align: left; display: flex; flex-direction: column; gap: 4px;
+    }
+    .btn-case:hover { background: #334155; border-color: var(--primary); transform: translateY(-2px); }
+    .btn-case .case-num { font-size: 10px; color: var(--primary); text-transform: uppercase; font-weight: 800; }
+    .btn-case.active { border-color: var(--accent); background: #0f2e22; }
+
+    /* RESULT AREA */
+    .result-panel {
+      background: #090e17; border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-top: 14px;
+    }
+    .res-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    .status-badge {
+      font-size: 12px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase;
+    }
+    .badge-200 { background: #064e3b; color: #34d399; }
+    .badge-403 { background: #450a0a; color: #f87171; }
+    .badge-429 { background: #78350f; color: #fde68a; }
+    .badge-503 { background: #581c87; color: #e9d5ff; }
+    .badge-202 { background: #1e3a8a; color: #93c5fd; }
+    .badge-404 { background: #4c1d95; color: #f43f5e; }
+
+    /* COLLAPSIBLE ACCORDION PANELS (KİME NE ATILDI / KİM NE DÖNDÜ) */
+    .hop-accordion {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      margin-bottom: 10px; overflow: hidden; transition: all 0.2s;
+    }
+    .hop-accordion:hover { border-color: #475569; }
+    .hop-header {
+      padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; background: #131d31; user-select: none;
+    }
+    .hop-header:hover { background: #1e293b; }
+    .hop-header-left { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #f8fafc; }
+    .hop-arrow { font-size: 11px; color: var(--primary); transition: transform 0.2s; width: 14px; text-align: center; }
+    .hop-badge { background: #1e3a8a; color: #93c5fd; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; }
+    .hop-header-right { display: flex; align-items: center; gap: 10px; }
+    .hop-status-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .status-ok { background: #064e3b; color: #6ee7b7; }
+    .status-fail { background: #450a0a; color: #fca5a5; }
+    .status-warn { background: #78350f; color: #fde68a; }
+    .hop-time { font-size: 11px; color: #94a3b8; }
+
+    .hop-body { padding: 14px; background: #090e17; border-top: 1px solid #1e293b; }
+    .hop-rule-banner {
+      background: #172554; border-left: 4px solid #38bdf8; border-radius: 0 4px 4px 0;
+      padding: 8px 12px; font-size: 12px; color: #c7d2fe; margin-bottom: 12px;
+    }
+    .hop-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    @media (max-width: 768px) { .hop-grid { grid-template-columns: 1fr; } }
+    .hop-col { background: #030712; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; }
+    .col-header { font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .col-meta { font-size: 11px; color: var(--muted); margin-bottom: 6px; font-family: monospace; }
+    .code-box {
+      background: #000; border: 1px solid #1e293b; border-radius: 4px; padding: 8px;
+      font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #a7f3d0;
+      overflow-x: auto; max-height: 220px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4;
+    }
+
+    /* APPROVAL BANNER */
+    .approval-box {
+      background: #172554; border: 1px solid #3b82f6; border-radius: 8px; padding: 14px; margin-top: 10px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .btn-action { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; }
+    .btn-approve { background: #10b981; color: #022c22; }
+    .btn-reject { background: #ef4444; color: #450a0a; }
+
+    /* CANDIDATE CARDS */
+    .cand-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+    .cand-card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; font-size: 12px; }
+    .cand-card.winner { border-color: var(--accent); background: #06241a; }
+
+    /* CATALOG TABLE */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+    th { background: #0b1120; color: var(--muted); padding: 10px; border-bottom: 1px solid var(--border); text-align: left; }
+    td { padding: 10px; border-bottom: 1px solid #1e293b; }
+    tr:hover td { background: #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>vMCP Çoklu Gateway & Kurumsal Güvenlik Laboratuvarı</h1>
+      <p>3 Virtual Server | 10.000 Gerçekçi Araç | Yerel Ollama (qwen2.5:0.5b) ReAct Agent | 10 Test Senaryosu</p>
+    </div>
+
+    <!-- TABS -->
+    <div class="nav-tabs">
+      <div class="nav-tab active" id="tabBtnLab" onclick="switchTab('lab')">⚡ 1. 10 Case Test Laboratuvarı & Ayarlar</div>
+      <div class="nav-tab" id="tabBtnCatalog" onclick="switchTab('catalog')">📚 2. 10.000 Araç Kataloğu (Katalog Gezgini)</div>
+    </div>
+
+    <!-- ========================================================
+         TAB 1: 10 CASE TEST LABORATORY & CONTROLS
+         ======================================================== -->
+    <div id="tabLab">
+      
+      <!-- CONTROLS DASHBOARD (DİNAMİK PARAMETRE AYARLARI) -->
+      <div class="card">
+        <h2 style="font-size: 14px; color: var(--primary); margin-bottom: 12px; text-transform: uppercase;">🎛️ vMCP Canlı Politika & Parametre Ayar Paneli</h2>
+        <div class="controls-grid">
+          
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>👤 Aktif Kullanıcı Rolü</span></div>
+            <select id="cfgRole" onchange="applyRoleChange()">
+              <option value="admin">admin (Tüm yetkiler açık)</option>
+              <option value="devops">devops (Altyapı & DB yetkili)</option>
+              <option value="developer">developer (Kısıtlı yetki, pod silemez)</option>
+              <option value="finance-officer">finance-officer (Sadece Finans/Billing)</option>
+              <option value="guest">guest (Yetkisiz misafir)</option>
+            </select>
+          </div>
+
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>🌐 Hedef Virtual Server</span><span style="color: var(--accent); font-weight: 800;">OTOMATİK</span></div>
+            <div style="background: #030712; border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+              <span>🤖</span> <strong id="lblDiscoveredServer">Arama ile Keşfedilecek</strong>
+            </div>
+            <input type="hidden" id="cfgServer" value="auto">
+          </div>
+
+
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>⏱️ Rate Limit (req/s)</span><span id="lblRateLimit">5 req/s</span></div>
+            <select id="cfgRateLimit" onchange="updateConfig()">
+              <option value="0">0 (Limit Devre Dışı)</option>
+              <option value="1">1 req/sn (Çok Sert Limit)</option>
+              <option value="3">3 req/sn (Orta Seviye)</option>
+              <option value="5" selected>5 req/sn (Standart)</option>
+              <option value="10">10 req/sn (Geniş Kota)</option>
+            </select>
+          </div>
+
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>🔌 Circuit Breaker</span></div>
+            <button class="toggle-btn toggle-on" id="btnCircuit" onclick="toggleCircuit()">🟢 Upstream Sağlıklı</button>
+          </div>
+
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>🎭 PII Maskeleme</span></div>
+            <button class="toggle-btn toggle-on" id="btnPII" onclick="togglePII()">✓ PII Aktif (Kart/TC Maskele)</button>
+          </div>
+
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>✋ Approval Policy</span></div>
+            <button class="toggle-btn toggle-on" id="btnApproval" onclick="toggleApproval()">✓ Onay Şartı Aktif</button>
+          </div>
+
+          <div class="ctrl-box">
+            <div class="ctrl-label"><span>🤖 LLM ReAct Motoru</span></div>
+            <select id="cfgLLM" onchange="updateConfig()">
+              <option value="ollama" selected>qwen2.5:0.5b (Yerel Ollama LLM)</option>
+              <option value="mock">Yerleşik Hızlı ReAct Agent</option>
+            </select>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 11 TEST CASES BUTTONS -->
+      <div class="card">
+        <h2 style="font-size: 14px; color: var(--accent); margin-bottom: 10px; text-transform: uppercase;">🚀 11 Farklı Kurumsal Test Senaryosu (Tek Tıkla Canlı İcra)</h2>
+        <div class="cases-grid">
+          
+          <button class="btn-case" onclick="runPredefinedCase(1)">
+            <span class="case-num">Case 1: Happy Path</span>
+            <span>Tam Yetki & Başarılı İcra</span>
+            <small style="color: var(--muted); font-size: 10px;">admin rolü ile k8s_restart_pod</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(2)">
+            <span class="case-num">Case 2: 403 Forbidden</span>
+            <span>VirtualServer Düzeyinde Engel</span>
+            <small style="color: var(--muted); font-size: 10px;">developer ➔ Arama 'finance-gateway' bulur ve sunucu düzeyinde engellenir</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(3)">
+            <span class="case-num">Case 3: Tool-Level RBAC</span>
+            <span>Araç Düzeyinde Fail-Closed</span>
+            <small style="color: var(--muted); font-size: 10px;">developer ➔ devops-gateway'e erişir ancak k8s_restart_pod çalıştıramaz</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(4)">
+            <span class="case-num">Case 4: Rate Limit 429</span>
+            <span>Token Bucket Aşımı</span>
+            <small style="color: var(--muted); font-size: 10px;">Ardışık isteklerle kota patlatılır</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(5)">
+            <span class="case-num">Case 5: Circuit Breaker</span>
+            <span>Upstream Çökmesi & Fast-Fail</span>
+            <small style="color: var(--muted); font-size: 10px;">503 Service Unavailable devre açık</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(6)">
+            <span class="case-num">Case 6: Human Approval</span>
+            <span>Kritik İşlem Yönetici Onayı</span>
+            <small style="color: var(--muted); font-size: 10px;">stripe_refund_payment iade onayı</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(7)">
+            <span class="case-num">Case 7: PII Koruması</span>
+            <span>Kart / TC Maskeleme</span>
+            <small style="color: var(--muted); font-size: 10px;">4532-1234 ➔ ****-****-****-8812</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(8)">
+            <span class="case-num">Case 8: Egress Policy</span>
+            <span>İzinsiz Dış Hedef Engeli</span>
+            <small style="color: var(--muted); font-size: 10px;">Allowlist dışı host erişimi engellenir</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(9)">
+            <span class="case-num">Case 9: 10k HNSW & Cache</span>
+            <span>L1 Semantik Önbellek (0ms)</span>
+            <small style="color: var(--muted); font-size: 10px;">10.000 araçta 0ms vuruşu</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(10)">
+            <span class="case-num">Case 10: Yerel LLM ReAct</span>
+            <span>Ollama (qwen2.5:0.5b) Agent</span>
+            <small style="color: var(--muted); font-size: 10px;">Gerçek model niyet ve argüman üretir</small>
+          </button>
+
+          <button class="btn-case" onclick="runPredefinedCase(11)" style="border-color: rgba(244, 63, 94, 0.4);">
+            <span class="case-num" style="background: rgba(244, 63, 94, 0.2); color: #f43f5e;">Case 11: Tool Bulunamadı</span>
+            <span>Fail-Closed & Sıfır Halüsinasyon</span>
+            <small style="color: var(--muted); font-size: 10px;">Eşleşen araç yok ➔ Güvenli İptal</small>
+          </button>
+
+        </div>
+
+        <!-- CUSTOM PROMPT INPUT -->
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="customPrompt" placeholder="Veya kendi cümlenizi yazın: örn. Müşterinin kredi kartından 200 USD çek..." style="flex: 1;">
+          <button class="btn-action" style="background: var(--primary); color: #020617; font-weight: 800; padding: 0 20px;" onclick="runCustomPrompt()">Çalıştır ➔</button>
+        </div>
+      </div>
+
+      <!-- RESULTS & TRACE PANEL -->
+      <div id="resultPanel" class="result-panel" style="display: none;">
+        <div class="res-header">
+          <div>
+            <span id="resStatusBadge" class="status-badge badge-200">200 OK</span>
+            <strong id="resCaseTitle" style="font-size: 15px; margin-left: 8px; color: #fff;">Case Sonucu</strong>
+          </div>
+          <div style="font-size: 12px; color: var(--muted);">
+            Sunucu: <strong id="resServerName" style="color: var(--primary);">devops-gateway</strong> |
+            Rol: <strong id="resRoleName" style="color: #cbd5e1;">admin</strong> |
+            Süre: <strong id="resDuration" style="color: #34d399;">12.4 ms</strong>
+          </div>
+        </div>
+
+        <!-- TETİKLENEN GÜVENLİK KURALI -->
+        <div style="background: #0f172a; border-left: 4px solid var(--primary); padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 14px; font-size: 13px;">
+          <strong style="color: var(--primary);">🛡️ Tetiklenen VirtualMCP Politikası:</strong> <span id="resRuleTriggered">Clean Pass</span>
+        </div>
+
+        <!-- ONLİNE ONAY GEREKSİNİMİ (EĞER CASE 6 İSE) -->
+        <div id="approvalBox" class="approval-box" style="display: none;">
+          <div>
+            <div style="font-weight: 800; color: #93c5fd; font-size: 13px;">✋ KURUMSAL ONAY BEKLEMEDE (HUMAN-IN-THE-LOOP)</div>
+            <div style="font-size: 12px; color: #cbd5e1; margin-top: 2px;" id="approvalDesc">stripe_refund_payment operasyonu yönetici onayı bekliyor.</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-action btn-approve" onclick="resolveApproval('approve')">✓ Onayla ve Çalıştır</button>
+            <button class="btn-action btn-reject" onclick="resolveApproval('reject')">✗ Reddet</button>
+          </div>
+        </div>
+
+        <!-- ADIM ADIM GÜVENLİK VE AUDIT LOG KONSOLU -->
+        <div id="policyAuditLogsPanel" style="margin-bottom: 16px; background: #070d19; border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: none;">
+          <div style="background: #0f172a; padding: 10px 14px; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleAuditLogsConsole()">
+            <div style="font-size: 12px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+              <span id="auditLogArrow">▼</span>
+              <span>📋 ADIM ADIM POLİTİKA DOĞRULAMA & DENETİM LOGLARI (AUDIT TRAIL):</span>
+            </div>
+            <div style="font-size: 11px; color: var(--muted);" id="auditLogSummaryBadge">
+              0 Politika Loglandı
+            </div>
+          </div>
+          <div id="auditLogConsoleBody" style="padding: 10px 14px; font-family: 'JetBrains Mono', Consolas, Monaco, monospace; font-size: 11px; line-height: 1.6; max-height: 240px; overflow-y: auto; background: #030712;">
+            <!-- Dynamically populated log stream -->
+          </div>
+        </div>
+
+        <!-- AÇILIR / KAPANIR PANEL BAŞLIĞI VE KONTROLLER -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 18px 0 10px 0;">
+          <div style="font-size: 13px; font-weight: 800; color: var(--primary); text-transform: uppercase;">
+            🔍 KİME HANGİ İSTEK ATILDI & KİM NE DÖNDÜ (AÇILIR/KAPANIR ADIM TRACE'İ):
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-action" style="background: #1e293b; color: #cbd5e1; font-size: 11px; padding: 4px 10px;" onclick="toggleAllHops(true)">▼ Tümünü Aç</button>
+            <button class="btn-action" style="background: #1e293b; color: #cbd5e1; font-size: 11px; padding: 4px 10px;" onclick="toggleAllHops(false)">▲ Tümünü Kapat</button>
+          </div>
+        </div>
+
+        <!-- COLLAPSIBLE ACCORDION CONTAINER -->
+        <div id="hopsContainer"></div>
+
+        <!-- NİHAİ DOWNSTREAM ÇIKTISI -->
+        <div style="margin-top: 14px;">
+          <div style="font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 4px;">NİHAİ SONUÇ VEYA HATA AÇIKLAMASI:</div>
+          <div class="code-box" id="resOutputText" style="max-height: 120px;">Yükleniyor...</div>
+        </div>
+
+        <!-- ADAY ARAÇLAR (EĞER VARSA) -->
+        <div id="candidatesArea" style="margin-top: 14px; display: none;">
+          <div style="font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px;">HNSW VEKTÖR MOTORU TARAFINDAN BULUNAN ADAY ARAÇLAR:</div>
+          <div class="cand-row" id="candidatesGrid"></div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ========================================================
+         TAB 2: 10,000 REALISTIC TOOLS CATALOG
+         ======================================================== -->
+    <div id="tabCatalog" style="display: none;">
+      <div class="card">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <input type="text" id="catSearch" placeholder="Araç adına veya açıklamasına göre ara (k8s, stripe, postgres, vault, ec2)..." oninput="loadCatalog(1)">
+          <select id="catDomain" onchange="loadCatalog(1)">
+            <option value="">Tüm Domainler</option>
+            <option value="devops">devops (Kubernetes, Docker, Cloud)</option>
+            <option value="billing">billing (Stripe, Fatura)</option>
+            <option value="database">database (Postgres, Redis)</option>
+            <option value="security">security (IAM, Vault, Audit)</option>
+            <option value="crm">crm (Slack, Zendesk)</option>
+          </select>
+          <select id="catRole" onchange="loadCatalog(1)">
+            <option value="">Tüm Roller</option>
+            <option value="admin">admin</option>
+            <option value="devops">devops</option>
+            <option value="developer">developer</option>
+            <option value="finance-officer">finance-officer</option>
+            <option value="secops-lead">secops-lead</option>
+          </select>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 220px;">Tool Adı</th>
+              <th style="width: 90px;">Domain</th>
+              <th>Fonksiyonel Açıklama</th>
+              <th style="width: 180px;">Yetkili Roller (RBAC)</th>
+            </tr>
+          </thead>
+          <tbody id="catalogTbody">
+            <tr><td colspan="4" style="text-align: center; color: var(--muted); padding: 20px;">Yükleniyor...</td></tr>
+          </tbody>
+        </table>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 12px; color: var(--muted);">
+          <button class="btn-action" id="btnPrev" onclick="changePage(-1)">← Önceki</button>
+          <span id="pageLabel">Sayfa 1 / 500</span>
+          <button class="btn-action" id="btnNext" onclick="changePage(1)">Sonraki →</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentConfig = {
+      rate_limit_per_sec: 5,
+      circuit_broken: false,
+      pii_masking_enabled: true,
+      approval_required: true,
+      llm_engine: 'ollama'
+    };
+
+    let activeApprovalID = null;
+
+    function switchTab(tab) {
+      document.getElementById('tabLab').style.display = tab === 'lab' ? 'block' : 'none';
+      document.getElementById('tabCatalog').style.display = tab === 'catalog' ? 'block' : 'none';
+
+      document.getElementById('tabBtnLab').className = 'nav-tab' + (tab === 'lab' ? ' active' : '');
+      document.getElementById('tabBtnCatalog').className = 'nav-tab' + (tab === 'catalog' ? ' active' : '');
+
+      if (tab === 'catalog') loadCatalog(1);
+    }
+
+    // CONFIG CONTROLS
+    function applyRoleChange() {
+      // Rol değiştiğinde sunucu otomatik olarak keşfedilmeye devam eder
+    }
+
+    function toggleCircuit() {
+      currentConfig.circuit_broken = !currentConfig.circuit_broken;
+      const btn = document.getElementById('btnCircuit');
+      if (currentConfig.circuit_broken) {
+        btn.className = 'toggle-btn toggle-off';
+        btn.innerText = '🔴 Upstream Arızalı (DEVRE AÇIK)';
+      } else {
+        btn.className = 'toggle-btn toggle-on';
+        btn.innerText = '🟢 Upstream Sağlıklı';
+      }
+      sendConfigUpdate();
+    }
+
+    function togglePII() {
+      currentConfig.pii_masking_enabled = !currentConfig.pii_masking_enabled;
+      const btn = document.getElementById('btnPII');
+      btn.className = 'toggle-btn ' + (currentConfig.pii_masking_enabled ? 'toggle-on' : 'toggle-off');
+      btn.innerText = currentConfig.pii_masking_enabled ? '✓ PII Aktif (Kart/TC Maskele)' : '✗ PII Kapalı (Ham Veri)';
+      sendConfigUpdate();
+    }
+
+    function toggleApproval() {
+      currentConfig.approval_required = !currentConfig.approval_required;
+      const btn = document.getElementById('btnApproval');
+      btn.className = 'toggle-btn ' + (currentConfig.approval_required ? 'toggle-on' : 'toggle-off');
+      btn.innerText = currentConfig.approval_required ? '✓ Onay Şartı Aktif' : '✗ Onay Şartı Kapalı';
+      sendConfigUpdate();
+    }
+
+    function updateConfig() {
+      currentConfig.rate_limit_per_sec = parseInt(document.getElementById('cfgRateLimit').value);
+      currentConfig.llm_engine = document.getElementById('cfgLLM').value;
+      document.getElementById('lblRateLimit').innerText = currentConfig.rate_limit_per_sec + ' req/s';
+      sendConfigUpdate();
+    }
+
+    async function sendConfigUpdate() {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(currentConfig)
+      });
+    }
+
+    // 10 PREDEFINED CASES
+    async function runPredefinedCase(caseID) {
+      let prompt = "";
+      let role = document.getElementById('cfgRole').value;
+      let target = "";
+
+      switch (caseID) {
+        case 1: // Happy Path
+          prompt = "Kubernetes ortaminda coken auth podunu hemen yeniden baslat";
+          role = "admin";
+          target = "auth-svc-prod-pod";
+          break;
+        case 2: // Server 403: developer rolü, Stripe faturası arar. Arama 'finance-gateway' keşfeder, ancak developer buraya yetkisizdir!
+          prompt = "Musteri faturasini Stripe uzerinden goruntule";
+          role = "developer";
+          target = "inv_99812";
+          break;
+        case 3: // Tool RBAC Fail-Closed: developer rolü devops-gateway'e girebilir, ancak k8s_restart_pod çalıştıramaz!
+          prompt = "Kubernetes deployment pod kopya sayisini olcekle ve yeniden baslat";
+          role = "developer";
+          target = "auth-svc";
+          break;
+        case 4: // Rate Limit 429
+          prompt = "Kubernetes pod loglarini getir";
+          role = "guest";
+          document.getElementById('cfgRateLimit').value = "1";
+          updateConfig();
+          await fetch('/api/run-case', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ case_id: 4, prompt, role, virtual_server: "auto" })
+          });
+          break;
+        case 5: // Circuit Breaker
+          prompt = "Postgres veritabaninda kullanicilar tablosunda SQL sorgusu calistir";
+          role = "admin";
+          currentConfig.circuit_broken = true;
+          document.getElementById('btnCircuit').className = 'toggle-btn toggle-off';
+          document.getElementById('btnCircuit').innerText = '🔴 Upstream Arızalı (DEVRE AÇIK)';
+          await sendConfigUpdate();
+          break;
+        case 6: // Human Approval
+          prompt = "Stripe uzerinden 5000 USD tutarindaki hatali odemenin para iadesini yap";
+          role = "finance-officer";
+          target = "inv_99812_refund";
+          break;
+        case 7: // PII
+          prompt = "Musteri Ahmet Yilmaz icin karttan (4532-9988-7711-8812) 200 TL fatura tahsil et tc: 12345678901";
+          role = "finance-officer";
+          target = "customer_ahmet_yilmaz";
+          currentConfig.pii_masking_enabled = true;
+          const piiBtn = document.getElementById('btnPII');
+          if (piiBtn) {
+            piiBtn.className = 'toggle-btn toggle-on';
+            piiBtn.innerText = '✓ PII Aktif (Kart/TC Maskele)';
+          }
+          await sendConfigUpdate();
+          break;
+        case 8: // Egress
+          prompt = "untrusted-evil-site.com adresine veri gonder ve dis api baglantisi kur";
+          role = "admin";
+          target = "http://untrusted-evil-site.com/webhook";
+          break;
+        case 9: // 10k HNSW & L1 Cache
+          prompt = "Kubernetes uretim ortaminda coken podu hemen yeniden baslat";
+          role = "admin";
+          target = "auth-svc-prod-pod";
+          break;
+        case 10: // Real Ollama Agent
+          prompt = "Vault kasasindan veritabani sifrelerini ve gizli anahtarlari getir";
+          role = "admin";
+          target = "db-prod-credentials";
+          document.getElementById('cfgLLM').value = "ollama";
+          updateConfig();
+          break;
+        case 11: // No Tools Found (Fail-Closed & Zero Hallucination)
+          prompt = "Uzay istasyonunun roket atesleyicilerini baslat ve Mars rotasina yonlendir";
+          role = "admin";
+          target = "mars-orbital-station";
+          break;
+      }
+
+      document.getElementById('cfgRole').value = role;
+      document.getElementById('customPrompt').value = prompt;
+
+      await executeApiRun(caseID, prompt, role, "auto", target);
+    }
+
+    async function runCustomPrompt() {
+      const prompt = document.getElementById('customPrompt').value.trim();
+      const role = document.getElementById('cfgRole').value;
+      const server = document.getElementById('cfgServer').value;
+      if (!prompt) {
+        alert("Lütfen bir prompt girin.");
+        return;
+      }
+      await executeApiRun(0, prompt, role, server, "");
+    }
+
+    async function executeApiRun(caseID, prompt, role, server, target) {
+      const panel = document.getElementById('resultPanel');
+      panel.style.display = 'block';
+      panel.scrollIntoView({ behavior: 'smooth' });
+
+      document.getElementById('resCaseTitle').innerText = caseID > 0 ? "Case #" + caseID + " İcrası..." : "Özel İstek İcrası...";
+      document.getElementById('resOutputText').innerText = "VirtualMCP Gateway isteği karşılıyor ve kurallar denetleniyor...";
+
+      try {
+        const res = await fetch('/api/run-case', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            case_id: caseID,
+            prompt: prompt,
+            role: role,
+            virtual_server: server,
+            target_arg: target
+          })
+        });
+        const data = await res.json();
+        renderResult(data);
+      } catch (err) {
+        alert("Hata: " + err.message);
+      }
+    }
+
+    // ACCORDION TOGGLE LOGIC
+    function toggleHop(id) {
+      const body = document.getElementById('hop-body-' + id);
+      const arrow = document.getElementById('hop-arrow-' + id);
+      if (!body) return;
+      if (body.style.display === 'none' || body.style.display === '') {
+        body.style.display = 'block';
+        if (arrow) arrow.innerText = '▼';
+      } else {
+        body.style.display = 'none';
+        if (arrow) arrow.innerText = '▶';
+      }
+    }
+
+    function toggleAllHops(show) {
+      const bodies = document.querySelectorAll('.hop-body');
+      const arrows = document.querySelectorAll('.hop-arrow');
+      bodies.forEach(b => {
+        b.style.display = show ? 'block' : 'none';
+      });
+      arrows.forEach(a => {
+        a.innerText = show ? '▼' : '▶';
+      });
+    }
+
+    function toggleAuditLogsConsole() {
+      const body = document.getElementById('auditLogConsoleBody');
+      const arrow = document.getElementById('auditLogArrow');
+      if (!body) return;
+      if (body.style.display === 'none') {
+        body.style.display = 'block';
+        if (arrow) arrow.innerText = '▼';
+      } else {
+        body.style.display = 'none';
+        if (arrow) arrow.innerText = '▶';
+      }
+    }
+
+    function renderResult(data) {
+      document.getElementById('resServerName').innerText = data.server || 'gateway';
+      document.getElementById('lblDiscoveredServer').innerText = data.server || 'Otomatik';
+      document.getElementById('resRoleName').innerText = data.role || 'user';
+      document.getElementById('resDuration').innerText = (data.duration_ms || 1).toFixed(2) + ' ms';
+      document.getElementById('resRuleTriggered').innerText = data.rule_triggered || 'N/A';
+
+      const badge = document.getElementById('resStatusBadge');
+      const code = data.http_code || 200;
+      badge.innerText = code + " " + data.status;
+      badge.className = 'status-badge badge-' + code;
+
+      // Approval Box
+      const appBox = document.getElementById('approvalBox');
+      if (data.status === 'PENDING_APPROVAL') {
+        activeApprovalID = data.approval_id;
+        appBox.style.display = 'flex';
+        document.getElementById('approvalDesc').innerText = "Onay ID: " + data.approval_id + " | Araç: " + data.selected_tool + " yönetici onayı bekliyor.";
+      } else {
+        appBox.style.display = 'none';
+      }
+
+      // ADIM ADIM AUDIT & POLİTİKA LOGLARI KONSOLU
+      const logsPanel = document.getElementById('policyAuditLogsPanel');
+      const logsBody = document.getElementById('auditLogConsoleBody');
+      const logsSummary = document.getElementById('auditLogSummaryBadge');
+      if (data.policy_logs && data.policy_logs.length > 0) {
+        logsPanel.style.display = 'block';
+        logsSummary.innerText = data.policy_logs.length + " Politika Denetimi Kaydedildi";
+        logsBody.innerHTML = data.policy_logs.map(log => {
+          let statusStyle = 'color: #34d399; font-weight: 800;';
+          if (log.status === 'BLOCKED' || log.status === 'DENIED') {
+            statusStyle = 'color: #f87171; font-weight: 800;';
+          } else if (log.status === 'HELD' || log.status === 'TRIPPED') {
+            statusStyle = 'color: #fbbf24; font-weight: 800;';
+          } else if (log.status === 'ACTIVE' || log.status === 'RECORDED') {
+            statusStyle = 'color: #38bdf8; font-weight: 800;';
+          }
+          return `
+            <div style="display: flex; gap: 8px; margin-bottom: 4px; border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 3px; align-items: flex-start;">
+              <span style="color: #64748b;">[${escapeHtml(log.timestamp)}]</span>
+              <span style="${statusStyle}; min-width: 90px;">[${escapeHtml(log.status)}]</span>
+              <strong style="color: #cbd5e1; min-width: 175px;">${escapeHtml(log.policy)}:</strong>
+              <span style="color: #94a3b8; flex: 1;">${escapeHtml(log.details)}</span>
+            </div>
+          `;
+        }).join('');
+      } else {
+        logsPanel.style.display = 'none';
+      }
+
+      // COLLAPSIBLE HOPS (KİME NE ATILDI / KİM NE DÖNDÜ)
+      const hopsArea = document.getElementById('hopsContainer');
+      hopsArea.innerHTML = '';
+
+      if (data.hops && data.hops.length > 0) {
+        data.hops.forEach((h, idx) => {
+          const isOpen = idx === 0 || idx === data.hops.length - 1; // ilk ve son adımlar açık başlar
+          const statusClass = (h.status.includes('FAIL') || h.status.includes('403') || h.status.includes('DENIED')) ? 'status-fail' :
+                              (h.status.includes('429') || h.status.includes('APPROVAL') || h.status.includes('503')) ? 'status-warn' : 'status-ok';
+
+          const cardHtml = `
+            <div class="hop-accordion">
+              <div class="hop-header" onclick="toggleHop('${idx}')">
+                <div class="hop-header-left">
+                  <span class="hop-arrow" id="hop-arrow-${idx}">${isOpen ? '▼' : '▶'}</span>
+                  <span class="hop-badge">ADIM ${h.step_num}</span>
+                  <span>${escapeHtml(h.title)}</span>
+                </div>
+                <div class="hop-header-right">
+                  <span class="hop-status-tag ${statusClass}">${escapeHtml(h.status)}</span>
+                  <span class="hop-time">${h.latency_ms.toFixed(2)} ms</span>
+                </div>
+              </div>
+              <div class="hop-body" id="hop-body-${idx}" style="display: ${isOpen ? 'block' : 'none'};">
+                <div class="hop-rule-banner">🛡️ <strong>Uygulanan Politika / Kural:</strong> ${escapeHtml(h.rule_info)}</div>
+                <div class="hop-grid">
+                  <div class="hop-col">
+                    <div class="col-header">
+                      <span style="color: #38bdf8;">📤 GÖNDERİLEN İSTEK (REQUEST)</span>
+                      <span style="color: var(--muted);">${escapeHtml(h.protocol)}</span>
+                    </div>
+                    <div class="col-meta">Gönderen: <strong>${escapeHtml(h.sender)}</strong> ➔ Alıcı: <strong>${escapeHtml(h.receiver)}</strong></div>
+                    <div class="code-box">${escapeHtml(h.request_json)}</div>
+                  </div>
+                  <div class="hop-col">
+                    <div class="col-header">
+                      <span style="color: #34d399;">📥 ALINAN YANIT (RESPONSE)</span>
+                      <span style="color: #cbd5e1;">Süre: ${h.latency_ms.toFixed(2)} ms</span>
+                    </div>
+                    <div class="col-meta">Cevaplayan: <strong>${escapeHtml(h.receiver)}</strong> ➔ Sonuç: <strong>${escapeHtml(h.status)}</strong></div>
+                    <div class="code-box">${escapeHtml(h.response_json)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          hopsArea.innerHTML += cardHtml;
+        });
+      }
+
+      // Output Text
+      if (data.status === 'FAIL_CLOSED_NO_TOOLS' && data.downstream_out) {
+        document.getElementById('resOutputText').innerText = data.downstream_out;
+      } else if (data.error_message) {
+        document.getElementById('resOutputText').innerText = data.error_message;
+      } else if (data.downstream_out) {
+        document.getElementById('resOutputText').innerText = data.downstream_out;
+      } else {
+        document.getElementById('resOutputText').innerText = JSON.stringify(data, null, 2);
+      }
+
+      // Candidates
+      const candArea = document.getElementById('candidatesArea');
+      const candGrid = document.getElementById('candidatesGrid');
+      if (data.candidates && data.candidates.length > 0) {
+        candArea.style.display = 'block';
+        let ch = '';
+        data.candidates.forEach((c, idx) => {
+          const isWinner = c.name === data.selected_tool;
+          ch += '<div class="cand-card ' + (isWinner ? 'winner' : '') + '">' +
+            '<strong>#' + (idx+1) + ' ' + c.name + ' ' + (isWinner ? '⭐ (SEÇİLDİ)' : '') + '</strong>' +
+            '<div style="color: #38bdf8; font-size: 11px; margin: 4px 0;">Skor: ' + c.score.toFixed(4) + ' | 🌐 Gateway: ' + (c.discovered_virtual_server || 'devops-gateway') + '</div>' +
+            '<div style="color: #cbd5e1; font-size: 11px;">' + c.description + '</div>' +
+          '</div>';
+        });
+        candGrid.innerHTML = ch;
+      } else {
+        candArea.style.display = 'none';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    async function resolveApproval(action) {
+      if (!activeApprovalID) return;
+      const res = await fetch('/api/approval/action', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id: activeApprovalID, action: action })
+      });
+      const data = await res.json();
+      alert("Onay işlemi tamamlandı: " + action.toUpperCase() + "! Sayfa güncelleniyor.");
+      document.getElementById('approvalBox').style.display = 'none';
+      if (action === 'approve') {
+        document.getElementById('resOutputText').innerText = "SUCCESS: Yönetici onayı alındı! Downstream para iadesi ($5000.00) başarıyla tamamlandı.";
+      } else {
+        document.getElementById('resOutputText').innerText = "CANCELLED: Yönetici işlemi reddetti. Para iadesi iptal edildi.";
+      }
+    }
+
+    // CATALOG EXPLORER (TAB 2)
+    let curCatPage = 1;
+    async function loadCatalog(page) {
+      if (page <= 0) page = 1;
+      curCatPage = page;
+      const search = document.getElementById('catSearch').value;
+      const domain = document.getElementById('catDomain').value;
+      const role = document.getElementById('catRole').value;
+
+      const q = new URLSearchParams({ page: page, limit: 20, search: search, domain: domain, role: role });
+      const res = await fetch('/api/tools?' + q.toString());
+      const data = await res.json();
+
+      const tbody = document.getElementById('catalogTbody');
+      tbody.innerHTML = '';
+      if (!data.items || data.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--muted); padding: 20px;">Kriterlere uyan araç bulunamadı.</td></tr>';
+        return;
+      }
+
+      data.items.forEach(t => {
+        let rHtml = '';
+        t.allowed_roles.forEach(r => {
+          rHtml += '<span style="background: #334155; color: #93c5fd; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px;">' + r + '</span>';
+        });
+        tbody.innerHTML += '<tr>' +
+          '<td><strong style="color: var(--primary);">' + t.name + '</strong></td>' +
+          '<td><span style="color: #cbd5e1;">' + t.domain + '</span></td>' +
+          '<td style="color: #94a3b8;">' + t.description + '</td>' +
+          '<td>' + rHtml + '</td>' +
+        '</tr>';
+      });
+
+      const totalPages = Math.ceil(data.total / data.limit) || 1;
+      document.getElementById('pageLabel').innerText = 'Sayfa ' + data.page + ' / ' + totalPages + ' (Toplam ' + data.total.toLocaleString() + ' araç)';
+      document.getElementById('btnPrev').disabled = data.page <= 1;
+      document.getElementById('btnNext').disabled = data.page >= totalPages;
+    }
+
+    function changePage(delta) {
+      loadCatalog(curCatPage + delta);
+    }
+  </script>
+</body>
+</html>
