@@ -390,6 +390,161 @@
     },
     "global": {
       "type": "object"
+    },
+    "omni": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "imagePullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "serviceAccount": {
+          "type": "object"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "topologySpreadConstraints": {
+          "type": "array"
+        },
+        "spreadAcrossNodes": {
+          "type": "boolean"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 90
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "securityContext": {
+          "type": "object"
+        },
+        "env": {
+          "$ref": "#/definitions/environment"
+        },
+        "secretEnv": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/secretSource"
+          }
+        },
+        "envFrom": {
+          "type": "array"
+        },
+        "extraVolumes": {
+          "type": "array"
+        },
+        "extraVolumeMounts": {
+          "type": "array"
+        },
+        "service": {
+          "type": "object"
+        },
+        "pdb": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "minAvailable": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string",
+                  "pattern": "^([0-9]|[1-9][0-9]|100)%$"
+                }
+              ]
+            }
+          }
+        },
+        "autoscaling": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "minReplicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxReplicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "targetCPUUtilizationPercentage": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false
+        },
+        "probes": {
+          "type": "object"
+        },
+        "consumer": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        },
+        "database": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "publicURL": {
+          "type": "string"
+        },
+        "secret": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "embeddingURL": {
+          "type": "string"
+        },
+        "embeddingModel": {
+          "type": "string"
+        },
+        "embeddingKey": {
+          "$ref": "#/definitions/secretSource"
+        },
+        "refreshInterval": {
+          "type": "string"
+        }
+      }
     }
   },
   "definitions": {

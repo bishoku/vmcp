@@ -155,7 +155,7 @@ jobs:
           helm template test deploy/helm/vmcp -f deploy/helm/vmcp/examples/production.yaml -f deploy/helm/vmcp/examples/bundled.yaml > /tmp/vmcp-bundled.yaml
       - name: Build local validation images
         run: |
-          for service in control-plane data-plane migrate fixture-mcp; do
+          for service in control-plane data-plane omni-mcp migrate fixture-mcp; do
             docker build --build-arg SERVICE="$service" -t "vmcp/$service:helm-test" core
           done
           docker tag vmcp/data-plane:helm-test vmcp-dp:ci
@@ -167,7 +167,7 @@ jobs:
           version: v0.27.0
       - name: Load local images into the disposable cluster
         run: |
-          kind load docker-image --name vmcp-helm-test vmcp/control-plane:helm-test vmcp/data-plane:helm-test vmcp/migrate:helm-test vmcp/fixture-mcp:helm-test vmcp/web:helm-test
+          kind load docker-image --name vmcp-helm-test vmcp/control-plane:helm-test vmcp/data-plane:helm-test vmcp/omni-mcp:helm-test vmcp/migrate:helm-test vmcp/fixture-mcp:helm-test vmcp/web:helm-test
       - name: Validate Kubernetes schemas against the API server
         run: |
           for manifest in /tmp/vmcp-rendered.yaml /tmp/vmcp-upgrade.yaml /tmp/vmcp-bundled.yaml; do
@@ -184,7 +184,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        service: [web, control-plane, data-plane, migrate, audit-exporter, audit-exporter-kafka, audit-exporter-rabbitmq, tenant-router, rotate-secrets]
+        service: [web, control-plane, data-plane, omni-mcp, migrate, audit-exporter, audit-exporter-kafka, audit-exporter-rabbitmq, tenant-router, rotate-secrets]
     steps:
       - uses: actions/checkout@v7
       - name: Test image security gates

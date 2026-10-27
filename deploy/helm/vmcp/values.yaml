@@ -76,6 +76,15 @@ workloadDefaults:
     readiness: {httpGet: {path: /readyz, port: http}, periodSeconds: 3, timeoutSeconds: 2, failureThreshold: 1}
 controlPlane: {enabled: true}
 dataPlane: {enabled: true}
+# Optional gradual discovery service. It shares the gateway's runtime audience.
+omni:
+  enabled: false
+  publicURL: ""
+  secret: {existingSecret: "", key: value, value: ""}
+  embeddingURL: ""
+  embeddingModel: ""
+  embeddingKey: {existingSecret: "", key: value, value: ""}
+  refreshInterval: 30s
 web:
   enabled: true
   # Separate web image built from web/Dockerfile.

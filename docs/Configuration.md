@@ -122,3 +122,9 @@ The [manual stack](../benchmark/README.md) supplies an explicit local configurat
 HTTPS, Kafka and RabbitMQ exporters use their own database connection pools and
 configuration. See [all exporter variables and deployment examples](AUDIT_EXPORTERS.md).
 No broker configuration is required by the control plane or data plane.
+
+## Optional Omni MCP process
+
+Omni has no database or master-key credentials. Its internal bridge, embedding
+provider, refresh, rate limit, proxy and OAuth settings are listed in the
+[complete Omni environment reference](Omni-MCP-Installation.md#environment-variables).

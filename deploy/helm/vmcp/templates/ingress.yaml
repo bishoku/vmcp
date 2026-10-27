@@ -27,6 +27,14 @@ spec:
     - host: {{ required "ingress.gatewayHost is required" .Values.ingress.gatewayHost | quote }}
       http:
         paths:
+          {{- if .Values.omni.enabled }}
+          {{- range $path := list "/mcp/v1/omni" "/.well-known/oauth-protected-resource/mcp/v1/omni" }}
+          - path: {{ $path }}
+            pathType: Exact
+            backend:
+              service: {name: {{ include "vmcp.name" (dict "root" $ "component" "omni-mcp") }}, port: {number: 8080}}
+          {{- end }}
+          {{- end }}
           {{- range $path := list "/mcp/" "/.well-known/oauth-protected-resource" }}
           - path: {{ $path }}
             pathType: Prefix

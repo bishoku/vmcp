@@ -65,6 +65,7 @@ interface Draft {
   name: string
   description: string
   enabled: boolean
+  omniEnabled: boolean
   authRequired: boolean
   pii: PiiConfig
   policy: { default: PolicyMode; tools: Record<string, PolicyMode> }
@@ -84,7 +85,7 @@ const DETECTORS = [
   ['us_ssn', 'US SSN'],
 ]
 
-const blank: Draft = { project:"default", guidance:normalizeGuidance(), isNew: true, slug: '', name: '', description: '', enabled: true, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
+const blank: Draft = { project:"default", guidance:normalizeGuidance(), isNew: true, slug: '', name: '', description: '', enabled: true, omniEnabled: false, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
 const fromServer = (v: VirtualServer): Draft => ({
  project:v.project??"default", guidance:normalizeGuidance(v.guidance),
   isNew: false,
@@ -93,6 +94,7 @@ const fromServer = (v: VirtualServer): Draft => ({
   name: v.name,
   description: v.description,
   enabled: v.enabled,
+  omniEnabled: v.omniEnabled ?? false,
   authRequired: v.authRequired,
   pii: { ...noPii, ...v.pii },
   // Draft overrides use stable upstream/tool identities, never editable aliases.
@@ -204,6 +206,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
           description: draft.description,
           enabled: draft.enabled,
           authRequired: draft.authRequired,
+          omniEnabled: draft.omniEnabled,
           pii: draft.pii,
           policy: cleanPolicy(draft),
           rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
@@ -261,6 +264,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                 /></FormField>
               <FormField name="slug" label="Slug" required hint="Stable identifier used in the endpoint. It cannot be changed after creation."><input className={clsx(input, 'mt-1')} disabled={!draft.isNew} value={draft.slug} onChange={(e) => setDraft({ ...draft, slug: e.target.value })} /></FormField>
               <Switch className="self-start" label="Enabled" field="enabled" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}/>
+              <Switch className="sm:col-span-3" label="Publish through Omni MCP" field="omniEnabled" checked={draft.omniEnabled} onChange={(e) => setDraft({ ...draft, omniEnabled: e.target.checked })} description="Allow authorized agents to discover and invoke this server through Omni. Existing tool approvals and runtime access still apply. The server description is used for semantic search."/>
               <Switch className="sm:col-span-3" label="Require an agent key" field="authRequired" checked={draft.authRequired} onChange={(e) => setDraft({ ...draft, authRequired: e.target.checked })} description={!draft.authRequired ? <span className="text-amber-700">Anyone who can reach the data plane can call these tools.</span> : 'Clients must authenticate before using this server.'}/>
             </div>
             <FormField name="description" label="Description" hint="Optional. Explain the purpose in up to 1,000 characters."><input className={clsx(input, 'mt-1')} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></FormField>

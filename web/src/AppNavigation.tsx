@@ -8,7 +8,7 @@ import { btn } from './styles'
 
 const groups = [
   {label:'Workspace',items:[{to:'/connections',label:'Connections',icon:Network},{to:'/setup',label:'Setup guide',icon:BookOpen}]},
-  {label:'Servers',items:[{to:'/upstreams',label:'Upstreams',icon:Server},{to:'/virtual-servers',label:'Virtual Servers',icon:Layers}]},
+  {label:'Servers',items:[{to:'/upstreams',label:'Upstreams',icon:Server},{to:'/virtual-servers',label:'Virtual Servers',icon:Layers},{to:'/omni',label:'Omni MCP',icon:Network}]},
   {label:'Access',items:[{to:'/ownership',label:'Teams & projects',icon:UserCheck},{to:'/agent-keys',label:'Agent Keys',icon:KeyRound},{to:'/identities',label:'Identities',icon:UserCheck}]},
   {label:'Administration',items:[{to:'/audit',label:'Audit Log',icon:FileText},{to:'/settings',label:'Settings',icon:Settings}]},
 ]

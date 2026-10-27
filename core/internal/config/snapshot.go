@@ -95,6 +95,9 @@ func (u Upstream) WithPrecomputedFingerprint() Upstream {
 
 // VirtualServer is an agent-facing endpoint exposing a filtered set of upstream tools.
 type VirtualServer struct {
+	OmniEnabled    bool
+	Description    string
+	Project        string
 	Guidance       Guidance
 	Instructions   string
 	Slug           string

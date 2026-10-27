@@ -32,7 +32,7 @@ class ImageReleaseTests(unittest.TestCase):
         self.assertIn('barishoku/vmcp-migrate@sha256:', values)
         self.assertIn('  kafka:\n    image:', values)
         self.assertNotIn('enabled:', values)
-        self.assertEqual(len(json.loads((self.output / 'images.json').read_text())['images']), 9)
+        self.assertEqual(len(json.loads((self.output / 'images.json').read_text())['images']), 10)
 
     def test_missing_image_does_not_produce_a_partial_release(self):
         (self.input / 'web.json').unlink()

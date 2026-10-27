@@ -40,6 +40,7 @@ type ResolvedSelection struct {
 
 // VirtualServer is the API read model.
 type VirtualServer struct {
+	OmniEnabled    bool                       `json:"omniEnabled"`
 	Project        string                     `json:"project"`
 	OwnerTeam      string                     `json:"ownerTeam"`
 	Guidance       *config.Guidance           `json:"guidance,omitempty"`
@@ -63,6 +64,7 @@ type VirtualServer struct {
 
 // VirtualServerInput is the writable part of a virtual server.
 type VirtualServerInput struct {
+	OmniEnabled    *bool
 	Project        *string
 	Guidance       *config.Guidance
 	Name           string
@@ -79,6 +81,7 @@ type VirtualServerInput struct {
 
 // VirtualServerPatch is a JSON merge patch; a non-nil Tools replaces the list.
 type VirtualServerPatch struct {
+	OmniEnabled       *bool
 	Project           *string
 	Guidance          *config.GuidancePatch
 	Name, Description *string
@@ -99,13 +102,13 @@ type vsRow struct {
 }
 
 const vsSelect = `
-	SELECT v.id::text, v.slug, v.name, v.description, v.enabled, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.version, v.created_at, v.updated_at, v.guidance, (SELECT slug FROM projects WHERE id=v.project_id), COALESCE((SELECT t.slug FROM projects p JOIN teams t ON t.id=p.owner_team_id WHERE p.id=v.project_id),'')
+	SELECT v.omni_enabled, v.id::text, v.slug, v.name, v.description, v.enabled, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.version, v.created_at, v.updated_at, v.guidance, (SELECT slug FROM projects WHERE id=v.project_id), COALESCE((SELECT t.slug FROM projects p JOIN teams t ON t.id=p.owner_team_id WHERE p.id=v.project_id),'')
 	FROM virtual_servers v WHERE v.tenant_id = ` + tenantSQL
 
 func scanVS(row scanner) (*vsRow, error) {
 	var r vsRow
 	var piiRaw, polRaw, features, guidance []byte
-	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.Enabled, &r.AuthRequired, &piiRaw, &polRaw, &features, &r.RateLimit, &r.Version, &r.CreatedAt, &r.UpdatedAt, &guidance, &r.Project, &r.OwnerTeam); err != nil {
+	if err := row.Scan(&r.OmniEnabled, &r.id, &r.Slug, &r.Name, &r.Description, &r.Enabled, &r.AuthRequired, &piiRaw, &polRaw, &features, &r.RateLimit, &r.Version, &r.CreatedAt, &r.UpdatedAt, &guidance, &r.Project, &r.OwnerTeam); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(piiRaw, &r.PII); err != nil {
@@ -397,9 +400,9 @@ func (t *Tx) putVirtualServer(ctx context.Context, slug string, in VirtualServer
 		guidanceJSON, _ := json.Marshal(normalized)
 		var id string
 		if err := t.q.QueryRow(ctx, `
-			INSERT INTO virtual_servers (tenant_id, slug, name, description, enabled, auth_required, pii_config, tool_policy, rate_limit_per_minute,client_features,guidance)
-			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8,$9,$10) RETURNING id::text`,
-			slug, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit, featuresJSON, guidanceJSON).Scan(&id); err != nil {
+			INSERT INTO virtual_servers (tenant_id, slug, name, description, enabled, auth_required, pii_config, tool_policy, rate_limit_per_minute,client_features,guidance,omni_enabled)
+			VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8,$9,$10,$11) RETURNING id::text`,
+			slug, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit, featuresJSON, guidanceJSON, in.OmniEnabled != nil && *in.OmniEnabled).Scan(&id); err != nil {
 			return nil, "", mapWriteErr(err, "virtual server", slug)
 		}
 		if err := t.writeSelections(ctx, id, in.Tools); err != nil {
@@ -420,6 +423,9 @@ func (t *Tx) putVirtualServer(ctx context.Context, slug string, in VirtualServer
 	if ifMatch != nil && *ifMatch != cur.Version {
 		return nil, "", apierror.PreconditionFailed()
 	}
+	if in.OmniEnabled == nil {
+		in.OmniEnabled = &cur.OmniEnabled
+	}
 	if in.Guidance == nil {
 		in.Guidance = cur.Guidance
 	}
@@ -431,12 +437,12 @@ func (t *Tx) putVirtualServer(ctx context.Context, slug string, in VirtualServer
 	}
 	normalized := in.Guidance.Normalized()
 	guidanceJSON, _ := json.Marshal(normalized)
-	if jsonEqual(guidanceJSON, mustJSON(cur.Guidance)) && in.ClientFeatures == cur.ClientFeatures && in.Name == cur.Name && in.Description == cur.Description && in.Enabled == cur.Enabled && in.AuthRequired == cur.AuthRequired && reflect.DeepEqual(in.PII, cur.PII) && reflect.DeepEqual(in.Policy, cur.Policy) && equalInt(in.RateLimit, cur.RateLimit) && sameSelections(cur.Tools, in.Tools) && sameCatalogSelections(cur.Catalog, in.Catalog) {
+	if *in.OmniEnabled == cur.OmniEnabled && jsonEqual(guidanceJSON, mustJSON(cur.Guidance)) && in.ClientFeatures == cur.ClientFeatures && in.Name == cur.Name && in.Description == cur.Description && in.Enabled == cur.Enabled && in.AuthRequired == cur.AuthRequired && reflect.DeepEqual(in.PII, cur.PII) && reflect.DeepEqual(in.Policy, cur.Policy) && equalInt(in.RateLimit, cur.RateLimit) && sameSelections(cur.Tools, in.Tools) && sameCatalogSelections(cur.Catalog, in.Catalog) {
 		return &cur.VirtualServer, Unchanged, nil
 	}
 	if _, err := t.q.Exec(ctx, `
-		UPDATE virtual_servers SET name=$2, description=$3, enabled=$4, auth_required=$5, pii_config=$6, tool_policy=$7, rate_limit_per_minute=$8,client_features=$9, guidance=$10, version = version + 1, updated_at = now()
-		WHERE id = $1::uuid`, cur.id, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit, featuresJSON, guidanceJSON); err != nil {
+		UPDATE virtual_servers SET name=$2, description=$3, enabled=$4, auth_required=$5, pii_config=$6, tool_policy=$7, rate_limit_per_minute=$8,client_features=$9, guidance=$10, omni_enabled=$11, version = version + 1, updated_at = now()
+		WHERE id = $1::uuid`, cur.id, in.Name, in.Description, in.Enabled, in.AuthRequired, piiJSON, polJSON, in.RateLimit, featuresJSON, guidanceJSON, *in.OmniEnabled); err != nil {
 		return nil, "", err
 	}
 	if !sameSelections(cur.Tools, in.Tools) {
@@ -460,7 +466,7 @@ func (t *Tx) PatchVirtualServer(ctx context.Context, slug string, p VirtualServe
 	if err != nil {
 		return nil, err
 	}
-	in := VirtualServerInput{Project: p.Project, Guidance: cur.Guidance, ClientFeatures: cur.ClientFeatures, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
+	in := VirtualServerInput{OmniEnabled: p.OmniEnabled, Project: p.Project, Guidance: cur.Guidance, ClientFeatures: cur.ClientFeatures, Name: cur.Name, Description: cur.Description, Enabled: cur.Enabled, AuthRequired: cur.AuthRequired, PII: cur.PII, Policy: cur.Policy, RateLimit: cur.RateLimit}
 	if p.RateLimitSet {
 		in.RateLimit = p.RateLimit
 	}

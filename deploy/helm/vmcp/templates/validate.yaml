@@ -33,3 +33,7 @@
 {{- if and $v.credentials.masterKey.value (ne (len (b64dec $v.credentials.masterKey.value)) 32) }}{{ fail "masterKey.value must be a base64-encoded 32-byte key" }}{{ end -}}
 {{- $reserved := list "VMCP_TENANT_ID" "VMCP_DATABASE_URL" -}}
 {{- range $key, $_ := $v.migration.secretEnv }}{{ if has $key $reserved }}{{ fail "migration database URL and tenant ID are chart-managed" }}{{ end }}{{ if hasKey $v.migration.env $key }}{{ fail "migration variable appears in env and secretEnv" }}{{ end }}{{ end -}}
+
+{{- if and $v.omni.enabled (not $v.dataPlane.enabled) }}{{ fail "omni requires dataPlane.enabled" }}{{ end -}}
+{{- if and $v.omni.enabled $v.omni.secret.value (lt (len $v.omni.secret.value) 32) }}{{ fail "omni.secret.value must contain at least 32 characters" }}{{ end -}}
+{{- if and $v.omni.enabled $v.omni.embeddingURL (not $v.omni.embeddingModel) }}{{ fail "omni.embeddingModel is required with embeddingURL" }}{{ end -}}

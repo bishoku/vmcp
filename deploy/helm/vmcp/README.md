@@ -280,3 +280,35 @@ services and disabled NetworkPolicy; Kind's default CNI does not establish polic
 isolation. Optional stateful subcharts are rendered/schema-validated, not certified
 for live HA. No chart can establish production RPO/RTO, load capacity or compliance
 without evidence from the intended infrastructure.
+
+## Optional Omni MCP
+
+The v1.2.0 image inventory includes `omni-mcp`, but `omni.enabled` defaults to false.
+Set `omni.enabled: true`, supply `omni.secret` through an existing Secret (same
+secret is wired to CP/DP/Omni), and optionally set `omni.embeddingURL`,
+`omni.embeddingModel` and `omni.embeddingKey`. `omni.publicURL` defaults to
+`runtime.publicGatewayURL`; public ingress uses the existing gateway host.
+Only the exact Omni MCP and OAuth metadata paths are routed publicly.
+
+```yaml
+omni:
+  enabled: true
+  secret:
+    existingSecret: vmcp-omni-bridge
+    key: secret
+  refreshInterval: 30s
+  # Optional; otherwise discovery explicitly uses keyword mode.
+  embeddingURL: https://embeddings.example.com/v1/embeddings
+  embeddingModel: your-approved-model
+  embeddingKey:
+    existingSecret: vmcp-embeddings
+    key: api-key
+```
+
+Create the bridge secret with at least 32 random characters. Apply the release's
+`helm-images.yaml` last to set the signed digest-pinned Omni image along with the
+other components. Size `omni.resources` independently of the data plane; no DB
+credentials are mounted into Omni. Existing vMCPs remain unpublished after
+migration 34. Enable publication in the editor and retain existing runtime grants.
+See [Omni MCP](../../../docs/Omni-MCP.md) for behavior and
+[non-Helm setup](../../../docs/Omni-MCP-Installation.md) for the environment reference.

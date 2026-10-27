@@ -1,0 +1,28 @@
+# Layer over docker-compose.yml; the secret is deliberately not given a public default.
+services:
+  control-plane:
+    environment:
+      VMCP_OMNI_URL: http://omni-mcp:8090
+      VMCP_OMNI_PUBLIC_URL: ${VMCP_OMNI_PUBLIC_URL:-http://localhost:8090}
+      VMCP_OMNI_SECRET: ${VMCP_OMNI_SECRET:?Set a random secret of at least 32 characters}
+  data-plane:
+    environment:
+      VMCP_OMNI_SECRET: ${VMCP_OMNI_SECRET:?Set a random secret of at least 32 characters}
+  omni-mcp:
+    build: {context: ../core, args: {SERVICE: omni-mcp}}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:8090:8090"]
+    environment:
+      VMCP_OMNI_DATA_PLANE_URL: http://data-plane:8080
+      VMCP_OMNI_SECRET: ${VMCP_OMNI_SECRET:?Set a random secret of at least 32 characters}
+      VMCP_OMNI_PUBLIC_URL: ${VMCP_OMNI_PUBLIC_URL:-http://localhost:8090}
+      VMCP_OMNI_SEARCH_LIMIT: ${VMCP_OMNI_SEARCH_LIMIT:-120}
+      VMCP_OMNI_REFRESH_INTERVAL: ${VMCP_OMNI_REFRESH_INTERVAL:-30s}
+      VMCP_TRUSTED_PROXIES: ${VMCP_TRUSTED_PROXIES:-}
+      VMCP_OMNI_EMBEDDING_URL: ${VMCP_OMNI_EMBEDDING_URL:-}
+      VMCP_OMNI_EMBEDDING_MODEL: ${VMCP_OMNI_EMBEDDING_MODEL:-}
+      VMCP_OMNI_EMBEDDING_KEY: ${VMCP_OMNI_EMBEDDING_KEY:-}
+      VMCP_AGENT_OIDC_ISSUER: ${VMCP_AGENT_OIDC_ISSUER:-}
+    depends_on: {data-plane: {condition: service_started}}

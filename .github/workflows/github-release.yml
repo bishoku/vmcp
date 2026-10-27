@@ -108,7 +108,7 @@ jobs:
           cat >> release-notes.md <<EOF
           vMCP $VERSION images are available on Docker Hub under [barishoku](https://hub.docker.com/u/barishoku), for Linux AMD64 and ARM64.
 
-          CI, HIGH/CRITICAL vulnerability scans on AMD64 and ARM64, and signature verification for all nine images passed before this release was prepared.
+          CI, HIGH/CRITICAL vulnerability scans on AMD64 and ARM64, and signature verification for all ten images passed before this release was prepared.
 
           Download the assets below:
           - \`helm-images.yaml\`: immutable image digests for this application version.

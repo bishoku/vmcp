@@ -193,6 +193,9 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/v1/audit-events", s.listAuditEvents)
 	api("GET /api/v1/audit-status", s.auditStatus)
 
+	api("GET /api/v1/omni", s.omni)
+	api("POST /api/v1/omni/reindex", s.omni)
+	api("POST /api/v1/omni/preview", s.omni)
 	api("GET /api/v1/export", s.exportConfig)
 	api("POST /api/v1/apply", s.applyConfig)
 	return mux
@@ -256,6 +259,12 @@ type principalKey struct{}
 func permit(role string, r *http.Request) error {
 	if (strings.HasPrefix(r.URL.Path, "/api/v1/audit-settings") || strings.HasPrefix(r.URL.Path, "/api/v1/audit-preview") || strings.HasSuffix(r.URL.Path, "/payload")) && role != oidc.RoleAdmin {
 		return apierror.Forbidden("audit payloads and settings require admin access")
+	}
+	if r.URL.Path == "/api/v1/omni/reindex" && role != oidc.RoleAdmin {
+		return apierror.Forbidden("reindex requires platform admin")
+	}
+	if r.URL.Path == "/api/v1/omni/preview" && (role == oidc.RoleViewer || role == oidc.RoleEditor || role == oidc.RoleAdmin) {
+		return nil
 	}
 	safe := r.Method == http.MethodGet || r.Method == http.MethodHead
 	switch role {

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "vMCP Control Plane API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -3369,6 +3369,98 @@
           }
         }
       }
+    },
+    "/omni": {
+      "get": {
+        "operationId": "getOmniStatus",
+        "summary": "Omni connection and index status (index details require admin)",
+        "responses": {
+          "200": {
+            "description": "Omni configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/omni/reindex": {
+      "post": {
+        "operationId": "refreshOmniIndex",
+        "summary": "Request an asynchronous index refresh (admin only)",
+        "responses": {
+          "200": {
+            "description": "Refresh requested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/omni/preview": {
+      "post": {
+        "operationId": "previewOmniDiscovery",
+        "summary": "Discover tools or read a schema using an explicit runtime identity",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-VMCP-Runtime-Authorization",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Bearer agent key or OAuth access token; never the management credential"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "tool_ref": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authorized matches or published schema; never executes tools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4756,6 +4848,10 @@
         ],
         "additionalProperties": false,
         "properties": {
+          "omniEnabled": {
+            "type": "boolean",
+            "description": "Publish through Omni MCP. Defaults to false on create; omission preserves existing publication. Runtime permissions still apply."
+          },
           "project": {
             "type": "string",
             "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
@@ -4819,6 +4915,10 @@
       "VirtualServerCreate": {
         "type": "object",
         "properties": {
+          "omniEnabled": {
+            "type": "boolean",
+            "description": "Publish through Omni MCP. Defaults to false on create; omission preserves existing publication. Runtime permissions still apply."
+          },
           "project": {
             "type": "string",
             "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
@@ -4891,6 +4991,10 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "omniEnabled": {
+            "type": "boolean",
+            "description": "Publish through Omni MCP. Defaults to false on create; omission preserves existing publication. Runtime permissions still apply."
+          },
           "project": {
             "type": "string",
             "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."
@@ -4959,6 +5063,10 @@
           "updatedAt"
         ],
         "properties": {
+          "omniEnabled": {
+            "type": "boolean",
+            "description": "Publish through Omni MCP. Defaults to false on create; omission preserves existing publication. Runtime permissions still apply."
+          },
           "project": {
             "type": "string",
             "description": "Project slug; default on create. Omission preserves existing project. Transfers require platform admin."

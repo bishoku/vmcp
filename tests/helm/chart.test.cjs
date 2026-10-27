@@ -89,3 +89,14 @@ test('optional router and additional named Secrets render without HTTP health pr
  const c=router.spec.template.spec.containers[0];assert.equal(c.ports[0].containerPort,8443);assert.equal(c.readinessProbe,undefined);
  assert.equal(docs.find(d=>d.kind==='Secret'&&d.metadata.name==='dependency-auth').stringData.password,'test-only');
 });
+
+test('Omni is optional, has no database credentials and exposes only its MCP routes',()=>{
+ const docs=render({omni:{enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'}},ingress:{enabled:true,webHost:'web.example',gatewayHost:'gateway.example'}});
+ const d=deployments(docs).find(d=>d.metadata.name.endsWith('omni-mcp'));assert.ok(d);
+ assert.ok(!env(d).some(e=>e.name==='VMCP_DATABASE_URL'||e.name==='VMCP_MASTER_KEY'));
+ assert.equal(env(d).find(e=>e.name==='VMCP_OMNI_SECRET').valueFrom.secretKeyRef.name,'omni-secret');
+ const ingress=docs.find(d=>d.kind==='Ingress');const paths=ingress.spec.rules.flatMap(r=>r.http.paths);
+ assert.ok(paths.some(p=>p.path==='/mcp/v1/omni'&&p.pathType==='Exact'));
+ assert.ok(!paths.some(p=>p.path.startsWith('/internal')));
+ assert.match(render({omni:{enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'}},dataPlane:{enabled:false}},[],false),/omni requires dataPlane/);
+});

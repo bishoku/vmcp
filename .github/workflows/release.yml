@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir -p artifacts
           cd core
-          for service in control-plane data-plane migrate audit-exporter audit-exporter-kafka audit-exporter-rabbitmq rotate-secrets tenant-router; do
+          for service in control-plane data-plane omni-mcp migrate audit-exporter audit-exporter-kafka audit-exporter-rabbitmq rotate-secrets tenant-router; do
             go build -trimpath -ldflags='-s -w' -o ../artifacts/vmcp-$service-linux-$GOARCH ./cmd/$service
           done
           cd ../artifacts

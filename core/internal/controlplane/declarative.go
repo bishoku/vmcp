@@ -65,6 +65,7 @@ type exportTLS struct {
 }
 
 type exportVirtualServer struct {
+	OmniEnabled    bool                     `json:"omniEnabled"`
 	Project        string                   `json:"project"`
 	Guidance       *config.Guidance         `json:"guidance"`
 	Slug           string                   `json:"slug"`
@@ -130,7 +131,7 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 		for _, v := range vss {
-			ev := exportVirtualServer{Project: v.Project, Guidance: v.Guidance, ClientFeatures: v.ClientFeatures, Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
+			ev := exportVirtualServer{OmniEnabled: v.OmniEnabled, Project: v.Project, Guidance: v.Guidance, ClientFeatures: v.ClientFeatures, Slug: v.Slug, Name: v.Name, Description: v.Description, Enabled: v.Enabled, AuthRequired: v.AuthRequired, PII: v.PII, Policy: v.Policy, RateLimit: v.RateLimit, Tools: []store.ToolSelection{}}
 			for _, t := range v.Tools {
 				ev.Tools = append(ev.Tools, t.ToolSelection)
 			}

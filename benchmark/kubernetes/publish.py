@@ -104,7 +104,13 @@ def publish(source, destination, archives):
     summary = {key: value for key, value in report.items() if key not in ('Samples', 'Phases')}
     summary['Phases'] = [{key: value for key, value in phase.items() if key not in ('Seconds', 'ErrorExamples')}
                          for phase in report.get('Phases', [])]
-    summary['ReportAvailable'] = bool(report)
+    omni_report = read_json(source/'omni-report.json', {})
+    if omni_report:
+        summary = {key: value for key, value in omni_report.items() if key not in ('samples', 'phases')}
+        summary['Phases'] = [{key: value for key, value in phase.items() if key not in ('Seconds', 'ErrorExamples')}
+                             for phase in omni_report.get('phases', [])]
+        summary['ReportType'] = 'omni'
+    summary['ReportAvailable'] = bool(report or omni_report)
     diagnostics = {}
     for name in sorted(DIAGNOSTICS):
         path = source/name

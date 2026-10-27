@@ -10,7 +10,7 @@ app.kubernetes.io/instance: {{ .root.Release.Name | quote }}
 app.kubernetes.io/component: {{ .component | quote }}
 {{- end -}}
 {{- define "vmcp.components" -}}
-{{- $all := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane "web" .Values.web "tenant-router" .Values.tenantRouter -}}
+{{- $all := dict "control-plane" .Values.controlPlane "data-plane" .Values.dataPlane "web" .Values.web "tenant-router" .Values.tenantRouter "omni-mcp" .Values.omni -}}
 {{- range $name, $cfg := .Values.exporters -}}
 {{- $_ := set $all (printf "audit-exporter-%s" $name) $cfg -}}
 {{- end -}}
@@ -27,6 +27,7 @@ app.kubernetes.io/component: {{ .component | quote }}
 {{- define "vmcp.sources" -}}
 {{- $v := .Values -}}
 {{- $s := dict -}}
+{{- if $v.omni.enabled }}{{ $_ := set $s "omni-secret" $v.omni.secret }}{{ if or $v.omni.embeddingKey.value $v.omni.embeddingKey.existingSecret }}{{ $_ := set $s "omni-embedding-key" $v.omni.embeddingKey }}{{ end }}{{ end -}}
 {{- if or $v.controlPlane.enabled $v.dataPlane.enabled }}{{ $_ := set $s "master-key" $v.credentials.masterKey }}{{ end -}}
 {{- if $v.controlPlane.enabled }}{{ $_ := set $s "admin-token" $v.credentials.adminToken }}{{ $_ := set $s "database-control-plane" $v.database.controlPlane }}{{ end -}}
 {{- if $v.dataPlane.enabled }}{{ $_ := set $s "database-data-plane" $v.database.dataPlane }}{{ if or $v.database.listener.value $v.database.listener.existingSecret }}{{ $_ := set $s "database-listener" $v.database.listener }}{{ end }}{{ if $v.rateLimit.enabled }}{{ $_ := set $s "redis-url" $v.rateLimit.redisURL }}{{ end }}{{ end -}}

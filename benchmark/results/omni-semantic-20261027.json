@@ -1,0 +1,446 @@
+{
+  "catalog_size": 1000,
+  "hits_at_5": {
+    "en": 29,
+    "tr": 28
+  },
+  "model": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+  "queries": 60,
+  "results": [
+    {
+      "expected": "get_order",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Where is my purchase?",
+      "rank_at_5": 2
+    },
+    {
+      "expected": "get_order",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Siparişim şu an hangi aşamada?",
+      "rank_at_5": 0
+    },
+    {
+      "expected": "cancel_order",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Stop my order before it ships",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "cancel_order",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Kargoya verilmeden alışverişimi iptal et",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "refund_payment",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "İade edilen ürünün parasını geri yatır",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "refund_payment",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Give the customer their money back",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "track_shipment",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "When will my package arrive?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "track_shipment",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Paketim ne zaman teslim edilecek?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "create_invoice",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Issue a bill for this sale",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "create_invoice",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Bu satışın faturasını kes",
+      "rank_at_5": 2
+    },
+    {
+      "expected": "check_stock",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "How many units are left in storage?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "check_stock",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Depoda bu üründen kaç tane kaldı?",
+      "rank_at_5": 2
+    },
+    {
+      "expected": "reserve_stock",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Set aside two units for the buyer",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "reserve_stock",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Müşteri için iki ürün ayır",
+      "rank_at_5": 3
+    },
+    {
+      "expected": "update_address",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Send future parcels to a different home",
+      "rank_at_5": 2
+    },
+    {
+      "expected": "update_address",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Teslimat adresimi değiştir",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "reset_password",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Hesabıma giriş şifremi unuttum",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "reset_password",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "I forgot my login password",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "lock_account",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Ele geçirilen hesabın erişimini engelle",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "lock_account",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Block sign-in for this hacked user",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "create_ticket",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Report a problem to customer service",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "create_ticket",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Müşteri hizmetlerine arıza kaydı aç",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "close_ticket",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Mark the support case as solved",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "close_ticket",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Çözülen destek talebini kapat",
+      "rank_at_5": 5
+    },
+    {
+      "expected": "list_transactions",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Show recent debits and credits",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "list_transactions",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Hesabımdaki son para hareketlerini göster",
+      "rank_at_5": 2
+    },
+    {
+      "expected": "transfer_funds",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Send money to another account",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "transfer_funds",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Başka bir hesaba para gönder",
+      "rank_at_5": 3
+    },
+    {
+      "expected": "check_balance",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "How much money do I have?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "check_balance",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Hesabımda ne kadar para var?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "schedule_meeting",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Book a call with the team tomorrow",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "schedule_meeting",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Yarın ekiple toplantı planla",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "cancel_meeting",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Delete tomorrow's appointment",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "cancel_meeting",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Yarınki toplantıyı iptal et",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "request_leave",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Ask for a week off work",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "request_leave",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Bir haftalık yıllık izin talebi oluştur",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "get_payslip",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Show my monthly wage breakdown",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "get_payslip",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Bu ayki maaş bordromu getir",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "list_job_openings",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "What roles are you hiring for?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "list_job_openings",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Şirkette hangi pozisyonlar için işe alım var?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "restart_service",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Reboot the failing application",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "restart_service",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Çalışmayan uygulama servisini yeniden başlat",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "read_service_logs",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Uygulamanın hata kayıtlarını ara",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "read_service_logs",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Find error messages from the application",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "get_cpu_usage",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "How busy is this machine's processor?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "get_cpu_usage",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Sunucunun işlemcisi ne kadar kullanılıyor?",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "backup_database",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Save a recovery copy of our database",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "backup_database",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Veritabanının yedeğini al",
+      "rank_at_5": 0
+    },
+    {
+      "expected": "restore_database",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Recover the data from yesterday's backup",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "restore_database",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Dünkü yedekten veritabanını geri yükle",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "issue_certificate",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Generate an HTTPS certificate",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "issue_certificate",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Alan adı için güvenli bağlantı sertifikası üret",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "revoke_api_key",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Sızdırılan API anahtarını iptal et",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "revoke_api_key",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Disable the compromised access key",
+      "rank_at_5": 2
+    },
+    {
+      "expected": "translate_text",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Turn this paragraph into French",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "translate_text",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Bu metni Fransızcaya çevir",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "summarize_document",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Bu uzun raporu kısaca özetle",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "summarize_document",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Give me the main points of this report",
+      "rank_at_5": 0
+    },
+    {
+      "expected": "send_email",
+      "language": "en",
+      "mode": "hybrid",
+      "query": "Mail the customer a confirmation",
+      "rank_at_5": 1
+    },
+    {
+      "expected": "send_email",
+      "language": "tr",
+      "mode": "hybrid",
+      "query": "Müşteriye onay e-postası gönder",
+      "rank_at_5": 1
+    }
+  ],
+  "scope": "synthetic bilingual smoke corpus; no production relevance claim",
+  "comparisons": [
+    {
+      "model": "paraphrase-multilingual-MiniLM-L12-v2",
+      "scoring": "initial substring + equal lexical/cosine weights",
+      "en_hits_at_5": 28,
+      "tr_hits_at_5": 25
+    },
+    {
+      "model": "paraphrase-multilingual-MiniLM-L12-v2",
+      "scoring": "exact tokens + semantic-first weights",
+      "en_hits_at_5": 28,
+      "tr_hits_at_5": 26
+    }
+  ]
+}

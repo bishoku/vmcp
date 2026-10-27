@@ -1,0 +1,149 @@
+{
+  "audit_failures": [],
+  "data_plane_outage_http": 503,
+  "duplicate_executions": 0,
+  "embedding_outage_keyword_fallback": true,
+  "functional_only": true,
+  "grant_revoke_seconds": 0.001032564,
+  "grant_seconds_under_load": 0.105246386,
+  "index_status": {
+    "ready": true,
+    "mode": "hybrid",
+    "documents": 900,
+    "revision": 195,
+    "updatedAt": "2026-10-27T10:15:47.273659816Z",
+    "error": "Published catalog unavailable",
+    "refreshing": false
+  },
+  "loaded_governance_traffic": {
+    "name": "loaded-governance-revocation",
+    "target_rps": 100,
+    "PlannedSeconds": 30,
+    "ElapsedSeconds": 30.001394756,
+    "Scheduled": 3000,
+    "Offered": 3000,
+    "Success": 3000,
+    "Errors": 0,
+    "Dropped": 0,
+    "InvalidResults": 0,
+    "CompletedRPS": 99.99535102947266,
+    "SuccessPercent": 100,
+    "P50MS": 12.159864,
+    "P95MS": 15.83195,
+    "P99MS": 18.785684,
+    "MaxMS": 35.668157,
+    "HTTPStatuses": {
+      "200": 3000
+    },
+    "Nodes": {},
+    "ErrorExamples": null,
+    "fault_second": 5,
+    "gate": "functional fault exercise: no invalid results and success >=99%; not a steady-state latency gate"
+  },
+  "omni_audit": {
+    "missing_identity_target_or_trace": 0,
+    "successful_rows": 3001
+  },
+  "omni_resources": "2 CPU, GOMEMLIMIT=512MiB, hard limit=1Gi",
+  "pass": true,
+  "publication_seconds_under_load": 0.104874593,
+  "routing": "NodePort/CNI; synthetic upstreams on host",
+  "seconds_per_phase": 30,
+  "servers": 10,
+  "target_tps": 100,
+  "tools": 1000,
+  "unpublish_seconds": 0.00071984,
+  "workload": "100 TPS across nine unaffected vMCPs: four REST and five native MCP; grant and publication revocation",
+  "phases": [],
+  "resources": [
+    {
+      "phase": "loaded-governance-revocation",
+      "component": "acceptance-node-1",
+      "samples": 6,
+      "sample_errors": 0,
+      "max_rss_MiB": 32.40234375,
+      "max_container_usage_MiB": 36.6796875,
+      "mean_cpu_cores": 0.1568058565,
+      "first_third_median_rss_MiB": 31.41796875,
+      "last_third_median_rss_MiB": 32.40234375,
+      "rss_growth_percent": 3.1331592689294974
+    },
+    {
+      "phase": "loaded-governance-revocation",
+      "component": "omni-mcp",
+      "samples": 6,
+      "sample_errors": 0,
+      "max_rss_MiB": 14.515625,
+      "max_container_usage_MiB": 18.02734375,
+      "mean_cpu_cores": 0.07596771683333334,
+      "first_third_median_rss_MiB": 14.515625,
+      "last_third_median_rss_MiB": 13.900390625,
+      "rss_growth_percent": -4.238428417653395
+    }
+  ],
+  "gc": {
+    "acceptance-node-1": {
+      "available": true,
+      "scope": "original pod; first 30 process seconds excluded; all measured phases combined",
+      "observed_seconds": 75.39399999999999,
+      "cycles": 43,
+      "cycles_per_second": 0.5570735071756374,
+      "mean_gc_cpu_cores": 0.006696394938589278,
+      "p95_stw_ms": 0.5750000000000001,
+      "max_live_heap_go_MB": 19
+    },
+    "omni-mcp": {
+      "available": true,
+      "scope": "original pod; first 30 process seconds excluded; all measured phases combined",
+      "observed_seconds": 70.589,
+      "cycles": 51,
+      "cycles_per_second": 0.7083256598053521,
+      "mean_gc_cpu_cores": 0.002145447590984431,
+      "p95_stw_ms": 0.323,
+      "max_live_heap_go_MB": 6
+    }
+  },
+  "final_pods": [
+    {
+      "name": "control-plane-786d796c68-cgr6k",
+      "containers": [
+        {
+          "name": "control-plane",
+          "restarts": 0,
+          "last_state": {}
+        }
+      ]
+    },
+    {
+      "name": "omni-mcp-559c8bcf58-jjc4k",
+      "containers": [
+        {
+          "name": "omni-mcp",
+          "restarts": 0,
+          "last_state": {}
+        }
+      ]
+    },
+    {
+      "name": "postgres-5978c586cd-8p8vq",
+      "containers": [
+        {
+          "name": "postgres",
+          "restarts": 0,
+          "last_state": {}
+        }
+      ]
+    },
+    {
+      "name": "redis-6786984d-7qnws",
+      "containers": [
+        {
+          "name": "redis",
+          "restarts": 0,
+          "last_state": {}
+        }
+      ]
+    }
+  ],
+  "note": "Kubelet sampling is not a continuous high-water mark. Final pod counters follow intentional fault replacements; inspect Kubernetes events and original logs for earlier OOMs."
+}

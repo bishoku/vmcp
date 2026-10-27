@@ -21,19 +21,33 @@ spec:
               {{- include "vmcp.labels" (dict "root" $ "component" "web") | nindent 14 }}
       ports: [{protocol: TCP, port: 8081}]
     {{- end }}
-    {{- if or (eq $c "web") (eq $c "data-plane") (eq $c "tenant-router") }}
+    {{- if or (eq $c "web") (eq $c "data-plane") (eq $c "tenant-router") (eq $c "omni-mcp") }}
     {{- with $.Values.networkPolicy.ingressFrom }}
     - from: {{ toYaml . | nindent 8 }}
       ports: [{protocol: TCP, port: {{ if eq $c "tenant-router" }}8443{{ else }}8080{{ end }}}]
     {{- end }}
     {{- end }}
-    {{- if or (eq $c "control-plane") (eq $c "data-plane") }}
+    {{- if or (eq $c "control-plane") (eq $c "data-plane") (eq $c "omni-mcp") }}
     {{- with $.Values.networkPolicy.monitoringFrom }}
     - from: {{ toYaml . | nindent 8 }}
       ports: [{protocol: TCP, port: {{ if eq $c "control-plane" }}8081{{ else }}8080{{ end }}}]
     {{- end }}
     {{- end }}
+    {{- if or (eq $c "data-plane") (eq $c "omni-mcp") }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "vmcp.labels" (dict "root" $ "component" (ternary "omni-mcp" "control-plane" (eq $c "data-plane"))) | nindent 14 }}
+      ports: [{protocol: TCP, port: 8080}]
+    {{- end }}
   egress:
+    {{- if and $.Values.omni.enabled (or (eq $c "control-plane") (eq $c "omni-mcp")) }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "vmcp.labels" (dict "root" $ "component" (ternary "omni-mcp" "data-plane" (eq $c "control-plane"))) | nindent 14 }}
+      ports: [{protocol: TCP, port: 8080}]
+    {{- end }}
     - to:
         - namespaceSelector: {{ toYaml $.Values.networkPolicy.dnsNamespaceSelector | nindent 12 }}
       ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]

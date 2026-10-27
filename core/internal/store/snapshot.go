@@ -223,7 +223,7 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 	}
 
 	rows, err = tx.Query(ctx, `
-		SELECT v.id::text, v.slug, v.name, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.guidance
+		SELECT v.omni_enabled, v.description, (SELECT slug FROM projects WHERE id=v.project_id), v.id::text, v.slug, v.name, v.auth_required, v.pii_config, v.tool_policy,v.client_features, v.rate_limit_per_minute, v.guidance
 		FROM virtual_servers v JOIN tenants t ON t.id = v.tenant_id
 		WHERE t.slug = $1 AND v.enabled`, DefaultTenantSlug)
 	if err != nil {
@@ -236,7 +236,7 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		var v config.VirtualServer
 		var piiRaw, polRaw, features, guidance []byte
 		var rl *int
-		if err := rows.Scan(&id, &v.Slug, &v.Name, &v.AuthRequired, &piiRaw, &polRaw, &features, &rl, &guidance); err != nil {
+		if err := rows.Scan(&v.OmniEnabled, &v.Description, &v.Project, &id, &v.Slug, &v.Name, &v.AuthRequired, &piiRaw, &polRaw, &features, &rl, &guidance); err != nil {
 			rows.Close()
 			return nil, err
 		}

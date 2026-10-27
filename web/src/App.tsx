@@ -26,6 +26,7 @@ import AgentKeys from './pages/AgentKeys'
 import Identities from './pages/Identities'
 import Audit from './pages/Audit'
 import Ownership from './pages/Ownership'
+import Omni from './pages/Omni'
 import SettingsPage from './pages/Settings'
 
 function SignOut({onDone}:{onDone:()=>void}) {
@@ -62,7 +63,7 @@ function Application() {
           {!capabilities(me.role).edit && <p role="status" className="mx-4 mt-4 surface-inset surface-white px-4 py-3 text-xs leading-relaxed text-ink-muted sm:mx-6 lg:mx-10">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
 
           <Routes>
- <Route path="/ownership" element={<Ownership/>}/>
+ <Route path="/omni" element={<Omni/>}/><Route path="/ownership" element={<Ownership/>}/>
             <Route path="/connections" element={<Connections/>}/>
             <Route path="/setup" element={<ConnectionSetup/>}/>
             <Route path="/upstreams/new" element={<UpstreamDetail key="new" create/>}/>

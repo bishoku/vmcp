@@ -56,6 +56,9 @@ jobs:
           - service: data-plane
             context: core
             buildArgs: SERVICE=data-plane
+          - service: omni-mcp
+            context: core
+            buildArgs: SERVICE=omni-mcp
           - service: migrate
             context: core
             buildArgs: SERVICE=migrate

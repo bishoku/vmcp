@@ -143,6 +143,7 @@ type acceptanceClient struct {
 	http                *http.Client
 	server              int
 	rest                bool
+	omni                bool
 }
 type acceptanceResponse struct {
 	result          json.RawMessage
@@ -160,6 +161,9 @@ func (c *acceptanceClient) request(ctx context.Context, method string, params an
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.url, strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	if c.omni {
+		req.Header.Set("traceparent", "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01")
+	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	if c.session != "" {
 		req.Header.Set("Mcp-Session-Id", c.session)
