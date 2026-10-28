@@ -9,6 +9,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import demo_catalog as catalog
+import demo_upstreams
+
 
 class API:
     def __init__(self, base, token=''):
@@ -85,32 +88,30 @@ def issuer(a):
 
 
 def fixtures(a):
-    teams = [dict(slug='demo-' + name, name='Demo ' + name.upper(), issuer=issuer(a), group='demo-' + name) for name in ['crm', 'commerce', 'support']]
-    projects = [dict(slug='demo-customer-chat', name='Demo Customer Chat', ownerTeam='demo-crm'),
-                dict(slug='demo-operations', name='Demo Operations', ownerTeam='demo-commerce'),
-                dict(slug='demo-helpdesk', name='Demo Helpdesk', ownerTeam='demo-support')]
-    upstreams = []
-    for service, team, operations in [
-        ('crm', 'crm', [('get_customer', 'Read the demo customer profile', {'customerId': 'C-100', 'name': 'Deniz Demo', 'tier': 'gold'}), ('list_customers', 'List demo customers', {'customers': [{'id': 'C-100', 'name': 'Deniz Demo'}]})]),
-        ('orders', 'commerce', [('get_order_status', 'Track demo order fulfillment', {'orderId': 'O-100', 'status': 'shipped'}), ('list_orders', 'List demo customer orders', {'orders': [{'id': 'O-100', 'customerId': 'C-100', 'status': 'shipped'}]})]),
-        ('support', 'support', [('list_tickets', 'List demo support tickets', {'tickets': [{'id': 'T-100', 'status': 'open', 'customerId': 'C-100'}]}), ('get_ticket', 'Read a demo support ticket', {'id': 'T-100', 'subject': 'Delivery question', 'status': 'open'})])]:
-        ops = [dict(name=name, description=desc, enabled=True, method='GET', path='/' + name,
-                    parameters=[], readOnly=True, mockRules=[dict(name='demo-success', priority=1,
-                    response={'status': 200, 'jsonBody': body})]) for name, desc, body in operations]
-        upstreams.append(dict(slug='demo-' + service, name='Demo ' + service.upper(), description='Quickstart playground: ' + service,
-                              kind='rest', ownerTeam='demo-' + team, enabled=True,
-                              url=f'http://{a.release}-trial-wiremock:8080', transport='streamable_http',
-                              rest=dict(mock={}, allowInsecureHttp=True, timeoutSeconds=10, operations=ops)))
-    definitions = [('customer', 'demo-customer-chat', [('crm', 'get_customer'), ('crm', 'list_customers')]),
-                   ('order-tracking', 'demo-operations', [('orders', 'get_order_status'), ('orders', 'list_orders')]),
-                   ('support', 'demo-helpdesk', [('support', 'list_tickets'), ('support', 'get_ticket')]),
-                   ('customer-assistant', 'demo-customer-chat', [('crm', 'get_customer'), ('orders', 'get_order_status'), ('support', 'list_tickets')]),
-                   ('operations', 'demo-operations', [('crm', 'list_customers'), ('orders', 'list_orders'), ('support', 'list_tickets')])]
-    servers = [dict(slug='demo-' + name, name='Demo ' + name.replace('-', ' ').title(), project=project,
-                    description='Quickstart playground: ' + name.replace('-', ' '), enabled=True,
-                    authRequired=True, omniEnabled=a.omni,
-                    tools=[dict(upstream='demo-' + u, tool=t) for u, t in tools]) for name, project, tools in definitions]
+    """Meridian Bank playground: 30 teams, 40 projects, 20 mock upstreams, 40 virtual servers."""
+    teams = [dict(slug=t['slug'], name=t['name'], issuer=issuer(a), group=t['slug']) for t in catalog.TEAM.values()]
+    projects = [dict(slug=p['slug'], name=p['name'], ownerTeam=p['ownerTeam']) for p in catalog.PROJECT.values()]
+    upstreams = [dict(slug=u['slug'], name=u['name'], description=u['description'], kind='rest', ownerTeam=u['ownerTeam'], enabled=True,
+                      url=f'http://{a.release}-trial-wiremock:8080', transport='streamable_http',
+                      rest=dict(mock={}, allowInsecureHttp=True, timeoutSeconds=10, operations=u['operations']))
+                 for u in demo_upstreams.UPSTREAMS]
+    servers = [dict(slug=s['slug'], name=s['name'], project=s['project'], description=s['description'], enabled=True,
+                    authRequired=True, omniEnabled=a.omni, guidance={'instructions': s['instructions']},
+                    tools=[dict(upstream=demo_upstreams.TOOL_UPSTREAM[t], tool=t) for t in s['tools']])
+               for s in catalog.SERVERS]
     return teams, projects, upstreams, servers
+
+
+def grant_decision(server, tool):
+    """Cross-team decision seeded for a tool: approved unless the catalog leaves it pending/rejected."""
+    entry = catalog.SERVER.get(server, {})
+    status = entry.get('grants', {}).get(tool, 'approved')
+    team = catalog.TEAM.get(catalog.server_team(entry), {}).get('name', 'the consuming team') if entry else 'the consuming team'
+    reason = entry.get('grantReasons', {}).get(tool) or {
+        'approved': 'Approved for the Meridian Bank playground use case.',
+        'pending': f'Requested by {team}; awaiting review by the owning team.',
+        'rejected': 'Rejected by the owning team.'}[status]
+    return status, reason
 
 
 def seed(api, a, save_key, ledger=None, save_ledger=lambda _state: None):
@@ -154,22 +155,25 @@ def seed(api, a, save_key, ledger=None, save_ledger=lambda _state: None):
             if (selection['upstream'], selection['tool']) not in expected_tools: continue
             if current_upstreams.get(selection['upstream'], {}).get('version') != ledger.get('upstreams/' + selection['upstream']): continue
             if owners.get(selection['upstream']) and owners[selection['upstream']] != current.get('ownerTeam') and key not in grants:
-                api.request('POST', '/api/v1/tool-grants', dict(virtualServer=key[0], upstream=key[1], tool=key[2], status='approved', reason='Quickstart demo approval'))
+                # Most cross-team tools are approved; the catalog deliberately leaves a
+                # pending request and a rejection so the approval workflow can be explored.
+                status, reason = grant_decision(key[0], key[2])
+                api.request('POST', '/api/v1/tool-grants', dict(virtualServer=key[0], upstream=key[1], tool=key[2], status=status, reason=reason))
     # Runtime keys are one-time API responses. Persist immediately; never rotate on rerun.
     keys = {r['slug'] for r in api.items('/api/v1/agent-keys')}
-    for slug, selected in [('demo-chat-agent', ['demo-customer', 'demo-customer-assistant']),
-                           ('demo-operations-agent', ['demo-order-tracking', 'demo-operations', 'demo-support'])]:
+    for slug, description, selected in catalog.AGENT_KEYS:
         if slug not in keys:
-            result = api.request('POST', '/api/v1/agent-keys', dict(slug=slug, description='Quickstart playground runtime key', virtualServers=selected))
+            result = api.request('POST', '/api/v1/agent-keys', dict(slug=slug, description=description, virtualServers=selected))
             save_key(slug, result['key'])
     if a.keycloak:
+        # One binding per team: members of the team's Keycloak group may call the
+        # team's virtual servers with their own SSO token.
         existing = {r['slug'] for r in api.items('/api/v1/identity-bindings')}
-        for group, selected in [('crm', ['demo-customer', 'demo-customer-assistant']),
-                                ('commerce', ['demo-order-tracking', 'demo-operations']), ('support', ['demo-support'])]:
-            slug = 'demo-' + group + '-identity'
-            if slug not in existing:
-                api.request('POST', '/api/v1/identity-bindings', dict(slug=slug, description='Quickstart demo group identity',
-                    enabled=True, conditions=[dict(claim='groups', op='contains', value='demo-' + group)], virtualServers=selected))
+        for team in catalog.TEAM.values():
+            slug, selected = catalog.identity_binding_slug(team['slug']), catalog.team_servers(team['slug'])
+            if selected and slug not in existing:
+                api.request('POST', '/api/v1/identity-bindings', dict(slug=slug, description=team['name'] + ' SSO group access to team virtual servers',
+                    enabled=True, conditions=[dict(claim='groups', op='contains', value=team['slug'])], virtualServers=selected))
     print(f'Playground ready: {created} missing resources created; existing resources and grant decisions preserved.')
 
 
@@ -181,7 +185,7 @@ def seed_keycloak(api, credentials, a):
     if api.request('GET', realm, missing=True) is None:
         api.request('POST', '/admin/realms', dict(realm='vmcp-demo', enabled=True, sslRequired='none', registrationAllowed=False))
     groups = {g['name']: g['id'] for g in api.request('GET', realm + '/groups?max=1000')}
-    for name in ['demo-admins', 'demo-viewers', 'demo-crm', 'demo-commerce', 'demo-support']:
+    for name in [catalog.ADMIN_GROUP, catalog.VIEWER_GROUP] + list(catalog.TEAM):
         if name not in groups:
             api.request('POST', realm + '/groups', {'name': name})
     groups = {g['name']: g['id'] for g in api.request('GET', realm + '/groups?max=1000')}
@@ -203,11 +207,12 @@ def seed_keycloak(api, credentials, a):
                 config={'claim.name': 'groups', 'full.path': 'false', 'access.token.claim': 'true', 'id.token.claim': 'true'}),
                 dict(name='runtime-audience', protocol='openid-connect', protocolMapper='oidc-audience-mapper',
                 config={'included.custom.audience': 'vmcp-runtime', 'access.token.claim': 'true', 'id.token.claim': 'false'})]))
-    for username, group in [('demo-admin', 'demo-admins'), ('demo-viewer', 'demo-viewers'),
-                            ('demo-crm-owner', 'demo-crm'), ('demo-commerce-owner', 'demo-commerce'), ('demo-support-owner', 'demo-support')]:
-        users = api.request('GET', realm + '/users?exact=true&username=' + username)
+    created = 0
+    for user in catalog.USERS:
+        users = api.request('GET', realm + '/users?exact=true&username=' + urllib.parse.quote(user['username']))
         if users: continue
-        api.request('POST', realm + '/users', dict(username=username, enabled=True, emailVerified=True,
-            firstName='Demo', lastName=username.removeprefix('demo-'), email=username + '@example.test',
-            credentials=[dict(type='password', value=credentials['keycloak-demo-password'], temporary=False)], groups=[group]))
-    print('Keycloak demo realm ready; existing clients, users, passwords and memberships preserved.')
+        api.request('POST', realm + '/users', dict(username=user['username'], enabled=True, emailVerified=True,
+            firstName=user['firstName'], lastName=user['lastName'], email=user['email'],
+            credentials=[dict(type='password', value=credentials['keycloak-demo-password'], temporary=False)], groups=list(user['groups'])))
+        created += 1
+    print(f'Keycloak demo realm ready: {created} missing users created; existing clients, users, passwords and memberships preserved.')

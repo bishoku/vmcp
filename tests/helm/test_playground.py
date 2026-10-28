@@ -44,9 +44,17 @@ class PlaygroundTests(unittest.TestCase):
     def test_create_once_and_preserve_all_edits_and_revocations(self):
         api, saved = MemoryAPI(), {}
         with redirect_stdout(io.StringIO()): p.seed(api, args(), lambda k, v: saved.update({k: v}))
-        self.assertEqual([len(api.data[k]) for k in ['teams', 'projects', 'upstreams', 'virtual-servers', 'agent-keys']], [3, 3, 3, 5, 2])
-        self.assertEqual(len(api.data['tool-grants']), 4)
-        self.assertEqual(set(saved), {'demo-chat-agent', 'demo-operations-agent'})
+        self.assertEqual([len(api.data[k]) for k in ['teams', 'projects', 'upstreams', 'virtual-servers', 'agent-keys']], [30, 40, 20, 40, 10])
+        owners = {u['slug']: u['ownerTeam'] for u in api.data['upstreams']}
+        cross = {(s['slug'], t['upstream'], t['tool']) for s in api.data['virtual-servers'] for t in s['tools'] if owners[t['upstream']] != s['ownerTeam']}
+        self.assertEqual({(g['virtualServer'], g['upstream'], g['tool']) for g in api.data['tool-grants']}, cross)
+        decisions = {(g['virtualServer'], g['tool']): g['status'] for g in api.data['tool-grants']}
+        self.assertEqual(decisions.pop(('genai-sandbox', 'initiate_domestic_payment')), 'pending')
+        self.assertEqual(decisions.pop(('genai-sandbox', 'screen_party')), 'rejected')
+        self.assertEqual(set(decisions.values()), {'approved'})
+        self.assertEqual(set(saved), {k[0] for k in p.catalog.AGENT_KEYS})
+        server = next(s for s in api.data['virtual-servers'] if s['slug'] == 'payments-copilot')
+        self.assertIn('validate_payee_name', server['guidance']['instructions'])
         api.data['upstreams'][0].update(name='My edited name', version=2)
         api.data['virtual-servers'][0].update(omniEnabled=False, enabled=False, version=3)
         api.data['teams'][0].update(group='custom-group', version=2)
@@ -61,20 +69,22 @@ class PlaygroundTests(unittest.TestCase):
     def test_interrupted_seed_uses_recorded_versions_and_never_approves_edited_sources(self):
         api, ledger = MemoryAPI(), {}
         with redirect_stdout(io.StringIO()): p.seed(api, args(), lambda *_: None, ledger)
-        self.assertEqual(ledger['virtual-servers/demo-customer-assistant'], 2)
+        self.assertEqual(ledger['virtual-servers/payments-copilot'], 2)
         api.data['tool-grants'].clear()
         # Simulate an interruption before grants, then a user editing an upstream.
-        next(r for r in api.data['upstreams'] if r['slug'] == 'demo-orders')['version'] += 1
+        next(r for r in api.data['upstreams'] if r['slug'] == 'payments-hub')['version'] += 1
         with redirect_stdout(io.StringIO()): p.seed(api, args(), lambda *_: None, ledger)
-        self.assertFalse(any(g['upstream'] == 'demo-orders' for g in api.data['tool-grants']))
-        self.assertTrue(any(g['upstream'] == 'demo-support' for g in api.data['tool-grants']))
+        self.assertFalse(any(g['upstream'] == 'payments-hub' for g in api.data['tool-grants']))
+        self.assertTrue(any(g['upstream'] == 'card-management' for g in api.data['tool-grants']))
 
     def test_group_identity_bindings_are_create_only(self):
         api = MemoryAPI()
         with redirect_stdout(io.StringIO()): p.seed(api, args('--keycloak'), lambda *_: None)
-        self.assertEqual(len(api.data['identity-bindings']), 3)
-        binding = api.data['identity-bindings'][0]
-        self.assertEqual(binding['conditions'], [{'claim': 'groups', 'op': 'contains', 'value': 'demo-crm'}])
+        bindings = {b['slug']: b for b in api.data['identity-bindings']}
+        self.assertEqual(len(bindings), len({p.catalog.server_team(s) for s in p.catalog.SERVERS}))
+        binding = bindings['retail-digital-banking-sso']
+        self.assertEqual(binding['conditions'], [{'claim': 'groups', 'op': 'contains', 'value': 'retail-digital-banking'}])
+        self.assertEqual(binding['virtualServers'], ['retail-banking-assistant', 'payments-copilot'])
         binding.update(enabled=False, virtualServers=[], version=2)
         before = copy.deepcopy(api.data)
         api.writes.clear()
@@ -118,10 +128,30 @@ class PlaygroundTests(unittest.TestCase):
                         ['--keycloak', '--keycloak-port', '8802'], ['--keycloak', '--keycloak-host', 'https://bad']]:
             with self.subTest(options=options), self.assertRaises(ValueError): args(*options)
 
+    def test_keycloak_first_run_creates_catalog_groups_and_users(self):
+        from unittest.mock import Mock
+        api, posts = Mock(), []
+        def request(method, path, body=None, **kwargs):
+            if path.endswith('/token'): return {'access_token': 'not-logged'}
+            if method == 'GET': return {'realm': 'vmcp-demo'} if path == '/admin/realms/vmcp-demo' else []
+            posts.append((path, body))
+        api.request.side_effect = request
+        with redirect_stdout(io.StringIO()):
+            p.seed_keycloak(api, {'keycloak-admin-password': 'a', 'keycloak-client-secret': 'b', 'keycloak-demo-password': 'shared'}, args('--keycloak'))
+        groups = [b['name'] for path, b in posts if path.endswith('/groups')]
+        self.assertEqual(groups, [p.catalog.ADMIN_GROUP, p.catalog.VIEWER_GROUP] + list(p.catalog.TEAM))
+        users = {b['username']: b for path, b in posts if path.endswith('/users')}
+        self.assertEqual(len(users), len(p.catalog.USERS))
+        self.assertEqual(users['platform.admin']['groups'], [p.catalog.ADMIN_GROUP])
+        member = p.catalog.team_members('fraud-strategy')[0]
+        self.assertEqual(users[member['username']]['groups'], ['fraud-strategy'])
+        self.assertEqual(users[member['username']]['email'], member['email'])
+        self.assertTrue(all(u['credentials'][0]['value'] == 'shared' for u in users.values()))
+
     def test_keycloak_rerun_never_updates_users_groups_or_client(self):
         from unittest.mock import Mock
         api = Mock()
-        groups = [dict(name=name, id=name) for name in ['demo-admins', 'demo-viewers', 'demo-crm', 'demo-commerce', 'demo-support']]
+        groups = [dict(name=name, id=name) for name in [p.catalog.ADMIN_GROUP, p.catalog.VIEWER_GROUP] + list(p.catalog.TEAM)]
         def request(method, path, body=None, **kwargs):
             if path.endswith('/token'): return {'access_token': 'not-logged'}
             if path.endswith('/groups?max=1000'): return groups

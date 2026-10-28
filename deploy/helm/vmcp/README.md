@@ -22,10 +22,13 @@ From the repository root, run:
 
 The script provisions trial infrastructure, stable Secrets and database roles,
 runs migrations and installs vMCP. Use `--help` for broker/exporter, monitoring,
-ingress, storage and cleanup options. Add `--omni --version v1.2.2` to install
+ingress, storage and cleanup options. Add `--omni --version v1.2.3` to install
 Omni MCP with keyword discovery; no embedding or reranker model is required.
-`--mock` adds a create-only playground; `--keycloak` adds trial SSO and group
-mappings (with ingress, also supply `--keycloak-host`). See the [full quickstart guide](../../../docs/HELM_QUICKSTART.md).
+`--mock` adds a create-only Meridian Bank playground (20 mock banking upstreams,
+40 virtual servers, 30 teams, 40 projects); `--keycloak` adds trial SSO with 107
+team users and group mappings (with ingress, also supply `--keycloak-host`).
+`./deploy/helm/vmcp/demo.sh` lists users, teams and servers and prints the demo
+credentials. See the [full quickstart guide](../../../docs/HELM_QUICKSTART.md).
 This configuration is for isolated trials; production installation follows below.
 
 ## Installation with external infrastructure

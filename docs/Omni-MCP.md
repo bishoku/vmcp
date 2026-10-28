@@ -26,6 +26,43 @@ data-plane's tenant. They are not capabilities or secrets. Omni cannot select an
 arbitrary data-plane or upstream URL. Deploy one Omni instance/group per tenant's
 gateway boundary; cross-tenant federation is outside this version.
 
+## Agent workflow guidance (since v1.2.3)
+
+Omni supplies English `initialize.instructions` and tool descriptions recommending
+this workflow: `discover_server` → choose a server → `discover_tools(server_id)` →
+`get_tool_schema` → `invoke_tool` with the current `schema_version`. Keep the chosen
+server for the task, and explore another server when capabilities are missing or
+the task requires multiple servers. For equally suitable servers, the guidance
+recommends the lexicographically smallest `server_id`.
+
+The full English guide is a static Markdown resource at
+`omni://guides/discovery-workflow/v1`, advertised by `resources/list`. Read it with:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "resources/read",
+  "params": {"uri": "omni://guides/discovery-workflow/v1"}
+}
+```
+
+See the [embedded guide source](../core/internal/omni/discovery-workflow-v1.md)
+for examples, project scope, opaque references, schema refresh and uncertain
+invocation handling. Resource requests use the existing runtime authorization
+checks, including anonymous access only when configured. The resource contains no
+caller inventory or credentials, and reading an unknown URI never fetches it.
+There are no resource templates or subscriptions.
+
+Clients decide whether to include server instructions and resources in their
+model context. This guidance does not enforce a call sequence or deduplicate
+search results: unscoped `discover_tools` remains supported and `server_id` stays
+optional. Omni still exposes exactly four tools and does not advertise prompts.
+
+Deploy a newly built Omni binary or image to use this change; the guide is embedded
+in the binary. No new environment settings, database migration, UI changes, or
+control-plane/data-plane changes are required.
+
 ## Deployment
 
 For Docker, Compose, native binaries, environment variables, reverse proxy and

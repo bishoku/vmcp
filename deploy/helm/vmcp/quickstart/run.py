@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -228,7 +229,8 @@ def values(a, refs):
         discovery = f'http://{a.release}-trial-keycloak:8080/realms/vmcp-demo'
         cfg['runtime']['oidc'] = dict(issuer=playground.issuer(a), discoveryURL=discovery,
             clientId='vmcp-console', redirectURL=web + '/auth/callback', clientSecret=source('keycloak-client-secret'),
-            groupsClaim='groups', adminGroups=['demo-admins'], viewerGroups=['demo-viewers'], editorGroups=[])
+            groupsClaim='groups', adminGroups=[playground.catalog.ADMIN_GROUP, 'demo-admins'],
+            viewerGroups=[playground.catalog.VIEWER_GROUP, 'demo-viewers'], editorGroups=[])
         cfg['runtime']['agentOIDC'] = dict(issuer=playground.issuer(a), discoveryURL=discovery, audience='vmcp-runtime', algorithms=['RS256'])
     if a.monitoring:
         cfg['monitoring'] = {'serviceMonitor': {'enabled': True, 'labels': {'release': a.monitoring_release}},
@@ -357,8 +359,11 @@ class Installer:
     def access(self):
         a = self.a
         print('\nStack ready. Trial only: plaintext dependencies, broad private upstream access, no NetworkPolicies.')
-        print('Admin token (retrieve locally; not printed by installer):')
-        print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.admin-token}}' | base64 --decode; echo")
+        demo = shlex.join([str(HERE.parent / 'demo.sh')] + [arg for flag, value, default in
+                          [('--context', a.context, None), ('--namespace', a.namespace, 'vmcp-demo'), ('--release', a.release, 'vmcp-demo')]
+                          if value != default for arg in (flag, value)])
+        print('Credentials are not printed by the installer. Retrieve them locally with:')
+        print(f'  {demo} credentials        # admin token, Keycloak and runtime keys')
         commands = [self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-' + component, f'{port}:8080'] for component, port in [('web', a.web_port), ('data-plane', a.gateway_port)]]
         if a.omni:
             commands.append(self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-omni-mcp', f'{a.omni_port}:8080'])
@@ -374,16 +379,15 @@ class Installer:
             print('MCP client: HTTP/Streamable HTTP, URL above, Authorization: Bearer <agent-runtime-key>.')
         if a.keycloak:
             print('Keycloak: ' + playground.issuer(a).split('/realms/')[0])
-            print('Demo SSO users: demo-admin, demo-viewer, demo-crm-owner, demo-commerce-owner, demo-support-owner.')
-            print('Retrieve initial demo password (user changes are preserved):')
-            print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.keycloak-demo-password}}' | base64 --decode; echo")
+            print(f'Meridian Bank SSO users: {len(playground.catalog.USERS)} (platform.admin, security.auditor and 3-4 members per team).')
+            print(f'  {demo} users | teams | team <slug> | password [user]   (user changes are preserved)')
         if a.mock:
-            print('Playground: 3 mock upstreams, 5 virtual servers, 3 teams/projects; demo runtime keys: demo-chat-agent, demo-operations-agent.')
-            print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.demo-chat-agent}}' | base64 --decode; echo")
-            print('Try demo-customer-assistant/get_order_status or explore Teams & Projects and revoke a demo tool grant.')
+            print(f'Playground (Meridian Bank): {len(playground.demo_upstreams.UPSTREAMS)} mock upstreams, {len(playground.catalog.SERVERS)} virtual servers, '
+                  f'{len(playground.catalog.TEAMS)} teams, {len(playground.catalog.PROJECTS)} projects, {len(playground.catalog.AGENT_KEYS)} runtime keys.')
+            print(f'  {demo} servers | server retail-banking-assistant | keys')
+            print('Try retail-banking-assistant/list_customer_accounts with customerId CUST-100101, or review the pending/rejected genai-sandbox grants.')
             if not a.keycloak:
                 print('Demo team issuer reserved for later SSO: ' + playground.issuer(a) + '; retain the same Keycloak host/port when enabling it.')
-        import shlex
         for command in commands: print(shlex.join(command))
         if a.no_port_forward or a.web_host: return
         processes = []

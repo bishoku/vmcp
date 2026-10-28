@@ -34,7 +34,7 @@ Use the current repository quickstart with v1.2.0 or later. For example:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.2 --omni \
+  --context microk8s --version v1.2.3 --omni \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
   --ingress-class nginx --no-port-forward --timeout 20m
@@ -70,7 +70,7 @@ Use the current repository script with v1.2.0 or later. No model endpoint is nee
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.2 --mock --omni \
+  --context microk8s --version v1.2.3 --mock --omni \
   --keycloak-host sso.kube.local \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
@@ -79,29 +79,44 @@ Use the current repository script with v1.2.0 or later. No model endpoint is nee
 
 The flag starts digest-pinned WireMock 3.13.2 and configures the control plane's
 mock REST provider. It creates the following **missing** resources through the
-management API, using the bootstrap admin token in memory:
+management API, using the bootstrap admin token in memory. The scenario is a
+fictional retail, business and corporate bank, **Meridian Bank**, built for
+agentic banking use cases; all data is synthetic and English-only.
 
-| Resource | Identifiers / behavior |
-|---|---|
-| Teams | `demo-crm`, `demo-commerce`, `demo-support` |
-| Projects | `demo-customer-chat` (CRM), `demo-operations` (Commerce), `demo-helpdesk` (Support) |
-| REST upstreams | `demo-crm` (`get_customer`, `list_customers`), `demo-orders` (`get_order_status`, `list_orders`), `demo-support` (`list_tickets`, `get_ticket`) |
-| Virtual servers | `demo-customer`, `demo-order-tracking`, `demo-support`, `demo-customer-assistant`, `demo-operations` |
-| Runtime keys | `demo-chat-agent` (customer + assistant), `demo-operations-agent` (orders + operations + support) |
-| Cross-team approvals | Four initial grants for the combined assistant/operations tools |
+| Resource | Count | Examples |
+|---|---|---|
+| Teams | 30 | `retail-digital-banking`, `fraud-strategy`, `financial-crime-compliance`, `lending-origination`, `treasury-markets` |
+| Projects | 40 | `retail-mobile-assistant`, `fraud-investigation-workbench`, `aml-alert-triage`, `personal-loan-journey` |
+| REST upstreams | 20 (68 tools) | `core-banking-accounts`, `payments-hub`, `card-management`, `fraud-detection`, `aml-screening`, `loan-origination`, `treasury-markets-data` |
+| Virtual servers | 40 | `retail-banking-assistant`, `payments-copilot`, `contact-center-agent-assist`, `fraud-triage`, `credit-decisioning`, `corporate-treasury` |
+| Runtime keys | 10 | `retail-channels-agent`, `contact-center-agent`, `fraud-ops-agent`, `financial-crime-agent`, `lending-agent`, … (each server belongs to one key) |
+| Cross-team grants | all approved except two | `genai-sandbox`: `initiate_domestic_payment` left **pending**, `screen_party` **rejected** |
 
-Responses contain only synthetic customer `C-100`, order `O-100`, and ticket `T-100`
-data. These are deterministic read-only GET tools; there is no mutable order
-backend. Tool names appear in MCP as listed above. Use `get_order_status` on
-`demo-customer-assistant` to see the `shipped` response. Revoke its cross-team
-orders grant and observe that the tool is no longer available. Agent keys retain
-explicit server grants. All servers require credentials; anonymous access stays off.
+The upstreams share one consistent data set: 10 customers (`CUST-100101` …
+`CUST-100107` individuals, `CUST-200201`/`CUST-200202` SMEs, `CUST-300301` a
+corporate), their accounts, transactions with running balances, cards, loans,
+fraud alerts, AML cases, KYC records, payments, portfolios, complaints and more.
+IDs returned by one tool are accepted by the others (for example
+`list_customer_accounts` → `list_account_transactions` → `initiate_domestic_payment`
+→ `get_payment_status`). Every tool has typed input parameters with descriptions,
+patterns and enums, and a documented response schema; write tools (payments, card
+freezes, disputes, applications, notifications) return templated, request-aware
+responses. Virtual servers carry agent instructions (`guidance.instructions`)
+describing safe banking behaviour, such as confirming payments or tipping-off rules.
+
+Try `list_customer_accounts` with `customerId=CUST-100101` on
+`retail-banking-assistant`, or approve the pending `genai-sandbox` grant in the
+console. All servers require credentials; anonymous access stays off.
 `--omni` publishes newly created demo servers and enables keyword discovery; without
 it, they work through their normal virtual MCP endpoints. Adding `--omni` later
 does not republish existing records: use the console to publish those you want.
 
-The installer prints commands to retrieve initial runtime keys from the retained
-quickstart Secret; secret values are not printed or passed as command arguments.
+Installs created with an older quickstart keep their previous `demo-*` fixtures:
+seeding is create-only, so the banking resources are added next to them. Remove the
+old records in the console if you no longer need them.
+
+One-time runtime keys are stored in the retained quickstart Secret; the installer
+does not print them. Use [`demo.sh`](#demo-helper-demosh) to read them.
 If a key already exists but its one-time secret was lost/rotated in the console,
 quickstart does not rotate or recreate it; manage the key explicitly in the console.
 WireMock mappings are restored from saved vMCP mock definitions by the existing
@@ -119,7 +134,7 @@ Add it to the playground in a later run, retaining the original flags:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.2 --mock --omni --keycloak \
+  --context microk8s --version v1.2.3 --mock --omni --keycloak \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
   --keycloak-host sso.kube.local --ingress-class nginx \
@@ -143,35 +158,66 @@ OIDC verifier with audience `vmcp-runtime`.
 
 | Demo user | Group / console access |
 |---|---|
-| `demo-admin` | `demo-admins` → platform admin |
-| `demo-viewer` | `demo-viewers` → global viewer |
-| `demo-crm-owner` | `demo-crm` → CRM team scope |
-| `demo-commerce-owner` | `demo-commerce` → Commerce team scope |
-| `demo-support-owner` | `demo-support` → Support team scope |
+| `platform.admin` | `vmcp-platform-admins` → platform admin |
+| `security.auditor` | `vmcp-auditors` → global viewer |
+| 105 team members, e.g. `oliver.harrison` | their team slug (e.g. `core-banking-platform`) → that team's scope |
+
+Every team has 3–4 members (`first.last`, `@meridianbank.example`) with banking
+roles; `./deploy/helm/vmcp/demo.sh users` lists them all. The legacy
+`demo-admins`/`demo-viewers` groups remain mapped so earlier installs keep working.
 
 A `groups` claim mapper is configured on the confidential `vmcp-console` client
 with PKCE and an exact console callback URL. The realm is `vmcp-demo`. Keycloak
-can be installed without `--mock`; the three team mappings and SSO users are still
+can be installed without `--mock`; the 30 team mappings and SSO users are still
 created, but upstreams/projects/servers and runtime fixtures are not.
 
-With both flags, three `demo-*-identity` bindings grant group-based runtime access.
-A separate public client `vmcp-demo-agent` has a **trial-only password grant** for
-exercising these identities; request an access token from
-`<keycloak-base>/realms/vmcp-demo/protocol/openid-connect/token` with
-`client_id=vmcp-demo-agent`, `grant_type=password` and a demo user's credentials.
+With both flags, one `<team>-sso` identity binding per team grants its members
+runtime access to the team's virtual servers. A separate public client
+`vmcp-demo-agent` has a **trial-only password grant** for exercising these
+identities: `demo.sh token <user>` returns an access token (it port-forwards to
+Keycloak and uses `client_id=vmcp-demo-agent`, `grant_type=password`).
 Use the token as a runtime Bearer credential. Its group and audience claims are
 verified; console viewer/admin roles do not themselves grant MCP runtime access.
 The normal runtime keys remain usable independently of Keycloak.
 
-The installer prints the initial demo password retrieval command. The Keycloak
-bootstrap admin is `admin`; its initial password is stored as
-`keycloak-admin-password` in `<release>-quickstart`. All initial credentials and the
+All demo users share one initial password (`demo.sh password`). The Keycloak
+bootstrap admin is `admin` (`demo.sh credentials`). All initial credentials and the
 console client secret are retained, not reset. Keycloak API seeding creates only
 missing realms, groups, clients and users; it does not reset edited passwords,
 client configuration or group memberships. If you change a client secret, issuer,
 callback URL or bootstrap admin password, keep the corresponding quickstart Secret/
 Helm configuration in sync yourself; the installer will not undo your changes.
 Allow additional memory for WireMock and Keycloak (each has a 1 GiB pod limit).
+
+## Demo helper (`demo.sh`)
+
+`deploy/helm/vmcp/demo.sh` answers "who can log in, with what, and where?" without
+kubectl/base64 commands. Catalog commands work offline; credential commands read
+the `<release>-quickstart` Secret once through your kubectl context. Use the same
+`--context`, `--namespace` and `--release` as the quickstart (defaults:
+current context, `vmcp-demo`, `vmcp-demo`). Add `--json` for machine-readable output.
+
+| Command | Output |
+|---|---|
+| `demo.sh users [--team SLUG] [--passwords]` | SSO users with name, team and role |
+| `demo.sh user USERNAME` | One user: groups, console role, team servers, initial password |
+| `demo.sh password` | Shared initial SSO password only (pipe-friendly) |
+| `demo.sh teams` / `demo.sh team SLUG` | Teams with members, projects, servers and owned upstreams |
+| `demo.sh projects` | Projects, owner teams and their servers |
+| `demo.sh servers [--team SLUG]` / `demo.sh server SLUG` | Endpoint URL, tools, upstreams, grants, agent key, instructions |
+| `demo.sh upstreams` | Mock upstreams and tools |
+| `demo.sh keys` / `demo.sh key SLUG` | Runtime agent keys (all, or one raw value) |
+| `demo.sh credentials` | Admin token, Keycloak admin and user passwords, runtime keys, URLs |
+| `demo.sh urls` | Console, gateway and Keycloak URLs (ingress or port-forward) |
+| `demo.sh token USERNAME` | Keycloak access token for runtime calls as that user |
+
+```sh
+./deploy/helm/vmcp/demo.sh credentials
+./deploy/helm/vmcp/demo.sh users --team fraud-strategy
+KEY=$(./deploy/helm/vmcp/demo.sh key retail-channels-agent)
+```
+
+`demo.sh` prints secrets only for the commands that explicitly request them.
 
 ## Preservation on reruns
 
@@ -216,8 +262,8 @@ By default it keeps two localhost-only port forwards running:
 - Console: `http://localhost:3300`
 - Gateway: `http://localhost:8801`
 
-The installer prints a command to retrieve the admin token from its Kubernetes
-Secret. It does not print the token. Sign in using that token, register your HTTP
+The installer does not print the admin token; read it with
+`./deploy/helm/vmcp/demo.sh credentials`. Sign in using that token, register your HTTP
 upstreams, create a virtual server, and issue an agent key from the console.
 Gateway endpoints are `http://localhost:8801/mcp/v1/virtual/<slug>`.
 
