@@ -22,7 +22,10 @@ From the repository root, run:
 
 The script provisions trial infrastructure, stable Secrets and database roles,
 runs migrations and installs vMCP. Use `--help` for broker/exporter, monitoring,
-ingress, storage and cleanup options. See the [full quickstart guide](../../../docs/HELM_QUICKSTART.md).
+ingress, storage and cleanup options. Add `--omni --version v1.2.2` to install
+Omni MCP with keyword discovery; no embedding or reranker model is required.
+`--mock` adds a create-only playground; `--keycloak` adds trial SSO and group
+mappings (with ingress, also supply `--keycloak-host`). See the [full quickstart guide](../../../docs/HELM_QUICKSTART.md).
 This configuration is for isolated trials; production installation follows below.
 
 ## Installation with external infrastructure

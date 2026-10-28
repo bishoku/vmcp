@@ -28,3 +28,6 @@ artifacts/
 !/benchmark/results/microk8s-*/diagnostics.json
 !/benchmark/results/microk8s-*/throughput.svg
 !/benchmark/results/microk8s-*/memory.svg
+
+# Local GPU model guide, chart and build artifacts (never commit).
+/local/omni-gpu-models/

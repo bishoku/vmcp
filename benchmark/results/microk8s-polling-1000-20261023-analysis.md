@@ -92,18 +92,15 @@ Her koşu 100.000 eski operation/stream ile bakım yolunu çalıştırır. Yeni 
 
 ## Doğrulama ve kanıtlar
 
-- Önce: NOTIFY + varsayılan PG: [rapor](microk8s-postgres-1000-20261023-b/report.md), [ham ölçümler — özet](microk8s-postgres-1000-20261023-b/summary.json), [SQL örnekleri — yerel arşiv](README.md#raw-artifacts), [entegrasyon testleri — yerel arşiv](README.md#raw-artifacts). Binary SHA-256: `ff16642693740606e9d0f42bc1fd72bdc3c50b8a6f1d2338303cbed18889516e`.
-- C: polling + varsayılan PG: [rapor](microk8s-polling-1000-20261023-c/report.md), [ham ölçümler — özet](microk8s-polling-1000-20261023-c/summary.json), [SQL örnekleri — yerel arşiv](README.md#raw-artifacts), [entegrasyon testleri — yerel arşiv](README.md#raw-artifacts). Binary SHA-256: `7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6`.
-- D: polling + optimize PG: [rapor](microk8s-polling-1000-20261023-d/report.md), [ham ölçümler — özet](microk8s-polling-1000-20261023-d/summary.json), [SQL örnekleri — yerel arşiv](README.md#raw-artifacts), [entegrasyon testleri — yerel arşiv](README.md#raw-artifacts). Binary SHA-256: `7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6`.
-- E: optimize PG, probe bağlantı hazırlığı düzeltildi: [rapor](microk8s-polling-1000-20261023-e/report.md), [ham ölçümler — özet](microk8s-polling-1000-20261023-e/summary.json), [SQL örnekleri — yerel arşiv](README.md#raw-artifacts), [entegrasyon testleri — yerel arşiv](README.md#raw-artifacts). Binary SHA-256: `7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6`.
-- [D etkin PostgreSQL ayarları](microk8s-polling-1000-20261023-d/diagnostics.json)
-- [D çalışma anındaki mount ve cgroup bilgileri](microk8s-polling-1000-20261023-d/diagnostics.json)
-- [C pahalı/normal SQL interval sayaçları](microk8s-polling-1000-20261023-c/diagnostics.json)
-- [C canlı custom/generic planlar](microk8s-polling-1000-20261023-c/diagnostics.json)
-- [C benchmark ve demo gerçek ayarları](microk8s-polling-1000-20261023-c/diagnostics.json)
+- Önce: NOTIFY + varsayılan PG: [rapor](microk8s-postgres-1000-20261023-b/report.md), [ham ölçümler](microk8s-postgres-1000-20261023-b/report.json), [SQL örnekleri](microk8s-postgres-1000-20261023-b/postgres-samples.jsonl), [entegrasyon testleri](microk8s-postgres-1000-20261023-b/migration-delivery-tests.log). Binary SHA-256: `ff16642693740606e9d0f42bc1fd72bdc3c50b8a6f1d2338303cbed18889516e`.
+- C: polling + varsayılan PG: [rapor](microk8s-polling-1000-20261023-c/report.md), [ham ölçümler](microk8s-polling-1000-20261023-c/report.json), [SQL örnekleri](microk8s-polling-1000-20261023-c/postgres-samples.jsonl), [entegrasyon testleri](microk8s-polling-1000-20261023-c/migration-delivery-tests.log). Binary SHA-256: `7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6`.
+- D: polling + optimize PG: [rapor](microk8s-polling-1000-20261023-d/report.md), [ham ölçümler](microk8s-polling-1000-20261023-d/report.json), [SQL örnekleri](microk8s-polling-1000-20261023-d/postgres-samples.jsonl), [entegrasyon testleri](microk8s-polling-1000-20261023-d/migration-delivery-tests.log). Binary SHA-256: `7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6`.
+- E: optimize PG, probe bağlantı hazırlığı düzeltildi: [rapor](microk8s-polling-1000-20261023-e/report.md), [ham ölçümler](microk8s-polling-1000-20261023-e/report.json), [SQL örnekleri](microk8s-polling-1000-20261023-e/postgres-samples.jsonl), [entegrasyon testleri](microk8s-polling-1000-20261023-e/migration-delivery-tests.log). Binary SHA-256: `7bf9ad921e93022a299b5cdd8b59ec2257bea1780605cc7a808aab7fc42091b6`.
+- [D etkin PostgreSQL ayarları](microk8s-polling-1000-20261023-d/postgres-effective-settings.json)
+- [D çalışma anındaki mount ve cgroup bilgileri](microk8s-polling-1000-20261023-d/postgres-runtime-resources.json)
+- [C pahalı/normal SQL interval sayaçları](microk8s-polling-1000-20261023-c/postgres-hot-query-intervals.json)
+- [C canlı custom/generic planlar](microk8s-polling-1000-20261023-c/postgres-delivery-custom-generic-plans.txt)
+- [C benchmark ve demo gerçek ayarları](microk8s-polling-1000-20261023-c/postgres-demo-settings.txt)
 - [Race ve vet sonucu](microk8s-polling-1000-20261023-validation.json)
 
 Tekrar: önce `python3 benchmark/kubernetes/run.py --database-focus --data-plane-cpus 8`; bittikten sonra `python3 benchmark/kubernetes/run.py --database-focus --data-plane-cpus 8 --postgres-tuned --postgres-explain`. 10 hedefli integration testi C/D/E koşularının öncesinde geçti. Rapor/profile Python testleri 6/6 geçti. Ek 14 hedefli test race detector ile geçti; go vet ve namespace guard geçti. Ayrıntılar ayrı validation artifact’indedir. Test namespace’leri ve ayrı regression PostgreSQL konteyneri temizlenir; mevcut demo podları korunur. Commit/push/release yapılmadı.
-
-
-Ham loglar ve zaman serileri Git dışında, checksum ile doğrulanmış yerel arşivlerde saklanır. Her koşunun `reproduction.json` dosyası arşiv adını ve SHA-256 değerini içerir. [Saklama ve geri açma politikası](README.md#raw-artifacts).

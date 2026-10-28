@@ -1,0 +1,65 @@
+{
+  "version": "v1.2.2",
+  "images": [
+    {
+      "service": "audit-exporter-kafka",
+      "image": "barishoku/vmcp-audit-exporter-kafka",
+      "version": "v1.2.2",
+      "digest": "sha256:f55e931e0a28b3eaef3ae0c428ab99bff3577402ade54f206b01fed5cc44dded"
+    },
+    {
+      "service": "audit-exporter-rabbitmq",
+      "image": "barishoku/vmcp-audit-exporter-rabbitmq",
+      "version": "v1.2.2",
+      "digest": "sha256:21a288c77d0fc7f9ebebd3c7c83f3f32930fca21fa593a898b02782df862a45f"
+    },
+    {
+      "service": "audit-exporter",
+      "image": "barishoku/vmcp-audit-exporter",
+      "version": "v1.2.2",
+      "digest": "sha256:7884b63c258d4bb663074585107a9f05252aa47827ca5339ecd9388d8d16fef5"
+    },
+    {
+      "service": "control-plane",
+      "image": "barishoku/vmcp-control-plane",
+      "version": "v1.2.2",
+      "digest": "sha256:ffd7ddb3dbaa4a053a83b212ed21817969099ab3fdddb9654b89d333b4a4e847"
+    },
+    {
+      "service": "data-plane",
+      "image": "barishoku/vmcp-data-plane",
+      "version": "v1.2.2",
+      "digest": "sha256:2ae6a9b22429ab1ef0800f8b0563499ed41e255c20ef03facb4308ccb6e4d616"
+    },
+    {
+      "service": "migrate",
+      "image": "barishoku/vmcp-migrate",
+      "version": "v1.2.2",
+      "digest": "sha256:c2e6c89e985fd0fd3f0c9110605a40fda465aad8f55721d0c054100f84f30028"
+    },
+    {
+      "service": "omni-mcp",
+      "image": "barishoku/vmcp-omni-mcp",
+      "version": "v1.2.2",
+      "digest": "sha256:fc278ff89391b7d81584efc0229f5538bfddc6cd36a924bed822def032d2a6d5"
+    },
+    {
+      "service": "rotate-secrets",
+      "image": "barishoku/vmcp-rotate-secrets",
+      "version": "v1.2.2",
+      "digest": "sha256:bfc2ced484dd30d53d71edca5fd9e58c0c5ccd73ac59b5d2e502376017c2f2d1"
+    },
+    {
+      "service": "tenant-router",
+      "image": "barishoku/vmcp-tenant-router",
+      "version": "v1.2.2",
+      "digest": "sha256:b0967f82daeeef0325dd6d23aec35a2183ddf39a34ea501d729010128a4a14b6"
+    },
+    {
+      "service": "web",
+      "image": "barishoku/vmcp-web",
+      "version": "v1.2.2",
+      "digest": "sha256:29579318d754916153a671732cce746a4cc3dcf79ac80249409105e978624089"
+    }
+  ]
+}

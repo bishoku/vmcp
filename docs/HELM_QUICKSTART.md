@@ -2,8 +2,8 @@
 
 The quickstart installs a small trial stack into your selected Kubernetes cluster:
 PostgreSQL, authenticated Redis, migrations, the console, one control plane and two
-data planes. Kafka, RabbitMQ, independent audit exporters and monitoring integration
-are optional. It creates two Helm releases: `<release>` and `<release>-infra`.
+data planes. Omni MCP, a seeded WireMock playground, Keycloak, Kafka, RabbitMQ,
+independent audit exporters and monitoring integration are optional. It creates two Helm releases: `<release>` and `<release>-infra`.
 
 This is a trial installer, not a production configuration. Internal connections
 are plaintext, infrastructure has one replica, runtime database roles have broad
@@ -21,12 +21,178 @@ For production, follow [Production deployment](PRODUCTION_DEPLOYMENT.md).
   and read nodes, cluster version and StorageClasses. Monitoring also reads CRDs.
 - A default StorageClass, or `--storage-class NAME`. `--ephemeral` avoids PVCs but
   loses all dependency data when their pods are replaced.
-- Network access to GitHub Releases and Docker Hub. Allow roughly 2 CPUs/4 GiB
+- Network access to GitHub Releases, Docker Hub and (with Keycloak) quay.io. Allow roughly 2 CPUs/4 GiB
   of spare capacity for the base trial, and additional capacity for brokers.
   Actual scheduling needs depend on the cluster and enabled components.
 
 The installer prints the selected context and passes it explicitly to every
 cluster command. It does not switch your kubeconfig context or create a cluster.
+
+## Optional Omni MCP
+
+Use the current repository quickstart with v1.2.0 or later. For example:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh \
+  --context microk8s --version v1.2.2 --omni \
+  --storage-class microk8s-hostpath \
+  --web-host vmcp.kube.local --gateway-host mcp.kube.local \
+  --ingress-class nginx --no-port-forward --timeout 20m
+```
+
+`--omni` installs the release's digest-pinned Omni image, configures internal
+control-plane/data-plane connections and creates a bridge credential in the
+existing quickstart Secret. Reruns preserve this credential and existing database,
+admin and encryption credentials; adding Omni to an existing trial is supported.
+The flag defaults to off. It requires no embedding or reranker model: discovery
+uses keyword search. Anonymous discovery stays disabled. Publish virtual servers
+through Omni in the console and use their normal agent runtime credentials;
+publication does not bypass tool approvals or runtime authorization.
+
+With ingress the endpoint is `http://mcp.kube.local/mcp/v1/omni` (HTTPS when
+`--tls-secret` is supplied). Without ingress, an additional port-forward serves
+`http://localhost:8802/mcp/v1/omni`; use `--omni-port PORT` to change it. Enabled
+local ports must be distinct. `--no-port-forward` prints the commands instead of
+starting them. Configure MCP clients with Streamable HTTP and
+`Authorization: Bearer <agent-runtime-key>`; the internal bridge secret is not a
+client credential. The installer prints the endpoint and access instructions.
+
+Embedding and reranking remain optional, separately operated services. This flag
+does not deploy models or add model configuration flags; see
+[Omni installation](Omni-MCP-Installation.md) and
+[reranking configuration](Omni-MCP-Reranking.md) for Helm model settings. Keep such
+settings in a separate managed installation rather than assuming quickstart
+reruns preserve manual Helm overrides.
+
+## Ready-to-use playground (`--mock`)
+
+Use the current repository script with v1.2.0 or later. No model endpoint is needed:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh \
+  --context microk8s --version v1.2.2 --mock --omni \
+  --keycloak-host sso.kube.local \
+  --storage-class microk8s-hostpath \
+  --web-host vmcp.kube.local --gateway-host mcp.kube.local \
+  --ingress-class nginx --no-port-forward --timeout 20m
+```
+
+The flag starts digest-pinned WireMock 3.13.2 and configures the control plane's
+mock REST provider. It creates the following **missing** resources through the
+management API, using the bootstrap admin token in memory:
+
+| Resource | Identifiers / behavior |
+|---|---|
+| Teams | `demo-crm`, `demo-commerce`, `demo-support` |
+| Projects | `demo-customer-chat` (CRM), `demo-operations` (Commerce), `demo-helpdesk` (Support) |
+| REST upstreams | `demo-crm` (`get_customer`, `list_customers`), `demo-orders` (`get_order_status`, `list_orders`), `demo-support` (`list_tickets`, `get_ticket`) |
+| Virtual servers | `demo-customer`, `demo-order-tracking`, `demo-support`, `demo-customer-assistant`, `demo-operations` |
+| Runtime keys | `demo-chat-agent` (customer + assistant), `demo-operations-agent` (orders + operations + support) |
+| Cross-team approvals | Four initial grants for the combined assistant/operations tools |
+
+Responses contain only synthetic customer `C-100`, order `O-100`, and ticket `T-100`
+data. These are deterministic read-only GET tools; there is no mutable order
+backend. Tool names appear in MCP as listed above. Use `get_order_status` on
+`demo-customer-assistant` to see the `shipped` response. Revoke its cross-team
+orders grant and observe that the tool is no longer available. Agent keys retain
+explicit server grants. All servers require credentials; anonymous access stays off.
+`--omni` publishes newly created demo servers and enables keyword discovery; without
+it, they work through their normal virtual MCP endpoints. Adding `--omni` later
+does not republish existing records: use the console to publish those you want.
+
+The installer prints commands to retrieve initial runtime keys from the retained
+quickstart Secret; secret values are not printed or passed as command arguments.
+If a key already exists but its one-time secret was lost/rotated in the console,
+quickstart does not rotate or recreate it; manage the key explicitly in the console.
+WireMock mappings are restored from saved vMCP mock definitions by the existing
+control-plane reconciliation; no global WireMock reset is used by this installer.
+
+## Optional Keycloak and group identities (`--keycloak`)
+
+Keycloak 26.4.7 is digest-pinned, runs in trial `start-dev` mode, and uses the
+same PostgreSQL **instance** with separate database `keycloak`, LOGIN role
+`vmcp_keycloak`, and password. The initialization creates only missing database/
+role objects; application tables and credentials are not reused. Keycloak's state
+survives restarts in PostgreSQL (subject to the chosen PVC/ephemeral storage).
+
+Add it to the playground in a later run, retaining the original flags:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh \
+  --context microk8s --version v1.2.2 --mock --omni --keycloak \
+  --storage-class microk8s-hostpath \
+  --web-host vmcp.kube.local --gateway-host mcp.kube.local \
+  --keycloak-host sso.kube.local --ingress-class nginx \
+  --no-port-forward --timeout 20m
+```
+
+Set `--keycloak-host sso.kube.local` **also on the first `--mock` run** if you plan
+to add Keycloak with that hostname later. This records matching team issuers before
+SSO is enabled. Existing issuer/group mappings are never silently changed; if you
+change hosts later, review the affected demo teams in the console. Without ingress,
+omit all host flags: Keycloak uses `http://localhost:8803` (`--keycloak-port` changes
+it). The script starts/prints its extra loopback port-forward like the Omni one.
+
+For ingress, all three hostnames must resolve to your ingress address in the
+browser. `--tls-secret` also covers the Keycloak ingress; the certificate must
+include that hostname. The internal discovery URL uses the Keycloak Service while
+JWT issuer and browser login use the public URL. Dynamic backchannel endpoints
+keep token exchange/JWKS reachable from pods even in localhost mode. The script
+configures the console OIDC client and group-to-role settings, and an RS256 agent
+OIDC verifier with audience `vmcp-runtime`.
+
+| Demo user | Group / console access |
+|---|---|
+| `demo-admin` | `demo-admins` → platform admin |
+| `demo-viewer` | `demo-viewers` → global viewer |
+| `demo-crm-owner` | `demo-crm` → CRM team scope |
+| `demo-commerce-owner` | `demo-commerce` → Commerce team scope |
+| `demo-support-owner` | `demo-support` → Support team scope |
+
+A `groups` claim mapper is configured on the confidential `vmcp-console` client
+with PKCE and an exact console callback URL. The realm is `vmcp-demo`. Keycloak
+can be installed without `--mock`; the three team mappings and SSO users are still
+created, but upstreams/projects/servers and runtime fixtures are not.
+
+With both flags, three `demo-*-identity` bindings grant group-based runtime access.
+A separate public client `vmcp-demo-agent` has a **trial-only password grant** for
+exercising these identities; request an access token from
+`<keycloak-base>/realms/vmcp-demo/protocol/openid-connect/token` with
+`client_id=vmcp-demo-agent`, `grant_type=password` and a demo user's credentials.
+Use the token as a runtime Bearer credential. Its group and audience claims are
+verified; console viewer/admin roles do not themselves grant MCP runtime access.
+The normal runtime keys remain usable independently of Keycloak.
+
+The installer prints the initial demo password retrieval command. The Keycloak
+bootstrap admin is `admin`; its initial password is stored as
+`keycloak-admin-password` in `<release>-quickstart`. All initial credentials and the
+console client secret are retained, not reset. Keycloak API seeding creates only
+missing realms, groups, clients and users; it does not reset edited passwords,
+client configuration or group memberships. If you change a client secret, issuer,
+callback URL or bootstrap admin password, keep the corresponding quickstart Secret/
+Helm configuration in sync yourself; the installer will not undo your changes.
+Allow additional memory for WireMock and Keycloak (each has a 1 GiB pod limit).
+
+## Preservation on reruns
+
+Keep the complete desired flag set on each run; omitting an optional service flag
+removes/disables its Helm resources. The application configuration seed performs
+no PUT, PATCH, DELETE or bulk replace. Existing names, tools, publication settings,
+ownership, keys, identity bindings and grant decisions remain intact. Deleted
+fixtures count as missing and may be recreated; this is not a reset command.
+
+Creation versions are retained in `playground-seed-ledger` inside the quickstart
+Secret. A partially completed seed can finish initial cross-team approvals only
+while the affected upstream, project and virtual server still match their recorded
+creation versions. Edited resources are skipped, and revoked/rejected grants are
+never reapproved. Seed failures leave the partial installation for inspection and
+retry. Seed state and one-time keys are not written to local values files or logs.
+
+This preservation concerns API/Keycloak data and retained credentials. Rerunning
+quickstart still applies its generated Helm values; it does not merge arbitrary
+manual Helm overrides. PostgreSQL PVCs and the quickstart Secret remain on normal
+uninstall; `--uninstall --purge` explicitly removes them. `--ephemeral` PostgreSQL
+loses both vMCP and Keycloak databases on pod replacement.
 
 ## Start
 
@@ -130,7 +296,7 @@ streaming annotations target nginx; other controllers may need manual adjustment
 TLS on ingress does not make the trial's internal infrastructure production ready.
 
 Advanced/offline release selection accepts `--chart PATH --images-file PATH`.
-The JSON inventory must match `--version` and contain all nine expected digest-pinned
+The JSON inventory must match `--version` and contain all expected digest-pinned
 images. For a local chart directory the installer restores locked dependencies;
 that requires chart repository access. An archive already contains them. These
 options skip release asset downloading/checksum verification; use trusted local files.

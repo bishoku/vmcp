@@ -16,14 +16,19 @@ import urllib.parse
 import urllib.request
 
 HERE = Path(__file__).resolve().parent
+# Tests may import this script by file path instead of executing it.
+if str(HERE) not in sys.path: sys.path.insert(0, str(HERE))
+import playground
+import extras
 IMAGES = {
     'postgres': 'postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24',  # 17-alpine
     'redis': 'redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499',  # 7.4-alpine
     'rabbitmq': 'rabbitmq@sha256:b586ea9784425774ac56f3d4919e4f723edb3287ef8a6c4c8f0df8fe569747c3',  # 4.1-management-alpine
     'kafka': 'apache/kafka@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed',  # 3.9.1
 }
-SERVICES = {'web', 'control-plane', 'data-plane', 'migrate', 'audit-exporter',
+LEGACY_SERVICES = {'web', 'control-plane', 'data-plane', 'migrate', 'audit-exporter',
             'audit-exporter-kafka', 'audit-exporter-rabbitmq', 'tenant-router', 'rotate-secrets'}
+SERVICES = LEGACY_SERVICES | {'omni-mcp'}
 
 
 def parser():
@@ -33,6 +38,12 @@ def parser():
     p.add_argument('--namespace', default='vmcp-demo')
     p.add_argument('--release', default='vmcp-demo', help='Helm release prefix (maximum 30 characters)')
     p.add_argument('--version', default='v0.0.2', help='Published GitHub Release version (default: v0.0.2)')
+    p.add_argument('--mock', action='store_true', help='Install WireMock and seed a create-only playground (v1.2.0+)')
+    p.add_argument('--keycloak', action='store_true', help='Install trial Keycloak with its own database in the shared PostgreSQL instance (v1.2.0+)')
+    p.add_argument('--keycloak-host', help='Public Keycloak ingress hostname; required with --keycloak and --web-host')
+    p.add_argument('--keycloak-port', type=int, default=8803, help='Local Keycloak port-forward port (default: 8803)')
+    p.add_argument('--omni', action='store_true', help='Install Omni MCP with keyword discovery; requires v1.2.0+, no embedding/rerank model required')
+    p.add_argument('--omni-port', type=int, default=8802, help='Local Omni port-forward port with --omni (default: 8802)')
     p.add_argument('--kafka', action='store_true', help='Install a single Kafka broker and create vmcp-audit topic')
     p.add_argument('--rabbitmq', action='store_true', help='Install RabbitMQ with a durable vmcp-audit queue')
     p.add_argument('--exporter', action='append', choices=['http', 'kafka', 'rabbitmq'], default=[], help='Enable an audit exporter; repeat for multiple destinations. Broker exporters imply their broker.')
@@ -63,6 +74,15 @@ def validate(a):
             raise ValueError('namespace/release must be lowercase DNS names within their length limits')
     if not re.fullmatch(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?', a.version):
         raise ValueError('version must be a version tag such as v0.0.2')
+    if (a.omni or a.mock or a.keycloak) and tuple(map(int, a.version[1:].split('-')[0].split('.'))) < (1, 2, 0):
+        raise ValueError('--omni, --mock and --keycloak require v1.2.0 or later')
+    if a.keycloak_host and (not re.fullmatch(r'[a-z0-9]+(?:[.-][a-z0-9]+)*', a.keycloak_host) or a.keycloak_host in [a.web_host, a.gateway_host]):
+        raise ValueError('--keycloak-host must be a distinct DNS hostname without scheme/path')
+    if a.keycloak and bool(a.web_host) != bool(a.keycloak_host):
+        raise ValueError('--keycloak requires --keycloak-host with ingress, or no ingress hosts for localhost mode')
+    ports = [a.web_port, a.gateway_port] + ([a.omni_port] if a.omni else []) + ([a.keycloak_port] if a.keycloak else [])
+    if any(not 1024 <= port <= 65535 for port in ports) or len(set(ports)) != len(ports):
+        raise ValueError('enabled local ports must be distinct, between 1024 and 65535')
     if a.purge and not a.uninstall:
         raise ValueError('--purge requires --uninstall')
     if a.data_plane_replicas < 1 or not all(1024 <= v <= 65535 for v in [a.web_port, a.gateway_port]) or a.web_port == a.gateway_port:
@@ -96,7 +116,13 @@ def image_values(manifest, version):
         if name not in SERVICES or name in refs or record['version'] != version or record['image'] != f'barishoku/vmcp-{name}' or not re.fullmatch(r'sha256:[a-f0-9]{64}', record['digest']):
             raise ValueError('invalid or duplicate published image record')
         refs[name] = record['image'] + '@' + record['digest']
-    if set(refs) != SERVICES:
+    # Omni joined the release inventory in v1.2.0. Keep old nine-image
+    # releases installable, but require the complete inventory for newer ones.
+    release = re.fullmatch(r'v([0-9]+)\.([0-9]+)\.([0-9]+)(?:-.*)?', version)
+    if release is None:
+        raise ValueError('invalid image inventory version')
+    expected = SERVICES if tuple(map(int, release.groups())) >= (1, 2, 0) else LEGACY_SERVICES
+    if set(refs) != expected:
         raise ValueError('published image inventory is incomplete')
     return refs
 
@@ -159,6 +185,7 @@ def infrastructure(a):
         resources.append(obj('ConfigMap', prefix + '-egress-' + exporter, data={
             'VMCP_EGRESS_ALLOW_HOSTS': host,
             'VMCP_EGRESS_ALLOW_CIDRS': '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'}))
+    resources += extras.resources(a, IMAGES['postgres'], env_secret)
     return resources
 
 
@@ -174,6 +201,13 @@ def values(a, refs):
            'exporters': {}}
     for key, name in [('web', 'web'), ('controlPlane', 'control-plane'), ('dataPlane', 'data-plane'), ('migration', 'migrate')]:
         cfg[key] = {'image': refs[name]}
+    if 'omni-mcp' in refs:
+        cfg['omni'] = {'image': refs['omni-mcp']}
+    if a.omni:
+        if 'omni-mcp' not in refs:
+            raise ValueError('--omni requires an omni-mcp image in the release inventory')
+        cfg['omni'].update(enabled=True, secret=source('omni-secret'),
+                           publicURL=f'http://localhost:{a.omni_port}')
     cfg['dataPlane']['replicas'] = a.data_plane_replicas
     for exporter in set(a.exporter):
         e = {'enabled': True, 'image': refs['audit-exporter' + ('' if exporter == 'http' else '-' + exporter)],
@@ -187,11 +221,22 @@ def values(a, refs):
             e['secretEnv']['VMCP_AUDIT_RABBITMQ_URL'] = source('rabbit-url')
             e['env']['VMCP_AUDIT_RABBITMQ_ROUTING_KEY'] = 'vmcp-audit'
         cfg['exporters'][exporter] = e
+    if a.mock:
+        cfg['controlPlane']['env'] = {'VMCP_WIREMOCK_URL': f'http://{a.release}-trial-wiremock:8080'}
+    if a.keycloak:
+        web = f'{"https" if a.tls_secret else "http"}://{a.web_host}' if a.web_host else f'http://localhost:{a.web_port}'
+        discovery = f'http://{a.release}-trial-keycloak:8080/realms/vmcp-demo'
+        cfg['runtime']['oidc'] = dict(issuer=playground.issuer(a), discoveryURL=discovery,
+            clientId='vmcp-console', redirectURL=web + '/auth/callback', clientSecret=source('keycloak-client-secret'),
+            groupsClaim='groups', adminGroups=['demo-admins'], viewerGroups=['demo-viewers'], editorGroups=[])
+        cfg['runtime']['agentOIDC'] = dict(issuer=playground.issuer(a), discoveryURL=discovery, audience='vmcp-runtime', algorithms=['RS256'])
     if a.monitoring:
         cfg['monitoring'] = {'serviceMonitor': {'enabled': True, 'labels': {'release': a.monitoring_release}},
                             'prometheusRule': {'enabled': True, 'labels': {'release': a.monitoring_release}}, 'dashboards': {'enabled': True}}
     if a.web_host:
         scheme = 'https' if a.tls_secret else 'http'
+        if a.omni:
+            cfg['omni']['publicURL'] = scheme + '://' + a.gateway_host
         cfg['runtime'].update(publicGatewayURL=scheme + '://' + a.gateway_host, allowedOrigins=[scheme + '://' + a.web_host])
         cfg['ingress'] = {'enabled': True, 'className': a.ingress_class, 'webHost': a.web_host, 'gatewayHost': a.gateway_host,
                           'tls': [{'hosts': [a.web_host, a.gateway_host], 'secretName': a.tls_secret}] if a.tls_secret else [],
@@ -235,6 +280,16 @@ class Installer:
         else:
             data = {key: secrets.token_hex(24) for key in ['admin-token', 'postgres-password', 'owner-password', 'control-password', 'data-password', 'export-password', 'redis-password', 'rabbit-password']}
             data['master-key'] = base64.b64encode(secrets.token_bytes(32)).decode()
+        if a.keycloak:
+            for key in ['keycloak-db-password', 'keycloak-admin-password', 'keycloak-client-secret', 'keycloak-demo-password']:
+                if key not in data: data[key] = secrets.token_hex(24)
+                if not re.fullmatch(r'[a-f0-9]{48}', data[key]):
+                    raise ValueError('retained Keycloak trial credential has an invalid format; refusing to rotate it')
+        if a.omni:
+            if 'omni-secret' not in data:
+                data['omni-secret'] = secrets.token_hex(32)
+            if len(data['omni-secret']) < 32:
+                raise ValueError('retained Omni bridge secret must contain at least 32 characters')
         if len(base64.b64decode(data['master-key'], validate=True)) != 32:
             raise ValueError('retained encryption key must decode to 32 bytes')
         for field, user, pw in [('migration', 'vmcp_owner', 'owner'), ('controlPlane', 'vmcp_control', 'control'), ('dataPlane', 'vmcp_data', 'data'), ('listener', 'vmcp_data', 'data'), ('export', 'vmcp_export', 'export')]:
@@ -252,6 +307,15 @@ class Installer:
             self.run(self.k + ['replace', '-f', '-'], json.dumps(resource))
         else: self.run(self.k + ['create', '-f', '-'], json.dumps(resource))
         return data
+
+    def save_demo_key(self, name, value):
+        # Merge one-time runtime keys into the retained Secret without clobbering
+        # credentials or keys saved earlier in this seed run.
+        resource = json.loads(self.run(self.k + ['get', 'secret', self.a.release + '-quickstart', '-o', 'json'], capture=True))
+        if resource['metadata'].get('labels', {}).get('vmcp.quickstart') != self.a.release:
+            raise ValueError('refusing to modify an unrelated Secret')
+        resource['data'][name] = base64.b64encode(value.encode()).decode()
+        self.run(self.k + ['replace', '-f', '-'], json.dumps(resource))
 
     def sql(self, sql):
         self.run(self.k + ['exec', '-i', 'deployment/' + self.a.release + '-trial-postgres', '--', 'psql', '-U', 'postgres', '-d', 'vmcp', '-v', 'ON_ERROR_STOP=1'], sql)
@@ -296,9 +360,29 @@ class Installer:
         print('Admin token (retrieve locally; not printed by installer):')
         print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.admin-token}}' | base64 --decode; echo")
         commands = [self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-' + component, f'{port}:8080'] for component, port in [('web', a.web_port), ('data-plane', a.gateway_port)]]
+        if a.omni:
+            commands.append(self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-omni-mcp', f'{a.omni_port}:8080'])
+        if a.keycloak:
+            commands.append(self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-trial-keycloak', f'{a.keycloak_port}:8080'])
         scheme = 'https' if a.tls_secret else 'http'
         print(f'Console: {scheme}://{a.web_host}' if a.web_host else f'Console: http://localhost:{a.web_port}')
         print(f'Gateway: {scheme}://{a.gateway_host}/mcp/v1/virtual/<slug>' if a.gateway_host else f'Gateway: http://localhost:{a.gateway_port}/mcp/v1/virtual/<slug>')
+        if a.omni:
+            base = f'{scheme}://{a.gateway_host}' if a.gateway_host else f'http://localhost:{a.omni_port}'
+            print(f'Omni MCP: {base}/mcp/v1/omni (keyword discovery; models optional)')
+            print('Publish virtual servers through Omni in the console; existing runtime authorization and tool approvals apply.')
+            print('MCP client: HTTP/Streamable HTTP, URL above, Authorization: Bearer <agent-runtime-key>.')
+        if a.keycloak:
+            print('Keycloak: ' + playground.issuer(a).split('/realms/')[0])
+            print('Demo SSO users: demo-admin, demo-viewer, demo-crm-owner, demo-commerce-owner, demo-support-owner.')
+            print('Retrieve initial demo password (user changes are preserved):')
+            print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.keycloak-demo-password}}' | base64 --decode; echo")
+        if a.mock:
+            print('Playground: 3 mock upstreams, 5 virtual servers, 3 teams/projects; demo runtime keys: demo-chat-agent, demo-operations-agent.')
+            print(f"kubectl --context {a.context} -n {a.namespace} get secret {a.release}-quickstart -o jsonpath='{{.data.demo-chat-agent}}' | base64 --decode; echo")
+            print('Try demo-customer-assistant/get_order_status or explore Teams & Projects and revoke a demo tool grant.')
+            if not a.keycloak:
+                print('Demo team issuer reserved for later SSO: ' + playground.issuer(a) + '; retain the same Keycloak host/port when enabling it.')
         import shlex
         for command in commands: print(shlex.join(command))
         if a.no_port_forward or a.web_host: return
@@ -382,9 +466,24 @@ def main(argv=None):
         infra = directory / 'infra.json'
         infra.write_text(json.dumps({'resources': infrastructure(a)}))
         installer.run(installer.h + ['upgrade', '--install', a.release + '-infra', str(HERE / 'infra'), '-f', str(infra), '--wait', '--timeout', a.timeout])
+        if a.keycloak:
+            with playground.forward(installer, a.release + '-trial-keycloak') as endpoint:
+                playground.seed_keycloak(playground.API(endpoint), credentials, a)
         installer.bootstrap(credentials, refs['migrate'])
         installer.brokers()
         installer.run(installer.h + ['upgrade', '--install', a.release, str(chart), '-f', str(file), '--wait', '--wait-for-jobs', '--timeout', a.timeout])
+    if a.mock or a.keycloak:
+        with playground.forward(installer, a.release + '-control-plane', 8081) as endpoint:
+            api = playground.API(endpoint, credentials['admin-token'])
+            if a.mock:
+                playground.seed(api, a, installer.save_demo_key,
+                                json.loads(credentials.get('playground-seed-ledger', '{}')),
+                                lambda state: installer.save_demo_key('playground-seed-ledger', json.dumps(state)))
+                if a.omni: api.request('POST', '/api/v1/omni/reindex', {})
+            else:
+                existing = {t['slug'] for t in api.items('/api/v1/teams')}
+                for team in playground.fixtures(a)[0]:
+                    if team['slug'] not in existing: api.request('POST', '/api/v1/teams', team)
     installer.access()
 
 

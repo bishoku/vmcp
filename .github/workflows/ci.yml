@@ -143,7 +143,7 @@ jobs:
       - name: Test trial installer
         run: |
           bash -n deploy/helm/vmcp/quickstart.sh
-          python3 -m unittest discover -s tests/helm -p 'test_quickstart.py'
+          python3 -m unittest discover -s tests/helm -p 'test_*.py'
       - name: Validate chart configurations
         run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
