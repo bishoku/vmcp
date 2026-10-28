@@ -82,8 +82,12 @@ def forward(installer, service, remote_port=8080, local_port=None):
                 process.wait(timeout=10)
 
 
+def public_scheme(a):
+    return 'https' if a.tls_secret or getattr(a, 'external_https', False) else 'http'
+
+
 def issuer(a):
-    base = (('https://' if a.tls_secret else 'http://') + a.keycloak_host) if a.keycloak_host else f'http://localhost:{a.keycloak_port}'
+    base = (public_scheme(a) + '://' + a.keycloak_host) if a.keycloak_host else f'http://localhost:{a.keycloak_port}'
     return base + '/realms/vmcp-demo'
 
 
@@ -191,7 +195,7 @@ def seed_keycloak(api, credentials, a):
     groups = {g['name']: g['id'] for g in api.request('GET', realm + '/groups?max=1000')}
     clients = api.request('GET', realm + '/clients?clientId=vmcp-console')
     if not clients:
-        scheme = 'https' if a.tls_secret else 'http'
+        scheme = public_scheme(a)
         web = f'{scheme}://{a.web_host}' if a.web_host else f'http://localhost:{a.web_port}'
         api.request('POST', realm + '/clients', dict(clientId='vmcp-console', protocol='openid-connect', enabled=True,
             publicClient=False, secret=credentials['keycloak-client-secret'], standardFlowEnabled=True,

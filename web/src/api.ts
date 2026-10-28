@@ -400,7 +400,8 @@ export interface ConfigDocument { teams?:Team[];projects?:Project[];toolGrants?:
 export interface ApplyResult { changes: {kind:string;slug:string;action:string}[]; configRevision?: number | null }
 export interface Team {canManage?:boolean;slug:string;name:string;issuer:string;group:string;version:number}
 export interface Project {slug:string;name:string;ownerTeam:string;version:number}
-export interface ToolGrant {canDecide?:boolean;virtualServer:string;upstream:string;tool:string;status:'pending'|'approved'|'rejected'|'revoked';reason:string;actor?:string;version:number}
+export interface BulkToolGrantResult {items:{virtualServer:string;upstream:string;tool:string;result:'changed'|'unchanged'|'failed';code?:string;message?:string}[];changed:number;unchanged:number;failed:number}
+export interface ToolGrant {consumerProject?:string;consumerTeam?:string;upstreamOwnerTeam?:string;canDecide?:boolean;virtualServer:string;upstream:string;tool:string;status:'pending'|'approved'|'rejected'|'revoked';reason:string;actor?:string;version:number}
 export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;description:string}
 export interface OmniStatus { configured:boolean; endpoint:string; index?:{rerankEnabled?:boolean;rerankNoMatchScore?:number;rerankConfidenceScore?:number;rerankCandidates?:number;rerankMinScore?:number;rerankFailurePolicy?:string;embeddedDocuments?:number;dimensions?:number;embeddingProfile?:string;ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
 export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
@@ -413,6 +414,7 @@ export const api = {
  projects:(signal?:AbortSignal)=>request<{items:Project[]}>('GET','/projects',undefined,undefined,signal),
  saveProject:(project:Project)=>request('POST','/projects',project),
  toolGrants:(signal?:AbortSignal)=>request<{items:ToolGrant[]}>('GET','/tool-grants',undefined,undefined,signal),
+ bulkToolGrants:(items:ToolGrant[])=>request<BulkToolGrantResult>('POST','/tool-grants/bulk',{items}),
  saveToolGrant:(grant:ToolGrant)=>request('POST','/tool-grants',grant),
  toolCatalog:(signal?:AbortSignal)=>listAll<ToolCatalogEntry>('/tool-catalog',signal),
  auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),

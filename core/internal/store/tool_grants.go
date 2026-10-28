@@ -10,18 +10,21 @@ import (
 )
 
 type ToolGrant struct {
-	CanDecide     bool   `json:"canDecide"`
-	VirtualServer string `json:"virtualServer"`
-	Upstream      string `json:"upstream"`
-	Tool          string `json:"tool"`
-	Status        string `json:"status"`
-	Reason        string `json:"reason"`
-	Actor         string `json:"actor"`
-	Version       int64  `json:"version"`
+	ConsumerProject   string `json:"consumerProject,omitempty"`
+	ConsumerTeam      string `json:"consumerTeam,omitempty"`
+	UpstreamOwnerTeam string `json:"upstreamOwnerTeam,omitempty"`
+	CanDecide         bool   `json:"canDecide"`
+	VirtualServer     string `json:"virtualServer"`
+	Upstream          string `json:"upstream"`
+	Tool              string `json:"tool"`
+	Status            string `json:"status"`
+	Reason            string `json:"reason"`
+	Actor             string `json:"actor"`
+	Version           int64  `json:"version"`
 }
 
 func (t *Tx) ListToolGrants(ctx context.Context) ([]ToolGrant, error) {
-	rows, err := t.q.Query(ctx, `SELECT v.slug,u.slug,g.tool_name,g.status,g.reason,g.actor,g.version,`+ownerPredicate(ctx, "u.owner_team_id")+` FROM tool_grants g JOIN virtual_servers v ON v.id=g.virtual_server_id JOIN upstreams u ON u.id=g.upstream_id WHERE (`+vsPredicate(ctx, "v")+` OR `+ownerPredicate(ctx, "u.owner_team_id")+`) ORDER BY v.slug,u.slug,g.tool_name`)
+	rows, err := t.q.Query(ctx, `SELECT v.slug,u.slug,g.tool_name,g.status,g.reason,g.actor,g.version,p.slug,COALESCE(pt.slug,''),COALESCE(ut.slug,''),`+ownerPredicate(ctx, "u.owner_team_id")+` FROM tool_grants g JOIN virtual_servers v ON v.id=g.virtual_server_id JOIN upstreams u ON u.id=g.upstream_id JOIN projects p ON p.id=v.project_id LEFT JOIN teams pt ON pt.id=p.owner_team_id LEFT JOIN teams ut ON ut.id=u.owner_team_id WHERE (`+vsPredicate(ctx, "v")+` OR `+ownerPredicate(ctx, "u.owner_team_id")+`) ORDER BY v.slug,u.slug,g.tool_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +32,7 @@ func (t *Tx) ListToolGrants(ctx context.Context) ([]ToolGrant, error) {
 	out := []ToolGrant{}
 	for rows.Next() {
 		var v ToolGrant
-		if err := rows.Scan(&v.VirtualServer, &v.Upstream, &v.Tool, &v.Status, &v.Reason, &v.Actor, &v.Version, &v.CanDecide); err != nil {
+		if err := rows.Scan(&v.VirtualServer, &v.Upstream, &v.Tool, &v.Status, &v.Reason, &v.Actor, &v.Version, &v.ConsumerProject, &v.ConsumerTeam, &v.UpstreamOwnerTeam, &v.CanDecide); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -37,6 +40,10 @@ func (t *Tx) ListToolGrants(ctx context.Context) ([]ToolGrant, error) {
 	return out, rows.Err()
 }
 func (t *Tx) PutToolGrant(ctx context.Context, g ToolGrant) error {
+	return t.putToolGrant(ctx, g, nil)
+}
+
+func (t *Tx) putToolGrant(ctx context.Context, g ToolGrant, changed *bool) error {
 	if len(g.Reason) > 2000 || strings.TrimSpace(g.Tool) == "" {
 		return apierror.Validation([]apierror.FieldError{vf("/tool", "tool required and reason limited to 2000 bytes")})
 	}
@@ -64,8 +71,8 @@ func (t *Tx) PutToolGrant(ctx context.Context, g ToolGrant) error {
 		}
 	}
 	var version int64
-	var status string
-	err = t.q.QueryRow(ctx, `SELECT version,status FROM tool_grants WHERE virtual_server_id=$1::uuid AND upstream_id=$2::uuid AND tool_name=$3`, vsID, upID, g.Tool).Scan(&version, &status)
+	var status, reason string
+	err = t.q.QueryRow(ctx, `SELECT version,status,reason FROM tool_grants WHERE virtual_server_id=$1::uuid AND upstream_id=$2::uuid AND tool_name=$3`, vsID, upID, g.Tool).Scan(&version, &status, &reason)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -79,10 +86,20 @@ func (t *Tx) PutToolGrant(ctx context.Context, g ToolGrant) error {
 	} else if g.Version != 0 {
 		return apierror.PreconditionFailed()
 	}
+	if err == nil && status == g.Status && reason == g.Reason {
+		return nil
+	}
 	a, _ := AccessFrom(ctx)
 	g.Actor = a.Actor
-	t.auditTarget("tool-grant", g.VirtualServer+"/"+g.Upstream+"/"+g.Tool)
+	// Composite grant identities are not slugs; auditTarget's slug guard would
+	// discard them. These identifiers were resolved against existing DB records.
+	if t.targets != nil {
+		t.targets["tool-grant:"+g.VirtualServer+"/"+g.Upstream+"/"+g.Tool] = true
+	}
 	_, err = t.q.Exec(ctx, `INSERT INTO tool_grants(virtual_server_id,upstream_id,tool_name,status,reason,actor) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6) ON CONFLICT(virtual_server_id,upstream_id,tool_name) DO UPDATE SET status=$4,reason=$5,actor=$6,version=tool_grants.version+1,updated_at=now()`, vsID, upID, g.Tool, g.Status, g.Reason, g.Actor)
+	if err == nil && changed != nil {
+		*changed = true
+	}
 	return err
 }
 

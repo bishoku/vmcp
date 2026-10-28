@@ -10,6 +10,17 @@ async function fixture(page: Page, role = 'admin') {
   const request = route.request(), path = new URL(request.url()).pathname
   if (path.endsWith('/me')) return route.fulfill({ json: { role, name: 'Platform admin' } })
   const items = path.endsWith('/teams') ? teams : path.endsWith('/projects') ? projects : path.endsWith('/tool-grants') ? grants : null
+  if (path.endsWith('/tool-grants/bulk')) {
+   const body = request.postDataJSON() as {items:Record<string,unknown>[]}
+   const results = body.items.map(item => {
+    const existing = grants.find(g=>g.virtualServer===item.virtualServer && g.upstream===item.upstream && g.tool===item.tool)
+    if (existing && existing.version!==item.version) return {...item,result:'failed',code:'precondition_failed',message:'Refresh this request'}
+    if (existing) Object.assign(existing,item,{version:Number(existing.version)+1})
+    else grants.push({...item,version:1})
+    return {...item,result:'changed'}
+   })
+   return route.fulfill({json:{items:results,changed:results.filter(i=>i.result==='changed').length,unchanged:0,failed:results.filter(i=>i.result==='failed').length}})
+  }
   if (items) {
    if (path.endsWith('/teams') && state.failTeams) return route.fulfill({ status: 503, json: { message: 'Team service unavailable' } })
    if (request.method() === 'POST') {
@@ -27,6 +38,18 @@ async function fixture(page: Page, role = 'admin') {
  })
  return state
 }
+async function expectCenteredModal(page: Page, title: string) {
+ const dialog=page.getByRole('dialog',{name:title,exact:true})
+ const frame=dialog.locator('.surface-dialog')
+ await expect(frame).toBeVisible()
+ const box=await frame.boundingBox(),viewport=page.viewportSize()!
+ expect(box!.x).toBeGreaterThan(0)
+ expect(box!.y).toBeGreaterThan(0)
+ expect(Math.abs(box!.x+box!.width/2-viewport.width/2)).toBeLessThan(2)
+ expect(Math.abs(box!.y+box!.height/2-viewport.height/2)).toBeLessThan(2)
+ expect(box!.width).toBeLessThan(viewport.width)
+ expect(box!.height).toBeLessThan(viewport.height)
+}
 const section = (page: Page, name: string) => page.getByRole('navigation', { name: 'Ownership sections' }).getByRole('button', { name, exact: true }).click()
 
 for (const width of [390, 1440]) test(`ownership workflow and shared responsive components ${width}`, async ({ page }) => {
@@ -42,6 +65,7 @@ for (const width of [390, 1440]) test(`ownership workflow and shared responsive 
  await page.screenshot({ path: test.info().outputPath(`teams-${width}.png`), fullPage: true })
  await page.getByRole('button', { name: 'New team', exact: true }).click()
  const team = page.getByRole('dialog', { name: 'New team', exact: true })
+ await expectCenteredModal(page,'New team')
  await team.getByLabel('Name', { exact: true }).fill('Chat owners')
  await team.getByLabel('Identifier', { exact: true }).fill('chat-owners')
  await team.getByLabel('OIDC issuer', { exact: true }).fill('https://idp.example')
@@ -52,6 +76,7 @@ for (const width of [390, 1440]) test(`ownership workflow and shared responsive 
  await section(page, 'Projects')
  await page.getByRole('button', { name: 'New project', exact: true }).click()
  const project = page.getByRole('dialog', { name: 'New project', exact: true })
+ await expectCenteredModal(page,'New project')
  await project.getByLabel('Name', { exact: true }).fill('Customer chat')
  await project.getByLabel('Identifier', { exact: true }).fill('customer-chat')
  // Newly created teams appear without a page reload.
@@ -64,6 +89,7 @@ for (const width of [390, 1440]) test(`ownership workflow and shared responsive 
  await section(page, 'Tool access')
  await page.getByRole('button', { name: 'Request access', exact: true }).first().click()
  const request = page.getByRole('dialog', { name: 'Request tool access', exact: true })
+ await expectCenteredModal(page,'Request tool access')
  await request.getByLabel('Virtual server', { exact: true }).selectOption('chat')
  await request.getByLabel('Search available tools', { exact: true }).fill('get_customer')
  await request.getByLabel('Tool', { exact: true }).selectOption(JSON.stringify(['crm', 'get_customer']))
@@ -72,12 +98,14 @@ for (const width of [390, 1440]) test(`ownership workflow and shared responsive 
  await expect(request).toHaveCount(0)
  await expect.poll(() => state.grants[0]?.status).toBe('pending')
  await page.getByRole('button', { name: 'Review request', exact: true }).click()
+ await expectCenteredModal(page,'Tool access request')
  await page.screenshot({ path: test.info().outputPath(`access-review-${width}.png`), fullPage: true })
  await page.getByRole('dialog', { name: 'Tool access request', exact: true }).getByRole('button', { name: 'Approve', exact: true }).click()
  await page.getByRole('dialog', { name: 'Approve tool access?', exact: true }).getByRole('button', { name: 'Approve access', exact: true }).click()
  await expect.poll(() => state.grants[0]?.status).toBe('approved')
  await expect(page.getByRole('dialog')).toHaveCount(0)
  await page.getByRole('button', { name: 'Review request', exact: true }).click()
+ await page.getByRole('dialog', { name: 'Tool access request', exact: true }).getByRole('textbox').fill('Access no longer needed')
  await page.getByRole('dialog', { name: 'Tool access request', exact: true }).getByRole('button', { name: 'Revoke', exact: true }).click()
  await page.getByRole('dialog', { name: 'Revoke tool access?', exact: true }).getByRole('button', { name: 'Revoke access', exact: true }).click()
  await expect.poll(() => state.grants[0]?.status).toBe('revoked')
@@ -193,4 +221,28 @@ test('stale project reload uses the latest ownership and version for subsequent 
  await page.getByRole('dialog', { name: 'Change project ownership?', exact: true }).getByRole('button', { name: 'Change owner', exact: true }).click()
  await expect.poll(() => state.projects[1].version).toBe(6)
  expect(state.projects[1].ownerTeam).toBe('crm')
+})
+
+for (const width of [390,1440]) test(`bulk owner review preserves conflicts and fits viewport ${width}`,async({page})=>{
+ await page.setViewportSize({width,height:1000})
+ const state=await fixture(page,'team')
+ state.grants.push(...['get_customer','list_accounts'].map(tool=>({virtualServer:'chat',upstream:'crm',tool,status:'pending',reason:'Customer support',version:1,canDecide:true,consumerProject:'customer-chat',consumerTeam:'support',upstreamOwnerTeam:'crm'})))
+ await page.goto('/ownership?section=access')
+ await page.getByRole('checkbox',{name:'chat → crm · 2 requests'}).check()
+ await page.getByRole('button',{name:'Approve selected pending (2)'}).click()
+ const dialog=page.getByRole('dialog',{name:'Approve access',exact:true})
+ await expectCenteredModal(page,'Approve access')
+ await expect(dialog.getByText(/Project: customer-chat/)).toBeVisible()
+ // Concurrent decision after opening the review must not be overwritten.
+ state.grants[1].version=2
+ await dialog.getByRole('button',{name:'Approve access (2)'}).click()
+ await expect(dialog.getByRole('status')).toContainText('1 updated · 0 unchanged · 1 failed')
+ await expect(dialog.getByText(/list_accounts: precondition_failed/)).toBeVisible()
+ expect(state.grants[0].status).toBe('approved')
+ expect(state.grants[1].status).toBe('pending')
+ await expect(dialog.getByRole('button',{name:'Approve access (2)'})).toHaveCount(0)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ await page.screenshot({path:test.info().outputPath(`bulk-review-${width}.png`),fullPage:true})
+ await dialog.getByRole('button',{name:'Close',exact:true}).last().click()
+ await expect(page.getByRole('button',{name:'Approve selected pending (0)'})).toBeDisabled()
 })

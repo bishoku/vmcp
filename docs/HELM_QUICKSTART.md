@@ -34,7 +34,7 @@ Use the current repository quickstart with v1.2.0 or later. For example:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.3 --omni \
+  --context microk8s --version v1.2.4 --omni \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
   --ingress-class nginx --no-port-forward --timeout 20m
@@ -50,7 +50,7 @@ through Omni in the console and use their normal agent runtime credentials;
 publication does not bypass tool approvals or runtime authorization.
 
 With ingress the endpoint is `http://mcp.kube.local/mcp/v1/omni` (HTTPS when
-`--tls-secret` is supplied). Without ingress, an additional port-forward serves
+`--tls-secret` or `--external-https` is supplied). Without ingress, an additional port-forward serves
 `http://localhost:8802/mcp/v1/omni`; use `--omni-port PORT` to change it. Enabled
 local ports must be distinct. `--no-port-forward` prints the commands instead of
 starting them. Configure MCP clients with Streamable HTTP and
@@ -70,7 +70,7 @@ Use the current repository script with v1.2.0 or later. No model endpoint is nee
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.3 --mock --omni \
+  --context microk8s --version v1.2.4 --mock --omni \
   --keycloak-host sso.kube.local \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
@@ -134,7 +134,7 @@ Add it to the playground in a later run, retaining the original flags:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.3 --mock --omni --keycloak \
+  --context microk8s --version v1.2.4 --mock --omni --keycloak \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
   --keycloak-host sso.kube.local --ingress-class nginx \
@@ -336,7 +336,34 @@ running the installer, then supply `--tls-secret`:
   --tls-secret vmcp-public-tls --ingress-class nginx
 ```
 
-Ingress mode prints HTTP or HTTPS URLs according to `--tls-secret` and does not
+For a **fresh install behind an external HTTPS proxy**, use `--external-https`
+instead of `--tls-secret` (since v1.2.4):
+
+```sh
+./deploy/helm/vmcp/quickstart.sh --context microk8s --version v1.2.4 \
+  --storage-class microk8s-hostpath --mock --omni --keycloak \
+  --web-host console.example.com --gateway-host mcp.example.com \
+  --keycloak-host sso.example.com --external-https \
+  --ingress-class nginx --no-port-forward --timeout 20m
+```
+
+The external proxy must provide certificates and terminate HTTPS for all three
+hosts. It must preserve the original host and correctly set/overwrite trusted
+`X-Forwarded-*` headers. Forward traffic to the HTTP ingress. In this mode the
+installer does not create ingress TLS entries, require a TLS Secret, or enable
+nginx HTTPS redirects; enforce external HTTPS at the proxy.
+
+All public URLs use HTTPS: console callback and allowed origin, gateway/Omni URLs,
+Keycloak hostname, console/runtime issuer, and demo team issuers. The newly created
+`vmcp-console` Keycloak client gets the exact HTTPS `/auth/callback` redirect URI
+and HTTPS Web Origin. Internal discovery and Keycloak pod traffic remain HTTP.
+`--external-https` requires both ingress hosts and cannot be combined with
+`--tls-secret`. Without either option, public URLs remain HTTP.
+
+This is not a migration option: existing Keycloak clients and team mappings remain
+create-only and are not rewritten when flags change.
+
+Ingress mode prints HTTP or HTTPS URLs according to these TLS options and does not
 start port forwards. The default
 streaming annotations target nginx; other controllers may need manual adjustment.
 TLS on ingress does not make the trial's internal infrastructure production ready.

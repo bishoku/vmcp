@@ -132,6 +132,7 @@ func (s *Server) Handler() http.Handler {
 		api(method+" /api/v1/projects", s.projects)
 		api(method+" /api/v1/tool-grants", s.toolGrants)
 	}
+	api("POST /api/v1/tool-grants/bulk", s.bulkToolGrants)
 	api("GET /api/v1/tool-catalog", s.toolCatalog)
 	api("GET /api/v1/me", s.getMe)
 

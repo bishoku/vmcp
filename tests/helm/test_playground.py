@@ -128,6 +128,55 @@ class PlaygroundTests(unittest.TestCase):
                         ['--keycloak', '--keycloak-port', '8802'], ['--keycloak', '--keycloak-host', 'https://bad']]:
             with self.subTest(options=options), self.assertRaises(ValueError): args(*options)
 
+    def test_external_https_new_install_urls_and_keycloak_client(self):
+        from unittest.mock import Mock
+        hosts = ['--keycloak', '--web-host', 'console.example.com',
+                 '--gateway-host', 'mcp.example.com', '--keycloak-host', 'sso.example.com']
+        for mode, scheme in [([], 'http'), (['--external-https'], 'https'),
+                             (['--tls-secret', 'demo-tls'], 'https')]:
+            with self.subTest(mode=mode):
+                a = args(*hosts, *mode)
+                refs = q.image_values(json.loads((ROOT / 'tests/helm/fixtures/v1.2.2-images.json').read_text()), a.version)
+                cfg = q.values(a, refs)
+                issuer = scheme + '://sso.example.com/realms/vmcp-demo'
+                self.assertEqual(cfg['runtime']['oidc']['issuer'], issuer)
+                self.assertEqual(cfg['runtime']['agentOIDC']['issuer'], issuer)
+                self.assertEqual(cfg['runtime']['oidc']['redirectURL'], scheme + '://console.example.com/auth/callback')
+                self.assertEqual(cfg['runtime']['allowedOrigins'], [scheme + '://console.example.com'])
+                self.assertEqual(cfg['runtime']['publicGatewayURL'], scheme + '://mcp.example.com')
+                self.assertEqual(cfg['omni']['publicURL'], scheme + '://mcp.example.com')
+                self.assertEqual(cfg['runtime']['oidc']['discoveryURL'], 'http://vmcp-demo-trial-keycloak:8080/realms/vmcp-demo')
+                self.assertEqual({t['issuer'] for t in p.fixtures(a)[0]}, {issuer})
+                resources = q.infrastructure(a)
+                kc = next(r for r in resources if r['kind'] == 'Deployment' and r['metadata']['name'].endswith('keycloak'))
+                env = {e['name']: e.get('value') for e in kc['spec']['template']['spec']['containers'][0]['env']}
+                self.assertEqual(env['KC_HOSTNAME'], scheme + '://sso.example.com')
+                self.assertEqual(env['KC_HTTP_ENABLED'], 'true')
+                self.assertEqual(env['KC_PROXY_HEADERS'], 'xforwarded')
+                ingress = next(r for r in resources if r['kind'] == 'Ingress')
+                self.assertEqual(bool(ingress['spec'].get('tls')), bool(a.tls_secret))
+                self.assertEqual(bool(cfg['ingress']['tls']), bool(a.tls_secret))
+                if a.external_https:
+                    self.assertEqual(ingress['metadata']['annotations']['nginx.ingress.kubernetes.io/ssl-redirect'], 'false')
+                    self.assertEqual(cfg['ingress']['annotations']['nginx.ingress.kubernetes.io/ssl-redirect'], 'false')
+                api, posts = Mock(), []
+                def request(method, path, body=None, **kwargs):
+                    if path.endswith('/token'): return {'access_token': 'not-logged'}
+                    if method == 'GET': return {'realm': 'vmcp-demo'} if path == '/admin/realms/vmcp-demo' else []
+                    posts.append((path, body))
+                api.request.side_effect = request
+                with redirect_stdout(io.StringIO()):
+                    p.seed_keycloak(api, {'keycloak-admin-password': 'a', 'keycloak-client-secret': 'b', 'keycloak-demo-password': 'c'}, a)
+                client = next(body for path, body in posts if path.endswith('/clients') and body['clientId'] == 'vmcp-console')
+                self.assertEqual(client['redirectUris'], [cfg['runtime']['oidc']['redirectURL']])
+                self.assertEqual(client['webOrigins'], cfg['runtime']['allowedOrigins'])
+
+    def test_external_https_requires_hosts_and_a_single_tls_mode(self):
+        for options in [[], ['--web-host', 'console.example.com'],
+                        ['--web-host', 'console.example.com', '--gateway-host', 'mcp.example.com', '--tls-secret', 'tls']]:
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                args('--external-https', *options)
+
     def test_keycloak_first_run_creates_catalog_groups_and_users(self):
         from unittest.mock import Mock
         api, posts = Mock(), []

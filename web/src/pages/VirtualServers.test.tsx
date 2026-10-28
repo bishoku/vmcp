@@ -16,6 +16,7 @@ const server: VirtualServer = {
   ],
 }
 beforeEach(() => {
+  vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()})))
   vi.spyOn(api, 'listVirtualServers').mockResolvedValue([server])
   vi.spyOn(api, 'getVirtualServer').mockResolvedValue(server)
   vi.spyOn(api, 'listUpstreams').mockResolvedValue([{ slug: 'alpha', name: 'Alpha' }] as Upstream[])
@@ -23,7 +24,7 @@ beforeEach(() => {
   vi.spyOn(api, 'listCatalog').mockResolvedValue({ resources: [], resourceTemplates: [], prompts: [], capabilities: {} })
   vi.spyOn(api, 'putVirtualServer').mockResolvedValue(server)
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 async function open() {
   render(<MemoryRouter><VirtualServerEditor initialSelection="demo" /></MemoryRouter>)
   await screen.findByLabelText('Alias for alpha/one')

@@ -97,3 +97,54 @@ changes. Exported identity mappings are configuration metadata; restrict their a
 
 Team/project records can be updated; deletion/archival UI is not included in this
 first release. Neither a user directory nor IdP group enumeration is required.
+
+## Bulk tool access workflow
+
+Adding tools to a virtual server saves selections; it does not submit approval
+requests. In the server's Tools editor, the approval summary distinguishes
+**Request not submitted**, **Pending owner approval**, **Approved**, and
+**Approval not required**. It counts approval-cleared selections, not the live
+agent catalog: policy and upstream availability still apply.
+
+For a saved server, choose **Request all missing approvals**, or select tools and
+choose **Request access for selected**. Unsaved drafts must be saved first.
+For more than 200 missing approvals, the action requests the next 200; refresh
+and repeat for the remaining tools. Rejected/revoked tools are never silently included in the all-missing action;
+explicitly select them to request again. Review the server/upstream groups and
+supply a shared reason before submitting. Existing approvals remain unchanged.
+
+In **Teams & projects → Tool access**, **Needs my review** shows authorized
+pending requests. **My servers’ requests** shows outgoing requests for servers
+you can manage; **All visible requests** includes previous decisions. Select
+individual rows or a whole server/upstream group to approve, reject, or revoke.
+The review shows the consumer project/team and upstream owner. Rejection and
+revocation require a reason. Server-editor links open this section scoped to the
+selected virtual server.
+
+`POST /api/v1/tool-grants/bulk` accepts an `items` array of 1–200 grant objects.
+Each item uses its current `version` (0 for a new request), passes the existing
+ownership checks, and commits independently with a per-tool mutation audit.
+The response reports `changed`, `unchanged`, `failed`, and an outcome/error code
+for each identity. Duplicate identities invalidate the batch before any writes.
+Refresh after conflicts or an interrupted response; never replay an entire batch
+blindly. Successful approval means the control-plane saved the decision, not
+that every data-plane instance has already published it.
+
+## Composing tools in the virtual server editor
+
+The Tool picker combines **Available** and **Shared** tabs. Available lists stored
+catalogs of upstreams you can manage; Shared exposes metadata from other teams,
+without connection details. Both tabs start without an upstream selection. Choose
+an upstream, or search across the current tab without choosing one. **All
+upstreams** starts with collapsed groups, with ten upstream groups shown at a time.
+
+Each group can be collapsed and shows its tool/selection counts. Open a group to
+browse 25 tools at a time, add an individual tool, or add all remaining tools from
+that group. While searching, the bulk action adds only matching tools, including
+matches beyond the currently displayed page. Existing selections are not added
+again. These actions edit the draft only; saving and approval submission remain
+separate.
+
+On desktop the bounded picker sits next to the wider Exposed tools panel. On
+smaller screens it starts collapsed under **Add tools**. Expanding catalogs does
+not make the picker grow without limit; its results scroll independently.

@@ -72,3 +72,17 @@ func (s *Server) toolCatalog(w http.ResponseWriter, r *http.Request) error {
 	}
 	return writeJSON(w, 200, map[string]any{"items": v, "nextCursor": next})
 }
+
+func (s *Server) bulkToolGrants(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Items []store.ToolGrant `json:"items"`
+	}
+	if err := decode(r, &body); err != nil {
+		return err
+	}
+	result, err := s.Store.BulkToolGrants(r.Context(), body.Items)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, result)
+}

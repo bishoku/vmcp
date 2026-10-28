@@ -1,11 +1,12 @@
+import ToolPicker from './ToolPicker'
+import ServerToolAccess from '../ownership/ServerToolAccess'
+import { approvalLabel } from '../ownership/grants'
 import { ProjectSelect } from '../OwnershipSelect'
 import ConfigurationGroup from '../connections/ConfigurationGroup'
 import GuidanceEditor from '../GuidanceEditor'
 import { normalizeGuidance } from '../guidance'
 import type { Guidance } from '../api'
 import DescriptionOverride from '../DescriptionOverride'
-import { filterItem } from '../search-filters'
-import { SearchField, ActiveFilters, ResultCount } from '../SearchControls'
 import { Checkbox, Switch } from '../SelectionControls'
 import Select from '../Select'
 import { LoadMore } from '../DataTable'
@@ -132,9 +133,6 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(initialSelection ? null : blank, d => d ? d.isNew ? 'new' : d.slug : null)
   const validation=useFormValidation()
   const problems=validation.issues.map(issue=>issue.message)
-  const [filter, setFilter] = useState('')
-  const [toolUpstream,setToolUpstream] = useState('')
-  const [availableLimit,setAvailableLimit]=useState(50)
   const [exposedLimit,setExposedLimit]=useState(50)
   const { busy, run } = useOperation()
 
@@ -152,7 +150,6 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
     return () => clearTimeout(timer)
   }, [load])
 
-  const selected = useMemo(() => new Set(draft?.tools.map(key)), [draft])
   const exposed = (s: ToolSelection) => s.alias || `${s.upstream}__${s.tool}`
   const dupes = useMemo(() => {
     const seen = new Map<string, number>()
@@ -175,8 +172,12 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   const setPii = (p: Partial<PiiConfig>) => draft && setDraft({ ...draft, pii: { ...draft.pii, ...p } })
   const setMode = (name: string, m: PolicyMode) =>
     draft && setDraft({ ...draft, policy: { ...draft.policy, tools: { ...draft.policy.tools, [name]: m } } })
-  const add = (upstream: string, tool: string) =>
-    draft && setDraft({ ...draft, tools: [...draft.tools, { upstream, tool }] })
+  const addTools = (tools: ToolSelection[]) => setDraft(previous => {
+    if (!previous) return previous
+    const existing = new Set(previous.tools.map(key))
+    const additions = tools.filter(tool => {const id=key(tool);if(existing.has(id))return false;existing.add(id);return true})
+    return {...previous,tools:[...previous.tools,...additions]}
+  })
   const patchTool = (k: string, p: Partial<ToolSelection>) =>
     draft &&
     setDraft({
@@ -253,7 +254,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             <fieldset disabled={!canEdit || busy} className="min-w-0 layout-stack border-0 p-0 m-0">
             <ServerPanel title="Server identity" description="Name, stable identifier and client access settings" icon={Layers}><div className="space-y-4 panel-body">
             <ProjectSelect value={draft.project} onChange={project=>setDraft({...draft,project})} existing={!draft.isNew}/>
- <p className="text-xs text-ink-muted">Tools from another owner team require approval. After saving, request access in Teams &amp; projects.</p>
+ <p className="text-xs text-ink-muted">Tools from another owner team require approval. Save first, then use the approval actions under Exposed tools to request access.</p>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField name="name" label="Name" required hint="Display name shown to users; up to 120 characters."><input
                   className={clsx(input, 'mt-1')}
@@ -279,54 +280,22 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             </div></ServerPanel>
 
 <div><h2 className="section-title">Capability composition</h2><p className="section-description mt-1 text-sm text-ink-muted">Select tools, resources, templates and prompts from stored upstream discovery.</p></div>
- <div className="grid grid-cols-1 xl:grid-cols-2 layout-grid">
-              <ServerPanel title="Shared tools" description="Tool metadata from other teams; connections remain private" icon={Wrench}><div className="space-y-2 panel-body">{sharedTools.filter(t=>!upstreams.some(u=>u.slug===t.upstream)&&`${t.name} ${t.description}`.toLowerCase().includes(filter.toLowerCase())).slice(0,availableLimit).map(t=><div key={`${t.upstream}/${t.name}`} className="flex items-center justify-between gap-2"><span className="text-sm">{t.upstream}/{t.name} · {t.ownerTeam||'Default'}</span><button type="button" className={btn} disabled={selected.has(`${t.upstream}\u0000${t.name}`)} onClick={()=>setDraft({...draft,tools:[...draft.tools,{upstream:t.upstream,tool:t.name}]})}>Select</button></div>)}</div></ServerPanel>
- <ServerPanel title="Available tools" description="Add tools from stored upstream discovery; selection is explicit" icon={Wrench}>
-                <div className="space-y-3 border-b border-line panel-body"><SearchField label="Filter tools" value={filter} onChange={value=>{setFilter(value);setAvailableLimit(50)}} placeholder="Search tools or descriptions" className="block text-xs font-medium" visibleLabel/><label className="block text-xs font-medium">Tool upstream<Select className={`${input} mt-2`} value={toolUpstream} onChange={e=>setToolUpstream(e.target.value)}><option value="">All upstreams</option>{upstreams.map(u=><option key={u.slug} value={u.slug}>{u.name}</option>)}</Select></label></div>
-                <ActiveFilters className="border-b border-line panel-inset py-3" label="Active tool picker filters" items={[filterItem('Search',filter,()=>{setFilter('');setAvailableLimit(50)}),filterItem('Upstream',upstreams.find(u=>u.slug===toolUpstream)?.name??toolUpstream,()=>{setToolUpstream('');setAvailableLimit(50)})]} onReset={()=>{setFilter('');setToolUpstream('');setAvailableLimit(50)}}><ResultCount matched={upstreams.filter(u=>!toolUpstream||u.slug===toolUpstream).reduce((sum,u)=>sum+(catalog[u.slug]??[]).filter(t=>`${t.name} ${t.description??''}`.toLowerCase().includes(filter.trim().toLowerCase())).length,0)} total={upstreams.reduce((sum,u)=>sum+(catalog[u.slug]??[]).length,0)} noun="tools" busy={loading}/></ActiveFilters>
-                <div className="space-y-4 panel-body">
-                  {upstreams.filter(u=>!toolUpstream||u.slug===toolUpstream).map((u) => {
-                    const tools = (catalog[u.slug] ?? []).filter((t) => `${t.name} ${t.description??''}`.toLowerCase().includes(filter.trim().toLowerCase()))
-                    return (
-                      <div key={u.slug}>
-                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">{u.name}</div>
-                        {tools.slice(0,availableLimit).map((t) => {
-                          const used = selected.has(key({ upstream: u.slug, tool: t.name }))
-                          return (
-                            <button
-                              key={t.name}
-                              disabled={used}
-                              onClick={() => add(u.slug, t.name)}
-                              className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left hover:bg-canvas disabled:opacity-40"
-                            >
-                              <span className="min-w-0">
-                                <span className="block truncate text-sm font-medium">{t.name}</span>
-                                <span className="block truncate text-xs text-ink-muted">{t.description}</span>
-                              </span>
-                              {!used && <Plus aria-hidden="true" className="icon-control shrink-0 text-accent-700" />}
-                            </button>
-                          )
-                        })}
-                        {tools.length>availableLimit&&<LoadMore shown={Math.min(availableLimit,tools.length)} total={tools.length} noun="tools" label="Show 50 more available tools" onLoad={()=>setAvailableLimit(n=>n+50)}/>}
-                        {!loading && tools.length === 0 && <div className="px-2 text-xs text-ink-muted">{filter?'No matching tools. Try another search.':'No tools. Refresh this upstream first.'}</div>}
-                      </div>
-                    )
-                  })}
-                  {!loading&&upstreams.length===0&&<EmptyState title="Register an upstream first." description="Add a server and refresh its discovery to select tools." compact/>}
-                </div>
-              </ServerPanel>
+ <div className="grid grid-cols-1 items-start xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] layout-grid">
+              <ToolPicker upstreams={upstreams} catalog={catalog} shared={sharedTools} selected={draft.tools} disabled={!canEdit||busy} loading={loading} onAdd={addTools}/>
 
               <ServerPanel title={`Exposed tools (${draft.tools.length})`} description="Set client-facing aliases, descriptions and policy overrides. Drag or use the keyboard to reorder." icon={ListChecks}>
+                {!draft.isNew && servers.find(s=>s.slug===draft.slug) && <ServerToolAccess key={draft.slug} server={servers.find(s=>s.slug===draft.slug)!} canEdit={canEdit && !dirty && !loading && !readError} onReload={load}/>}
+                <p className="panel-inset py-2 text-xs text-ink-muted">Approval actions apply to saved tool selections. Save draft changes first.</p>
                 <div className="space-y-3 panel-body">
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                     <SortableContext items={draft.tools.map(key)} strategy={verticalListSortingStrategy}>
                       {draft.tools.slice(0,validation.issues.some(issue=>issue.field?.startsWith('tools.'))?draft.tools.length:exposedLimit).map((t,index) => (
-                        <div key={key(t)}>{["required","pending","rejected","revoked"].includes(servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus??"")&&<p className="text-sm text-amber-700">Upstream owner approval: {servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus}. This tool is not available to agents. <Link to="/ownership" className="underline">Manage access requests</Link></p>}{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row index={index} key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[key(t)] ?? draft.policy.default} inherited={!(key(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(key(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? servers.find(s => s.slug === draft.slug)?.tools.find(x => key(x) === key(t))?.upstreamDescription ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
+                        <div key={key(t)}>{["required","pending","rejected","revoked"].includes(servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus??"")&&<p className="text-sm text-amber-700">{approvalLabel(servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus)}. This tool is not available to agents. <Link to={`/ownership?section=access&server=${encodeURIComponent(draft.slug)}`} className="underline">View requests and decisions</Link></p>}{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row index={index} key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[key(t)] ?? draft.policy.default} inherited={!(key(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(key(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? servers.find(s => s.slug === draft.slug)?.tools.find(x => key(x) === key(t))?.upstreamDescription ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
                       ))}
                     </SortableContext>
                   </DndContext>
                   {draft.tools.length>exposedLimit&&<LoadMore shown={Math.min(exposedLimit,draft.tools.length)} total={draft.tools.length} noun="tools" label="Show 50 more exposed tools" onLoad={()=>setExposedLimit(n=>n+50)}/>}
-                  {draft.tools.length === 0 && <EmptyState title="Pick tools from the left." description="Only selected tools are composed into this virtual server." compact/>}
+                  {draft.tools.length === 0 && <EmptyState title="Add tools with the tool picker." description="Only selected tools are composed into this virtual server." compact/>}
                 </div>
               </ServerPanel>
             </div>

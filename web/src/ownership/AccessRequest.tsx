@@ -31,7 +31,7 @@ export default function AccessRequest({ servers, grants, onClose, onSaved }: { s
   } catch (error) { validation.fail(error) }
  })
  const close = () => unsaved.guard(onClose)
- return <Modal title="Request tool access" variant="drawer" size="wide" busy={busy} onClose={close} description="Request permission to expose one upstream tool through a virtual server."
+ return <Modal title="Request tool access" size="wide" busy={busy} onClose={close} description="Request permission to expose one upstream tool through a virtual server."
   footer={<div className="flex flex-wrap justify-end gap-2"><button className={btn} onClick={close}>Cancel</button><Button className={primary} type="submit" form="access-request" loading={busy} disabled={loading || !!readError || !servers.length || existing?.status === 'approved' || existing?.status === 'pending'}>Submit request</Button></div>}>
   <FormScope validation={validation}><form id="access-request" noValidate onSubmit={event => { event.preventDefault(); void save() }} className="space-y-6">
    <FormErrors validation={validation}/>

@@ -23,9 +23,9 @@ async function setup(page:Page){
  })
  return writes
 }
-async function expectPageScrollOnly(page:Page){
+async function expectPageScrollOnly(page:Page,allowPicker=false){
  expect(await page.evaluate(()=>({top:window.scrollY,height:document.documentElement.scrollHeight,viewport:innerHeight}))).toEqual({top:0,height:await page.evaluate(()=>innerHeight),viewport:await page.evaluate(()=>innerHeight)})
- const nested=await page.locator('#main-content').evaluate(root=>Array.from(root.querySelectorAll<HTMLElement>('*')).filter(el=>['auto','scroll'].includes(getComputedStyle(el).overflowY)&&el.scrollHeight>el.clientHeight+2&&el.tagName!=='TEXTAREA').map(el=>el.tagName))
+ const nested=await page.locator('#main-content').evaluate((root,allow)=>Array.from(root.querySelectorAll<HTMLElement>('*')).filter(el=>['auto','scroll'].includes(getComputedStyle(el).overflowY)&&el.scrollHeight>el.clientHeight+2&&el.tagName!=='TEXTAREA'&&!(allow&&el.getAttribute('role')==='tabpanel')).map(el=>el.tagName),allowPicker)
  expect(nested).toEqual([])
 }
 
@@ -102,21 +102,22 @@ test('identity conditional requirements follow the selected operator before any 
  expect(writes).toHaveLength(0)
 })
 
-test('long capability editors use page scrolling and progressive lists',async({page})=>{
+test('long capability editors bound tool browsing and retain progressive lists',async({page})=>{
  const writes=await setup(page);await page.goto('/virtual-servers/new')
  await page.getByRole('button',{name:'Save',exact:true}).click()
  await expect(page.getByLabel('Name',{exact:true})).toBeFocused();expect(writes).toHaveLength(0)
- const available=page.getByRole('region',{name:'Available tools',exact:true})
- await expect(available.getByRole('button',{name:'Show 50 more available tools',exact:true})).toBeVisible()
+ const available=page.getByRole('region',{name:'Tool picker',exact:true})
+ await available.getByLabel('Tool upstream').selectOption('alpha')
+ await expect(available.getByRole('button',{name:'Show 25 more tools',exact:true})).toBeVisible()
  await expect(available.getByRole('button',{name:'tool-99 Tool definition 99',exact:true})).toHaveCount(0)
- await available.getByRole('button',{name:'Show 50 more available tools',exact:true}).click()
+ for(let i=0;i<3;i++)await available.getByRole('button',{name:'Show 25 more tools',exact:true}).click()
  await expect(available.getByRole('button',{name:'tool-99 Tool definition 99',exact:true})).toBeVisible()
- await expectPageScrollOnly(page)
+ await expectPageScrollOnly(page,true)
  await page.setViewportSize({width:390,height:844})
  await page.locator('summary').filter({hasText:'Access & protection'}).click()
  await page.getByRole('region',{name:'PII masking',exact:true}).scrollIntoViewIfNeeded()
  await expect(page.getByRole('button',{name:'Save',exact:true})).toBeInViewport()
- await expectPageScrollOnly(page)
+ await expectPageScrollOnly(page,true)
 })
 
 test('configuration JSON errors stay beside the document and do not submit a request',async({page})=>{

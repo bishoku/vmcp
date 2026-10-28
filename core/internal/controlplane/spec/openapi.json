@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "vMCP Control Plane API",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -207,6 +207,108 @@
           },
           "412": {
             "description": "Stale version"
+          }
+        }
+      }
+    },
+    "/tool-grants/bulk": {
+      "post": {
+        "operationId": "bulkToolGrants",
+        "summary": "Request or decide tool access in bulk with per-item ownership and version checks",
+        "description": "Each item is committed independently and audited through the normal mutation path. Inspect every result; do not automatically replay successful items. Rejected/revoked decisions require a reason. Existing records require their current version. Duplicate identities invalidate the entire batch.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "items"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "$ref": "#/components/schemas/ToolGrant"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-item outcomes, including partial failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "changed",
+                    "unchanged",
+                    "failed"
+                  ],
+                  "properties": {
+                    "changed": {
+                      "type": "integer"
+                    },
+                    "unchanged": {
+                      "type": "integer"
+                    },
+                    "failed": {
+                      "type": "integer"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "virtualServer",
+                          "upstream",
+                          "tool",
+                          "result"
+                        ],
+                        "properties": {
+                          "virtualServer": {
+                            "type": "string"
+                          },
+                          "upstream": {
+                            "type": "string"
+                          },
+                          "tool": {
+                            "type": "string"
+                          },
+                          "result": {
+                            "type": "string",
+                            "enum": [
+                              "changed",
+                              "unchanged",
+                              "failed"
+                            ]
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Empty",
+            "oversized": null,
+            "duplicate batch or missing decision reason": null
           }
         }
       }
@@ -3709,6 +3811,18 @@
           },
           "canDecide": {
             "type": "boolean",
+            "readOnly": true
+          },
+          "consumerProject": {
+            "type": "string",
+            "readOnly": true
+          },
+          "consumerTeam": {
+            "type": "string",
+            "readOnly": true
+          },
+          "upstreamOwnerTeam": {
+            "type": "string",
             "readOnly": true
           },
           "version": {

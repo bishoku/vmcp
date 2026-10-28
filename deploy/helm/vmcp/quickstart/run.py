@@ -57,9 +57,10 @@ def parser():
     p.add_argument('--web-port', type=int, default=3300)
     p.add_argument('--gateway-port', type=int, default=8801)
     p.add_argument('--no-port-forward', action='store_true', help='Print port-forward commands instead of keeping them running')
-    p.add_argument('--web-host', help='Console ingress hostname; requires --gateway-host; HTTP unless --tls-secret is supplied')
+    p.add_argument('--web-host', help='Console ingress hostname; requires --gateway-host; HTTP unless --tls-secret or --external-https is supplied')
     p.add_argument('--gateway-host', help='MCP ingress hostname')
     p.add_argument('--tls-secret', help='Existing TLS Secret in the target namespace; enables HTTPS ingress')
+    p.add_argument('--external-https', action='store_true', help='Use HTTPS public URLs with TLS terminated by an external proxy; requires ingress hosts, no ingress TLS Secret')
     p.add_argument('--ingress-class', default='nginx', help='Ingress class; default annotations target nginx')
     p.add_argument('--timeout', default='15m', help='Helm timeout, e.g. 15m')
     p.add_argument('--chart', type=Path, help='Local application chart directory/archive; requires --images-file')
@@ -92,7 +93,9 @@ def validate(a):
         raise ValueError('timeout must be a positive duration such as 15m or 900s')
     if bool(a.chart) != bool(a.images_file):
         raise ValueError('--chart and --images-file must be supplied together')
-    if any([a.web_host, a.gateway_host, a.tls_secret]):
+    if a.external_https and a.tls_secret:
+        raise ValueError('--external-https and --tls-secret are alternative TLS modes; choose one')
+    if any([a.web_host, a.gateway_host, a.tls_secret, a.external_https]):
         if not all([a.web_host, a.gateway_host]) or a.web_host == a.gateway_host:
             raise ValueError('ingress requires distinct --web-host and --gateway-host; --tls-secret is optional')
         for host in [a.web_host, a.gateway_host]:
@@ -225,7 +228,7 @@ def values(a, refs):
     if a.mock:
         cfg['controlPlane']['env'] = {'VMCP_WIREMOCK_URL': f'http://{a.release}-trial-wiremock:8080'}
     if a.keycloak:
-        web = f'{"https" if a.tls_secret else "http"}://{a.web_host}' if a.web_host else f'http://localhost:{a.web_port}'
+        web = f'{playground.public_scheme(a)}://{a.web_host}' if a.web_host else f'http://localhost:{a.web_port}'
         discovery = f'http://{a.release}-trial-keycloak:8080/realms/vmcp-demo'
         cfg['runtime']['oidc'] = dict(issuer=playground.issuer(a), discoveryURL=discovery,
             clientId='vmcp-console', redirectURL=web + '/auth/callback', clientSecret=source('keycloak-client-secret'),
@@ -236,7 +239,7 @@ def values(a, refs):
         cfg['monitoring'] = {'serviceMonitor': {'enabled': True, 'labels': {'release': a.monitoring_release}},
                             'prometheusRule': {'enabled': True, 'labels': {'release': a.monitoring_release}}, 'dashboards': {'enabled': True}}
     if a.web_host:
-        scheme = 'https' if a.tls_secret else 'http'
+        scheme = playground.public_scheme(a)
         if a.omni:
             cfg['omni']['publicURL'] = scheme + '://' + a.gateway_host
         cfg['runtime'].update(publicGatewayURL=scheme + '://' + a.gateway_host, allowedOrigins=[scheme + '://' + a.web_host])
@@ -369,7 +372,7 @@ class Installer:
             commands.append(self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-omni-mcp', f'{a.omni_port}:8080'])
         if a.keycloak:
             commands.append(self.k + ['port-forward', '--address', '127.0.0.1', 'service/' + a.release + '-trial-keycloak', f'{a.keycloak_port}:8080'])
-        scheme = 'https' if a.tls_secret else 'http'
+        scheme = playground.public_scheme(a)
         print(f'Console: {scheme}://{a.web_host}' if a.web_host else f'Console: http://localhost:{a.web_port}')
         print(f'Gateway: {scheme}://{a.gateway_host}/mcp/v1/virtual/<slug>' if a.gateway_host else f'Gateway: http://localhost:{a.gateway_port}/mcp/v1/virtual/<slug>')
         if a.omni:
