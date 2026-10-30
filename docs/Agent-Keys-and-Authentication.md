@@ -37,3 +37,10 @@ See [OAuth for agents](OAuth-for-Agents.md) for full details.
 | SSO session | viewer / editor / admin | See [SSO and roles](SSO-and-RBAC.md) |
 
 Send admin tokens as `Authorization: Bearer ...` to `/api/v1`. `GET /api/v1/me` tells you who the server thinks you are.
+
+## Conversation audit mapping
+
+An agent key can optionally map client-specific `params._meta` fields to
+conversation, root conversation and turn IDs. Use **Audit correlation** in the key
+editor; an Antigravity preset is available. See [Conversation audit correlation](Audit-Conversation-Correlation.md)
+for pointer syntax, metadata visibility, limits and migration 35.

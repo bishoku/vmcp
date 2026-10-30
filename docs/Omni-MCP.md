@@ -313,3 +313,11 @@ phases, plus live bilingual relevance and loaded governance revocation checks.
 See [results, provider fallback and resource costs](../benchmark/results/omni-1000-100-20261027.md).
 The synthetic development corpus passed with the tested multilingual MPNet model;
 institution-specific held-out relevance still requires separate validation.
+
+## Caller metadata and conversation correlation
+
+`invoke_tool` preserves outer `params._meta` through the virtual call boundary.
+Existing upstream Caller context selection still controls what is forwarded.
+Optional agent-key metadata mappings correlate discovery and invocation audit
+records across transient execution sessions. See [Conversation audit correlation](Audit-Conversation-Correlation.md)
+for configuration, limits, permissions and migration requirements.

@@ -421,11 +421,15 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	ev.Scope = "virtual"
 	ev.Boundary = "virtual"
 	ev.RawPayload = msg.Params
+	var p mcp.CallToolParams
+	paramsErr := json.Unmarshal(msg.Params, &p)
+	ev.IDs = callerCorrelation(snap, sess.owner, p.Meta)
 	if _, ok := h.Audit.(*audit.Runtime); ok {
 		policy := snap.Audit
 		ev.Policy = &policy
 	}
 	if parent, ok := ctx.Value(omniAuditParentKey{}).(audit.Event); ok {
+		ev.IDs = parent.IDs
 		ev.ParentOperationID = parent.OperationID
 		ev.RequestID = parent.RequestID
 		ev.Policy = parent.Policy
@@ -455,8 +459,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		}
 		return true
 	}
-	var p mcp.CallToolParams
-	if err := json.Unmarshal(msg.Params, &p); err != nil || p.Name == "" {
+	if paramsErr != nil || p.Name == "" {
 		if !finish("error", "invalid params") {
 			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
 			return

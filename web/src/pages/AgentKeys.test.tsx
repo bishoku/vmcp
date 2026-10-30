@@ -77,3 +77,12 @@ test('key list paginates and search resets the visible page',async()=>{
  fireEvent.change(screen.getByLabelText('Search agent keys'),{target:{value:'bot-109'}})
  expect(within(table).getAllByRole('row')).toHaveLength(2)
 })
+
+test('optional Antigravity audit correlation can be saved without a turn path',async()=>{
+ await open()
+ fireEvent.click(screen.getByRole('button',{name:'Use Antigravity mapping'}))
+ expect((screen.getByLabelText('Conversation ID path') as HTMLInputElement).value).toBe('/antigravity.google~1conversation_id')
+ expect((screen.getByLabelText('Turn ID path') as HTMLInputElement).value).toBe('')
+ const [,body]=await save()
+ expect(body.auditCorrelation).toEqual({conversationId:'/antigravity.google~1conversation_id',rootConversationId:'/antigravity.google~1root_conversation_id'})
+})

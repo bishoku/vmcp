@@ -170,7 +170,10 @@ export interface PiiConfig {
   maskArguments: boolean
 }
 
+export interface AuditCorrelation {conversationId?:string;rootConversationId?:string;turnId?:string}
+export interface AuditConversation {conversationGroupId:string;rootConversationId:string;actorId:string;firstTime:string;lastTime:string;lastId:number;records:number;operations:number;errors:number;conversations:number}
 export interface AgentKey {
+ auditCorrelation?:AuditCorrelation
   version: number
   slug: string
   description: string
@@ -184,6 +187,7 @@ export interface AgentKey {
   createdAt: string
 }
 export interface AgentKeyInput {
+ auditCorrelation?:AuditCorrelation
   slug?: string
   description?: string
   virtualServers?: string[]
@@ -234,6 +238,7 @@ export interface AuditSettings {
 }
 export interface AuditPreview {state:string;content?:unknown;originalBytes:number;storedBytes:number;redactions:number;revision:number;matches:{source:string;name:string;count:number}[]}
 export interface AuditEvent {
+ conversationId?:string;rootConversationId?:string;turnId?:string;conversationGroupId?:string;correlationStatus?:string
  auditMode?:string;policyRevision?:number;scope?:string;boundary?:string;direction?:string;parentOperationId?:string|null
  payloadState?:string;payloadOriginalBytes?:number;payloadStoredBytes?:number;payloadRedactions?:number
 
@@ -264,6 +269,7 @@ export interface AuditEvent {
   redactions?: number
 }
 export interface AuditQuery {
+ conversationId?:string;rootConversationId?:string;turnId?:string;conversationGroupId?:string
   activity?: string
   incomplete?: string
   operationId?: string
@@ -482,6 +488,10 @@ export const api = {
   revokeAdminToken: (slug: string, version?: number) =>
     request<AdminToken>('POST', `/admin-tokens/${encodeURIComponent(slug)}/revoke`, undefined, version),
   deleteAdminToken: (slug: string, version?: number) => request<void>('DELETE', `/admin-tokens/${encodeURIComponent(slug)}`, undefined, version),
+  listAuditConversations: (q:AuditQuery,signal?:AbortSignal) => {
+    const p=new URLSearchParams(Object.entries(q).filter((e):e is [string,string]=>typeof e[1]==='string'&&!!e[1]));p.set('groupBy','conversation')
+    return request<{items:AuditConversation[];nextCursor?:string|null}>('GET',`/audit-events?${p}`,undefined,undefined,signal)
+  },
   listAudit: (q: AuditQuery, signal?: AbortSignal) => {
     const p = new URLSearchParams({ limit: '50' })
     Object.entries(q).forEach(([k, v]) => v && p.set(k, v))

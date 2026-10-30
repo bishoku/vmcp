@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"github.com/bishoku/vmcp/core/internal/correlation"
 	"strconv"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 // AuditEvent is the API read model of an audit row.
 type AuditEvent struct {
+	correlation.IDs
 	Mode                 string  `json:"auditMode"`
 	PolicyRevision       int64   `json:"policyRevision"`
 	Scope                string  `json:"scope"`
@@ -50,16 +52,48 @@ type AuditEvent struct {
 
 // AuditFilter narrows ListAudit. Zero values mean "any".
 type AuditFilter struct {
-	VirtualServer, AgentKey, Subject, Tool, Status string
-	Stage, OperationID, RequestID, ActorID         string
-	Activity                                       string
-	Incomplete                                     bool
-	From, To                                       *time.Time
-	BeforeID                                       int64 // cursor: return events with a smaller id
+	ConversationID, RootConversationID, TurnID, ConversationGroupID string
+	VirtualServer, AgentKey, Subject, Tool, Status                  string
+	Stage, OperationID, RequestID, ActorID                          string
+	Activity                                                        string
+	Incomplete                                                      bool
+	From, To                                                        *time.Time
+	BeforeID                                                        int64 // cursor: return events with a smaller id
 }
 
 // ListAudit returns events newest first.
 func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEvent, bool, error) {
+	where, args := auditWhere(ctx, f, false)
+	q := `SELECT tenant_id,event_id::text,operation_id::text,request_id::text,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,id, ts, virtual_server, agent_key, client_ip, method, subject, tool, upstream, status, reason, duration_ms, redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id::text,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions,conversation_id,root_conversation_id,turn_id,conversation_group_id,correlation_status FROM audit_events`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	args = append(args, limit+1)
+	q += " ORDER BY id DESC LIMIT $" + strconv.Itoa(len(args))
+	rows, err := t.q.Query(ctx, q, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	out := []AuditEvent{}
+	for rows.Next() {
+		var e AuditEvent
+		if err := rows.Scan(&e.TenantID, &e.EventID, &e.OperationID, &e.RequestID, &e.TraceID, &e.SchemaVersion, &e.ActorType, &e.ActorID, &e.Issuer, &e.Action, &e.Target, &e.Revision, &e.Stage, &e.ID, &e.Time, &e.VirtualServer, &e.AgentKey, &e.ClientIP, &e.Method, &e.Subject, &e.Tool, &e.Upstream, &e.Status, &e.Reason, &e.DurationMS, &e.Redactions, &e.Mode, &e.PolicyRevision, &e.Scope, &e.Boundary, &e.Direction, &e.ParentOperationID, &e.PayloadState, &e.PayloadOriginalBytes, &e.PayloadStoredBytes, &e.PayloadRedactions, &e.ConversationID, &e.RootConversationID, &e.TurnID, &e.ConversationGroupID, &e.CorrelationStatus); err != nil {
+			return nil, false, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	more := len(out) > limit
+	if more {
+		out = out[:limit]
+	}
+	return out, more, nil
+}
+
+func auditWhere(ctx context.Context, f AuditFilter, grouped bool) ([]string, []any) {
 	var where []string
 	if a, ok := AccessFrom(ctx); ok && a.Role != "admin" {
 		where = append(where, `(EXISTS(SELECT 1 FROM virtual_servers v WHERE v.slug=audit_events.virtual_server AND `+vsPredicate(ctx, "v")+`) OR actor_id=`+literal(a.Actor)+`)`)
@@ -86,6 +120,11 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	}
 	if f.Incomplete {
 		where = append(where, `stage='admission' AND NOT EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=audit_events.operation_id AND o.stage='outcome')`)
+	}
+	for column, value := range map[string]string{"conversation_id": f.ConversationID, "root_conversation_id": f.RootConversationID, "turn_id": f.TurnID, "conversation_group_id": f.ConversationGroupID} {
+		if value != "" {
+			add(column+" = ?", value)
+		}
 	}
 	for column, value := range map[string]string{"stage": f.Stage, "operation_id": f.OperationID, "request_id": f.RequestID, "actor_id": f.ActorID} {
 		if value != "" {
@@ -119,27 +158,50 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 	if f.To != nil {
 		add("ts < ?", *f.To)
 	}
-	if f.BeforeID > 0 {
+	if !grouped && f.BeforeID > 0 {
 		add("id < ?", f.BeforeID)
 	}
-	q := `SELECT tenant_id,event_id::text,operation_id::text,request_id::text,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,id, ts, virtual_server, agent_key, client_ip, method, subject, tool, upstream, status, reason, duration_ms, redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id::text,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions FROM audit_events`
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
+
+	return where, args
+}
+
+// Conversation summaries aggregate authorized, filtered events before pagination.
+// Root operation counts exclude linked calls, provider events and diagnostics.
+type AuditConversation struct {
+	ConversationGroupID string    `json:"conversationGroupId"`
+	RootConversationID  string    `json:"rootConversationId"`
+	ActorID             string    `json:"actorId"`
+	FirstTime           time.Time `json:"firstTime"`
+	LastTime            time.Time `json:"lastTime"`
+	LastID              int64     `json:"lastId"`
+	Records             int64     `json:"records"`
+	Operations          int64     `json:"operations"`
+	Errors              int64     `json:"errors"`
+	Conversations       int64     `json:"conversations"`
+}
+
+func (t *Tx) ListAuditConversations(ctx context.Context, f AuditFilter, limit int) ([]AuditConversation, bool, error) {
+	where, args := auditWhere(ctx, f, true)
+	where = append(where, "conversation_group_id<>''")
+	q := `SELECT conversation_group_id,max(COALESCE(NULLIF(root_conversation_id,''),conversation_id)),max(actor_id),min(ts),max(ts),max(id),count(*),count(DISTINCT operation_id) FILTER(WHERE parent_operation_id IS NULL),count(DISTINCT operation_id) FILTER(WHERE parent_operation_id IS NULL AND stage='outcome' AND status IN ('error','tool_error','denied')),count(DISTINCT conversation_id) FILTER(WHERE conversation_id<>'') FROM audit_events WHERE ` + strings.Join(where, " AND ") + ` GROUP BY tenant_id,conversation_group_id`
+	if f.BeforeID > 0 {
+		args = append(args, f.BeforeID)
+		q += " HAVING max(id)<$" + strconv.Itoa(len(args))
 	}
 	args = append(args, limit+1)
-	q += " ORDER BY id DESC LIMIT $" + strconv.Itoa(len(args))
+	q += " ORDER BY max(id) DESC LIMIT $" + strconv.Itoa(len(args))
 	rows, err := t.q.Query(ctx, q, args...)
 	if err != nil {
 		return nil, false, err
 	}
 	defer rows.Close()
-	out := []AuditEvent{}
+	out := []AuditConversation{}
 	for rows.Next() {
-		var e AuditEvent
-		if err := rows.Scan(&e.TenantID, &e.EventID, &e.OperationID, &e.RequestID, &e.TraceID, &e.SchemaVersion, &e.ActorType, &e.ActorID, &e.Issuer, &e.Action, &e.Target, &e.Revision, &e.Stage, &e.ID, &e.Time, &e.VirtualServer, &e.AgentKey, &e.ClientIP, &e.Method, &e.Subject, &e.Tool, &e.Upstream, &e.Status, &e.Reason, &e.DurationMS, &e.Redactions, &e.Mode, &e.PolicyRevision, &e.Scope, &e.Boundary, &e.Direction, &e.ParentOperationID, &e.PayloadState, &e.PayloadOriginalBytes, &e.PayloadStoredBytes, &e.PayloadRedactions); err != nil {
+		var v AuditConversation
+		if err := rows.Scan(&v.ConversationGroupID, &v.RootConversationID, &v.ActorID, &v.FirstTime, &v.LastTime, &v.LastID, &v.Records, &v.Operations, &v.Errors, &v.Conversations); err != nil {
 			return nil, false, err
 		}
-		out = append(out, e)
+		out = append(out, v)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, false, err

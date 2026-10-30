@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"github.com/bishoku/vmcp/core/internal/correlation"
 	"net/netip"
 	"time"
 
@@ -29,11 +30,12 @@ type Snapshot struct {
 
 // AgentKey authorizes an agent to use some virtual servers. Revoked keys are not loaded.
 type AgentKey struct {
-	ID        string
-	Slug      string
-	Allowed   []netip.Prefix // empty = any address
-	ExpiresAt *time.Time
-	Servers   map[string]bool // virtual server slugs
+	AuditCorrelation correlation.Config
+	ID               string
+	Slug             string
+	Allowed          []netip.Prefix // empty = any address
+	ExpiresAt        *time.Time
+	Servers          map[string]bool // virtual server slugs
 	// RateLimit is calls per minute; 0 = unlimited.
 	RateLimit int
 }

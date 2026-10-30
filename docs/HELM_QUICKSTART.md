@@ -34,7 +34,7 @@ Use the current repository quickstart with v1.2.0 or later. For example:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.5 --omni \
+  --context microk8s --version v1.3.0 --omni \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
   --ingress-class nginx --no-port-forward --timeout 20m
@@ -70,7 +70,7 @@ Use the current repository script with v1.2.0 or later. No model endpoint is nee
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.5 --mock --omni \
+  --context microk8s --version v1.3.0 --mock --omni \
   --keycloak-host sso.kube.local \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
@@ -134,7 +134,7 @@ Add it to the playground in a later run, retaining the original flags:
 
 ```sh
 ./deploy/helm/vmcp/quickstart.sh \
-  --context microk8s --version v1.2.5 --mock --omni --keycloak \
+  --context microk8s --version v1.3.0 --mock --omni --keycloak \
   --storage-class microk8s-hostpath \
   --web-host vmcp.kube.local --gateway-host mcp.kube.local \
   --keycloak-host sso.kube.local --ingress-class nginx \
@@ -340,7 +340,7 @@ For a **fresh install behind an external HTTPS proxy**, use `--external-https`
 instead of `--tls-secret` (since v1.2.4):
 
 ```sh
-./deploy/helm/vmcp/quickstart.sh --context microk8s --version v1.2.5 \
+./deploy/helm/vmcp/quickstart.sh --context microk8s --version v1.3.0 \
   --storage-class microk8s-hostpath --mock --omni --keycloak \
   --web-host console.example.com --gateway-host mcp.example.com \
   --keycloak-host sso.example.com --external-https \

@@ -1,0 +1,81 @@
+{
+  "before": {
+    "pass": true,
+    "phase": {
+      "Scheduled": 150000,
+      "Offered": 150000,
+      "Success": 150000,
+      "Errors": 0,
+      "Dropped": 0,
+      "CompletedRPS": 499.93867828996,
+      "P50MS": 36.724107,
+      "P95MS": 52.926274,
+      "P99MS": 69.593001,
+      "MaxMS": 109.345052
+    },
+    "median_cpu_cores": 0.911546277,
+    "median_rss_mib": 215.62109375,
+    "max_rss_mib": 225.08984375,
+    "pool_max_acquired": 21,
+    "pool_cancelled": 0,
+    "wal_mib_per_second": 2.44054769873635,
+    "wal_sample_seconds": 292.971118,
+    "database_size_mib": 414.61491680145264,
+    "audit_insert_mean_ms": 0.22749509421436492,
+    "audit_wal_bytes_per_insert": 1229.2967356916881,
+    "gc_cycles_whole_process": 219,
+    "gc_last_uptime_seconds": 332.396,
+    "gc_stw_total_ms_whole_process": 28.327,
+    "gc_stw_p99_ms_whole_process": 0.366,
+    "gc_live_heap_median_mb_after_30s": 92.0,
+    "functional": {
+      "cross_replica_polling_under_500ms": true,
+      "invalid_keys_rejected_on_both_nodes": true,
+      "key_revocation_propagated_and_rejected_on_single_node": true,
+      "session_termination_authoritative_on_both_nodes": true,
+      "single_node_session_and_paginated_masked_metadata": true
+    },
+    "source_tree_sha256": "3f2c42ba732c7d3dc60ba5b657060fe95535b2bb7df762f05436c80d875e837e",
+    "go_version": "go1.27.3"
+  },
+  "after": {
+    "pass": true,
+    "phase": {
+      "Scheduled": 150000,
+      "Offered": 149998,
+      "Success": 149998,
+      "Errors": 0,
+      "Dropped": 2,
+      "CompletedRPS": 499.9379832427845,
+      "P50MS": 40.036337,
+      "P95MS": 58.735895,
+      "P99MS": 79.158251,
+      "MaxMS": 152.76457
+    },
+    "median_cpu_cores": 0.924310872,
+    "median_rss_mib": 224.99609375,
+    "max_rss_mib": 235.20703125,
+    "pool_max_acquired": 32,
+    "pool_cancelled": 0,
+    "wal_mib_per_second": 3.1890457527385103,
+    "wal_sample_seconds": 293.388049,
+    "database_size_mib": 599.1071043014526,
+    "audit_insert_mean_ms": 0.26843682552547254,
+    "audit_wal_bytes_per_insert": 2006.544937203642,
+    "gc_cycles_whole_process": 221,
+    "gc_last_uptime_seconds": 332.109,
+    "gc_stw_total_ms_whole_process": 28.067,
+    "gc_stw_p99_ms_whole_process": 0.309,
+    "gc_live_heap_median_mb_after_30s": 93.0,
+    "functional": {
+      "conversation_metadata_captured": true,
+      "cross_replica_polling_under_500ms": true,
+      "invalid_keys_rejected_on_both_nodes": true,
+      "key_revocation_propagated_and_rejected_on_single_node": true,
+      "session_termination_authoritative_on_both_nodes": true,
+      "single_node_session_and_paginated_masked_metadata": true
+    },
+    "source_tree_sha256": "f43b8e02f27c7e0ca4fe9c6dbe4992f44eba069255c1250319be15e9335904e9",
+    "go_version": "go1.27.3"
+  }
+}

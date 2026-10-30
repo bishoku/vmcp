@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: vMCP Control Plane API
-  version: 1.2.5
+  version: 1.3.0
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1641,6 +1641,11 @@ paths:
       operationId: listAuditEvents
       summary: List audit events, newest first
       parameters:
+        - { name: groupBy, in: query, description: Return server-aggregated conversation summaries. Groups exclude events without correlation; pagination uses the last group ID cursor. Active groups may move as new events arrive., schema: { type: string, enum: [ conversation ] } }
+        - { name: conversationId, in: query, schema: { type: string, maxLength: 256 } }
+        - { name: rootConversationId, in: query, schema: { type: string, maxLength: 256 } }
+        - { name: turnId, in: query, schema: { type: string, maxLength: 256 } }
+        - { name: conversationGroupId, in: query, schema: { type: string, maxLength: 256 } }
         - name: activity
           in: query
           description: Filter by recorded origin. Virtual includes virtual MCP events and explicitly linked upstream attempts; control includes control-plane reads/writes and their linked upstream attempts; system includes background activity; upstream selects upstream-scope events only. Omni includes Omni calls, discovery/model diagnostics and explicitly linked virtual/upstream descendants. Omit for all events, including unclassified legacy events.
@@ -1675,7 +1680,7 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: "#/components/schemas/AuditEvent" }
+                    items: { oneOf: [ { $ref: "#/components/schemas/AuditEvent" }, { $ref: "#/components/schemas/AuditConversation" } ] }
                   nextCursor:
                     type: [ string, "null" ]
         "401":
@@ -3037,6 +3042,30 @@ components:
         clientFeatures:
           $ref: "#/components/schemas/ClientFeatures"
 
+    AuditCorrelation:
+      type: object
+      additionalProperties: false
+      description: Optional JSON Pointers relative to params._meta. Empty object disables extraction; omission on PATCH preserves configuration. Caller-supplied IDs do not grant access. Invalid/missing runtime values never reject calls.
+      properties:
+        conversationId: { type: string, maxLength: 512 }
+        rootConversationId: { type: string, maxLength: 512 }
+        turnId: { type: string, maxLength: 512 }
+
+    AuditConversation:
+      type: object
+      required: [ conversationGroupId, rootConversationId, actorId, firstTime, lastTime, lastId, records, operations, errors, conversations ]
+      properties:
+        conversationGroupId: { type: string }
+        rootConversationId: { type: string }
+        actorId: { type: string }
+        firstTime: { type: string, format: date-time }
+        lastTime: { type: string, format: date-time }
+        lastId: { type: integer, format: int64 }
+        records: { type: integer, description: Authorized records matching the active filters. }
+        operations: { type: integer, description: Distinct root operations, excluding linked children. }
+        errors: { type: integer, description: Root outcomes with error, tool_error or denied status. }
+        conversations: { type: integer }
+
     AgentKey:
       type: object
       required:
@@ -3049,6 +3078,7 @@ components:
         - createdAt
         - updatedAt
       properties:
+        auditCorrelation: { $ref: "#/components/schemas/AuditCorrelation" }
         slug:
           $ref: "#/components/schemas/Slug"
         description:
@@ -3175,6 +3205,7 @@ components:
       required: [ slug ]
       additionalProperties: false
       properties:
+        auditCorrelation: { $ref: "#/components/schemas/AuditCorrelation" }
         slug: { $ref: "#/components/schemas/Slug" }
         description: { type: string, maxLength: 1000 }
         virtualServers:
@@ -3191,6 +3222,7 @@ components:
       type: object
       additionalProperties: false
       properties:
+        auditCorrelation: { $ref: "#/components/schemas/AuditCorrelation" }
         description: { type: string, maxLength: 1000 }
         virtualServers:
           type: array
@@ -3503,6 +3535,11 @@ components:
       type: object
       required: [ tenantId, id, eventId, schemaVersion, stage, time, virtualServer, method, status, durationMs ]
       properties:
+        conversationId: { type: string, maxLength: 256 }
+        rootConversationId: { type: string, maxLength: 256 }
+        turnId: { type: string, maxLength: 256 }
+        conversationGroupId: { type: string, description: Credential-scoped root conversation digest; not a credential. }
+        correlationStatus: { type: string, enum: [ captured, missing, invalid ] }
         auditMode:
           type: string
           enum:

@@ -3,6 +3,7 @@ package controlplane
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/bishoku/vmcp/core/internal/correlation"
 	"net/http"
 	"time"
 
@@ -11,12 +12,13 @@ import (
 )
 
 type agentKeyWire struct {
-	Slug           string     `json:"slug"`
-	Description    *string    `json:"description"`
-	VirtualServers []string   `json:"virtualServers"`
-	IPAllowlist    []string   `json:"ipAllowlist"`
-	RateLimit      *int       `json:"rateLimitPerMinute"`
-	ExpiresAt      *time.Time `json:"expiresAt"`
+	AuditCorrelation correlation.Config `json:"auditCorrelation"`
+	Slug             string             `json:"slug"`
+	Description      *string            `json:"description"`
+	VirtualServers   []string           `json:"virtualServers"`
+	IPAllowlist      []string           `json:"ipAllowlist"`
+	RateLimit        *int               `json:"rateLimitPerMinute"`
+	ExpiresAt        *time.Time         `json:"expiresAt"`
 }
 
 // optionalTime tells an absent field apart from an explicit null (which clears it).
@@ -48,11 +50,12 @@ func (o *optionalInt) UnmarshalJSON(b []byte) error {
 }
 
 type agentKeyPatchWire struct {
-	Description    *string      `json:"description"`
-	VirtualServers *[]string    `json:"virtualServers"`
-	IPAllowlist    *[]string    `json:"ipAllowlist"`
-	ExpiresAt      optionalTime `json:"expiresAt"`
-	RateLimit      optionalInt  `json:"rateLimitPerMinute"`
+	AuditCorrelation *correlation.Config `json:"auditCorrelation"`
+	Description      *string             `json:"description"`
+	VirtualServers   *[]string           `json:"virtualServers"`
+	IPAllowlist      *[]string           `json:"ipAllowlist"`
+	ExpiresAt        optionalTime        `json:"expiresAt"`
+	RateLimit        optionalInt         `json:"rateLimitPerMinute"`
 }
 
 // withSecret is the one response that carries a key's secret.
@@ -100,7 +103,7 @@ func (s *Server) createAgentKey(w http.ResponseWriter, r *http.Request) error {
 	if body.Slug == "" {
 		return apierror.Validation([]apierror.FieldError{required("/slug")})
 	}
-	in := store.AgentKeyInput{VirtualServers: body.VirtualServers, IPAllowlist: body.IPAllowlist, ExpiresAt: body.ExpiresAt, RateLimit: body.RateLimit}
+	in := store.AgentKeyInput{AuditCorrelation: body.AuditCorrelation, VirtualServers: body.VirtualServers, IPAllowlist: body.IPAllowlist, ExpiresAt: body.ExpiresAt, RateLimit: body.RateLimit}
 	if body.Description != nil {
 		in.Description = *body.Description
 	}
@@ -138,7 +141,7 @@ func (s *Server) patchAgentKey(w http.ResponseWriter, r *http.Request) error {
 	if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
 		k, err = tx.PatchAgentKey(r.Context(), slug, store.AgentKeyPatch{
-			Description: body.Description, VirtualServers: body.VirtualServers, IPAllowlist: body.IPAllowlist,
+			AuditCorrelation: body.AuditCorrelation, Description: body.Description, VirtualServers: body.VirtualServers, IPAllowlist: body.IPAllowlist,
 			ExpiresAtSet: body.ExpiresAt.Set, ExpiresAt: body.ExpiresAt.Value,
 			RateLimitSet: body.RateLimit.Set, RateLimit: body.RateLimit.Value,
 		}, ifMatch)

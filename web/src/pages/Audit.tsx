@@ -1,4 +1,5 @@
 import Button from '../Button'
+import AuditConversations from '../connections/AuditConversations'
 import { Badge } from '../Badge'
 import { ResultCount } from '../SearchControls'
 import { auditDateErrors, parseLocalDateTime } from '../date-time'
@@ -19,7 +20,8 @@ import { ErrorBox, Pill } from '../ui'
 
 export default function Audit({ initialServer, initialOperation, initialQuery }: { initialServer?: string; initialOperation?: string; initialQuery?: AuditQuery }) {
   const [filters, setFilters] = useState<AuditQuery>(()=>({...initialQuery, virtualServer:initialServer ?? initialQuery?.virtualServer, operationId:initialOperation ?? initialQuery?.operationId}))
-  const [raw, setRaw] = useState(false)
+  const [conversations,setConversations]=useState(false)
+ const [raw, setRaw] = useState(false)
   const [selected, setSelected] = useState<AuditEvent[] | null>(null)
   const [checked, setChecked] = useState('')
   const [items, setItems] = useState<AuditEvent[]>([])
@@ -78,13 +80,14 @@ export default function Audit({ initialServer, initialOperation, initialQuery }:
   const missingGroups=operations.filter(events=>auditOperationSummary(events).incomplete).length
   const filterCount=Object.entries(filters).filter(([key,value])=>key!=='cursor' && value).length
   const reset=()=>{setItems([]);setNext(null);setChecked('');setLoading(true);setFilters({})}
+  if(conversations)return <AuditConversations filters={filters} back={()=>setConversations(false)} open={id=>{setItems([]);setFilters({...filters,cursor:undefined,conversationGroupId:id});setConversations(false);setRaw(false)}}/>
   return <div className="page-layout">
     <header className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><FileClock aria-hidden="true" className="icon-feature"/></span><div><h1 className="page-title">Audit Log</h1><p className="page-description mt-1 text-sm text-ink-muted">Investigate tool calls and administrative operations from stored events.</p></div></div><Button loading={loading} className={btn} disabled={loading} onClick={()=>void load(filters,false)}><RefreshCw aria-hidden="true" className={`icon-inline ${loading?'motion-spin':''}`}/>Refresh</Button></header>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4"><SummaryTile label="Loaded records" value={items.length} detail="Stored events in the current query" icon={FileClock}/><SummaryTile label="Displayed rows" value={groups.length} detail={raw?'Individual raw stored events':'Tool calls with explicitly linked upstream operations'} icon={Layers3}/><SummaryTile label="Outcome not loaded" value={missingGroups} detail="Loaded groups with missing outcomes · not failures" icon={Clock3}/><SummaryTile label="Last successful read" value={<span className="text-sm font-medium">{checked || 'Not loaded yet'}</span>} detail={error?'Latest query failed; displayed data may be older':loading?'Reading stored events…':'Manual refresh · no live subscription'} icon={RefreshCw}/></div>
     <AuditFilters filters={filters} set={set} when={when} reset={reset} link={new URL(filterLink,window.location.origin).href} zone={zone}/>
     {error && <ErrorBox title="Audit events could not be loaded" onRetry={()=>load(filters,false)} busy={loading}>{error} Displayed events may be from the previous successful query.</ErrorBox>}
     <ServerPanel title="Stored activity" description={`${items.length} loaded records · ${filterCount} active filters`} icon={ListFilter}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4"><RadioGroup label="Audit view" value={raw?'raw':'operations'} onChange={value=>setRaw(value==='raw')} options={[{value:'operations',label:'Operations'},{value:'raw',label:'Raw events'}]}/><div className="flex flex-wrap items-center gap-3"><ResultCount matched={items.length} noun="records" loaded busy={loading}/><p className="text-xs text-ink-muted">{raw?'One row per stored event':'Operations group only loaded records'}</p></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4"><button className={btn} onClick={()=>setConversations(true)}>Conversations</button><RadioGroup label="Audit view" value={raw?'raw':'operations'} onChange={value=>setRaw(value==='raw')} options={[{value:'operations',label:'Operations'},{value:'raw',label:'Raw events'}]}/><div className="flex flex-wrap items-center gap-3"><ResultCount matched={items.length} noun="records" loaded busy={loading}/><p className="text-xs text-ink-muted">{raw?'One row per stored event':'Operations group only loaded records'}</p></div></div>
       {loading && <LoadingState label="Loading audit events…" detail={items.length?'Previously loaded events remain visible.':undefined} compact/>}
       <div role="region" aria-label="Audit events">
         {items.length>0?<DataTable caption={raw?'Raw audit events':'Loaded audit operations'} columns={['Time','Virtual server','Identity','Tool / action','Status','Redacted','Duration']} sorting={sorting} minWidth={920} sortScope="Sorting applies to loaded records only; more events may be available.">{sorting.rows.map(({events,event:e,missing})=>{

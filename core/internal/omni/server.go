@@ -150,6 +150,7 @@ func (s *Server) access(ctx context.Context, token, ip string, full bool) (Acces
 }
 
 type query struct {
+	Meta      json.RawMessage `json:"_meta,omitempty"`
 	Query     string          `json:"query"`
 	Server    string          `json:"server_id"`
 	Project   string          `json:"project"`
@@ -211,7 +212,10 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if msg.IsNotification() {
- if _,err:=s.access(r.Context(),token,ip,false);err!=nil{s.fail(w,err);return}
+		if _, err := s.access(r.Context(), token, ip, false); err != nil {
+			s.fail(w, err)
+			return
+		}
 		w.WriteHeader(202)
 		return
 	}
@@ -359,6 +363,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				path = "/internal/omni/invoke"
+				q.Meta = call.Meta
 			}
 			if call.Name == "get_tool_schema" {
 				var schema Schema

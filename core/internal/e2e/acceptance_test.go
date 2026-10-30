@@ -413,6 +413,7 @@ func TestScaleAcceptance(t *testing.T) {
 	}
 	if os.Getenv("VMCP_ACCEPTANCE_DATABASE_FOCUS") == "1" {
 		report.DataPlaneConfiguration["database_focus"] = true
+		report.DataPlaneConfiguration["correlation_metadata"] = os.Getenv("VMCP_ACCEPTANCE_CORRELATION") == "1"
 		report.DataPlaneConfiguration["delivery_wakeup"] = "local channel; cross-replica polling; no delivery NOTIFY"
 		report.DataPlaneConfiguration["postgres_tuned"] = os.Getenv("VMCP_ACCEPTANCE_POSTGRES_TUNED") == "1"
 		report.DataPlaneConfiguration["postgres_limits"] = "none"
@@ -583,6 +584,14 @@ ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
 	// DELETE must terminate a shared session immediately on both nodes.
 	sessionOK := true
 	closed := clients[min(1, len(clients)-1)]
+	if os.Getenv("VMCP_ACCEPTANCE_CORRELATION") == "1" {
+		var total, bad int64
+		err := pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE correlation_status<>'captured' OR conversation_group_id='' OR conversation_id='' OR root_conversation_id='') FROM audit_events WHERE scope='virtual' AND method='tools/call' AND stage='outcome' AND status='ok'`).Scan(&total, &bad)
+		report.Functional["conversation_metadata_captured"] = err == nil && total > 0 && bad == 0
+		if err != nil || bad > 0 || total == 0 {
+			report.Failures = append(report.Failures, fmt.Sprintf("conversation audit total=%d bad=%d error=%v", total, bad, err))
+		}
+	}
 	req, _ := http.NewRequestWithContext(ctx, "DELETE", closed.url, nil)
 	req.Header.Set("Authorization", "Bearer "+closed.token)
 	req.Header.Set("Mcp-Session-Id", closed.session)

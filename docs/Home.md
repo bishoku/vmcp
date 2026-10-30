@@ -34,6 +34,7 @@ before production use.
 - [PII masking](PII-Masking.md)
 - [Rate limits](Rate-Limits.md)
 - [Audit log](Audit-Log.md)
+- [Conversation audit correlation](Audit-Conversation-Correlation.md)
 - [FAQ and troubleshooting](FAQ.md)
 
 ## Deploy and operate

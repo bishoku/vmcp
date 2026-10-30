@@ -132,6 +132,9 @@ func acceptanceSeed(t *testing.T, p acceptanceProfile, fixtures []*httptest.Serv
 		tokens[i] = "acceptance-" + nonce
 		execSQL(`INSERT INTO agent_keys(tenant_id,slug,key_hash,key_prefix) VALUES($1::uuid,$2,$3,'synthetic')`, tenant, fmt.Sprintf("accept-key-%02d", i), store.HashKey(tokens[i]))
 	}
+	if os.Getenv("VMCP_ACCEPTANCE_CORRELATION") == "1" {
+		execSQL(`UPDATE agent_keys SET audit_correlation='{"conversationId":"/antigravity.google~1conversation_id","rootConversationId":"/antigravity.google~1root_conversation_id"}'::jsonb`)
+	}
 	execSQL(`INSERT INTO agent_key_servers(agent_key_id,virtual_server_id) SELECT k.id,v.id FROM agent_keys k CROSS JOIN virtual_servers v`)
 	if os.Getenv("VMCP_ACCEPTANCE_OWNERSHIP") == "1" {
 		execSQL(`INSERT INTO tool_grants(virtual_server_id,upstream_id,tool_name,status,actor) SELECT virtual_server_id,upstream_id,tool_name,'approved','benchmark' FROM virtual_server_tools`)

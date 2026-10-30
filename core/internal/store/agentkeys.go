@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/correlation"
 	"net/netip"
 	"slices"
 	"time"
@@ -21,38 +22,41 @@ const keyPrefixLen = 12
 // AgentKey is the API read model. The secret itself is never stored or returned
 // again after creation or rotation.
 type AgentKey struct {
-	Slug           string     `json:"slug"`
-	Description    string     `json:"description"`
-	KeyPrefix      string     `json:"keyPrefix"`
-	VirtualServers []string   `json:"virtualServers"`
-	IPAllowlist    []string   `json:"ipAllowlist"`
-	RateLimit      *int       `json:"rateLimitPerMinute"`
-	ExpiresAt      *time.Time `json:"expiresAt"`
-	RevokedAt      *time.Time `json:"revokedAt"`
-	Status         string     `json:"status"` // active | expired | revoked
-	Version        int64      `json:"version"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
+	AuditCorrelation correlation.Config `json:"auditCorrelation"`
+	Slug             string             `json:"slug"`
+	Description      string             `json:"description"`
+	KeyPrefix        string             `json:"keyPrefix"`
+	VirtualServers   []string           `json:"virtualServers"`
+	IPAllowlist      []string           `json:"ipAllowlist"`
+	RateLimit        *int               `json:"rateLimitPerMinute"`
+	ExpiresAt        *time.Time         `json:"expiresAt"`
+	RevokedAt        *time.Time         `json:"revokedAt"`
+	Status           string             `json:"status"` // active | expired | revoked
+	Version          int64              `json:"version"`
+	CreatedAt        time.Time          `json:"createdAt"`
+	UpdatedAt        time.Time          `json:"updatedAt"`
 }
 
 // AgentKeyInput is the writable part of an agent key.
 type AgentKeyInput struct {
-	Description    string
-	VirtualServers []string
-	IPAllowlist    []string
-	RateLimit      *int
-	ExpiresAt      *time.Time
+	AuditCorrelation correlation.Config
+	Description      string
+	VirtualServers   []string
+	IPAllowlist      []string
+	RateLimit        *int
+	ExpiresAt        *time.Time
 }
 
 // AgentKeyPatch is a JSON merge patch. ExpiresAtSet distinguishes "absent" from "null" (clear).
 type AgentKeyPatch struct {
-	Description    *string
-	VirtualServers *[]string
-	IPAllowlist    *[]string
-	RateLimitSet   bool
-	RateLimit      *int
-	ExpiresAtSet   bool
-	ExpiresAt      *time.Time
+	AuditCorrelation *correlation.Config
+	Description      *string
+	VirtualServers   *[]string
+	IPAllowlist      *[]string
+	RateLimitSet     bool
+	RateLimit        *int
+	ExpiresAtSet     bool
+	ExpiresAt        *time.Time
 }
 
 // HashKey returns the lookup hash of a presented key.
@@ -95,7 +99,7 @@ type keyRow struct {
 
 const keySelect = `
 	SELECT k.id::text, k.slug, k.description, k.key_prefix, k.ip_allowlist, k.expires_at, k.revoked_at, k.rate_limit_per_minute,
-	       k.version, k.created_at, k.updated_at
+	       k.version, k.created_at, k.updated_at, k.audit_correlation
 	FROM agent_keys k WHERE k.tenant_id = ` + tenantSQL
 
 func statusOf(k *AgentKey, now time.Time) string {
@@ -111,7 +115,7 @@ func statusOf(k *AgentKey, now time.Time) string {
 func scanKey(row scanner) (*keyRow, error) {
 	var r keyRow
 	if err := row.Scan(&r.id, &r.Slug, &r.Description, &r.KeyPrefix, &r.IPAllowlist, &r.ExpiresAt, &r.RevokedAt, &r.RateLimit,
-		&r.Version, &r.CreatedAt, &r.UpdatedAt); err != nil {
+		&r.Version, &r.CreatedAt, &r.UpdatedAt, &r.AuditCorrelation); err != nil {
 		return nil, err
 	}
 	if r.IPAllowlist == nil {
@@ -223,6 +227,9 @@ func (t *Tx) ListAgentKeys(ctx context.Context, after string, limit int) ([]Agen
 }
 
 func validateKeyInput(in *AgentKeyInput) []apierror.FieldError {
+	if err := in.AuditCorrelation.Validate(); err != nil {
+		return []apierror.FieldError{vf("/auditCorrelation", err.Error())}
+	}
 	var errs []apierror.FieldError
 	if len(in.Description) > 1000 {
 		errs = append(errs, vf("/description", "must be at most 1000 characters"))
@@ -315,9 +322,9 @@ func (t *Tx) CreateAgentKey(ctx context.Context, slug string, in AgentKeyInput) 
 	}
 	var id string
 	if err := t.q.QueryRow(ctx, `
-		INSERT INTO agent_keys (tenant_id, slug, description, key_hash, key_prefix, ip_allowlist, expires_at, rate_limit_per_minute)
-		VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7) RETURNING id::text`,
-		slug, in.Description, HashKey(secret), prefix, in.IPAllowlist, in.ExpiresAt, in.RateLimit).Scan(&id); err != nil {
+		INSERT INTO agent_keys (tenant_id, slug, description, key_hash, key_prefix, ip_allowlist, expires_at, rate_limit_per_minute, audit_correlation)
+		VALUES (`+tenantSQL+`, $1, $2, $3, $4, $5, $6, $7, $8) RETURNING id::text`,
+		slug, in.Description, HashKey(secret), prefix, in.IPAllowlist, in.ExpiresAt, in.RateLimit, in.AuditCorrelation).Scan(&id); err != nil {
 		return nil, "", mapWriteErr(err, "agent key", slug)
 	}
 	if ferrs, err := t.writeKeyServers(ctx, id, in.VirtualServers); err != nil {
@@ -339,7 +346,10 @@ func (t *Tx) PatchAgentKey(ctx context.Context, slug string, p AgentKeyPatch, if
 	if ifMatch != nil && *ifMatch != cur.Version {
 		return nil, apierror.PreconditionFailed()
 	}
-	in := AgentKeyInput{Description: cur.Description, VirtualServers: cur.VirtualServers, IPAllowlist: cur.IPAllowlist, ExpiresAt: cur.ExpiresAt, RateLimit: cur.RateLimit}
+	in := AgentKeyInput{AuditCorrelation: cur.AuditCorrelation, Description: cur.Description, VirtualServers: cur.VirtualServers, IPAllowlist: cur.IPAllowlist, ExpiresAt: cur.ExpiresAt, RateLimit: cur.RateLimit}
+	if p.AuditCorrelation != nil {
+		in.AuditCorrelation = *p.AuditCorrelation
+	}
 	if p.RateLimitSet {
 		in.RateLimit = p.RateLimit
 	}
@@ -364,7 +374,7 @@ func (t *Tx) PatchAgentKey(ctx context.Context, slug string, p AgentKeyPatch, if
 	serversChanged := p.VirtualServers != nil &&
 		!slices.Equal(slices.Compact(slices.Sorted(slices.Values(in.VirtualServers))), cur.VirtualServers)
 	sameExp := (in.ExpiresAt == nil && cur.ExpiresAt == nil) || (in.ExpiresAt != nil && cur.ExpiresAt != nil && in.ExpiresAt.Equal(*cur.ExpiresAt))
-	if !serversChanged && sameExp && in.Description == cur.Description && slices.Equal(in.IPAllowlist, cur.IPAllowlist) && equalInt(in.RateLimit, cur.RateLimit) {
+	if in.AuditCorrelation == cur.AuditCorrelation && !serversChanged && sameExp && in.Description == cur.Description && slices.Equal(in.IPAllowlist, cur.IPAllowlist) && equalInt(in.RateLimit, cur.RateLimit) {
 		return &cur.AgentKey, nil
 	}
 	if serversChanged {
@@ -375,8 +385,8 @@ func (t *Tx) PatchAgentKey(ctx context.Context, slug string, p AgentKeyPatch, if
 		}
 	}
 	if _, err := t.q.Exec(ctx, `
-		UPDATE agent_keys SET description=$2, ip_allowlist=$3, expires_at=$4, rate_limit_per_minute=$5, version = version + 1, updated_at = now()
-		WHERE id = $1::uuid`, cur.id, in.Description, in.IPAllowlist, in.ExpiresAt, in.RateLimit); err != nil {
+		UPDATE agent_keys SET description=$2, ip_allowlist=$3, expires_at=$4, rate_limit_per_minute=$5, audit_correlation=$6, version = version + 1, updated_at = now()
+		WHERE id = $1::uuid`, cur.id, in.Description, in.IPAllowlist, in.ExpiresAt, in.RateLimit, in.AuditCorrelation); err != nil {
 		return nil, err
 	}
 	return t.GetAgentKey(ctx, slug)

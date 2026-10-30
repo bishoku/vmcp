@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -55,6 +56,9 @@ func (a *acceptanceTracker) call(ctx context.Context, c *acceptanceClient, tool 
 	params := map[string]any{"name": fmt.Sprintf("tool-%03d", tool), "arguments": args}
 	if c.omni {
 		params = map[string]any{"name": "invoke_tool", "arguments": map[string]any{"tool_ref": omni.Ref(fmt.Sprintf("accept-vs-%04d", c.server), fmt.Sprintf("tool-%03d", tool)), "arguments": args}}
+	}
+	if os.Getenv("VMCP_ACCEPTANCE_CORRELATION") == "1" {
+		params["_meta"] = map[string]any{"antigravity.google/conversation_id": "conversation-" + c.session, "antigravity.google/root_conversation_id": "root-" + c.session, "progressToken": fmt.Sprint(id)}
 	}
 	response := c.request(ctx, "tools/call", params, id)
 	valid := false

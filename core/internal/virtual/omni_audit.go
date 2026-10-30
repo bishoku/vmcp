@@ -14,6 +14,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/omni"
 )
 
@@ -79,6 +80,11 @@ func (h *Handler) omniAuditBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	policy := snap.Audit.ForOmni()
 	e := audit.Event{Scope: "omni", Boundary: "omni", Action: "omni/" + p.Tool, Method: "tools/call", Tool: p.Tool, Target: "omni", ClientIP: h.ipString(r), ActorType: owner.Mode, ActorID: owner.CredentialID, AgentKey: owner.Principal, Issuer: owner.Issuer, Subject: owner.Subject, Revision: snap.Revision, TraceID: audit.TraceFrom(audit.WithTrace(r.Context(), r.Header.Get("traceparent"))), Policy: &policy, RawPayload: p.Payload}
+	var clientCall struct {
+		Params mcp.CallToolParams `json:"params"`
+	}
+	_ = json.Unmarshal(p.Payload, &clientCall)
+	e.IDs = callerCorrelation(snap, owner, clientCall.Params.Meta)
 	e, err := runtime.Admit(r.Context(), e)
 	if err != nil {
 		http.Error(w, "audit admission unavailable", 503)

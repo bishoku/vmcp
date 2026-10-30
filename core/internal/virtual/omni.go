@@ -169,6 +169,7 @@ func (h *Handler) omniAccess(w http.ResponseWriter, r *http.Request) {
 }
 
 type omniInput struct {
+	Meta        json.RawMessage `json:"_meta,omitempty"`
 	AuditTicket string          `json:"_audit_ticket"`
 	Ref         string          `json:"tool_ref"`
 	Arguments   json.RawMessage `json:"arguments"`
@@ -285,7 +286,7 @@ func (h *Handler) omniInvoke(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	_, name, _ := omni.ParseRef(p.Ref)
-	msg, _ := mcp.NewRequest(mcp.NewIntID(1), mcp.MethodToolsCall, mcp.CallToolParams{Name: name, Arguments: p.Arguments})
+	msg, _ := mcp.NewRequest(mcp.NewIntID(1), mcp.MethodToolsCall, mcp.CallToolParams{Name: name, Arguments: p.Arguments, Meta: p.Meta})
 	incoming := r.Header.Clone()
 	incoming.Del("X-VMCP-Omni-Secret")
 	incoming.Del("X-VMCP-Client-IP")

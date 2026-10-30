@@ -405,7 +405,7 @@ func loadBindings(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlugs
 
 func loadAgentKeys(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlugs map[string]string) error {
 	rows, err := tx.Query(ctx, `
-		SELECT k.id::text, k.slug, k.key_hash, k.ip_allowlist, k.expires_at, k.rate_limit_per_minute
+		SELECT k.id::text, k.slug, k.key_hash, k.ip_allowlist, k.expires_at, k.rate_limit_per_minute, k.audit_correlation
 		FROM agent_keys k JOIN tenants t ON t.id = k.tenant_id
 		WHERE t.slug = $1 AND k.revoked_at IS NULL`, DefaultTenantSlug)
 	if err != nil {
@@ -418,7 +418,7 @@ func loadAgentKeys(ctx context.Context, tx pgx.Tx, snap *config.Snapshot, vsSlug
 		var ips []string
 		var rl *int
 		k := config.AgentKey{Servers: map[string]bool{}}
-		if err := rows.Scan(&id, &k.Slug, &hash, &ips, &k.ExpiresAt, &rl); err != nil {
+		if err := rows.Scan(&id, &k.Slug, &hash, &ips, &k.ExpiresAt, &rl, &k.AuditCorrelation); err != nil {
 			rows.Close()
 			return err
 		}

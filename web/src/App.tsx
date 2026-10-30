@@ -101,7 +101,7 @@ export default function App() { return <TooltipProvider><NotificationsProvider><
 function AuditRoute() {
   const [params] = useSearchParams()
   const server = params.get('virtualServer') ?? undefined
-  const allowed = new Set(['activity','virtualServer','operationId','requestId','actorId','stage','agentKey','subject','tool','status','from','to','incomplete'])
+  const allowed = new Set(['conversationId','rootConversationId','turnId','conversationGroupId','activity','virtualServer','operationId','requestId','actorId','stage','agentKey','subject','tool','status','from','to','incomplete'])
   const initialQuery = Object.fromEntries([...params].filter(([key])=>allowed.has(key)))
   return <Audit initialQuery={initialQuery} key={params.toString()} initialServer={server} initialOperation={params.get('operationId') ?? undefined}/>
 }

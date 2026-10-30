@@ -29,6 +29,18 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
 	if f.Status != "" && f.Status != "started" && f.Status != "ok" && f.Status != "tool_error" && f.Status != "error" && f.Status != "denied" {
 		errs = append(errs, apierror.FieldError{Field: "status", Code: apierror.CodeValidationFailed, Message: "must be one of: started, ok, tool_error, error, denied"})
 	}
+	f.ConversationID = q.Get("conversationId")
+	f.RootConversationID = q.Get("rootConversationId")
+	f.TurnID = q.Get("turnId")
+	f.ConversationGroupID = q.Get("conversationGroupId")
+	for name, v := range map[string]string{"conversationId": f.ConversationID, "rootConversationId": f.RootConversationID, "turnId": f.TurnID, "conversationGroupId": f.ConversationGroupID} {
+		if len(v) > 256 {
+			errs = append(errs, apierror.FieldError{Field: name, Code: apierror.CodeValidationFailed, Message: "maximum 256 bytes"})
+		}
+	}
+	if q.Get("groupBy") != "" && q.Get("groupBy") != "conversation" {
+		errs = append(errs, apierror.FieldError{Field: "groupBy", Code: apierror.CodeValidationFailed, Message: "must be conversation"})
+	}
 	f.Stage = q.Get("stage")
 	f.OperationID = q.Get("operationId")
 	f.RequestID = q.Get("requestId")
@@ -67,6 +79,18 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
 	}
 	if len(errs) > 0 {
 		return apierror.Validation(errs)
+	}
+	if q.Get("groupBy") == "conversation" {
+		items, more, err := s.Store.Reader().ListAuditConversations(r.Context(), f, limit)
+		if err != nil {
+			return err
+		}
+		var next *string
+		if more {
+			v := strconv.FormatInt(items[len(items)-1].LastID, 10)
+			next = &v
+		}
+		return writeJSON(w, 200, map[string]any{"items": items, "nextCursor": next})
 	}
 	items, more, err := s.Store.Reader().ListAudit(r.Context(), f, limit)
 	if err != nil {

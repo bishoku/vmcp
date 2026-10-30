@@ -121,7 +121,7 @@ func Prepare(e Event) (Event, error) {
 	if e.Action == "" {
 		e.Action = e.Method
 	}
-	for _, v := range []string{e.VirtualServer, e.AgentKey, e.ClientIP, e.Subject, e.Method, e.Tool, e.Upstream, e.Reason, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target} {
+	for _, v := range []string{e.VirtualServer, e.AgentKey, e.ClientIP, e.Subject, e.Method, e.Tool, e.Upstream, e.Reason, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.ConversationID, e.RootConversationID, e.TurnID, e.ConversationGroupID, e.CorrelationStatus} {
 		if len(v) > 2048 {
 			return e, errors.New("audit metadata too long")
 		}
@@ -136,8 +136,8 @@ type Sink interface {
 
 const insertSQL = `INSERT INTO audit_events
  (event_id,operation_id,request_id,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,
- ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions)
- VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::uuid,$31,$32,$33,$34)
+ ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions,conversation_id,root_conversation_id,turn_id,conversation_group_id,correlation_status)
+ VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::uuid,$31,$32,$33,$34,$35,$36,$37,$38,$39)
  ON CONFLICT(event_id) DO NOTHING`
 
 func insertArgs(e Event) ([]any, error) {
@@ -145,7 +145,7 @@ func insertArgs(e Event) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []any{e.EventID, nullable(e.OperationID), nullable(e.RequestID), e.TraceID, e.SchemaVersion, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.Revision, e.Stage, e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject), nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions, e.Mode, e.PolicyRevision, e.Scope, e.Boundary, e.Direction, nullable(e.ParentOperationID), e.PayloadState, e.PayloadOriginalBytes, e.PayloadStoredBytes, e.PayloadRedactions}, nil
+	return []any{e.EventID, nullable(e.OperationID), nullable(e.RequestID), e.TraceID, e.SchemaVersion, e.ActorType, e.ActorID, e.Issuer, e.Action, e.Target, e.Revision, e.Stage, e.Time, e.VirtualServer, nullable(e.AgentKey), nullable(e.ClientIP), e.Method, nullable(e.Subject), nullable(e.Tool), nullable(e.Upstream), e.Status, nullable(e.Reason), e.DurationMS, e.Redactions, e.Mode, e.PolicyRevision, e.Scope, e.Boundary, e.Direction, nullable(e.ParentOperationID), e.PayloadState, e.PayloadOriginalBytes, e.PayloadStoredBytes, e.PayloadRedactions, e.ConversationID, e.RootConversationID, e.TurnID, e.ConversationGroupID, e.CorrelationStatus}, nil
 }
 func Insert(ctx context.Context, q Sink, e Event) error {
 	e, err := Prepare(e)

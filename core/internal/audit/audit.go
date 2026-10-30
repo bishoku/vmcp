@@ -4,6 +4,7 @@ package audit
 import (
 	"context"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/correlation"
 	"log/slog"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 
 // Event is one audited action. Payload is optional and never included in metadata queries.
 type Event struct {
+	correlation.IDs
 	Mode                 string
 	PolicyRevision       int64
 	Scope                string

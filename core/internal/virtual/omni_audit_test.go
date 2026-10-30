@@ -15,6 +15,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/correlation"
 	"github.com/bishoku/vmcp/core/internal/omni"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/store"
@@ -45,7 +46,7 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 	v := snap.VirtualServers["support"]
 	v.OmniEnabled = true
 	snap.VirtualServers[v.Slug] = v
-	snap.AgentKeys = map[string]config.AgentKey{string(store.HashKey("runtime-key")): {ID: "runtime-id", Slug: "agent", Servers: map[string]bool{"support": true}}}
+	snap.AgentKeys = map[string]config.AgentKey{string(store.HashKey("runtime-key")): {AuditCorrelation: correlation.Config{ConversationID: "/client~1conversation", RootConversationID: "/client~1root"}, ID: "runtime-id", Slug: "agent", Servers: map[string]bool{"support": true}}}
 	policy := audit.DefaultSettings()
 	policy.Mode = "strict"
 	policy.Revision = 7
@@ -66,7 +67,7 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 	index.Refresh(ctx, backend)
 	server := (&omni.Server{Backend: backend, Index: index, Auditor: &omni.GatewayAudit{Backend: backend}}).Handler()
 	call := func(name string, args any) *httptest.ResponseRecorder {
-		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 42, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+		raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 42, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args, "_meta": map[string]any{"client/conversation": "child", "client/root": "root"}}})
 		r := httptest.NewRequest("POST", "/mcp/v1/omni", bytes.NewReader(raw))
 		r.Header.Set("Authorization", "Bearer runtime-key")
 		r.Header.Set("Content-Type", "application/json")
@@ -87,6 +88,9 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 		t.Fatalf("operation audit missing %v %v", events, err)
 	}
 	for _, event := range events {
+		if event.ConversationID != "child" || event.RootConversationID != "root" || event.ConversationGroupID == "" {
+			t.Fatalf("missing root correlation: %+v", event)
+		}
 		if (event.AgentKey == nil || *event.AgentKey != "agent") || event.ActorID != "runtime-id" || event.PolicyRevision != 7 {
 			t.Fatalf("unverified identity/policy: %+v", event)
 		}
@@ -125,6 +129,9 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 	}
 	foundUpstream := false
 	for _, event := range descendants {
+		if event.ConversationID != "child" || event.RootConversationID != "root" || event.ConversationGroupID == "" {
+			t.Fatalf("child correlation: %+v", event)
+		}
 		foundUpstream = foundUpstream || event.Scope == "upstream"
 	}
 	if !foundUpstream {
@@ -224,7 +231,7 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 		t.Fatal("policy not pinned", pinned, err)
 	}
 	// Restore auth and inject a storage failure: no underlying operation is dispatched.
-	snap.AgentKeys = map[string]config.AgentKey{string(store.HashKey("runtime-key")): {ID: "runtime-id", Slug: "agent", Servers: map[string]bool{"support": true}}}
+	snap.AgentKeys = map[string]config.AgentKey{string(store.HashKey("runtime-key")): {AuditCorrelation: correlation.Config{ConversationID: "/client~1conversation", RootConversationID: "/client~1root"}, ID: "runtime-id", Slug: "agent", Servers: map[string]bool{"support": true}}}
 	_, err = pool.Exec(ctx, `CREATE FUNCTION fail_omni_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.scope='omni' THEN RAISE EXCEPTION 'audit unavailable' USING ERRCODE='53100'; END IF;RETURN NEW;END $$;CREATE TRIGGER fail_omni_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION fail_omni_audit()`)
 	if err != nil {
 		t.Fatal(err)

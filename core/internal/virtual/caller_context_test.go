@@ -16,6 +16,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/fixture"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/omni"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 )
 
@@ -83,8 +84,54 @@ func TestCallerContextThroughVirtualMCP(t *testing.T) {
 			snap.Upstreams[up.ID] = up
 			snap.VirtualServers["support"] = config.VirtualServer{Slug: "support", Tools: []config.VirtualTool{{UpstreamID: up.ID, UpstreamName: "echo", Tool: tool}}}
 			sid := r.initialize(t)
+			v := snap.VirtualServers["support"]
+			v.OmniEnabled = true
+			snap.VirtualServers["support"] = v
+			r.handler.OmniAllowAnonymous = true
+			mux := http.NewServeMux()
+			secret := strings.Repeat("s", 32)
+			r.handler.RegisterOmni(mux, secret)
+			dp := httptest.NewServer(mux)
+			defer dp.Close()
+			backend, _ := omni.NewBackend(dp.URL, secret)
+			app := (&omni.Server{Backend: backend, Index: omni.NewIndex(nil), AllowAnonymous: true}).Handler()
+			invoke := func(args, meta json.RawMessage) *mcp.Message {
+				raw, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 99, "method": "tools/call", "params": map[string]any{"name": "invoke_tool", "arguments": map[string]any{"tool_ref": omni.Ref("support", tool.Name), "arguments": args}, "_meta": meta}})
+				req := httptest.NewRequest("POST", "/mcp/v1/omni", bytes.NewReader(raw))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				app.ServeHTTP(w, req)
+				var msg mcp.Message
+				if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &msg) != nil {
+					t.Errorf("omni: %d %s", w.Code, w.Body)
+					return nil
+				}
+				return &msg
+			}
+			if out := invoke(json.RawMessage(`{}`), nil); out == nil || out.Error == nil || calls.Load() != 0 {
+				t.Fatal("Omni required metadata not enforced")
+			}
+			var extra sync.WaitGroup
+			for i := 0; i < 12; i++ {
+				extra.Add(1)
+				go func(i int) {
+					defer extra.Done()
+					value := fmt.Sprint(i)
+					args, _ := json.Marshal(map[string]string{"message": value})
+					if kind == "rest" {
+						args = json.RawMessage(`{}`)
+					}
+					meta, _ := json.Marshal(map[string]any{"bank/context": map[string]string{"token": "token-" + value, "session": value, "ignored": "no"}, "unrelated": "no", "progressToken": "caller-progress"})
+					out := invoke(args, meta)
+					if out == nil || out.Error != nil || strings.Contains(string(out.Result), `"isError":true`) {
+						t.Errorf("omni metadata call: %+v", out)
+					}
+				}(i)
+			}
+			extra.Wait()
+
 			_, missing := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: json.RawMessage(`{}`)})
-			if missing == nil || missing.Error == nil || calls.Load() != 0 {
+			if missing == nil || missing.Error == nil || calls.Load() != 12 {
 				t.Fatal("required context did not prevent dispatch")
 			}
 			// Concurrent calls share one MCP session, but each must use its own refreshed token.
@@ -106,7 +153,7 @@ func TestCallerContextThroughVirtualMCP(t *testing.T) {
 				}(i)
 			}
 			wg.Wait()
-			if calls.Load() != 12 {
+			if calls.Load() != 24 {
 				t.Fatalf("calls=%d", calls.Load())
 			}
 			if kind == "rest" {
