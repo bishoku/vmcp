@@ -77,7 +77,7 @@ jobs:
             automation/scripts/verify-image-signature.sh "$image" \
               "https://github.com/$GH_REPO/.github/workflows/docker-publish.yml@refs/tags/$VERSION"
           done
-      - uses: azure/setup-helm@v4.3.0
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.17.3
       - name: Validate manifests and package the locked chart
