@@ -145,7 +145,7 @@ services:
     ports: ["127.0.0.1:8803:8080"]
 
   gateway:
-    image: nginx:1.30.6-alpine-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960
+    image: nginx:1.31.0-alpine-slim@sha256:241b0d0fe06250e026e7a35a008d022c9a1d3bec19442d65cc33b84d0b5dd64d
     ports: ["127.0.0.1:8800:80"]
     volumes: ["./gateway.conf:/etc/nginx/conf.d/default.conf:ro"]
     depends_on: [data-plane-1, data-plane-2]
