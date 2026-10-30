@@ -203,6 +203,85 @@ existing invocation limits remain in the data-plane. It is not a distributed sea
 quota. Full authorized manifests are currently fetched for search, so discovery
 load is additional data-plane work and is covered by the 1,000-tool acceptance profile.
 
+## Omni call audit and discovery diagnostics (v1.2.5+)
+
+Agent calls to `discover_server`, `discover_tools`, `get_tool_schema` and
+`invoke_tool` are recorded under **Activity → Omni MCP**. Each call has an
+admission/outcome lifecycle, verified runtime identity/IP, an operation ID,
+configuration and audit policy revision, duration and outcome. Search no-match is
+recorded separately from an RPC/provider error. Routine HTTP health checks,
+index refresh and protocol notifications are not Omni tool-call operations.
+Invalid origin/protocol/body requests rejected before a tool call can be decoded
+remain HTTP guard failures rather than discovery operations.
+
+In **Settings → Audit capture & masking**, configure independently:
+
+| Capture scope | Stored payload |
+|---|---|
+| Omni MCP calls | Actual client JSON-RPC request and response |
+| Omni discovery pipeline | Counts, bounded candidate samples, scores and stage decisions |
+| Omni embedding provider | Query embedding model request/response, including vectors when small enough |
+| Omni reranker provider | Model request/response for freshly authorized candidates |
+
+All payload capture defaults off. Summary metadata remains recorded. Enable
+**Include candidate identities, rankings and scores** for pipeline candidate
+samples; **Include unauthorized candidate samples** is a separate opt-in.
+Samples default to 100 per stage, with an enforced maximum of 200. This setting
+only changes stored diagnostics; it never broadens discovery or sends unauthorized
+metadata to an embedding/reranking model.
+
+The pipeline reports authorization/scope counts, query embedding state/timing,
+retrieval candidates, RRF lexical/vector candidate windows when applicable,
+pre-rerank access changes, reranker scores and score/no-match/confidence decisions,
+and the final access-filtered results. An embedding provider returns vectors,
+not tool identities; Omni computes retrieval candidates locally. Unauthorized
+entries are excluded before scoring and appear as an authorization count (or an
+explicitly enabled bounded identity sample), never a fabricated relevance score.
+Server/project exclusions are counted independently. Diagnostics describe stages
+that actually ran; they do not score the complete catalog merely for audit.
+
+Each operation retains its initial policy even if Settings change mid-call.
+Payloads use existing encryption, mandatory secret filters, global/local masking,
+retention, byte limits, administrator-only payload access and exporter opt-in.
+Because Omni crosses resource contexts, its payloads conservatively apply the
+union of pinned local masking rules in addition to global rules. Previewing an
+Omni capture scope uses the same conservative policy. This can mask more text
+than a single virtual-server call. Provider endpoints and authorization headers
+are never captured; a known model API key is removed if a provider echoes it.
+
+Trace limits are explicit: up to 32 stages, 64 KiB of detail per stage/provider
+body and a 512 KiB detail budget per call, further subject to the normal audit
+payload limit. Oversized or unparsed provider bodies may be omitted. Counts and
+omission indicators remain visible; enabling capture later cannot recover old
+payloads. Full 60,000-tool exclusion lists are deliberately not retained.
+Model payload bodies are stored as separate child events and never piggyback on
+the pipeline payload switch. Background document-indexing model calls remain
+operational logs/metrics, not agent discovery audit payloads.
+
+In an audit operation, inspect **Discovery pipeline** to see its summary, then
+explicitly load the administrator-protected payload for stages/candidates.
+Model child operations have their own request/response payload views. Omni
+`invoke_tool` is the explicit parent of the normal virtual-server operation and
+its upstream attempts. The Omni activity filter and operation-ID query include
+these descendants. Separate discovery and invocation calls are not implicitly
+linked merely because they share an agent key, request ID or trace ID.
+
+Omni still has no database credential or master key. The authenticated private
+`/internal/omni/audit/begin` and `/internal/omni/audit/complete` bridge uses the
+data plane's existing audit runtime. Operation tickets are encrypted, expire
+after ten minutes, bind to the original credential/IP, and work across DP
+replicas sharing the master key. Finalization can record a revoked caller's
+already-admitted outcome but cannot authorize another invocation. Keep all
+`/internal/*` routes private as before.
+
+Strict mode requires durable admission before dispatch and acknowledged outcome
+storage before returning success. If final audit persistence fails, the caller
+gets 503 and the operation may already have executed: never automatically retry
+an invocation. Missing outcomes remain incomplete. Relax mode uses the existing
+bounded asynchronous audit queue and loss counters. Deploy matching Omni and
+DP binaries/images together; the new Omni audit bridge requires the matching DP.
+No schema migration or new environment variable is required.
+
 ## Local verification (2026-10-27)
 
 - Migration/create/update/patch behavior verified against an isolated PostgreSQL 17.

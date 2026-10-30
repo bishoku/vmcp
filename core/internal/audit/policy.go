@@ -14,7 +14,14 @@ import (
 
 // Settings is immutable once attached to an operation. Local rules add protection;
 // they never turn off global rules. Empty mode preserves the deployment default.
+type OmniCapture struct {
+	Candidates    bool `json:"candidates"`
+	IncludeDenied bool `json:"includeDenied"`
+	MaxCandidates int  `json:"maxCandidates"`
+}
+
 type Settings struct {
+	Omni            OmniCapture        `json:"omni"`
 	ExportPayloads  map[string]bool    `json:"exportPayloads"`
 	Mode            string             `json:"mode"`
 	RetentionDays   int                `json:"retentionDays"`
@@ -49,9 +56,12 @@ type Preview struct {
 }
 
 func DefaultSettings() Settings {
-	return Settings{RetentionDays: 7, MaxPayloadBytes: 64 << 10, Scopes: map[string]Capture{}, Rules: []Rule{}, VirtualServers: map[string][]Rule{}, Upstreams: map[string][]Rule{}}
+	return Settings{Omni: OmniCapture{MaxCandidates: 100}, RetentionDays: 7, MaxPayloadBytes: 64 << 10, Scopes: map[string]Capture{}, Rules: []Rule{}, VirtualServers: map[string][]Rule{}, Upstreams: map[string][]Rule{}}
 }
 func (s Settings) Normalize() Settings {
+	if s.Omni.MaxCandidates == 0 {
+		s.Omni.MaxCandidates = 100
+	}
 	if s.RetentionDays == 0 {
 		s.RetentionDays = 7
 	}
@@ -76,6 +86,9 @@ func (s Settings) Normalize() Settings {
 	return s
 }
 func (s Settings) Validate() error {
+	if s.Omni.MaxCandidates < 0 || s.Omni.MaxCandidates > 200 {
+		return errors.New("omni.maxCandidates must be 0-200 (0 defaults to 100)")
+	}
 	if s.Mode != "" && s.Mode != "strict" && s.Mode != "relax" {
 		return errors.New("mode must be strict or relax")
 	}
@@ -87,7 +100,7 @@ func (s Settings) Validate() error {
 	}
 	for scope := range s.Scopes {
 		switch scope {
-		case "virtual", "upstream", "control", "system", "reads":
+		case "virtual", "upstream", "control", "system", "reads", "omni", "omni_diagnostics", "omni_embedding", "omni_rerank":
 		default:
 			return errors.New("unknown audit scope")
 		}
@@ -348,4 +361,32 @@ func PreviewPayload(s Settings, scope, direction, vs, up string, raw json.RawMes
 	p.Content = out
 	p.StoredBytes = len(out)
 	return p, nil
+}
+
+// ForOmni conservatively masks mixed-server discovery/provider payloads with all
+// pinned local rules. It never mutates the published settings or their slices.
+func (s Settings) ForOmni() Settings {
+	s = s.Normalize()
+	rules := append([]Rule{}, s.Rules...)
+	seen := map[string]bool{}
+	for _, r := range rules {
+		seen[r.Pattern] = true
+	}
+	for _, local := range []map[string][]Rule{s.VirtualServers, s.Upstreams} {
+		keys := []string{}
+		for key := range local {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			for _, r := range local[key] {
+				if !seen[r.Pattern] {
+					rules = append(rules, r)
+					seen[r.Pattern] = true
+				}
+			}
+		}
+	}
+	s.Rules = rules
+	return s
 }

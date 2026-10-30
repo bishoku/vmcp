@@ -47,6 +47,8 @@ func (h *Handler) RegisterOmni(mux *http.ServeMux, secret string) {
 	mux.HandleFunc("GET /internal/omni/access", wrap(h.omniAccess))
 	mux.HandleFunc("POST /internal/omni/schema", wrap(h.omniSchema))
 	mux.HandleFunc("POST /internal/omni/invoke", wrap(h.omniInvoke))
+	mux.HandleFunc("POST /internal/omni/audit/begin", wrap(h.omniAuditBegin))
+	mux.HandleFunc("POST /internal/omni/audit/complete", wrap(h.omniAuditComplete))
 }
 func omniTools(v config.VirtualServer) ([]mcp.Tool, error) { return v.ListedTools(0, len(v.Tools)) }
 
@@ -167,9 +169,10 @@ func (h *Handler) omniAccess(w http.ResponseWriter, r *http.Request) {
 }
 
 type omniInput struct {
-	Ref       string          `json:"tool_ref"`
-	Arguments json.RawMessage `json:"arguments"`
-	Version   string          `json:"schema_version"`
+	AuditTicket string          `json:"_audit_ticket"`
+	Ref         string          `json:"tool_ref"`
+	Arguments   json.RawMessage `json:"arguments"`
+	Version     string          `json:"schema_version"`
 }
 
 func (h *Handler) omniTarget(w http.ResponseWriter, r *http.Request) (omniInput, *config.Snapshot, config.VirtualServer, Owner, []byte, bool) {
@@ -253,6 +256,14 @@ func (h *Handler) omniInvoke(w http.ResponseWriter, r *http.Request) {
 	sess.owner = owner
 	sess.keySlug = owner.Principal
 	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))
+	if ticket := p.AuditTicket; ticket != "" {
+		parent, valid := h.decodeOmniAudit(r, ticket)
+		if !valid || parent.Tool != "invoke_tool" {
+			http.Error(w, "invalid invocation audit context", 403)
+			return
+		}
+		ctx = context.WithValue(ctx, omniAuditParentKey{}, parent)
+	}
 	ctx = context.WithValue(ctx, omniContextKey{}, true)
 	ctx = context.WithValue(ctx, authorizationGuardKey{}, func(c context.Context) error {
 		current, ok := h.requestSnapshot(w, r.WithContext(c))

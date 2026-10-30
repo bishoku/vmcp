@@ -81,9 +81,11 @@ func rankFusion(ctx context.Context, entries []entry, access Access, query, serv
 		if access.Refs[e.Ref] != e.Hash || (server != "" && e.Server != server) || (project != "" && e.Project != project) {
 			continue
 		}
-		offer(Hit{Document: e.Document, Score: fieldLexical(e, words)}, &lexical, lexServers)
+		lexicalScore := fieldLexical(e, words)
+		offer(Hit{Document: e.Document, Score: lexicalScore, Lexical: lexicalScore}, &lexical, lexServers)
 		if len(vector) > 0 {
-			offer(Hit{Document: e.Document, Score: positiveCosine(vector, e.Vector)}, &dense, denseServers)
+			denseScore := positiveCosine(vector, e.Vector)
+			offer(Hit{Document: e.Document, Score: denseScore, VectorScore: denseScore}, &dense, denseServers)
 		}
 	}
 	for _, h := range lexServers {
@@ -94,6 +96,8 @@ func rankFusion(ctx context.Context, entries []entry, access Access, query, serv
 	}
 	sort.Slice(lexical, func(a, b int) bool { return better(lexical[a], lexical[b]) })
 	sort.Slice(dense, func(a, b int) bool { return better(dense[a], dense[b]) })
+	traceHits(ctx, "lexical_candidates", []Hit(lexical))
+	traceHits(ctx, "vector_candidates", []Hit(dense))
 	fused := map[string]Hit{}
 	for _, list := range []hitHeap{lexical, dense} {
 		for rank, h := range list {
@@ -106,6 +110,8 @@ func rankFusion(ctx context.Context, entries []entry, access Access, query, serv
 				prev = h
 				prev.Score = 0
 			}
+			prev.Lexical = max(prev.Lexical, h.Lexical)
+			prev.VectorScore = max(prev.VectorScore, h.VectorScore)
 			prev.Score += 1 / float64(60+rank+1)
 			fused[key] = prev
 		}

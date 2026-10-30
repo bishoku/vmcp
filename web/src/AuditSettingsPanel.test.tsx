@@ -32,3 +32,20 @@ test('sample JSON errors do not call the preview API',async()=>{
  fireEvent.change(screen.getByLabelText('Example audit response'),{target:{value:'invalid JSON'}})
  fireEvent.click(screen.getByRole('button',{name:'Preview audit payloads'}));await waitFor(()=>expect(within(screen.getByRole('alert')).getByText(/JSON/)).toBeTruthy());expect(preview).not.toHaveBeenCalled()
 })
+
+test('Omni capture and bounded discovery details save independently of model payload capture',async()=>{
+ const save=vi.spyOn(api,'saveAuditSettings').mockImplementation(async s=>s)
+ render(<AuditSettingsPanel/>);await screen.findByLabelText('Audit mode')
+ fireEvent.click(screen.getByRole('checkbox',{name:'Omni MCP calls request capture'}))
+ fireEvent.click(screen.getByRole('checkbox',{name:'Omni discovery pipeline response capture'}))
+ fireEvent.click(screen.getByLabelText('Include candidate identities, rankings and scores'))
+ fireEvent.click(screen.getByLabelText('Include unauthorized candidate samples (administrator payload access only)'))
+ fireEvent.change(screen.getByLabelText('Maximum Omni candidate samples'),{target:{value:'50'}})
+ fireEvent.click(screen.getByRole('button',{name:'Save audit settings'}))
+ await waitFor(()=>expect(save).toHaveBeenCalledOnce())
+ const draft=save.mock.calls[0][0]
+ expect(draft.scopes.omni.request).toBe(true)
+ expect(draft.scopes.omni_diagnostics.response).toBe(true)
+ expect(draft.scopes.omni_embedding?.response??false).toBe(false)
+ expect(draft.omni).toEqual({candidates:true,includeDenied:true,maxCandidates:50})
+})

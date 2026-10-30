@@ -22,6 +22,7 @@ import (
 )
 
 type Server struct {
+	Auditor           Auditor
 	AllowAnonymous    bool
 	SearchLimit       int
 	limiter           *ratelimit.Local
@@ -199,11 +200,6 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, ip := r.Header.Get("Authorization"), s.ip(r)
-	_, err = s.access(r.Context(), token, ip, false)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
 	raw, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
 	if readErr != nil {
 		http.Error(w, "invalid request", 400)
@@ -215,6 +211,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if msg.IsNotification() {
+ if _,err:=s.access(r.Context(),token,ip,false);err!=nil{s.fail(w,err);return}
 		w.WriteHeader(202)
 		return
 	}
@@ -222,6 +219,29 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request required", 400)
 		return
 	}
+	if msg.Method == mcp.MethodToolsCall {
+		var call mcp.CallToolParams
+		if json.Unmarshal(msg.Params, &call) == nil && (call.Name == "discover_server" || call.Name == "discover_tools" || call.Name == "get_tool_schema" || call.Name == "invoke_tool") {
+			original := w
+			ctx, complete, err := s.beginAudit(r.Context(), token, ip, r.Header.Get("traceparent"), &MessageAudit{Tool: call.Name, Payload: raw})
+			if err != nil {
+				http.Error(w, "audit admission unavailable", 503)
+				return
+			}
+			r = r.WithContext(ctx)
+			if complete != nil {
+				buffer := &auditedResponse{header: http.Header{}}
+				w = buffer
+				defer complete(original, buffer)
+			}
+		}
+	}
+	_, err = s.access(r.Context(), token, ip, false)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+
 	rpcErr := func(code int, message string) { replyJSON(w, mcp.NewErrorResponse(msg.ID, code, message)) }
 	result := func(v any) { res, _ := mcp.NewResult(msg.ID, v); replyJSON(w, res) }
 	switch msg.Method {
@@ -298,7 +318,15 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 				s.fail(w, e)
 				return
 			}
+			if trace := traceFrom(r.Context()); trace != nil {
+				trace.add(TraceStage{Name: "search_mode", Status: mode})
+			}
+			before := len(hits)
 			hits = authorizedHits(hits, fresh)
+			if trace := traceFrom(r.Context()); trace != nil {
+				trace.Counts["final_acl_removed"] = before - len(hits)
+			}
+			traceHits(r.Context(), "final_results", hits)
 			if call.Name == "discover_server" {
 				servers := []map[string]any{}
 				seen := map[string]bool{}
@@ -312,9 +340,11 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 						break
 					}
 				}
+				traceCount(r.Context(), "returned_servers", len(servers))
 				result(toolResult(map[string]any{"servers": servers, "search_mode": mode}))
 				return
 			}
+			traceCount(r.Context(), "returned_tools", len(hits))
 			result(toolResult(map[string]any{"tools": hits, "search_mode": mode}))
 		case "get_tool_schema", "invoke_tool":
 			if _, _, e := ParseRef(q.Ref); e != nil {

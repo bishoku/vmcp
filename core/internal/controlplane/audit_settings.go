@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/audit"
@@ -54,7 +55,7 @@ func (s *Server) previewAuditPayload(w http.ResponseWriter, r *http.Request) err
 		return apierror.New(422, "invalid_audit_settings", "Invalid audit settings", err.Error())
 	}
 	switch body.Scope {
-	case "virtual", "upstream", "control", "system", "reads":
+	case "virtual", "upstream", "control", "system", "reads", "omni", "omni_diagnostics", "omni_embedding", "omni_rerank":
 	default:
 		return apierror.New(422, "invalid_scope", "Invalid scope", "Unknown capture scope")
 	}
@@ -74,6 +75,9 @@ func (s *Server) previewAuditPayload(w http.ResponseWriter, r *http.Request) err
 		body.Settings = current
 	} else if body.EditScope != "" && body.EditScope != "global" {
 		return apierror.New(422, "invalid_scope", "Invalid scope", "Unknown edit scope")
+	}
+	if strings.HasPrefix(body.Scope, "omni") {
+		body.Settings = body.Settings.ForOmni()
 	}
 	p, err := audit.PreviewPayload(body.Settings, body.Scope, body.Direction, body.VirtualServer, body.Upstream, body.Payload)
 	if err != nil {

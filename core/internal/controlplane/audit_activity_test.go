@@ -60,3 +60,25 @@ func TestAuditActivityFilterKeepsLinkedAttemptsAndPagination(t *testing.T) {
 	}
 	a.expect(422, "GET", "/api/v1/audit-events?activity=unknown", nil)
 }
+
+func TestOmniActivityIncludesOnlyExplicitDescendants(t *testing.T) {
+	a := setup(t)
+	ctx := context.Background()
+	root := "30000000-0000-4000-8000-000000000001"
+	rows := []struct{ scope, id, parent string }{
+		{"omni", root, ""}, {"omni_diagnostics", "30000000-0000-4000-8000-000000000002", root}, {"virtual", "30000000-0000-4000-8000-000000000003", root},
+		{"upstream", "30000000-0000-4000-8000-000000000004", "30000000-0000-4000-8000-000000000003"},
+		{"virtual", "30000000-0000-4000-8000-000000000005", ""},
+	}
+	for _, row := range rows {
+		if _, err := a.pool.Exec(ctx, `INSERT INTO audit_events(scope,operation_id,parent_operation_id,virtual_server,method,status,stage,request_id)VALUES($1,$2::uuid,NULLIF($3,'')::uuid,'','tools/call','ok','outcome','30000000-0000-4000-8000-000000000001'::uuid)`, row.scope, row.id, row.parent); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{"/api/v1/audit-events?activity=omni", "/api/v1/audit-events?activity=omni&operationId=" + root} {
+		result := a.want("GET", path, nil, 200)
+		if len(result["items"].([]any)) != 4 {
+			t.Fatalf("Omni descendants: %v", result)
+		}
+	}
+}

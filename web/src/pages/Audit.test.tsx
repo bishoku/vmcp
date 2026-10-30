@@ -139,3 +139,10 @@ test('activity filter requests virtual calls with their linked upstream records 
  fireEvent.click(screen.getByRole('button',{name:'Remove Activity filter'}))
  await waitFor(()=>expect(list.mock.lastCall?.[0].activity).toBeUndefined())
 })
+
+test('Omni activity is separately filterable',async()=>{
+ const list=vi.spyOn(api,'listAudit').mockResolvedValue({items:[]})
+ render(<Audit/>);await waitFor(()=>expect(list).toHaveBeenCalled())
+ fireEvent.change(screen.getByRole('combobox',{name:'Activity'}),{target:{value:'omni'}})
+ await waitFor(()=>expect(list.mock.calls.at(-1)?.[0].activity).toBe('omni'))
+})

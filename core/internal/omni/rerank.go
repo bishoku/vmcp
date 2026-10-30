@@ -62,10 +62,12 @@ func (e *HTTPReranker) Rerank(ctx context.Context, query string, documents []Doc
 	if e.Key != "" {
 		req.Header.Set("Authorization", "Bearer "+e.Key)
 	}
+	traceProvider(ctx, "reranker", "request", body, e.Key, 0)
 	res, err := e.Client.Do(req)
 	if err != nil {
 		return nil, e.failure(transportReason(err))
 	}
+	tapProvider(ctx, "reranker", e.Key, res)
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		attrs := []slog.Attr{slog.Int("http_status", res.StatusCode), slog.String("http_status_text", http.StatusText(res.StatusCode))}
@@ -130,7 +132,9 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 		if err != nil {
 			return nil, "", err
 		}
+		before := len(hits)
 		hits = authorizedHits(hits, fresh)
+		traceCount(ctx, "pre_rerank_acl_removed", before-len(hits))
 	}
 	if len(hits) == 0 {
 		return []Hit{}, mode + "-reranked", nil
@@ -139,6 +143,7 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 	for n, h := range hits {
 		docs[n] = h.Document
 	}
+	traceHits(ctx, "reranker_input", hits)
 	started := time.Now()
 	scores, err := i.Reranker.Rerank(ctx, query, docs)
 	if err == nil {
@@ -152,6 +157,22 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 				}
 			}
 		}
+	}
+	if trace := traceFrom(ctx); trace != nil {
+		status := "ok"
+		if err != nil {
+			status = "provider_failure"
+		}
+		stage := TraceStage{Name: "reranker_scores", Count: len(hits), DurationMS: time.Since(started).Milliseconds(), Status: status}
+		if trace.Options.Details && trace.Options.Candidates && err == nil {
+			rows := []map[string]any{}
+			for n, h := range hits[:min(len(hits), trace.Options.Limit)] {
+				rows = append(rows, map[string]any{"tool_ref": h.Ref, "before_rank": n + 1, "retrieval_score": h.Score, "rerank_score": scores[n], "below_min_score": scores[n] < i.RerankMinScore})
+			}
+			stage.Details = map[string]any{"min_score": i.RerankMinScore, "no_match_score": i.RerankNoMatchScore, "confidence_score": i.RerankConfidenceScore, "candidates": rows}
+			stage.Omitted = len(hits) - len(rows)
+		}
+		trace.add(stage)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -169,9 +190,13 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 		bestScore = math.Max(bestScore, score)
 	}
 	if bestScore < i.RerankNoMatchScore {
+		traceCount(ctx, "reranker_no_match", len(hits))
 		return []Hit{}, mode + "-reranked-no-match", nil
 	}
 	uncertain := bestScore < i.RerankConfidenceScore
+	if uncertain {
+		traceCount(ctx, "uncertain_order_preserved", 1)
+	}
 	selected := make([]Hit, 0, len(hits))
 	for n, h := range hits {
 		if scores[n] >= i.RerankMinScore {
@@ -181,6 +206,8 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 			selected = append(selected, h)
 		}
 	}
+	traceCount(ctx, "reranker_min_score_removed", len(hits)-len(selected))
+	traceHits(ctx, "reranker_selected", selected)
 	if uncertain {
 		return finalizeHits(selected, limit, groupServers), mode + "-rerank-uncertain", nil
 	}

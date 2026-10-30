@@ -114,7 +114,7 @@ func run() error {
 	if err != nil {
 		return errors.New("VMCP_OMNI_ALLOW_ANONYMOUS must be a boolean")
 	}
-	app := &omni.Server{AllowAnonymous: allowAnonymous, SearchLimit: limit, Backend: backend, Index: index, TrustedProxies: proxies, PublicURL: config.Env("VMCP_OMNI_PUBLIC_URL", ""), Issuer: config.Env("VMCP_AGENT_OIDC_ISSUER", "")}
+	app := &omni.Server{Auditor: &omni.GatewayAudit{Backend: backend}, AllowAnonymous: allowAnonymous, SearchLimit: limit, Backend: backend, Index: index, TrustedProxies: proxies, PublicURL: config.Env("VMCP_OMNI_PUBLIC_URL", ""), Issuer: config.Env("VMCP_AGENT_OIDC_ISSUER", "")}
 	server := &http.Server{Addr: config.Env("VMCP_LISTEN", ":8090"), Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 75 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	go func() {
 		<-ctx.Done()

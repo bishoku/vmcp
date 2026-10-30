@@ -227,6 +227,7 @@ export interface BindingEvaluation {
 
 export interface AuditRule { name:string; pattern:string }
 export interface AuditSettings {
+ omni?:{candidates?:boolean;includeDenied?:boolean;maxCandidates?:number}
  mode:''|'strict'|'relax'; retentionDays:number; maxPayloadBytes:number; revision:number
  scopes:Record<string,{request:boolean;response:boolean}>; rules:AuditRule[]
  virtualServers:Record<string,AuditRule[]>; upstreams:Record<string,AuditRule[]>;exportPayloads:Record<string,boolean>

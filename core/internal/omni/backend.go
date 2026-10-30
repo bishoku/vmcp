@@ -40,12 +40,21 @@ func (b *Backend) Request(ctx context.Context, method, path, token, ip, trace st
 			return err
 		}
 	}
+	if ticket := auditTicket(ctx); ticket != "" && path == "/internal/omni/invoke" {
+		var input map[string]json.RawMessage
+		if err := json.Unmarshal(data, &input); err != nil {
+			return err
+		}
+		input["_audit_ticket"], _ = json.Marshal(ticket)
+		data, _ = json.Marshal(input)
+	}
 	r, err := http.NewRequestWithContext(ctx, method, b.URL+path, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	r.Header.Set("X-VMCP-Omni-Secret", b.Secret)
 	r.Header.Set("Content-Type", "application/json")
+
 	if token != "" {
 		r.Header.Set("Authorization", token)
 	}

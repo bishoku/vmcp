@@ -54,10 +54,12 @@ func (e *HTTPEmbedder) embed(ctx context.Context, texts []string, prefix string)
 	if e.Key != "" {
 		req.Header.Set("Authorization", "Bearer "+e.Key)
 	}
+	traceProvider(ctx, "embedding", "request", b, e.Key, 0)
 	res, err := e.Client.Do(req)
 	if err != nil {
 		return nil, e.failure(transportReason(err))
 	}
+	tapProvider(ctx, "embedding", e.Key, res)
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		attrs := []slog.Attr{slog.Int("http_status", res.StatusCode), slog.String("http_status_text", http.StatusText(res.StatusCode))}

@@ -28,10 +28,11 @@ export default function AuditDetails({events,zone,close}:{events:AuditEvent[];zo
     <div className="layout-stack">
       <section aria-label="Operation summary" className="space-y-3">
         <h3 className="text-lg font-semibold break-all">{event.tool || event.action || event.method || 'Audit operation'}</h3>
-        <div className="flex flex-wrap items-center gap-3 text-xs"><span>{rootMissing?'Parent outcome not loaded':<Pill status={event.status}/>}</span>{!rootMissing && event.stage==='outcome' && <span>{event.durationMs} ms total</span>}<span className="text-ink-muted">{event.virtualServer || 'Control plane'} · {fmt(event.time)} · {zone}</span></div>
+        <div className="flex flex-wrap items-center gap-3 text-xs"><span>{rootMissing?'Parent outcome not loaded':<Pill status={event.status}/>}</span>{!rootMissing && event.stage==='outcome' && <span>{event.durationMs} ms total</span>}<span className="text-ink-muted">{event.virtualServer || (event.scope?.startsWith('omni')?'Omni MCP':'Control plane')} · {fmt(event.time)} · {zone}</span></div>
         {!rootMissing && event.reason && <p className="text-xs break-words">{event.reason}</p>}
       </section>
       {missing && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800"><Clock3 aria-hidden="true" className="mt-0.5 icon-control shrink-0"/><p>This selection is missing a parent or lifecycle outcome. Other records may be pending, outside the loaded page or filters, or unavailable; this does not confirm failure.</p></div>}
+      {events.filter(record=>record.scope==='omni_diagnostics').map(record=><section key={record.id} aria-label="Discovery pipeline summary" className="surface-inset rounded-xl p-4 space-y-2"><h3 className="panel-title">Discovery pipeline</h3><p className="text-xs break-words">{record.reason || 'No stage counts recorded.'}</p><p className="text-xs text-ink-muted">Detailed capture: {record.payloadState}. Candidate samples can be incomplete; omitted counts are shown in the stored payload.</p><button className="text-sm text-accent-700" onClick={()=>setSelection(record.operationId??`event:${record.id}`)}>Inspect discovery pipeline</button></section>)}
       <section aria-label="Operation flow" className="space-y-3">
         <h3 className="panel-title">Operation flow</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -84,7 +85,14 @@ function PayloadView({event,label}:{event?:AuditEvent;label:string}){
    <div className="space-y-3 p-4 text-xs">
      {!event?<p className="text-ink-muted">No {label.toLowerCase()} record in this selection.</p>:!manageTokens?<p className="text-ink-muted">Administrator access is required to view payloads.</p>:recorded==='disabled'?<p className="text-ink-muted">Payload capture was disabled for this record.</p>:<button className="text-xs font-medium text-accent-700" disabled={busy} onClick={()=>void load()}>{busy?'Loading payload…':'Load audit payload'}</button>}
      {state&&<p role="status">{state}</p>}
+     {manageTokens&&body!==undefined&&event?.scope==='omni_diagnostics'&&<OmniPipeline body={body}/>}
      {manageTokens&&body!==undefined&&<pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-all surface-inset p-3 font-mono text-xs">{JSON.stringify(body,null,2)}</pre>}
    </div>
  </section>
+}
+
+function OmniPipeline({body}:{body:unknown}){
+ if(!body||typeof body!=='object')return null
+ const pipeline=body as {counts?:Record<string,number>;stages?:{name:string;count?:number;status?:string;durationMs?:number;omitted?:number;originalBytes?:number;details?:unknown}[]}
+ return <section aria-label="Discovery pipeline stages" className="space-y-3"><h4 className="font-semibold">Discovery stages</h4><div className="grid gap-2 sm:grid-cols-2">{Object.entries(pipeline.counts??{}).map(([name,count])=><p key={name} className="surface-inset p-2 break-all">{name}: {count}</p>)}</div>{pipeline.stages?.map((stage,n)=><details key={n} className="rounded-lg border border-line p-3"><summary className="cursor-pointer break-words">{stage.name} · {stage.status||'recorded'} · {stage.count??0} candidates · {stage.durationMs??0} ms</summary>{!!stage.omitted&&<p className="mt-2">{stage.omitted} details omitted by capture limits.</p>}{stage.details!==undefined&&<pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(stage.details,null,2)}</pre>}</details>)}</section>
 }

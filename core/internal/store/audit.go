@@ -79,6 +79,8 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 		where = append(where, `(scope IN ('control','reads') OR (scope='upstream' AND EXISTS(SELECT 1 FROM audit_events parent WHERE parent.operation_id=audit_events.parent_operation_id AND parent.scope IN ('control','reads'))))`)
 	case "system":
 		where = append(where, `scope='system'`)
+	case "omni":
+		where = append(where, `(scope IN ('omni','omni_diagnostics','omni_embedding','omni_rerank') OR EXISTS(SELECT 1 FROM audit_events parent WHERE parent.operation_id=audit_events.parent_operation_id AND (parent.scope='omni' OR (parent.scope='virtual' AND EXISTS(SELECT 1 FROM audit_events root WHERE root.operation_id=parent.parent_operation_id AND root.scope='omni')))))`)
 	case "upstream":
 		where = append(where, `scope='upstream'`)
 	}
@@ -90,7 +92,7 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 			if column == "operation_id" {
 				args = append(args, value)
 				n := strconv.Itoa(len(args))
-				where = append(where, "(operation_id=$"+n+"::uuid OR parent_operation_id=$"+n+"::uuid)")
+				where = append(where, "operation_id IN (WITH RECURSIVE linked(id) AS (SELECT $"+n+"::uuid UNION SELECT e.operation_id FROM audit_events e JOIN linked l ON e.parent_operation_id=l.id WHERE e.operation_id IS NOT NULL) SELECT id FROM linked)")
 			} else {
 				add(column+" = ?", value)
 			}

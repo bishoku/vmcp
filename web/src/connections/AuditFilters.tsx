@@ -12,7 +12,7 @@ import type { AuditQuery } from '../api'
 import { ServerPanel } from './ServerPanels'
 
 const labels:Partial<Record<keyof AuditQuery,string>>={activity:'Activity',virtualServer:'Virtual server',agentKey:'Agent key / oauth:binding',subject:'Subject',tool:'Tool',status:'Status',from:'From',to:'To',operationId:'Operation ID',actorId:'Actor ID',requestId:'Request ID',stage:'Stage',incomplete:'Incomplete operations only'}
-const activities:Record<string,string>={virtual:'Virtual MCP calls',control:'Control plane API',system:'System activity',upstream:'Upstream calls only'}
+const activities:Record<string,string>={omni:'Omni MCP',virtual:'Virtual MCP calls',control:'Control plane API',system:'System activity',upstream:'Upstream calls only'}
 export default function AuditFilters({filters,set,when,reset,link,zone}:{filters:AuditQuery;set:(key:keyof AuditQuery,value:string)=>void;when:(key:'from'|'to',value:string)=>void;reset:()=>void;link:string;zone:string}) {
   const [expanded,setExpanded]=useState(true)
   const [advanced,setAdvanced]=useState(!!(filters.operationId || filters.actorId || filters.requestId || filters.stage))

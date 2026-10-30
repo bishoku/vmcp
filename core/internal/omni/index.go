@@ -186,7 +186,9 @@ func (i *Index) Refresh(ctx context.Context, b *Backend) {
 
 type Hit struct {
 	Document
-	Score float64 `json:"score"`
+	Score       float64 `json:"score"`
+	Lexical     float64 `json:"-"`
+	VectorScore float64 `json:"-"`
 }
 
 func terms(s string) []string {
@@ -228,6 +230,7 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 	if limit < 1 || limit > 50 {
 		return nil, "", &HTTPError{400}
 	}
+	traceCatalog(ctx, entries, access, server, project)
 	resultLimit, resultServers := limit, groupServers
 	if i.Reranker != nil {
 		candidates := i.RerankCandidates
@@ -254,6 +257,8 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 			}
 		}
 	}
+	traceCount(ctx, "embedding_eligible", eligible)
+	traceCount(ctx, "embedded", embedded)
 	if i.Embedder != nil {
 		mode = "hybrid-degraded"
 		if eligible > 0 && embedded == eligible && profile == embeddingProfile(i.Embedder) {
@@ -267,6 +272,13 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 			v, err := embed(ctx, []string{query})
 			if err == nil {
 				_, err = validateVectors(v, 1, dimension)
+			}
+			if trace := traceFrom(ctx); trace != nil {
+				status := "ok"
+				if err != nil {
+					status = "keyword_fallback"
+				}
+				trace.add(TraceStage{Name: "query_embedding", Count: len(v), DurationMS: time.Since(started).Milliseconds(), Status: status, Details: map[string]any{"dimensions": dimension, "profile": profile}})
 			}
 			if err == nil {
 				i.searchLog.report("search_embedding", nil)
@@ -290,6 +302,7 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 		if err != nil {
 			return nil, mode, err
 		}
+		traceHits(ctx, "retrieval_candidates", hits)
 		return i.refine(ctx, query, hits, resultLimit, resultServers, mode)
 	}
 	best := make(hitHeap, 0, limit)
@@ -321,6 +334,7 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 			lex = fieldLexical(e, words)
 		}
 		if len(vector) > 0 && positiveCosine(vector, e.Vector) < i.MinSimilarity {
+			traceCount(ctx, "similarity_removed", 1)
 			continue
 		}
 		score := lex
@@ -328,9 +342,10 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 			score = 0.2*lex + 0.8*positiveCosine(vector, e.Vector)
 		}
 		if score <= 0 {
+			traceCount(ctx, "zero_score_removed", 1)
 			continue
 		}
-		h := Hit{Document: e.Document, Score: score}
+		h := Hit{Document: e.Document, Score: score, Lexical: lex, VectorScore: positiveCosine(vector, e.Vector)}
 		if i.Reranker != nil && resultServers {
 			candidates := serverCandidates[e.Server]
 			offerBounded(&candidates, h, 3)
@@ -353,6 +368,7 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 		best = hitHeap(balancedServerCandidates(serverCandidates, limit))
 	}
 	sort.Slice(best, func(a, b int) bool { return better(best[a], best[b]) })
+	traceHits(ctx, "retrieval_candidates", []Hit(best))
 	return i.refine(ctx, query, []Hit(best), resultLimit, resultServers, mode)
 }
 func better(a, b Hit) bool {

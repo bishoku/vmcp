@@ -425,6 +425,11 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		policy := snap.Audit
 		ev.Policy = &policy
 	}
+	if parent, ok := ctx.Value(omniAuditParentKey{}).(audit.Event); ok {
+		ev.ParentOperationID = parent.OperationID
+		ev.RequestID = parent.RequestID
+		ev.Policy = parent.Policy
+	}
 	if requestID, ok := ctx.Value(deliveryRequestKey{}).(string); ok {
 		ev.RequestID = requestID
 	}

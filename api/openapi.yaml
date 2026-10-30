@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: vMCP Control Plane API
-  version: 1.2.4
+  version: 1.2.5
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1643,8 +1643,8 @@ paths:
       parameters:
         - name: activity
           in: query
-          description: Filter by recorded origin. Virtual includes virtual MCP events and explicitly linked upstream attempts; control includes control-plane reads/writes and their linked upstream attempts; system includes background activity; upstream selects upstream-scope events only. Omit for all events, including unclassified legacy events.
-          schema: { type: string, enum: [ virtual, control, system, upstream ] }
+          description: Filter by recorded origin. Virtual includes virtual MCP events and explicitly linked upstream attempts; control includes control-plane reads/writes and their linked upstream attempts; system includes background activity; upstream selects upstream-scope events only. Omni includes Omni calls, discovery/model diagnostics and explicitly linked virtual/upstream descendants. Omit for all events, including unclassified legacy events.
+          schema: { type: string, enum: [ virtual, control, system, upstream, omni ] }
         - $ref: "#/components/parameters/Limit"
         - name: cursor
           in: query
@@ -2154,6 +2154,13 @@ components:
         revision:
           type: integer
           minimum: 0
+        omni:
+          type: object
+          additionalProperties: false
+          properties:
+            candidates: { type: boolean, default: false }
+            includeDenied: { type: boolean, default: false }
+            maxCandidates: { type: integer, minimum: 0, maximum: 200, default: 100 }
         scopes:
           type: object
           additionalProperties: false
@@ -2213,6 +2220,34 @@ components:
                   type: boolean
                 response:
                   type: boolean
+            omni:
+              type: object
+              additionalProperties: false
+              required: [request, response]
+              properties:
+                request: { type: boolean }
+                response: { type: boolean }
+            omni_diagnostics:
+              type: object
+              additionalProperties: false
+              required: [request, response]
+              properties:
+                request: { type: boolean }
+                response: { type: boolean }
+            omni_embedding:
+              type: object
+              additionalProperties: false
+              required: [request, response]
+              properties:
+                request: { type: boolean }
+                response: { type: boolean }
+            omni_rerank:
+              type: object
+              additionalProperties: false
+              required: [request, response]
+              properties:
+                request: { type: boolean }
+                response: { type: boolean }
         rules: &a1
           type: array
           maxItems: 20
@@ -2252,6 +2287,10 @@ components:
             - control
             - system
             - reads
+            - omni
+            - omni_diagnostics
+            - omni_embedding
+            - omni_rerank
         direction:
           type: string
           enum:
