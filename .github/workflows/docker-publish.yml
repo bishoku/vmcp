@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 5
       matrix:
         include:
           - service: web
@@ -82,6 +82,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Set up ARM emulation
+        if: matrix.service == 'web'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:
           platforms: arm64
@@ -114,6 +115,7 @@ jobs:
       - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.76.1
+          cache: true
       - name: Scan exact release digest on both architectures
         env:
           IMAGE: ${{ env.DOCKERHUB_NAMESPACE }}/vmcp-${{ matrix.service }}

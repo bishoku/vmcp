@@ -66,14 +66,14 @@ jobs:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.4
-      - name: Verify all published image signatures
+      - name: Stage release manifests and verify all published image signatures
         shell: bash
         env:
           VERSION: ${{ steps.source.outputs.version }}
         run: |
           set -euo pipefail
-          python3 automation/scripts/prepare-github-release.py stage published-images/images.json verified-images --version "$VERSION"
-          jq -r '.images[] | .image + "@" + .digest' verified-images/images.json | while IFS= read -r image; do
+          python3 automation/scripts/prepare-github-release.py stage published-images/images.json release-assets --version "$VERSION"
+          jq -r '.images[] | .image + "@" + .digest' release-assets/images.json | while IFS= read -r image; do
             automation/scripts/verify-image-signature.sh "$image" \
               "https://github.com/$GH_REPO/.github/workflows/docker-publish.yml@refs/tags/$VERSION"
           done
@@ -86,7 +86,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 automation/scripts/prepare-github-release.py stage published-images/images.json release-assets --version "$VERSION"
           helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
           helm dependency build source/deploy/helm/vmcp
           helm lint source/deploy/helm/vmcp \

@@ -4,7 +4,21 @@ on:
   workflow_call:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'release-notes/**'
+      - 'maintainer/**'
+      - '*.md'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'release-notes/**'
+      - 'maintainer/**'
+      - '*.md'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   core:
@@ -72,10 +86,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix ../web
       - name: Check broker dependency isolation
         run: python3 ../scripts/check-exporter-isolation.py
-      - run: go vet ./...
       - name: Run Go race and integration tests
         run: go test -race -count=1 -json ./... | tee ../verification.jsonl
       - name: Check test results (including failures and skips)
@@ -88,6 +103,7 @@ jobs:
           name: core-test-results
           path: verification.jsonl
           retention-days: 7
+      - run: go vet ./...
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
 
   web:
@@ -101,6 +117,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Install web dependencies
         timeout-minutes: 5
         run: npm ci
@@ -135,6 +153,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
       - name: Test Docker release manifest generation
         run: python3 -m unittest discover -s scripts -p 'test_prepare*release.py'
@@ -177,38 +197,42 @@ jobs:
         run: python3 tests/helm/smoke.py
 
   image-security:
-    name: Image security (${{ matrix.service }})
+    name: Image security
+    if: github.event_name != 'workflow_call'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      max-parallel: 3
-      matrix:
-        service: [web, control-plane, data-plane, omni-mcp, migrate, audit-exporter, audit-exporter-kafka, audit-exporter-rabbitmq, tenant-router, rotate-secrets]
     steps:
       - uses: actions/checkout@v7
       - name: Test image security gates
         run: python3 -m unittest discover -s scripts -p 'test_image_security.py'
-      - name: Build native image
-        env:
-          SERVICE: ${{ matrix.service }}
-        run: |
-          context=core
-          if [[ "$SERVICE" == web ]]; then context=web; fi
-          docker build --pull --build-arg SERVICE="$SERVICE" -t "vmcp/$SERVICE:security" "$context"
       - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.76.1
-      - name: Scan native image
+          cache: true
+      - name: Build and scan all native images
         env:
-          SERVICE: ${{ matrix.service }}
           TRIVY_IMAGE_SRC: docker
-        run: scripts/scan-image.sh "vmcp/$SERVICE:security" image-security linux/amd64
+        run: |
+          set -euo pipefail
+          failed=0
+          docker build --pull -t "vmcp/web:security" web
+          if ! scripts/scan-image.sh "vmcp/web:security" "image-security/web" linux/amd64; then
+            failed=1
+          fi
+          pull_flag="--pull"
+          for service in control-plane data-plane omni-mcp migrate audit-exporter audit-exporter-kafka audit-exporter-rabbitmq tenant-router rotate-secrets; do
+            docker build $pull_flag --build-arg SERVICE="$service" -t "vmcp/$service:security" core
+            pull_flag=""
+            if ! scripts/scan-image.sh "vmcp/$service:security" "image-security/$service" linux/amd64; then
+              failed=1
+            fi
+          done
+          exit "$failed"
       - name: Preserve scan reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: image-security-${{ matrix.service }}
-          path: image-security/*.json
+          name: image-security-reports
+          path: image-security/**/*.json
           if-no-files-found: warn
           retention-days: 30
