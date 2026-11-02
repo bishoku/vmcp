@@ -6,12 +6,25 @@ updates:
       - /web
       - /benchmark/mcp
       - /benchmark/traffic
-      - /deploy/wiremock
     schedule:
       interval: weekly
     groups:
       container-bases:
         patterns: ["*"]
+    ignore:
+      # Keep Node major aligned with CI (Node 22 LTS).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      # Keep Go version aligned with core/go.mod (1.27.x).
+      - dependency-name: golang
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Keep Python 3.13-alpine in benchmark helpers.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Stay on Nginx stable (1.30.x); 1.31.x mainline image carries older Alpine 3.23 CVEs.
+      - dependency-name: nginx
+        versions: ["1.31.*"]
+
   - package-ecosystem: docker-compose
     directories:
       - /deploy
@@ -20,7 +33,42 @@ updates:
       - /tests/audit-exporters
     schedule:
       interval: weekly
+    groups:
+      compose-images:
+        patterns: ["*"]
+    ignore:
+      # Keep PostgreSQL 17 across compose, CI, and Helm smoke tests (Postgres 18 changes PGDATA layout).
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+      # Keep Redis 7 across compose and CI.
+      - dependency-name: redis
+        update-types: ["version-update:semver-major"]
+      # Stay on Nginx stable (1.30.x).
+      - dependency-name: nginx
+        versions: ["1.31.*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /core
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      npm-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
