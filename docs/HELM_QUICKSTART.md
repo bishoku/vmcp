@@ -66,6 +66,10 @@ reruns preserve manual Helm overrides.
 
 ## Ready-to-use playground (`--mock`)
 
+For an already running stack, use the standalone
+[playground importer](../deploy/helm/vmcp/quickstart/IMPORT_PLAYGROUND.md)
+to load only the mock data without installing or upgrading the stack.
+
 Use the current repository script with v1.2.0 or later. No model endpoint is needed:
 
 ```sh

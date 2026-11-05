@@ -93,10 +93,10 @@ def issuer(a):
 
 def fixtures(a):
     """Meridian Bank playground: 30 teams, 40 projects, 20 mock upstreams, 40 virtual servers."""
-    teams = [dict(slug=t['slug'], name=t['name'], issuer=issuer(a), group=t['slug']) for t in catalog.TEAM.values()]
+    teams = [dict(slug=t['slug'], name=t['name'], issuer=getattr(a, 'team_issuer', None) or issuer(a), group=t['slug']) for t in catalog.TEAM.values()]
     projects = [dict(slug=p['slug'], name=p['name'], ownerTeam=p['ownerTeam']) for p in catalog.PROJECT.values()]
     upstreams = [dict(slug=u['slug'], name=u['name'], description=u['description'], kind='rest', ownerTeam=u['ownerTeam'], enabled=True,
-                      url=f'http://{a.release}-trial-wiremock:8080', transport='streamable_http',
+                      url=getattr(a, 'wiremock_url', None) or f'http://{a.release}-trial-wiremock:8080', transport='streamable_http',
                       rest=dict(mock={}, allowInsecureHttp=True, timeoutSeconds=10, operations=u['operations']))
                  for u in demo_upstreams.UPSTREAMS]
     servers = [dict(slug=s['slug'], name=s['name'], project=s['project'], description=s['description'], enabled=True,

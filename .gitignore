@@ -11,6 +11,7 @@ verification.jsonl
 # Python demo fixtures
 __pycache__/
 *.pyc
+.playground-import-state.json
 
 # Restored from the pinned Helm dependency lock.
 deploy/helm/vmcp/charts/
