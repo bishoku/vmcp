@@ -1,0 +1,33 @@
+{
+  "Profile": {
+    "Servers": 2,
+    "Tools": 3,
+    "Resources": 0,
+    "Sessions": 4,
+    "Workers": 8,
+    "REST": true
+  },
+  "DataPlaneConfiguration": {},
+  "Pass": true,
+  "Functional": {
+    "configuration_refresh_under_rest_load": true,
+    "key_revocation_propagated_and_rejected_on_both_nodes": true
+  },
+  "Phases": [
+    {
+      "name": "steady",
+      "target_rps": 200,
+      "PlannedSeconds": 10,
+      "ElapsedSeconds": 10,
+      "Scheduled": 2000,
+      "CompletedRPS": 200,
+      "SuccessPercent": 100,
+      "P95MS": 20,
+      "P99MS": 30,
+      "Errors": 0,
+      "Dropped": 0,
+      "slo_pass": true
+    }
+  ],
+  "_note": "Synthetic renderer fixture; not measured performance evidence."
+}

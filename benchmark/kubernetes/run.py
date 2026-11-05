@@ -31,7 +31,7 @@ def main():
     namespace = f'vmcp-load-{stamp}'
     output = pathlib.Path(args.output or ROOT / 'artifacts/benchmark-runs' / f'microk8s-{stamp}').resolve()
     output.mkdir(parents=True, exist_ok=False)
-    published = ROOT/'benchmark/results'/f'microk8s-{stamp}'
+    published = ROOT/'artifacts/benchmark-summaries'/f'microk8s-{stamp}'
     kubectl = ['microk8s', 'kubectl', '--namespace', namespace]
     temporary = pathlib.Path(tempfile.mkdtemp(prefix='vmcp-k8s-load-'))
     process = None

@@ -57,18 +57,17 @@ Long-run overrides are `VMCP_ACCEPTANCE_RPS`, `VMCP_ACCEPTANCE_BURST_RPS`,
 `VMCP_ACCEPTANCE_WORKERS`, and the inventory options from `../acceptance/README.md`.
 Raw evidence defaults to the ignored `artifacts/benchmark-runs/microk8s-<timestamp>/`.
 At completion (including failed runs), a verified compressed archive is saved under
-`artifacts/benchmark-archives/` and small reviewable summaries are exported to
-`benchmark/results/microk8s-<timestamp>/`. Use `--output <new-directory>` to choose
+`artifacts/benchmark-archives/` and detailed local summaries are exported to
+`artifacts/benchmark-summaries/microk8s-<timestamp>/`. Use `--output <new-directory>` to choose
 a different raw evidence directory; the curated export still uses the run timestamp.
-Do not commit the raw directory. See the [results policy](../results/README.md). Interrupting the
+Do not commit the raw directory. See the [results policy — local evidence](../results/README.md). Interrupting the
 Python runner performs namespace cleanup; killing it with SIGKILL cannot do so.
 Historical Compose and Kubernetes measurements differ in platform/resource limits;
 use the 200RPS baseline and the saved environment when interpreting comparisons.
 
 The 2026-10-23 measured run and its Compose comparison are in
-[`../results/microk8s-20261023-193023/comparison.md`](../results/microk8s-20261023-193023/comparison.md).
-It did **not** meet the high-load acceptance thresholds. The successful smoke run
-is `../results/microk8s-20261023-192851/report.md`.
+[local evidence retention policy](../results/README.md).
+It did **not** meet the high-load acceptance thresholds. The successful smoke run is retained locally; see the results policy.
 
 ## Focused PostgreSQL diagnosis
 
@@ -102,7 +101,7 @@ what the `pg_stat_statements` entry for `pg_notify` itself appears to cost; use
 activity/lock samples together with SQL timings.
 
 The two sequential 2026-10-23 five-minute diagnostic runs and proposed fixes are
-in [the PostgreSQL diagnosis](../results/microk8s-postgres-1000-20261023-analysis.md).
+in [the PostgreSQL diagnosis — local evidence](../results/README.md).
 Both missed the 1,000 TPS capacity/latency gate. The report separates successful
 throughput, dropped demand, PostgreSQL notification-lock waits, cleanup plans,
 and the application CPU comparison; migration/delivery integration tests passed.
@@ -142,7 +141,7 @@ using auto_explain (ANALYZE/BUFFERS on, per-node TIMING off). Plans are in
 comparing runs. It is only configured on the disposable benchmark PostgreSQL.
 
 The polling implementation and repeated five-minute 1,000 TPS runs are documented
-in [the polling/PostgreSQL report](../results/microk8s-polling-1000-20261023-analysis.md).
+in [the polling/PostgreSQL report — local evidence](../results/README.md).
 The optimized runs pass the steady capacity/latency gate; the final run also
 passes the sampled 500ms remote-polling gate. Overall acceptance remains nonzero
 because the existing large-catalog key-revocation propagation check fails. The

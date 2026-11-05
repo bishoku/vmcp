@@ -145,7 +145,7 @@ The v1.2.0 development acceptance used
 `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` behind the repository's
 OpenAI-compatible test fixture. This is evidence for that synthetic test, not a
 bundled production server or a general model certification. See the
-[acceptance report](../benchmark/results/omni-1000-100-20261027.md) and
+[acceptance report — local evidence](../benchmark/results/README.md) and
 [reproduction instructions](../benchmark/omni/README.md#real-semantic-model-and-relevance).
 Any other model must meet the same API contract and be evaluated for your workload.
 
@@ -350,7 +350,7 @@ experiment is diagnostic, not a recommended production value or a tuned release
 default. Empty/ambiguous results should lead the agent to clarify or refine its
 intent rather than guess an executable tool.
 
-The first [measured quality comparison](../benchmark/results/omni-discovery-quality-20261027.md)
+The first [measured quality comparison — local evidence](../benchmark/results/README.md)
 retained legacy defaults: the structured/RRF candidates did not consistently improve
 per-language results. The fixed floor experiment removed negatives but lost correct
 matches. Review this evidence before opting into a new text format or threshold.

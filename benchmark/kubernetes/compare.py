@@ -2,11 +2,9 @@
 """Render an evidence-based comparison; never equate different hardware/platforms."""
 import json, pathlib, sys
 
-def render(directory):
+def render(directory, baseline=None):
     root=pathlib.Path(directory).resolve()
-    repository=pathlib.Path(__file__).resolve().parents[2]
-    baseline_path=repository/'benchmark/results/rest-release-20261020/after-fix/report.json'
-    previous=json.loads(baseline_path.read_text())
+    previous=json.loads(pathlib.Path(baseline).read_text()) if baseline else {'Phases':[], 'Profile':{}}
     current=json.loads((root/'report.json').read_text())
     if current['Profile'].get('Smoke'):
         path=root/'comparison.md'
@@ -37,6 +35,8 @@ def render(directory):
       f"Güncel envanter: {current['Profile']['Servers']} upstream/virtual server, {current['Profile']['Servers']*current['Profile']['Tools']:,} tool, {current['Profile']['Sessions']} oturum. Strict metadata audit açık; payload capture, aktif rate limit ve JWT/IdP yükü kapsam dışı.",'',
       '| Aşama | Önceki hedef/sn · süre | Önceki başarı/sn · p95 / p99 ms | MicroK8s hedef/sn · süre | MicroK8s başarı/sn · p95 / p99 ms | Yeni hata / gönderilemeyen |',
       '|---|---:|---:|---:|---:|---:|']
+    if baseline is None:
+        lines.insert(2, 'Yerel karşılaştırma raporu sağlanmadı; önceki ölçüm sütunları ölçülmedi. Tarihsel ortam açıklamaları referans bağlamıdır.')
     for name in ['baseline','steady','spike','recovery','config-refresh','node-loss','node-rejoin','soak']:
         new=after.get(name)
         if not new:continue
@@ -108,4 +108,4 @@ def render(directory):
     lines+=['## Kanıtlar','', '- [Ayrıntılı rapor ve grafikler](report.md)', '- [Ham ölçümler](report.json)', '- [Ortam, kaynak HEAD ve çalışma ağacı](environment.json)', '- [Önceden belirlenen profil](profile.json)', '- [Uygulanan kaynak manifesti](manifest.json)', '- [Pod durumları](kubernetes-pods.json)', '- [Kubernetes olayları](kubernetes-events.json)','', 'Tekrar çalıştırma: `python3 benchmark/kubernetes/run.py`. Sonuçlar çalışma ağacından derlenen binary’ye aittir; kaynak/binary/imaj kimlikleri rapor ve environment/images dosyalarındadır.']
     path=root/'comparison.md';path.write_text('\n'.join(lines)+'\n');return path
 
-if __name__=='__main__':print(render(sys.argv[1]))
+if __name__=='__main__':print(render(sys.argv[1], sys.argv[2] if len(sys.argv)>2 else None))
