@@ -11,6 +11,12 @@ import (
 )
 
 func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Cache-Control", "no-store")
+	r, visibility, principal, identityFilters, err := s.auditVisibility(r)
+	if err != nil {
+		return err
+	}
+	caps := map[string]bool{"canFilterIdentities": identityFilters}
 	q := r.URL.Query()
 	var errs []apierror.FieldError
 	limit := defaultLimit
@@ -90,7 +96,7 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
 			v := strconv.FormatInt(items[len(items)-1].LastID, 10)
 			next = &v
 		}
-		return writeJSON(w, 200, map[string]any{"items": items, "nextCursor": next})
+		return writeJSON(w, 200, map[string]any{"items": items, "nextCursor": next, "capabilities": caps, "authorizationRevision": visibility.Policy.Revision})
 	}
 	items, more, err := s.Store.Reader().ListAudit(r.Context(), f, limit)
 	if err != nil {
@@ -101,5 +107,9 @@ func (s *Server) listAuditEvents(w http.ResponseWriter, r *http.Request) error {
 		c := strconv.FormatInt(items[len(items)-1].ID, 10)
 		next = &c
 	}
-	return writeJSON(w, http.StatusOK, map[string]any{"items": items, "nextCursor": next})
+	wire, err := s.auditWireEvents(r, items, visibility, principal)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, map[string]any{"items": wire, "nextCursor": next, "capabilities": caps, "authorizationRevision": visibility.Policy.Revision})
 }

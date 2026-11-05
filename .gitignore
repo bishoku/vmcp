@@ -20,15 +20,12 @@ deploy/helm/vmcp/charts/
 
 artifacts/
 
-# MicroK8s results are curated exports. Raw evidence belongs in artifacts/.
-/benchmark/results/microk8s-*/*
-!/benchmark/results/microk8s-*/report.md
-!/benchmark/results/microk8s-*/comparison.md
-!/benchmark/results/microk8s-*/summary.json
-!/benchmark/results/microk8s-*/reproduction.json
-!/benchmark/results/microk8s-*/diagnostics.json
-!/benchmark/results/microk8s-*/throughput.svg
-!/benchmark/results/microk8s-*/memory.svg
+# Public benchmark evidence is an explicit allowlist; generated data stays local.
+/benchmark/results/**
+!/benchmark/results/README.md
+!/benchmark/results/SUMMARY.md
 
 # Local GPU model guide, chart and build artifacts (never commit).
 /local/omni-gpu-models/
+
+CODE_REVIEW_REPORT.md

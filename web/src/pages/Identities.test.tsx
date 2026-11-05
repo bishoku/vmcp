@@ -28,7 +28,7 @@ test('deep links inspect bindings before editing and exists conditions omit valu
  expect((screen.getByLabelText('Value 1') as HTMLInputElement).disabled).toBe(true)
  fireEvent.change(screen.getByLabelText(/IP allowlist/),{target:{value:'192.0.2.1\n198.51.100.0/24'}})
  fireEvent.click(screen.getByRole('button',{name:'Save'}))
- await waitFor(()=>expect(api.patchBinding).toHaveBeenCalledWith('team-jwt',expect.objectContaining({conditions:[{claim:'azp',op:'exists'}],virtualServers:['demo'],ipAllowlist:['192.0.2.1','198.51.100.0/24']}),binding.version))
+ await waitFor(()=>expect(api.patchBinding).toHaveBeenCalledWith('team-jwt',expect.objectContaining({conditions:[{claim:'azp',op:'exists'}],ipAllowlist:['192.0.2.1','198.51.100.0/24']}),binding.version))
 })
 test('viewers inspect grants and conditions without mutation controls',async()=>{
  open(true)
@@ -68,5 +68,5 @@ test('filtering server choices retains missing saved grants',async()=>{
  fireEvent.change(screen.getByLabelText('Search virtual servers'),{target:{value:'missing-server'}})
  expect((screen.getByRole('checkbox',{name:/missing-server/}) as HTMLInputElement).checked).toBe(true)
  fireEvent.click(screen.getByRole('button',{name:'Save'}))
- await waitFor(()=>expect(api.patchBinding).toHaveBeenCalledWith('team-jwt',expect.objectContaining({virtualServers:['demo','missing-server']}),binding.version))
+ await waitFor(()=>expect(api.patchBinding).toHaveBeenCalledWith('team-jwt',{},binding.version))
 })

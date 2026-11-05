@@ -15,7 +15,7 @@ comparison=module('kube_compare',ROOT/'benchmark/kubernetes/compare.py')
 
 class ReportContract(unittest.TestCase):
     def test_kubernetes_report_does_not_claim_native_sigkill_or_compose_limits(self):
-        data=json.loads((ROOT/'benchmark/results/rest-release-20261020/after-fix/report.json').read_text())
+        data=json.loads((ROOT/'benchmark/kubernetes/fixtures/report.json').read_text())
         data=copy.deepcopy(data)
         data['DataPlaneConfiguration']['platform']='MicroK8s Kubernetes'
         with tempfile.TemporaryDirectory() as directory:
@@ -28,7 +28,7 @@ class ReportContract(unittest.TestCase):
             self.assertNotIn('PostgreSQL 17 konteyneri 2 CPU / 2 GiB',text)
             self.assertIn('python3 benchmark/kubernetes/run.py',text)
     def test_database_focus_reports_unlimited_postgres_without_fault_claim(self):
-        data=json.loads((ROOT/'benchmark/results/rest-release-20261020/after-fix/report.json').read_text())
+        data=json.loads((ROOT/'benchmark/kubernetes/fixtures/report.json').read_text())
         data['DataPlaneConfiguration'].update(platform='MicroK8s Kubernetes', database_focus=True, postgres_limits='none', steady_seconds=600, nodes=1, go_soft_memory_limit_each='4GiB', memory_limit_each='12Gi')
         next(p for p in data['Phases'] if p['name']=='steady')['target_rps']=1200
         with tempfile.TemporaryDirectory() as directory:
@@ -43,7 +43,7 @@ class ReportContract(unittest.TestCase):
             self.assertIn('run.py --database-focus',text)
             self.assertNotIn('PostgreSQL limiti 4 CPU',text)
     def test_refresh_timeout_is_not_presented_as_measured_propagation(self):
-        data=json.loads((ROOT/'benchmark/results/rest-release-20261020/after-fix/report.json').read_text())
+        data=json.loads((ROOT/'benchmark/kubernetes/fixtures/report.json').read_text())
         data['Functional']['configuration_refresh_under_rest_load']=False
         data['DataPlaneConfiguration']['rest_refresh_ms']=25000
         with tempfile.TemporaryDirectory() as directory:
@@ -51,6 +51,30 @@ class ReportContract(unittest.TestCase):
             text=reports.render(source).read_text()
             self.assertIn('25000 ms gözlem penceresinde doğrulanamadı',text)
             self.assertNotIn('snapshot yayılımı: **25000 ms**',text)
+    def test_comparison_uses_current_gates_and_resource_limits(self):
+        data=json.loads((ROOT/'benchmark/kubernetes/fixtures/report.json').read_text())
+        data['DataPlaneConfiguration'].update(postgres_limits='none', cpu_limit_each='8', memory_limit_each='6Gi', go_soft_memory_limit_each='4GiB', gomaxprocs_each=8)
+        for phase in data['Phases']:
+            phase['slo_pass']=True
+        with tempfile.TemporaryDirectory() as directory:
+            source=pathlib.Path(directory)/'report.json'
+            source.write_text(json.dumps(data))
+            text=comparison.render(directory).read_text()
+            self.assertIn('steady: hedef 200 çağrı/sn',text)
+            self.assertIn('configuration_refresh_under_rest_load: geçti',text)
+            self.assertIn('key_revocation_propagated_and_rejected_on_both_nodes: geçti',text)
+            self.assertIn('PostgreSQL: CPU/bellek limiti yok',text)
+            self.assertIn('8 CPU / 6Gi',text)
+            self.assertNotIn('600 çağrı/sn sabit yük ve 400 çağrı/sn',text)
+            self.assertNotIn('PostgreSQL hard limit 4CPU/4GiB',text)
+            next(p for p in data['Phases'] if p['name']=='steady')['slo_pass']=False
+            data['Functional']['key_revocation_propagated_and_rejected_on_both_nodes']=False
+            source.write_text(json.dumps(data))
+            failed=comparison.render(directory).read_text()
+            self.assertIn('key_revocation_propagated_and_rejected_on_both_nodes: geçmedi',failed)
+            steady=next(line for line in failed.splitlines() if line.startswith('- steady:'))
+            self.assertIn('eşik geçmedi',steady)
+
     def test_smoke_is_not_reported_as_capacity_comparison(self):
         with tempfile.TemporaryDirectory() as directory:
             (pathlib.Path(directory)/'report.json').write_text(json.dumps({'Profile':{'Smoke':True}}))

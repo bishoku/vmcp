@@ -45,7 +45,9 @@ type Tx struct {
 }
 
 // Reader returns a handle for read-only queries outside a transaction.
-func (s *Store) Reader() *Tx { return &Tx{q: s.Pool, box: s.Box, wireMockURL: s.WireMockURL} }
+func (s *Store) Reader() *Tx {
+	return &Tx{q: contextDB{pool: s.Pool}, box: s.Box, wireMockURL: s.WireMockURL}
+}
 
 // Do runs fn in a transaction. Any error rolls it back.
 func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
@@ -57,6 +59,18 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 	handle := &Tx{q: tx, box: s.Box, wireMockURL: s.WireMockURL, targets: map[string]bool{}}
 	// Consistent lock order prevents apply revision checks and row mutations from deadlocking.
 	if _, err := handle.LockRevision(ctx); err != nil {
+		return err
+	}
+	if admission, ok := audit.Transaction(ctx); ok {
+		current, err := controlAuditCurrent(ctx, tx, admission.Access)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return apierror.PreconditionFailed()
+		}
+	}
+	if err := handle.checkConfigurationRevision(ctx); err != nil {
 		return err
 	}
 	if err := fn(handle); err != nil {
@@ -86,6 +100,13 @@ func (s *Store) Do(ctx context.Context, fn func(*Tx) error) error {
 		e.PayloadRedactions = 0
 		if err := tx.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&e.Revision); err != nil {
 			return err
+		}
+		// Mutation metadata describes the post-write config revision, while
+		// retaining the admission's resource identity. Never mutate the parent's
+		// shared context or relabel the request/outcome revision.
+		e.Access = e.Access.Clone()
+		if e.Access != nil {
+			e.Access.Revision = e.Revision
 		}
 		targets := slices.Sorted(maps.Keys(handle.targets))
 		if len(targets) == 0 {

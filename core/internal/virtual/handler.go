@@ -413,7 +413,7 @@ func (h *Handler) ipString(r *http.Request) string {
 
 func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, ip string, incoming http.Header) {
 	start := time.Now()
-	ev := audit.Event{Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
+	ev := audit.Event{Access: snap.ConsumerAudit(vs), Time: start, VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method,
 		ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: "tools/call", Target: vs.Slug, TraceID: audit.TraceFrom(ctx)}
 	if via, _ := ctx.Value(omniContextKey{}).(bool); via {
 		ev.Action = "omni/tools/call"
@@ -707,6 +707,7 @@ func idempotent(annotations json.RawMessage) bool {
 // after a transport failure. Replies from the upstream (including JSON-RPC errors) prove it is
 // alive and never count as failures.
 func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Upstream, vt config.VirtualTool, args json.RawMessage) (json.RawMessage, error) {
+	ctx = audit.WithProvider(ctx, up.Slug, up.AuditDomain)
 	br := h.Breakers.Get(up.ID)
 	attempts := 1
 	if up.REST == nil && idempotent(vt.Tool.Annotations) {

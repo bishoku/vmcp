@@ -91,6 +91,23 @@ func TestMockUpstreamsLifecycleAndOutageIsolation(t *testing.T) {
 	if code != 200 || state["state"] != "active" {
 		t.Fatalf("sync: %d %v", code, state)
 	}
+	// Scoped non-admin actions use permissions, never a coarse admin fallback.
+	assignedToken, assignedID := payloadReader(t, a)
+	var sourceID string
+	if err := a.pool.QueryRow(context.Background(), `SELECT id::text FROM upstreams WHERE slug='one'`).Scan(&sourceID); err != nil {
+		t.Fatal(err)
+	}
+	configurationGrant(t, a, assignedID, []string{"upstreams.mock.sync", "upstreams.rest.execute", "upstreams.rest.preview"}, "upstream", sourceID, nil)
+	assignedHeaders := map[string]string{"Authorization": "Bearer " + assignedToken, "If-Match": headers.Get("ETag")}
+	if code, _, body := a.do("POST", "/api/v1/upstreams/one/mock/sync", map[string]any{}, assignedHeaders); code != 200 {
+		t.Fatal("scoped mock sync rejected", code, body)
+	}
+	if code, _, body := a.do("POST", "/api/v1/upstreams/one/rest/test", map[string]any{"operation": "sample", "arguments": map[string]any{}}, assignedHeaders); code != 200 {
+		t.Fatal("scoped execution rejected", code, body)
+	}
+	if code, _, body := a.do("POST", "/api/v1/upstreams/two/mock/sync", map[string]any{}, assignedHeaders); code != 403 {
+		t.Fatal("scoped action widened", code, body)
+	}
 	_, state = a.expect(200, "GET", "/api/v1/upstreams/two/mock/status", nil)
 	if state["state"] != "pending" {
 		t.Fatal("scoped sync touched another mock", state)

@@ -78,13 +78,16 @@ or write-only credentials to browser storage.
 Dirty editors guard dismissal, entity switching, route navigation, browser Back,
 sign-out and page unload. Failed writes retain their draft; a stale-version error
 offers an explicit discard-and-reload action rather than overwriting newer data.
-An expired session allows token reauthentication while retaining the open draft;
-SSO redirects reload the page, so copy changes before taking that route. Mutations
-are never automatically replayed after authentication or conflicts.
+Session or claim expiry clears protected configuration and open drafts. Token
+reauthentication and SSO reload permitted data; failed mutations are never
+automatically replayed after authentication or conflicts.
 
-Viewers can inspect configuration and filter/refresh lists, but cannot mutate it.
-Editors can change configuration (including configuration import); only admins
-can manage admin API tokens. These controls supplement server authorization.
+Non-administrator viewer/editor/team/custom identities receive configuration
+access only through explicit current role assignments or verified claim mappings.
+Resource and field permissions govern reads and writes; the UI obtains self-only
+capability decisions from the server. Platform administrator identity remains
+deployment-controlled, and operational role assignments cannot mint it. See
+[SSO and RBAC](../docs/SSO-and-RBAC.md) for the enforced authorization model.
 Independent page catalogs report partial failures and offer refresh; obsolete
 reads are cancelled and ignored even if a source completes after cancellation.
 Audit filters debounce reads and protect against out-of-order responses.

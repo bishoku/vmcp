@@ -3,6 +3,7 @@ package controlplane
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -90,9 +91,34 @@ func (s *Server) getAuditPayload(w http.ResponseWriter, r *http.Request) error {
 	if !audit.ValidID(id) {
 		return apierror.New(400, "invalid_event", "Invalid event", "event must be a UUID")
 	}
+	w.Header().Set("Cache-Control", "no-store")
+	access, err := s.Store.AuditPayloadAccess(r.Context(), id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return payloadNotFound()
+	}
+	if err != nil {
+		return apierror.New(503, "authorization_unavailable", "Authorization unavailable", "Audit event scope could not be verified")
+	}
+	policy, ok := r.Context().Value(payloadPolicyKey{}).(payloadPolicy)
+	if !ok {
+		return apierror.New(503, "authorization_unavailable", "Authorization unavailable", "Audit policy unavailable")
+	}
+	p, _ := r.Context().Value(principalKey{}).(*principal)
+	if p == nil {
+		return apierror.Unauthorized()
+	}
+	allowed := policy.canRead(p, access)
+	status := "ok"
+	if !allowed {
+		status = "denied"
+	}
+	s.auditRecorder().Record(audit.Event{ActorType: p.Via, ActorID: p.ID, Issuer: p.Issuer, Subject: p.Subject, Method: r.Method, Action: "audit.payload.access", Target: "audit-event:" + id, Direction: access.Direction, Status: status, Reason: fmt.Sprintf("authorizationRevision=%d classification=%s", policy.Policy.Revision, access.Classification)})
+	if !allowed {
+		return payloadNotFound()
+	}
 	var state string
 	var cipher []byte
-	err := s.Store.Pool.QueryRow(r.Context(), `SELECT a.payload_state,p.ciphertext FROM audit_events a LEFT JOIN audit_payloads p ON p.event_id=a.event_id WHERE a.event_id=$1::uuid`, id).Scan(&state, &cipher)
+	err = s.Store.Pool.QueryRow(r.Context(), `SELECT a.payload_state,p.ciphertext FROM audit_events a LEFT JOIN audit_payloads p ON p.event_id=a.event_id AND p.tenant_id=a.tenant_id WHERE a.event_id=$1::uuid AND a.tenant_id=vmcp_tenant_id()`, id).Scan(&state, &cipher)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return apierror.New(404, "not_found", "Not found", "Audit event not found")
 	}
@@ -112,4 +138,8 @@ func (s *Server) getAuditPayload(w http.ResponseWriter, r *http.Request) error {
 		state = "expired"
 	}
 	return writeJSON(w, 200, map[string]any{"state": state, "content": content})
+}
+
+func payloadNotFound() error {
+	return apierror.New(404, "not_found", "Not found", "Audit event not found")
 }

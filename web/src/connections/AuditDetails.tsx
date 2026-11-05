@@ -1,15 +1,21 @@
-import { useState } from 'react'
+import { useEffect,useRef,useState } from 'react'
 import { api } from '../api'
-import { useCapabilities } from '../interaction'
+import { visibleAuditEvent } from './audit-visibility'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Clock3, FileClock, Fingerprint, Link2 } from 'lucide-react'
+import { ArrowUpRight,Clock3,FileClock,Fingerprint,Link2 } from 'lucide-react'
 import type { AuditEvent } from '../api'
-import { CopyButton, Modal, Pill } from '../ui'
+import { CopyButton,Modal,Pill } from '../ui'
 import { fmt } from '../format'
-import { DetailRow, ServerPanel } from './ServerPanels'
+import { DetailRow,ServerPanel } from './ServerPanels'
 import { auditOperationSummary } from './audit-operations'
 
-export default function AuditDetails({events,zone,close}:{events:AuditEvent[];zone:string;close:()=>void}) {
+export default function AuditDetails(props:{events:AuditEvent[];zone:string;close:()=>void}){
+ const events=props.events.map(visibleAuditEvent).filter(e=>e.capabilities?.canReadMetadata!==false)
+ return events.length?<AuthorizedAuditDetails {...props} events={events}/>:<Modal title="Audit details" onClose={props.close}><p>Audit metadata access is unavailable.</p></Modal>
+}
+
+function AuthorizedAuditDetails({events:inputEvents,zone,close}:{events:AuditEvent[];zone:string;close:()=>void}) {
+  const events=inputEvents.filter(e=>e.capabilities?.canReadMetadata!==false).map(visibleAuditEvent)
   const {event, operationId, incomplete: missing, missing: rootMissing}=auditOperationSummary(events)
   const steps = new Map<string, AuditEvent[]>()
   for (const record of events) {
@@ -22,8 +28,8 @@ export default function AuditDetails({events,zone,close}:{events:AuditEvent[];zo
   const selected=ordered.find(([id])=>id===selection) || ordered[0]
   const selectedRecords=selected[1]
   const selectedEvent=selectedRecords.find(r=>r.stage==='outcome') || selectedRecords[0]
-  const request=selectedRecords.find(r=>r.direction==='request') || selectedRecords.find(r=>r.stage==='admission')
-  const response=selectedRecords.find(r=>r.direction==='response') || selectedRecords.find(r=>r.stage==='outcome')
+  const request=selectedRecords.find(r=>r.direction==='request')
+  const response=selectedRecords.find(r=>r.direction==='response')
   return <Modal title="Audit details" size="audit" onClose={close}>
     <div className="layout-stack">
       <section aria-label="Operation summary" className="space-y-3">
@@ -57,7 +63,7 @@ export default function AuditDetails({events,zone,close}:{events:AuditEvent[];zo
         {!request && !response && selectedRecords.map(record=><PayloadView key={record.id} event={record} label="Event payload"/>)}
       </section>
       <details><summary className="cursor-pointer text-xs font-medium text-accent-700">Technical context &amp; raw events · {events.length}</summary><div className="layout-stack mt-4">
-      <ServerPanel headingLevel={3} title="Event context" description="Parent operation context when loaded" icon={Fingerprint}><dl className="divide-y divide-line panel-inset">{event.conversationId&&<DetailRow label="Conversation ID"><span className="break-all">{event.conversationId}</span></DetailRow>}{event.rootConversationId&&<DetailRow label="Root conversation ID"><span className="break-all">{event.rootConversationId}</span></DetailRow>}{event.turnId&&<DetailRow label="Turn ID">{event.turnId}</DetailRow>}{event.conversationGroupId&&<DetailRow label="Conversation group"><Link className="text-accent-700 break-all" to={`/audit?conversationGroupId=${encodeURIComponent(event.conversationGroupId)}`} onClick={close}>View conversation operations</Link></DetailRow>}{event.correlationStatus&&<DetailRow label="Correlation capture">{event.correlationStatus} · client supplied</DetailRow>}<DetailRow label="Virtual server">{event.virtualServer || '—'}</DetailRow><DetailRow label="Identity"><span className="break-all">{event.agentKey || event.actorId || '—'}</span></DetailRow>{event.subject && <DetailRow label="Subject"><span className="break-all font-mono">{event.subject}</span></DetailRow>}<DetailRow label="Method / action">{event.method || event.action || '—'}</DetailRow>{event.tool && <DetailRow label="Tool"><span className="break-all font-mono">{event.tool}</span></DetailRow>}{event.upstream && <DetailRow label="Upstream">{event.upstream}</DetailRow>}{event.clientIp && <DetailRow label="Client IP">{event.clientIp}</DetailRow>}<DetailRow label="Recorded status"><Pill status={event.status}/></DetailRow></dl></ServerPanel>
+      <ServerPanel headingLevel={3} title="Event context" description="Parent operation context when loaded" icon={Fingerprint}><dl className="divide-y divide-line panel-inset">{event.conversationId&&<DetailRow label="Conversation ID"><span className="break-all">{event.conversationId}</span></DetailRow>}{event.rootConversationId&&<DetailRow label="Root conversation ID"><span className="break-all">{event.rootConversationId}</span></DetailRow>}{event.turnId&&<DetailRow label="Turn ID">{event.turnId}</DetailRow>}{event.conversationGroupId&&<DetailRow label="Conversation group"><Link className="text-accent-700 break-all" to={`/audit?conversationGroupId=${encodeURIComponent(event.conversationGroupId)}`} onClick={close}>View conversation operations</Link></DetailRow>}{event.correlationStatus&&<DetailRow label="Correlation capture">{event.correlationStatus} · client supplied</DetailRow>}<DetailRow label="Virtual server">{event.virtualServer || '—'}</DetailRow><DetailRow label="Identity"><span className="break-all">{event.capabilities?.canReadIdentities?(event.agentKey || event.actorId || '—'):'Restricted'}</span></DetailRow>{event.subject && <DetailRow label="Subject"><span className="break-all font-mono">{event.subject}</span></DetailRow>}<DetailRow label="Method / action">{event.method || event.action || '—'}</DetailRow>{event.tool && <DetailRow label="Tool"><span className="break-all font-mono">{event.tool}</span></DetailRow>}{event.upstream && <DetailRow label="Upstream">{event.upstream}</DetailRow>}{event.clientIp && <DetailRow label="Client IP">{event.clientIp}</DetailRow>}<DetailRow label="Recorded status"><Pill status={event.status}/></DetailRow></dl></ServerPanel>
       {operationId && <ServerPanel headingLevel={3} title="Operation correlation" description="Parent operation and explicitly linked upstream calls" icon={Link2}><div className="space-y-3 panel-body"><p className="break-all surface-inset p-3 font-mono text-xs">{operationId}</p><div className="flex flex-wrap items-center justify-between gap-3"><CopyButton label="Copy operation ID" value={operationId}/><Link className="inline-flex items-center gap-1 text-xs font-medium text-accent-700" to={`/audit?operationId=${encodeURIComponent(operationId)}`} onClick={close}>Open operation<ArrowUpRight aria-hidden="true" className="icon-inline"/></Link></div></div></ServerPanel>}
       <div><h3 className="panel-title">Stored records</h3><p className="supporting-copy mt-1 text-xs text-ink-muted">Admission and outcome stages remain individually inspectable.</p></div>
       {events.map(record=><ServerPanel key={record.id} title={`${record.stage || 'event'} · ${fmt(record.time)}`} description={record.eventId || `Record ${record.id}`} icon={FileClock}>
@@ -70,23 +76,39 @@ export default function AuditDetails({events,zone,close}:{events:AuditEvent[];zo
 }
 
 function PayloadView({event,label}:{event?:AuditEvent;label:string}){
- const {manageTokens}=useCapabilities()
- const [body,setBody]=useState<unknown>(),[state,setState]=useState(''),[busy,setBusy]=useState(false)
+ const allowed=!!event && event.capabilities?.canReadMetadata===true && (label==='Request'?event.capabilities?.canReadRequestPayload===true:label==='Response'?event.capabilities?.canReadResponsePayload===true:event.capabilities?.canReadPayload===true)
+ const authority=`${event?.eventId}:${allowed}:${event?.capabilities?.authorizationRevision}:${event?.payloadState}`
+ return <PayloadPanel key={authority} event={event} label={label} allowed={allowed}/>
+}
+
+function PayloadPanel({event,label,allowed}:{event?:AuditEvent;label:string;allowed:boolean}){
+ const [body,setBody]=useState<unknown>(),[state,setState]=useState(''),[busy,setBusy]=useState(false),[expired,setExpired]=useState(false)
+ const pending=useRef<AbortController|null>(null)
+ useEffect(()=>{
+  const onExpired=()=>{pending.current?.abort();pending.current=null;setExpired(true);setBody(undefined);setState('Sign in again to view payloads.');setBusy(false)}
+  window.addEventListener('vmcp:session-expired',onExpired)
+  window.addEventListener('vmcp:claims-expired',onExpired)
+  return()=>{pending.current?.abort();pending.current=null;window.removeEventListener('vmcp:session-expired',onExpired);window.removeEventListener('vmcp:claims-expired',onExpired)}
+ },[])
  const load=async()=>{
-   if(!event || !manageTokens)return
-   setBusy(true);setBody(undefined)
-   try{const p=await api.auditPayload(event.eventId);setState(p.state);setBody(p.content)}
-   catch{setState('Payload could not be loaded')}
-   finally{setBusy(false)}
+  if(!event?.eventId || !allowed || expired || pending.current)return
+  const controller=new AbortController();pending.current=controller
+  setBusy(true);setBody(undefined);setState('')
+  try{
+   const p=await api.auditPayload(event.eventId,controller.signal)
+   if(controller.signal.aborted || pending.current!==controller)return
+   setState(p.state);setBody(p.content)
+  }catch{if(!controller.signal.aborted)setState('Payload unavailable or access changed. Refresh audit events.')}
+  finally{if(pending.current===controller){pending.current=null;setBusy(false)}}
  }
  const recorded=event?.payloadState || 'disabled'
  return <section aria-label={`${label} payload`} className="min-w-0 rounded-xl border border-line bg-surface">
    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-3"><h4 className="text-xs font-semibold">{label}</h4><span className="text-xs text-ink-muted">{event?(state || recorded):'Record not loaded'}</span></div>
    <div className="space-y-3 p-4 text-xs">
-     {!event?<p className="text-ink-muted">No {label.toLowerCase()} record in this selection.</p>:!manageTokens?<p className="text-ink-muted">Administrator access is required to view payloads.</p>:recorded==='disabled'?<p className="text-ink-muted">Payload capture was disabled for this record.</p>:<button className="text-xs font-medium text-accent-700" disabled={busy} onClick={()=>void load()}>{busy?'Loading payload…':'Load audit payload'}</button>}
+     {!event?<p className="text-ink-muted">No {label.toLowerCase()} record in this selection.</p>:!allowed?<p className="text-ink-muted">You do not have permission to view this {label.toLowerCase()} payload.</p>:recorded==='disabled'?<p className="text-ink-muted">Payload capture was disabled for this record.</p>:<button className="text-xs font-medium text-accent-700" disabled={busy||expired} onClick={()=>void load()}>{busy?'Loading payload…':'Load audit payload'}</button>}
      {state&&<p role="status">{state}</p>}
-     {manageTokens&&body!==undefined&&event?.scope==='omni_diagnostics'&&<OmniPipeline body={body}/>}
-     {manageTokens&&body!==undefined&&<pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-all surface-inset p-3 font-mono text-xs">{JSON.stringify(body,null,2)}</pre>}
+     {allowed&&!expired&&body!==undefined&&event?.scope==='omni_diagnostics'&&<OmniPipeline body={body}/>}
+     {allowed&&!expired&&body!==undefined&&<pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-all surface-inset p-3 font-mono text-xs">{JSON.stringify(body,null,2)}</pre>}
    </div>
  </section>
 }

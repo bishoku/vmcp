@@ -43,6 +43,7 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 	defer h.Sessions.Close()
 	h.Audit = recorder
 	snap := h.Snap.Snapshot()
+	snap.AuditTenant = "default"
 	v := snap.VirtualServers["support"]
 	v.OmniEnabled = true
 	snap.VirtualServers[v.Slug] = v
@@ -239,4 +240,9 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 	if out := call("invoke_tool", map[string]any{"tool_ref": omni.Ref("support", "tables"), "arguments": map[string]any{}}); out.Code != 503 {
 		t.Fatal("strict audit failure allowed invoke", out.Code)
 	}
+	var missingContext int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_events e LEFT JOIN audit_access_contexts c USING(event_id) WHERE e.scope IN ('omni','omni_diagnostics','omni_embedding','omni_rerank') AND (c.event_id IS NULL OR c.classification<>'tenant' OR c.operation_config_revision<>e.config_revision)`).Scan(&missingContext); err != nil || missingContext != 0 {
+		t.Fatal("Omni ticket/provider provenance lost", missingContext, err)
+	}
+
 }

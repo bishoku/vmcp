@@ -11,12 +11,14 @@ import (
 func TestEmbeddedOpenAPISpecifications(t *testing.T) {
 	for _, format := range []string{"json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
-			// Exercise routing and bearer authentication without a database dependency.
+			// Inspect embedded content directly; protected routing is covered by integration tests.
 			s := &Server{AdminToken: "test"}
 			req := httptest.NewRequest("GET", "/api/v1/openapi."+format, nil)
 			req.Header.Set("Authorization", "Bearer test")
 			rec := httptest.NewRecorder()
-			s.Handler().ServeHTTP(rec, req)
+			if err := s.getOpenAPI(rec, req); err != nil {
+				t.Fatal(err)
+			}
 			if rec.Code != 200 {
 				t.Fatalf("status: %d", rec.Code)
 			}

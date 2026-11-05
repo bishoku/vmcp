@@ -130,4 +130,3 @@ func TestDenialAuditAndRevocationEndpoints(t *testing.T) {
 		t.Fatalf("expected 0 active sessions for user-42, got %d (%v)", activeSessions, err)
 	}
 }
-

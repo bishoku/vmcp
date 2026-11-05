@@ -7,6 +7,7 @@ For installation and use, start at the [documentation home](../docs/Home.md).
 - [Development and verification](Development.md)
 - [Docker Hub and GitHub release publishing](DOCKER_HUB_PUBLISHING.md)
 - [Production readiness backlog](Production-Roadmap.md)
+- [Control plane authorization implementation plan](CONTROL_PLANE_AUTHORIZATION_PLAN.md)
 - [Frontend implementation history](FRONTEND_IMPLEMENTATION_PLAN.md)
 - [API and UI parity implementation notes](P07_API_UI_PARITY.md)
 - [Historical network security verification](Network-Security-Verification.md)

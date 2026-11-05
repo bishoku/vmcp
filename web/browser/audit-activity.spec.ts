@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import {expect,test} from '@playwright/test'
 import {auditSettings} from './audit-fixtures'
 
@@ -8,6 +9,8 @@ for(const width of [390,1440])test(`audit activity filters retain virtual call c
  const queries:URLSearchParams[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'reader'); if (capability) return capability
+
   const url=new URL(r.request().url())
   if(url.pathname.endsWith('/me'))return r.fulfill({json:{name:'Viewer',role:'viewer'}})
   if(url.pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})

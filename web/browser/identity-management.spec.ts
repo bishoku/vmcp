@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
@@ -8,13 +9,15 @@ async function login(page:Page,role:'admin'|'viewer'='admin'){
  let bindings=[{...binding,description:'Team agents with verified claims'},{...binding,slug:'disabled-binding',enabled:false}]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role}})
   if(request.method()==='PATCH' && path.endsWith('/agent-keys/team-key')){
    expect(request.headers()['if-match']).toBe(`"${keys[0].version}"`)
-   const changes=request.postDataJSON();expect(changes.expiresAt).toBe('2027-02-03T04:05:06.789Z')
+   const changes=request.postDataJSON();expect(changes).not.toHaveProperty('expiresAt')
    keys=[{...keys[0],...changes,version:keys[0].version+1},keys[1]]
    return route.fulfill({json:keys[0]})
   }
@@ -29,6 +32,7 @@ async function login(page:Page,role:'admin'|'viewer'='admin'){
   if(path.endsWith('/identity-bindings/evaluate'))return route.fulfill({json:{decision:{allowed:true,principal:'team-jwt'},matches:[{slug:'team-jwt',virtualServers:['demo']}]}})
   if(path.endsWith('/agent-keys'))return route.fulfill({json:{items:keys}})
   if(path.endsWith('/identity-bindings'))return route.fulfill({json:{items:bindings}})
+  if(path==='/api/v1/virtual-servers/'+(server).slug)return route.fulfill({json:server})
   if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:[server]}})
   return route.fulfill({json:{items:[]}})
  })

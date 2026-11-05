@@ -28,7 +28,7 @@ lacks context binding until rotated. See [security operations](SECURITY_OPERATIO
 
 ## Trust model and known limits
 
-- Upstream URLs remain privileged editor/admin configuration. Outbound MCP and token requests enforce operator-owned host/CIDR policy at connection time; private/loopback destinations need explicit authorization. Metadata destinations, redirects and environment proxies are blocked. Legacy SSE message endpoints must share the stream origin. See [MCP network security](MCP_NETWORK_SECURITY.md).
+- Upstream URL changes require scoped upstreams.connection.update permission. Outbound MCP and token requests enforce operator-owned host/CIDR policy at connection time; private/loopback destinations need explicit authorization. Metadata destinations, redirects and environment proxies are blocked. Legacy SSE message endpoints must share the stream origin. See [MCP network security](MCP_NETWORK_SECURITY.md).
 - Browser MCP clients need an approved `VMCP_ALLOWED_ORIGINS` entry. Native clients without Origin remain supported. Origin checks do not replace authentication or grant browser CORS access.
 - Tool descriptions come from upstreams and are passed to models; a malicious or compromised upstream can try prompt
   injection through them. Use description overrides and policies to constrain what agents see.

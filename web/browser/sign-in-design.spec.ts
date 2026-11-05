@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 
@@ -5,6 +6,8 @@ for(const sso of [false,true])test(`${sso?'SSO and token':'token-only'} sign-in 
  const attempts:string[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:sso}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'reader'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
@@ -47,10 +50,12 @@ for(const sso of [false,true])test(`${sso?'SSO and token':'token-only'} sign-in 
  await page.reload();await expect(token).toHaveValue('')
 })
 
-test('session recovery retains a draft after failed reauthentication and never replays a write',async({page})=>{
+test('session recovery clears expired drafts and never replays a write',async({page})=>{
  let writes=0
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:true}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
@@ -77,6 +82,8 @@ test('session recovery retains a draft after failed reauthentication and never r
  await page.screenshot({path:test.info().outputPath('session-recovery-mobile.png'),animations:'disabled'})
  await expired.getByLabel('Admin token',{exact:true}).fill('replacement');await expired.getByRole('button',{name:'Continue',exact:true}).click()
  await expect(expired).toHaveCount(0)
- await expect(page.getByLabel('Name',{exact:true})).toHaveValue('retained-draft')
+ await expect(page.getByRole('dialog')).toHaveCount(0)
+ await page.getByRole('button',{name:'New key',exact:true}).click()
+ await expect(page.getByLabel('Name',{exact:true})).toHaveValue('')
  expect(writes).toBe(1)
 })

@@ -1,24 +1,27 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { api, setToken } from './api'
+function stubConfigurationFetch(fetch:(...args:any[])=>any){
+ vi.stubGlobal('fetch',(url:string,options:RequestInit)=>url==='/api/v1/configuration-access'?Promise.resolve(new Response(JSON.stringify({authorizationRevision:1,allowed:[true]}))):fetch(url,options))
+}
 afterEach(()=>{vi.unstubAllGlobals();localStorage.clear()})
 test('management pagination traverses beyond 200 and preserves cursor',async()=>{
  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({items:Array.from({length:200},(_,i)=>({slug:`u${i}`})),nextCursor:'next cursor'}))).mockResolvedValueOnce(new Response(JSON.stringify({items:[{slug:'last'}],nextCursor:null})))
- vi.stubGlobal('fetch',fetch)
+ stubConfigurationFetch(fetch)
  expect(await api.listUpstreams()).toHaveLength(201)
  expect(fetch.mock.calls[1][0]).toContain('cursor=next+cursor')
 })
 test('repeated pagination cursors fail instead of looping',async()=>{
- vi.stubGlobal('fetch',vi.fn().mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({items:[],nextCursor:'same'})))))
+ stubConfigurationFetch(vi.fn().mockImplementation(()=>Promise.resolve(new Response(JSON.stringify({items:[],nextCursor:'same'})))))
  await expect(api.listAgentKeys()).rejects.toThrow('repeated')
 })
 test('writes carry original version and cookie CSRF header; stale edits fail',async()=>{
  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({detail:'conflict'}),{status:412}))
- vi.stubGlobal('fetch',fetch)
+ stubConfigurationFetch(fetch)
  await expect(api.patchUpstream('u',{name:'changed'},7)).rejects.toThrow('another session')
  expect(fetch.mock.calls[0][1].headers).toMatchObject({'If-Match':'"7"','X-VMCP-CSRF':'1'})
 })
 test('token authentication is explicit and stored credential test never submits credentials',async()=>{
- const fetch=vi.fn().mockResolvedValue(new Response('{"ok":true}'));vi.stubGlobal('fetch',fetch);setToken('admin-token')
+ const fetch=vi.fn().mockResolvedValue(new Response('{"ok":true}'));stubConfigurationFetch(fetch);setToken('admin-token')
  await api.testStoredConnection('upstream')
  expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer admin-token')
  expect(fetch.mock.calls[0][1].body).toBeUndefined()
@@ -27,18 +30,18 @@ test('expired sessions clear memory credentials and notify the application witho
  const {clearToken,getToken}=await import('./api')
  clearToken();setToken('secret');expect(localStorage.getItem('vmcp.adminToken')).toBeNull()
  const expired=vi.fn();window.addEventListener('vmcp:session-expired',expired)
- const fetch=vi.fn().mockResolvedValue(new Response('{}',{status:401}));vi.stubGlobal('fetch',fetch)
+ const fetch=vi.fn().mockResolvedValue(new Response('{}',{status:401}));stubConfigurationFetch(fetch)
  try{await expect(api.me()).rejects.toMatchObject({status:401});expect(expired).toHaveBeenCalledTimes(1);expect(getToken()).toBe('');expect(fetch).toHaveBeenCalledTimes(1)}finally{window.removeEventListener('vmcp:session-expired',expired)}
 })
 test('audit requests propagate abort signals',async()=>{
  const controller=new AbortController()
- const fetch=vi.fn().mockResolvedValue(new Response('{"items":[]}'));vi.stubGlobal('fetch',fetch)
+ const fetch=vi.fn().mockResolvedValue(new Response('{"items":[]}'));stubConfigurationFetch(fetch)
  await api.listAudit({tool:'test'},controller.signal)
  expect(fetch.mock.calls[0][1].signal).toBe(controller.signal)
 })
 test('OpenAPI downloads preserve raw YAML and carry bearer credentials',async()=>{
  const fetch=vi.fn().mockResolvedValue(new Response('openapi: 3.1.0\n',{headers:{'Content-Type':'application/yaml'}}))
- vi.stubGlobal('fetch',fetch);setToken('spec-token')
+ stubConfigurationFetch(fetch);setToken('spec-token')
  const blob=await api.downloadOpenAPI('yaml')
  expect(await blob.text()).toBe('openapi: 3.1.0\n')
  expect(fetch.mock.calls[0][0]).toBe('/api/v1/openapi.yaml')

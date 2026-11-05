@@ -1,24 +1,25 @@
-import { useEffect, useState } from 'react'
-import {parameterValueError,hasParameterDefault} from './rest-parameters'
-import { checkSchema, schemaLimitError } from './schema-validation'
-import { responseSelectionError, restToolPreview } from './rest-tool-preview'
-import { inferSchema, mergeExample, objectSchema } from './schema-editor'
+import { useConfigurationPermissions } from '../configuration-access'
+import { useEffect,useState } from 'react'
+import { parameterValueError,hasParameterDefault } from './rest-parameters'
+import { checkSchema,schemaLimitError } from './schema-validation'
+import { responseSelectionError,restToolPreview } from './rest-tool-preview'
+import { inferSchema,mergeExample,objectSchema } from './schema-editor'
 import RESTImportDialog from './RESTImportDialog'
 import RESTOperationEditor from './RESTOperationEditor'
 import QuickMockOperation from './QuickMockOperation'
 import MockUpstreamStatus from './MockUpstreamStatus'
-import {parseMockRules} from './mock-rules'
+import { parseMockRules } from './mock-rules'
 import RESTToolPreview from './RESTToolPreview'
-import { Cable, KeyRound } from 'lucide-react'
-import { api, type RESTAuth, type RESTConfig, type RESTOperation, type Upstream } from '../api'
+import { Cable,KeyRound } from 'lucide-react'
+import { api,type RESTAuth,type RESTConfig,type RESTOperation,type Upstream } from '../api'
 import { ServerPanel } from './ServerPanels'
 import { FormField } from '../FormField'
 import Select from '../Select'
 import { Switch } from '../SelectionControls'
-import { ErrorBox, Modal } from '../ui'
-import { btn, input, primary } from '../styles'
+import { ErrorBox,Modal } from '../ui'
+import { btn,input,primary } from '../styles'
 import { useConfirm } from '../confirmation'
-import { useCapabilities, useOperation, useUnsaved } from '../interaction'
+import { useOperation,useUnsaved } from '../interaction'
 
 const newOperation = (): RESTOperation => ({name:'',description:'',enabled:true,method:'GET',path:'/',parameters:[],readOnly:false})
 const json = (value:unknown) => value === undefined ? '' : JSON.stringify(value,null,2)
@@ -120,7 +121,9 @@ function RESTTest({upstream,onUseResponse,draftNames}:{upstream:Upstream;onUseRe
  const [operation,setOperation]=useState(upstream.rest?.operations.find(o=>o.enabled)?.name??'')
  const [sample,setSample]=useState<{operation:string;value:unknown}>()
  const [args,setArgs]=useState('{}'),[result,setResult]=useState(''),[error,setError]=useState('')
- const {manageTokens:admin,edit}=useCapabilities(),{busy,run}=useOperation(),confirm=useConfirm()
+ const {busy,run}=useOperation(),confirm=useConfirm()
+ const access=useConfigurationPermissions('upstreams',upstream.slug,['rest.preview','rest.execute'])
+ const admin=(access.can('rest.execute')),edit=(access.can('rest.preview'))
  const perform=(action:'preview'|'test')=>run(async()=>{setError('');setResult('');setSample(undefined);try{
  const parsed=JSON.parse(args)
  if(action==='test'&&!await confirm({title:'Execute REST operation?',description:'This sends a real request using saved credentials and may change data in the REST service. It will not be retried or impersonate an agent.',confirmLabel:'Execute request',tone:'warning'}))return

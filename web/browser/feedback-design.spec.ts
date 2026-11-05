@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream } from '../src/connections/fixtures'
@@ -6,8 +7,8 @@ test.use({viewport:{width:1280,height:1000}})
 
 async function base(page:Page){
  const writes:string[]=[]
- page.on('request',request=>{if(['POST','PUT','PATCH','DELETE'].includes(request.method()))writes.push(request.url())})
- await page.route('**/api/v1/**',route=>new URL(route.request().url()).pathname.endsWith('/audit-settings')?route.fulfill({json:auditSettings}):route.fulfill({json:route.request().url().endsWith('/me')?{name:'Tester',role:'admin'}:{items:[]}}))
+ page.on('request',request=>{if(!new URL(request.url()).pathname.endsWith('/configuration-access') && ['POST','PUT','PATCH','DELETE'].includes(request.method()))writes.push(request.url())})
+ await page.route('**/api/v1/**',route=>configurationFixture(route, 'administrator') ?? (new URL(route.request().url()).pathname.endsWith('/audit-settings')?route.fulfill({json:auditSettings}):route.fulfill({json:route.request().url().endsWith('/me')?{name:'Tester',role:'admin'}:{items:[]}})))
  return writes
 }
 
@@ -87,6 +88,7 @@ test('retrying failed editor catalog reads preserves an unsaved draft',async({pa
  await page.route(/\/api\/v1\/upstreams(?:\?.*)?$/,route=>route.fulfill({status:fail?503:200,json:fail?{detail:'Catalog offline'}:{items:[upstream]}}))
  await page.route(/\/api\/v1\/upstreams\/alpha\/tools(?:\?.*)?$/,route=>route.fulfill({json:{items:[{name:'lookup'}]}}))
  await page.route('**/api/v1/upstreams/alpha/catalog',route=>route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}}))
+ await page.route('**/api/v1/virtual-servers/demo',route=>route.fulfill({json:server}))
  await page.goto('/virtual-servers/demo/edit')
  await page.getByLabel('Name',{exact:true}).fill('Retained draft')
  await expect(page.getByRole('alert')).toContainText('Catalog offline')

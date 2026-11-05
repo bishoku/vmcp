@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import {expect,test} from '@playwright/test'
 import {auditSettings} from './audit-fixtures'
 test('settings helper previews both payloads using unsaved global rules on mobile',async({page})=>{
@@ -5,6 +6,8 @@ test('settings helper previews both payloads using unsaved global rules on mobil
  await page.setViewportSize({width:390,height:844})
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  const path=new URL(route.request().url()).pathname
  if(path.endsWith('/me'))return route.fulfill({status:route.request().headers().authorization?200:401,json:{name:'Admin',role:'admin'}})
  if(path.endsWith('/audit-settings'))return route.fulfill({json:{...auditSettings,scopes:{control:{request:true,response:true}}}})

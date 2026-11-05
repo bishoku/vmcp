@@ -56,7 +56,7 @@ func TestAuditSettingsPreviewAndPayloadAccess(t *testing.T) {
 	_, reader := a.expect(201, "POST", "/api/v1/admin-tokens", map[string]any{"slug": "payload-reader", "scope": "read"})
 	for _, path := range []string{"/api/v1/audit-settings", "/api/v1/audit-events/" + id + "/payload"} {
 		code, _, _ := a.do("GET", path, nil, map[string]string{"Authorization": "Bearer " + reader["token"].(string)})
-		if code != 403 {
+		if code != 403 && code != 404 {
 			t.Fatal("reader allowed payload policy access", code)
 		}
 	}

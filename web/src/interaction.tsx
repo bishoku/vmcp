@@ -1,10 +1,8 @@
-import { createContext, useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { discardConfirmation, useConfirm } from './confirmation'
+import { createContext,useContext,useEffect,useRef,useState,type Dispatch,type SetStateAction } from 'react'
+import { discardConfirmation,useConfirm } from './confirmation'
 import type { Me } from './api'
 
 export const RoleContext = createContext<Me['role']>('viewer')
-export const capabilities = (role: Me['role']) => ({ edit: role !== 'viewer', manageTokens: role === 'admin' })
-export const useCapabilities = () => capabilities(useContext(RoleContext))
 export const Drafts = createContext<Map<symbol, 'dirty' | 'busy'> | null>(null)
 /** Tracks a draft baseline without retaining its secrets in browser storage. */
 export function useDraft<T>(initial: T, identity: (value: T) => unknown) {

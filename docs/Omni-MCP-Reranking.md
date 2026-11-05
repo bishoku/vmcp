@@ -217,4 +217,4 @@ not a provider health probe. `/readyz` still indicates index readiness, not rera
 availability or calibrated relevance. Inspect response `search_mode` and model
 logs when diagnosing fallback or timeouts.
 
-Development measurements and limitations: [stage 2 evaluation report](../benchmark/results/omni-rerank-stage2-20261027.md).
+Development measurements and limitations: [stage 2 evaluation report — local evidence](../benchmark/results/README.md).

@@ -1,25 +1,26 @@
+import { useConfigurationPermissions,useConfigurationChecks } from '../configuration-access'
 import { groupGrants } from '../ownership/grants'
 import BulkGrantDialog from '../ownership/BulkGrantDialog'
 import { Checkbox } from '../SelectionControls'
-import { useContext, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Clock3, FolderKanban, Layers3, Plus, RefreshCw, ShieldCheck, Users } from 'lucide-react'
-import { api, type Project, type Team, type ToolGrant, type VirtualServer } from '../api'
-import { RoleContext, useOperation } from '../interaction'
+import { useContext,useEffect,useState } from 'react'
+import { Link,useSearchParams } from 'react-router-dom'
+import { Clock3,FolderKanban,Layers3,Plus,RefreshCw,ShieldCheck,Users } from 'lucide-react'
+import { api,type Project,type Team,type ToolGrant,type VirtualServer } from '../api'
+import { RoleContext,useOperation } from '../interaction'
 import { useNotifications } from '../notifications'
 import { useConfirm } from '../confirmation'
-import { source, useSources } from '../requests'
-import { btn, input, primary } from '../styles'
+import { source,useSources } from '../requests'
+import { btn,input,primary } from '../styles'
 import Button from '../Button'
 import Select from '../Select'
 import { Badge } from '../Badge'
-import { DataTable, LoadMore, RowActions } from '../DataTable'
-import { EmptyState, LoadingState } from '../Feedback'
-import { SearchField, ResultCount } from '../SearchControls'
+import { DataTable,LoadMore,RowActions } from '../DataTable'
+import { EmptyState,LoadingState } from '../Feedback'
+import { SearchField,ResultCount } from '../SearchControls'
 import { useTableSort } from '../table-sorting'
-import { DetailRow, ServerPanel, SummaryTile } from '../connections/ServerPanels'
-import { ErrorBox, Modal } from '../ui'
-import OwnershipEditor, { type OwnershipSelection } from '../ownership/OwnershipEditor'
+import { DetailRow,ServerPanel,SummaryTile } from '../connections/ServerPanels'
+import { ErrorBox,Modal } from '../ui'
+import OwnershipEditor,{ type OwnershipSelection } from '../ownership/OwnershipEditor'
 import AccessRequest from '../ownership/AccessRequest'
 
 const sections = [
@@ -33,7 +34,11 @@ const newTeam: Team = { slug: '', name: '', issuer: '', group: '', version: 0 }
 const newProject: Project = { slug: '', name: '', ownerTeam: '', version: 0 }
 
 export default function Ownership() {
- const role = useContext(RoleContext), admin = role === 'admin', canEdit = role !== 'viewer'
+ const role = useContext(RoleContext)
+ const access=useConfigurationPermissions('tool_grants','',['request','approve','reject','revoke'])
+ const teamAccess=useConfigurationPermissions('teams','',['manage'])
+ const projectAccess=useConfigurationPermissions('projects','',['manage'])
+ const admin = role === 'admin', canEdit = (['request','approve','reject','revoke'].some(access.can))
  const [params, setParams] = useSearchParams()
  const section = sections.find(item => item.id === params.get('section')) ?? sections[0]
  const [teams, setTeams] = useState<Team[]>([]), [projects, setProjects] = useState<Project[]>([])
@@ -45,6 +50,8 @@ export default function Ownership() {
  const [query, setQuery] = useState(''), [status, setStatus] = useState(''), [limit, setLimit] = useState(50)
  const [selection, setSelection] = useState<OwnershipSelection | null>(null), [requesting, setRequesting] = useState(false)
  const [review, setReview] = useState<ToolGrant | null>(null), [error, setError] = useState('')
+ const decisionAccess=useConfigurationChecks(['approved','rejected','revoked'].map(status=>({method:'POST',path:'/tool-grants',body:{...review,status,reason:decisionReason.trim()||review?.reason||''}})))
+ const decisionAllowed=(status:string)=>(decisionAccess.allowed[['approved','rejected','revoked'].indexOf(status)]===true)
  const { busy, run } = useOperation(), { notify } = useNotifications(), confirm = useConfirm()
  const { load, loading, readError } = useSources(() => [
   source('Teams', api.teams, response => setTeams(response.items)),
@@ -78,14 +85,14 @@ export default function Ownership() {
   else setRequesting(true)
  }
  const createLabel = section.id === 'teams' ? 'New team' : section.id === 'projects' ? 'New project' : 'Request access'
- const canCreate = section.id === 'access' ? canEdit : admin
+ const canCreate = ((section.id==='access'?access.can('request'):section.id==='teams'?teamAccess.can('manage'):projectAccess.can('manage')))
  const saved = async (title: string) => {
   setSelection(null); setRequesting(false); setReview(null); setSelectedGrants([]); setError('')
   notify({ title }); window.dispatchEvent(new Event('vmcp:ownership-changed')); await load()
  }
  const decide = (grant: ToolGrant, next: ToolGrant['status']) => run(async () => {
   if ((next === 'rejected' || next === 'revoked') && !decisionReason.trim()) {setError('Enter a decision reason.');return}
-  if (!canEdit || !(admin || grant.canDecide === true)) return
+  if (!canEdit || !decisionAllowed(next) || false) return
   if (!await confirm({ title: `${next === 'approved' ? 'Approve' : next === 'rejected' ? 'Reject' : 'Revoke'} tool access?`, description: `${grant.virtualServer} → ${grant.upstream} / ${grant.tool}. ${next === 'approved' ? 'This grants permission to expose the tool on this virtual server.' : 'The tool will no longer be available through this grant after the configuration updates.'}`, confirmLabel: next === 'approved' ? 'Approve access' : next === 'rejected' ? 'Reject request' : 'Revoke access', tone: next === 'revoked' ? 'danger' : 'warning' })) return
   setError('')
   try { await api.saveToolGrant({ ...grant, status: next, reason: decisionReason.trim() || grant.reason }); await saved(`Tool access ${next}`) }
@@ -112,11 +119,11 @@ export default function Ownership() {
    {count > 0 && <LoadMore shown={Math.min(limit, count)} total={count} noun={section.id === 'access' ? 'requests' : section.id} label="Show 50 more" onLoad={() => setLimit(value => value + 50)}/>}
   </ServerPanel>
   <p className="text-xs leading-relaxed text-ink-muted">{section.id === 'teams' ? 'Only platform admins can change identity mappings. Users and group membership are managed outside vMCP.' : section.id === 'projects' ? 'Default keeps existing workspace permissions. Upstream ownership is configured independently on each upstream.' : 'Approval allows a tool to be exposed on one virtual server; it does not approve each invocation.'}</p>
-  {selection && <OwnershipEditor selection={selection} teams={teams} admin={admin} onClose={() => setSelection(null)} onSaved={saved}/>}
+  {selection && <OwnershipEditor selection={selection} teams={teams} onClose={() => setSelection(null)} onSaved={saved}/>}
   {requesting && <AccessRequest servers={servers} grants={grants} onClose={() => setRequesting(false)} onSaved={async title=>{setQueue('outgoing');await saved(title)}}/>}
   {bulk && <BulkGrantDialog items={bulk.items} status={bulk.status} onClose={()=>setBulk(undefined)} onComplete={async()=>{setSelectedGrants([]);window.dispatchEvent(new Event('vmcp:ownership-changed'));await load()}}/>}
-  {review && <Modal title="Tool access request" description="Review the consumer, upstream and reason before making a decision." size="wide" busy={busy} onClose={() => setReview(null)} footer={<div className="flex flex-wrap justify-end gap-2"><button className={btn} onClick={() => setReview(null)}>Close</button>{canEdit && (admin || review.canDecide === true) && <>{review.status !== 'approved' && <Button className={primary} loading={busy} onClick={() => void decide(review, 'approved')}>Approve</Button>}{review.status === 'pending' && <Button className={btn} loading={busy} onClick={() => void decide(review, 'rejected')}>Reject</Button>}{review.status === 'approved' && <Button className={`${btn} action-danger-outline`} loading={busy} onClick={() => void decide(review, 'revoked')}>Revoke</Button>}</>}</div>}>
-   {canEdit && (admin || review.canDecide===true) && <label className="block mb-4 text-sm">Decision reason (required for rejection or revocation)<textarea className={input} maxLength={2000} rows={3} value={decisionReason} onChange={event=>setDecisionReason(event.target.value)}/></label>}{error && <ErrorBox>{error} Close this dialog and refresh the list if another owner has updated the request.</ErrorBox>}<dl className="divide-y divide-line"><DetailRow label="Status"><Badge tone={grantTone[review.status]}>{review.status}</Badge></DetailRow><DetailRow label="Virtual server">{review.virtualServer}</DetailRow><DetailRow label="Consumer project">{review.consumerProject || servers.find(s=>s.slug===review.virtualServer)?.project || 'Not provided'}</DetailRow><DetailRow label="Consumer team">{review.consumerTeam || 'Default — unmanaged'}</DetailRow><DetailRow label="Upstream owner">{review.upstreamOwnerTeam || 'Default — unmanaged'}</DetailRow><DetailRow label="Upstream">{review.upstream}</DetailRow><DetailRow label="Tool">{review.tool}</DetailRow><DetailRow label="Reason"><span className="whitespace-pre-wrap">{review.reason || 'No reason provided.'}</span></DetailRow><DetailRow label="Saved version">{review.version}</DetailRow></dl>{!admin && review.canDecide !== true && <p className="mt-5 supporting-copy text-ink-muted">Only the upstream owner or a platform admin can decide this request.</p>}
+  {review && <Modal title="Tool access request" description="Review the consumer, upstream and reason before making a decision." size="wide" busy={busy} onClose={() => setReview(null)} footer={<div className="flex flex-wrap justify-end gap-2"><button className={btn} onClick={() => setReview(null)}>Close</button>{canEdit && <>{review.status !== 'approved' && <Button className={primary} loading={busy} disabled={!decisionAllowed('approved')} onClick={() => void decide(review, 'approved')}>Approve</Button>}{review.status === 'pending' && <Button className={btn} loading={busy} disabled={!decisionAllowed('rejected')} onClick={() => void decide(review, 'rejected')}>Reject</Button>}{review.status === 'approved' && <Button className={`${btn} action-danger-outline`} loading={busy} disabled={!decisionAllowed('revoked')} onClick={() => void decide(review, 'revoked')}>Revoke</Button>}</>}</div>}>
+   {canEdit && <label className="block mb-4 text-sm">Decision reason (required for rejection or revocation)<textarea className={input} maxLength={2000} rows={3} value={decisionReason} onChange={event=>setDecisionReason(event.target.value)}/></label>}{error && <ErrorBox>{error} Close this dialog and refresh the list if another owner has updated the request.</ErrorBox>}<dl className="divide-y divide-line"><DetailRow label="Status"><Badge tone={grantTone[review.status]}>{review.status}</Badge></DetailRow><DetailRow label="Virtual server">{review.virtualServer}</DetailRow><DetailRow label="Consumer project">{review.consumerProject || servers.find(s=>s.slug===review.virtualServer)?.project || 'Not provided'}</DetailRow><DetailRow label="Consumer team">{review.consumerTeam || 'Default — unmanaged'}</DetailRow><DetailRow label="Upstream owner">{review.upstreamOwnerTeam || 'Default — unmanaged'}</DetailRow><DetailRow label="Upstream">{review.upstream}</DetailRow><DetailRow label="Tool">{review.tool}</DetailRow><DetailRow label="Reason"><span className="whitespace-pre-wrap">{review.reason || 'No reason provided.'}</span></DetailRow><DetailRow label="Saved version">{review.version}</DetailRow></dl>{!admin && review.canDecide !== true && <p className="mt-5 supporting-copy text-ink-muted">Each decision requires its own scoped permission.</p>}
   </Modal>}
  </div>
 }

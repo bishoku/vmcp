@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.spyOn(api, 'listUpstreams').mockResolvedValue([{ slug: 'alpha', name: 'Alpha' }] as Upstream[])
   vi.spyOn(api, 'listTools').mockResolvedValue([{ name: 'one' }, { name: 'two' }])
   vi.spyOn(api, 'listCatalog').mockResolvedValue({ resources: [], resourceTemplates: [], prompts: [], capabilities: {} })
-  vi.spyOn(api, 'putVirtualServer').mockResolvedValue(server)
+  vi.spyOn(api, 'patchVirtualServer').mockResolvedValue(server)
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 async function open() {
@@ -31,8 +31,8 @@ async function open() {
 }
 async function save() {
   fireEvent.click(screen.getByRole('button', { name: 'Save' }))
-  await waitFor(() => expect(api.putVirtualServer).toHaveBeenCalledTimes(1))
-  return vi.mocked(api.putVirtualServer).mock.calls[0]
+  await waitFor(() => expect(api.patchVirtualServer).toHaveBeenCalledTimes(1))
+  return vi.mocked(api.patchVirtualServer).mock.calls[0]
 }
 test('renaming and clearing aliases preserve deny/read-only policies and the original version', async () => {
   await open()
@@ -56,7 +56,7 @@ test('removing a selection removes its obsolete policy from the saved configurat
   fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0])
   const [, body] = await save()
   expect(body.tools).toHaveLength(1)
-  expect(body.policy?.tools).toEqual({ second: 'read_only' })
+  expect(body.policy).toEqual({default:'allow',tools:{second:'read_only'}})
 })
 test('shows and copies the configured public gateway endpoint', async () => {
   vi.stubEnv('VITE_PUBLIC_GATEWAY_URL', 'http://localhost:8800')
@@ -82,7 +82,7 @@ test('without public gateway configuration only a path is shown and endpoint cop
 })
 test('failed stale save retains edits until explicit reload, then uses the latest version',async()=>{
  const {ApiError}=await import('../api')
- vi.mocked(api.putVirtualServer).mockRejectedValueOnce(new ApiError(412,'This item changed in another session.'))
+ vi.mocked(api.patchVirtualServer).mockRejectedValueOnce(new ApiError(412,'This item changed in another session.'))
  const confirm=vi.spyOn(window,'confirm').mockReturnValue(true)
  await open()
  fireEvent.change(screen.getByLabelText('Alias for alpha/one'),{target:{value:'unsaved-alias'}})
@@ -94,8 +94,8 @@ test('failed stale save retains edits until explicit reload, then uses the lates
  await waitFor(()=>expect((screen.getByLabelText('Alias for alpha/one') as HTMLInputElement).value).toBe('first'))
  expect(confirm).toHaveBeenCalledTimes(1)
  fireEvent.click(screen.getByRole('button',{name:'Save'}))
- await waitFor(()=>expect(api.putVirtualServer).toHaveBeenCalledTimes(2))
- expect(vi.mocked(api.putVirtualServer).mock.calls[1][2]).toBe(8)
+ await waitFor(()=>expect(api.patchVirtualServer).toHaveBeenCalledTimes(2))
+ expect(vi.mocked(api.patchVirtualServer).mock.calls[1][2]).toBe(8)
 })
 test('the virtual server inventory does not depend on upstream discovery',async()=>{
  vi.mocked(api.listUpstreams).mockRejectedValue(new Error('catalog offline'))
@@ -133,7 +133,7 @@ test('tool upstream and description filters keep exposed tools and their policie
  fireEvent.change(screen.getByLabelText('Filter tools'),{target:{value:'customer'}})
  expect(screen.getByRole('button',{name:/one.*Find customer records/})).toBeTruthy()
  const [,body]=await save()
- expect(body.policy?.tools).toEqual({first:'deny',second:'read_only'})
+ expect(body).not.toHaveProperty('policy')
 })
 
 test('loads full guidance before editing and preserves it on unrelated saves',async()=>{
@@ -143,5 +143,5 @@ test('loads full guidance before editing and preserves it on unrelated saves',as
  await open()
  expect(api.getVirtualServer).toHaveBeenCalledWith('demo',expect.any(AbortSignal))
  const [,body]=await save()
- expect(body.guidance).toEqual(guidance)
+ expect(body).not.toHaveProperty('guidance')
 })

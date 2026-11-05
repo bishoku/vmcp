@@ -79,7 +79,7 @@ func (h *Handler) omniAuditBegin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	policy := snap.Audit.ForOmni()
-	e := audit.Event{Scope: "omni", Boundary: "omni", Action: "omni/" + p.Tool, Method: "tools/call", Tool: p.Tool, Target: "omni", ClientIP: h.ipString(r), ActorType: owner.Mode, ActorID: owner.CredentialID, AgentKey: owner.Principal, Issuer: owner.Issuer, Subject: owner.Subject, Revision: snap.Revision, TraceID: audit.TraceFrom(audit.WithTrace(r.Context(), r.Header.Get("traceparent"))), Policy: &policy, RawPayload: p.Payload}
+	e := audit.Event{Access: snap.TenantAudit("omni"), Scope: "omni", Boundary: "omni", Action: "omni/" + p.Tool, Method: "tools/call", Tool: p.Tool, Target: "omni", ClientIP: h.ipString(r), ActorType: owner.Mode, ActorID: owner.CredentialID, AgentKey: owner.Principal, Issuer: owner.Issuer, Subject: owner.Subject, Revision: snap.Revision, TraceID: audit.TraceFrom(audit.WithTrace(r.Context(), r.Header.Get("traceparent"))), Policy: &policy, RawPayload: p.Payload}
 	var clientCall struct {
 		Params mcp.CallToolParams `json:"params"`
 	}

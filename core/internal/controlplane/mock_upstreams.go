@@ -127,9 +127,8 @@ func (s *Server) mockAction(w http.ResponseWriter, r *http.Request) error {
 		if r.PathValue("action") != "sync" {
 			return apierror.NotFound("mock action", r.PathValue("action"))
 		}
-		p, _ := r.Context().Value(principalKey{}).(*principal)
-		if p == nil || p.Role != "admin" {
-			return apierror.Forbidden("Applying mock definitions requires admin access")
+		if !store.HasConfigurationPolicy(r.Context()) {
+			return apierror.Forbidden("Applying mock definitions requires an authorized configuration context")
 		}
 		match, err := parseIfMatch(r)
 		if err != nil {

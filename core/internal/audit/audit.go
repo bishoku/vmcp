@@ -17,6 +17,7 @@ import (
 
 // Event is one audited action. Payload is optional and never included in metadata queries.
 type Event struct {
+	Access *AccessContext
 	correlation.IDs
 	Mode                 string
 	PolicyRevision       int64
@@ -128,7 +129,7 @@ func (w *Writer) Record(e Event) {
 		w.dropped.Add(1)
 		return
 	}
-	size := int64(len(e.Ciphertext) + 4096)
+	size := eventQueueBytes(e)
 	if w.pendingBytes.Load()+size > 32<<20 {
 		w.dropped.Add(1)
 		return
@@ -177,7 +178,7 @@ func (w *Writer) run(ctx context.Context) {
 		w.mu.Lock()
 		w.pending.Add(-int64(len(batch)))
 		for _, e := range batch {
-			w.pendingBytes.Add(-int64(len(e.Ciphertext) + 4096))
+			w.pendingBytes.Add(-eventQueueBytes(e))
 		}
 		batch = batch[:0]
 		markedPermanent = false
@@ -213,14 +214,14 @@ func (w *Writer) run(ctx context.Context) {
 						scancel()
 						if serr == nil {
 							dropped++
-							w.pendingBytes.Add(-int64(len(e.Ciphertext) + 4096))
+							w.pendingBytes.Add(-eventQueueBytes(e))
 							continue
 						}
 						var spe *pgconn.PgError
 						if errors.As(serr, &spe) && (strings.HasPrefix(spe.Code, "22") || strings.HasPrefix(spe.Code, "23")) {
 							w.dead.Add(1)
 							w.dropped.Add(1)
-							w.pendingBytes.Add(-int64(len(e.Ciphertext) + 4096))
+							w.pendingBytes.Add(-eventQueueBytes(e))
 							dropped++
 							w.log.Error("best-effort audit dropping invalid event", "event_id", e.EventID, "code", spe.Code)
 							continue

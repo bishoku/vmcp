@@ -1,3 +1,4 @@
+import { useConfigurationPermissions,useConfigurationField,ConfigurationFields,configurationPatch,configurationCreate } from '../configuration-access'
 import ToolPicker from './ToolPicker'
 import ServerToolAccess from '../ownership/ServerToolAccess'
 import { approvalLabel } from '../ownership/grants'
@@ -7,50 +8,49 @@ import GuidanceEditor from '../GuidanceEditor'
 import { normalizeGuidance } from '../guidance'
 import type { Guidance } from '../api'
 import DescriptionOverride from '../DescriptionOverride'
-import { Checkbox, Switch } from '../SelectionControls'
+import { Checkbox,Switch } from '../SelectionControls'
 import Select from '../Select'
 import { LoadMore } from '../DataTable'
-import { FormField, FormScope, FormErrors, FormGroup } from '../FormField'
-import { useFormValidation, requiredText, slugError, rateError } from '../form-validation'
+import { FormField,FormScope,FormErrors,FormGroup } from '../FormField'
+import { useFormValidation,requiredText,slugError,rateError } from '../form-validation'
 import { useNotifications } from '../notifications'
-import { EmptyState, LoadingState } from '../Feedback'
+import { EmptyState,LoadingState } from '../Feedback'
 import { Link } from 'react-router-dom'
 import { serverPath } from '../connections/model'
 import type { SelectionProps } from '../connections/ManagementRoute'
 import { useInitialSelection } from '../connections/useInitialSelection'
-import { useCapabilities } from '../interaction'
-import { useSources, source, readSources } from '../requests'
+import { useSources,source,optionalSource,readSources } from '../requests'
 import { StaleRecovery } from '../ui'
-import { CopyButton, ErrorBox } from '../ui'
-import { useDraft, useOperation } from '../interaction'
+import { CopyButton,ErrorBox } from '../ui'
+import { useDraft,useOperation } from '../interaction'
 import CatalogPicker from './CatalogPicker'
 import { connectionEndpoint } from '../endpoint'
-import type {CatalogSelection,ClientFeatures} from '../api'
-import { useEffect, useMemo, useState } from 'react'
+import type { CatalogSelection,ClientFeatures } from '../api'
+import { useEffect,useMemo,useState } from 'react'
 import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
+DndContext,
+KeyboardSensor,
+PointerSensor,
+closestCenter,
+useSensor,
+useSensors,
+type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
+SortableContext,
+arrayMove,
+sortableKeyboardCoordinates,
+useSortable,
+verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Fingerprint, GripVertical, Layers, ListChecks, Plus, ShieldCheck, SlidersHorizontal, Wrench, X } from 'lucide-react'
+import { Fingerprint,GripVertical,Layers,ListChecks,Plus,ShieldCheck,SlidersHorizontal,Wrench,X } from 'lucide-react'
 import clsx from 'clsx'
-import { api, type PiiConfig, type PolicyMode, type ToolPolicy, type Tool, type ToolSelection, type Upstream, type VirtualServer } from '../api'
+import { api,type PiiConfig,type PolicyMode,type ToolPolicy,type Tool,type ToolSelection,type Upstream,type VirtualServer } from '../api'
 
-import { btn, input } from '../styles'
+import { btn,input } from '../styles'
 
-import { ServerPanel, SummaryTile } from '../connections/ServerPanels'
+import { ServerPanel,SummaryTile } from '../connections/ServerPanels'
 import EditorSaveBar from '../connections/EditorSaveBar'
 
 const key = (s: ToolSelection) => `${s.upstream}\u0000${s.tool}`
@@ -125,24 +125,30 @@ function cleanPolicy(d: Draft): ToolPolicy {
 
 export default function VirtualServerEditor({ initialSelection, onSaved, onCancel }: SelectionProps & {onSaved?: (slug: string) => void; onCancel?: () => void}) {
   const {notify,available}=useNotifications()
-  const { edit: canEdit } = useCapabilities()
+
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [upstreams, setUpstreams] = useState<Upstream[]>([])
   const [sharedTools,setSharedTools]=useState<import("../api").ToolCatalogEntry[]>([])
  const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
   const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(initialSelection ? null : blank, d => d ? d.isNew ? 'new' : d.slug : null)
+  const creationAccess=useConfigurationPermissions('virtual_servers','',['create'])
+  const access=useConfigurationPermissions('virtual_servers',draft?.isNew?'':draft?.slug??initialSelection??'',['read','create','update','publication.update','policy.update','client_features.update','ownership.transfer'],{project:draft?.project??'default'})
+  const canEdit=(draft?.isNew?creationAccess.can('create'):access.can('update'))
+  const fieldAllowed=(field:string)=>((draft?.isNew&&field==='project')===true)||access.can(field==='project'?'ownership.transfer':['enabled','omniEnabled'].includes(field)?'publication.update':field==='authRequired'||field==='rateLimitPerMinute'||field.startsWith('pii')||field.startsWith('policy')?'policy.update':field.startsWith('clientFeatures')?'client_features.update':draft?.isNew?'create':'update')
   const validation=useFormValidation()
   const problems=validation.issues.map(issue=>issue.message)
   const [exposedLimit,setExposedLimit]=useState(50)
   const { busy, run } = useOperation()
 
-  const { load, loading, readError } = useSources(() => [source('Virtual servers', async signal => { const items=await api.listVirtualServers(signal); const selected=items.find(v=>v.slug===initialSelection); if(selected?.hasGuidance){const full=await api.getVirtualServer(selected.slug,signal); return items.map(v=>v.slug===full.slug?full:v)} return items }, setServers),
+  const { load, loading, readError } = useSources(() => [source('Virtual servers', async signal => { const items=(initialSelection)?[await api.getVirtualServer(initialSelection,signal)]:await api.listVirtualServers(signal); const selected=items.find(v=>v.slug===initialSelection); if(selected?.hasGuidance){const full=await api.getVirtualServer(selected.slug,signal); return items.map(v=>v.slug===full.slug?full:v)} return items }, setServers),
     source('Shared tools',signal=>api.toolCatalog(signal),setSharedTools),
  {name:'Upstreams',load:async signal=>{
-      const us=await api.listUpstreams(signal)
+      let us: Upstream[]=[]
+      await optionalSource('Upstreams',s=>api.listUpstreams(s),items=>{us=items},[]).load(signal)
       if(signal.aborted)return
       setUpstreams(us)
-      const failures=await readSources(us.map(u=>source(u.slug,s=>api.listTools(u.slug,s),tools=>setCatalog(previous=>({...previous,[u.slug]:tools})))),signal)
+      setCatalog({})
+      const failures=await readSources(us.map(u=>optionalSource(u.slug,s=>api.listTools(u.slug,s),tools=>setCatalog(previous=>({...previous,[u.slug]:tools})),[])),signal)
       if(failures)throw new Error(failures)
     }}])
   useEffect(() => {
@@ -202,7 +208,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
       if (!draft || !canEdit) return
       if(!validation.check({name:requiredText(draft.name,'Name',120),slug:slugError(draft.slug),description:draft.description.length>1000?'Use 1,000 characters or fewer.':undefined,rateLimitPerMinute:rateError(draft.rateLimit),tools:dupes.size?'Resolve duplicate exposed tool names before saving.':undefined}))return
       try {
-        await api.putVirtualServer(draft.slug, {
+        const body = {
           project:draft.project, name: draft.name,
           description: draft.description,
           enabled: draft.enabled,
@@ -213,7 +219,14 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
           rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
           tools: draft.tools,
    catalog:draft.catalog,clientFeatures:draft.clientFeatures,guidance:draft.guidance,
-        },draft.version)
+        }
+        const original=servers.find(server=>server.slug===draft.slug)
+        if((!draft.isNew)&&original){
+         const baseline={project:original.project??'default',name:original.name,description:original.description??'',enabled:original.enabled,omniEnabled:original.omniEnabled??false,authRequired:original.authRequired,pii:fromServer(original).pii,policy:cleanPolicy(fromServer(original)),rateLimitPerMinute:original.rateLimitPerMinute??null,tools:fromServer(original).tools,catalog:fromServer(original).catalog,clientFeatures:fromServer(original).clientFeatures,guidance:normalizeGuidance(original.guidance)}
+         await api.patchVirtualServer(draft.slug,configurationPatch(body,baseline),draft.version)
+        }else if((draft.isNew)){
+         await api.createVirtualServer(draft.slug,configurationCreate(body,{enabled:'publication.update',omniEnabled:'publication.update',authRequired:'policy.update',pii:'policy.update',policy:'policy.update',rateLimitPerMinute:'policy.update',clientFeatures:'client_features.update'},access.can))
+        }else await api.putVirtualServer(draft.slug,body,draft.version)
         notify({title:'Virtual server saved',description:draft.name})
         setSaved(`Saved ${draft.name}. Refreshing the saved configuration.`)
         resetDraft(null)
@@ -232,12 +245,12 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
   useInitialSelection(initialSelection, servers, item => openDraft(fromServer(item)))
 
   return (
-    <FormScope validation={validation}><div className="page-layout">
+    <ConfigurationFields.Provider value={fieldAllowed}><FormScope validation={validation}><div className="page-layout">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div><h1 className="page-title">{initialSelection ? 'Edit virtual server' : 'New virtual server'}</h1><p className="page-description mt-1 text-sm text-ink-muted">Compose capabilities and configure access protection.</p></div>
         <Link className={btn} to={initialSelection?serverPath(initialSelection):'/virtual-servers'}>{initialSelection?'View saved configuration':'Back to virtual servers'}</Link>
       </header>
-      {draft && <EditorSaveBar status={`${draft.isNew?'New unsaved draft':`Editing draft of saved version ${draft.version}`}. ${dirty?'Unsaved changes':'No unsaved changes'}. Changes apply only after Save.`} detail={dupes.size?'Resolve duplicate exposed tool names before saving.':!draft.name||!draft.slug?'Enter a name and identifier before saving.':'Review capability selections and access protection before saving.'} busy={busy} disabled={!canEdit||dupes.size>0} onSave={()=>void save()} onCancel={()=>{if(onCancel)onCancel();else setDraft(null)}}/>}
+      {draft && <EditorSaveBar status={`${draft.isNew?'New unsaved draft':`Editing draft of saved version ${draft.version}`}. ${dirty?'Unsaved changes':'No unsaved changes'}. Changes apply only after Save.`} detail={dupes.size?'Resolve duplicate exposed tool names before saving.':!draft.name||!draft.slug?'Enter a name and identifier before saving.':'Review capability selections and access protection before saving.'} busy={busy} disabled={!canEdit||((draft.isNew)&&!access.can('create'))||dupes.size>0} onSave={()=>void save()} onCancel={()=>{if(onCancel)onCancel();else setDraft(null)}}/>}
       <FormErrors validation={validation}/>
       {draft && <StaleRecovery message={problems.join('; ')} reload={async () => {
         const latest = await api.getVirtualServer(draft.slug)
@@ -253,7 +266,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SummaryTile label="Selected tools" value={draft.tools.length} detail="Explicit tool selections in this draft" icon={Wrench}/><SummaryTile label="Resources & prompts" value={draft.catalog.length} detail="Resources, templates and prompt selections" icon={ListChecks}/><SummaryTile label="Upstream servers" value={new Set([...draft.tools,...draft.catalog].map(item=>item.upstream)).size} detail="Sources composed into this draft" icon={Layers}/><SummaryTile label="Authentication" value={draft.authRequired?'Required':'Anonymous'} detail="Draft client access requirement" icon={Fingerprint}/></div>
             <fieldset disabled={!canEdit || busy} className="min-w-0 layout-stack border-0 p-0 m-0">
             <ServerPanel title="Server identity" description="Name, stable identifier and client access settings" icon={Layers}><div className="space-y-4 panel-body">
-            <ProjectSelect value={draft.project} onChange={project=>setDraft({...draft,project})} existing={!draft.isNew}/>
+            <fieldset disabled={!fieldAllowed('project')} className="m-0 min-w-0 border-0 p-0"><ProjectSelect value={draft.project} onChange={project=>setDraft({...draft,project})}/></fieldset>
  <p className="text-xs text-ink-muted">Tools from another owner team require approval. Save first, then use the approval actions under Exposed tools to request access.</p>
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <FormField name="name" label="Name" required hint="Display name shown to users; up to 120 characters."><input
@@ -304,7 +317,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
  <ConfigurationGroup title="Agent guidance" description="Instructions and descriptions presented to agents"><GuidanceEditor value={draft.guidance} tools={draft.tools} upstreams={upstreams} onChange={guidance=>setDraft({...draft,guidance})}/></ConfigurationGroup>
 
             <ConfigurationGroup title="Access & protection" description="Client permissions, rate limits, tool policies and PII masking">            <ServerPanel title="Client feature permissions" description="Requires client negotiation and client approval. Roots never expose gateway files." icon={Fingerprint}><div className="grid gap-3 panel-body sm:grid-cols-3">{(['sampling','roots','elicitation'] as const).map(feature=><Checkbox key={feature} label={feature} field={`clientFeatures.${feature}`} checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>)}</div></ServerPanel>
-            <div className="grid items-start layout-grid xl:grid-cols-2"><ServerPanel title="Rate limit" description="Bound tool calls across client identities" icon={SlidersHorizontal}><div className="panel-body">
+            <fieldset className="m-0 min-w-0 border-0 p-0" disabled={!access.can('policy.update')}><div className="grid items-start layout-grid xl:grid-cols-2"><ServerPanel title="Rate limit" description="Bound tool calls across client identities" icon={SlidersHorizontal}><div className="panel-body">
               <FormField name="rateLimitPerMinute" label="Rate limit" help="Server and credential limits can both apply. Empty means this configuration does not add a rate limit." hint="Optional. 1–1,000,000 calls per minute; empty means unlimited."><input type="number" min={1} placeholder="unlimited" className={`${input} max-w-40`} value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} /></FormField>
               <p className="mt-1 text-xs text-ink-muted">Shared by all agents. Each agent key can have its own limit too. Excess calls get HTTP 429.</p>
             </div></ServerPanel>
@@ -345,7 +358,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                 </div>
               )}
             </div></ServerPanel>
-            </ConfigurationGroup>
+            </fieldset></ConfigurationGroup>
 
             </fieldset>
           </div>
@@ -353,11 +366,12 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
           <div className="surface-card">{initialSelection&&loading?<LoadingState label="Loading saved configuration…"/>:<EmptyState title={initialSelection?'Virtual server configuration is unavailable. Return to the list or refresh this page.':'Saved. Select a virtual server from the list.'} description={initialSelection?'Your current draft is not replaced by a failed read.':'Open the saved configuration to review your changes.'} actions={initialSelection?<button className={btn} onClick={()=>void load()}>Retry</button>:undefined}/>}</div>
         )}
       </div>
-    </div></FormScope>
+    </div></FormScope></ConfigurationFields.Provider>
   )
 }
 
 function Row({ index, id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, drift, onDescription, onMode, onAlias, onRemove }: { index:number; id: string; t: ToolSelection; upstreamDesc: string; drift: boolean; onDescription: (d: string) => void; dup: boolean; mode: PolicyMode; inherited: boolean; readOnlyHint: boolean; onMode: (m: PolicyMode) => void; onAlias: (a: string) => void; onRemove: () => void }) {
+  const policyAllowed=useConfigurationField('policy')
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
   return (
     <div
@@ -369,7 +383,7 @@ function Row({ index, id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, d
       <div className="mt-3 space-y-3">
         <FormField name={`tools.${index}.alias`} label="Exposed alias" error={dup?'Choose a unique exposed name. Another tool uses this name.':undefined} hint="Optional. Leave empty to use the default upstream tool name."><input className={`${input} mt-2`} aria-label={`Alias for ${t.upstream}/${t.tool}`} placeholder={`${t.upstream}__${t.tool}`} value={t.alias??''} onChange={e=>onAlias(e.target.value)}/></FormField>
         <DescriptionOverride name={`tools.${index}.description`} identity={`${t.upstream}/${t.tool}`} exposedName={t.alias || `${t.upstream}__${t.tool}`} value={t.description ?? ''} upstream={upstreamDesc} drift={drift} onChange={onDescription}/>
-        <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs font-medium">Tool policy<Select aria-label="Policy" className={clsx(input,'mt-2',mode==='deny'&&'border-red-300 text-red-700')} value={mode} onChange={e=>onMode(e.target.value as PolicyMode)}>{MODES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</Select></label><span className="pb-2 text-xs text-ink-muted">{inherited?'Uses default':'Override'}</span></div>
+        <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs font-medium">Tool policy<Select disabled={!policyAllowed} aria-label="Policy" className={clsx(input,'mt-2',mode==='deny'&&'border-red-300 text-red-700')} value={mode} onChange={e=>onMode(e.target.value as PolicyMode)}>{MODES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</Select></label><span className="pb-2 text-xs text-ink-muted">{inherited?'Uses default':'Override'}</span></div>
         {mode==='read_only'&&!readOnlyHint&&<p className="text-xs text-amber-700">Blocked: upstream does not declare readOnlyHint.</p>}
         {dup&&<p className="sr-only">Duplicate exposed name</p>}
       </div>

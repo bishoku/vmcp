@@ -25,3 +25,11 @@ GRANT SELECT ON audit_settings TO vmcp_audit_export;
 GRANT SELECT ON audit_payloads TO vmcp_audit_export, vmcp_audit_retention;
 GRANT DELETE ON audit_payloads TO vmcp_audit_retention;
 GRANT UPDATE(event_id) ON audit_payloads TO vmcp_audit_retention;
+
+-- Snapshot provenance is metadata; query identities still receive no payloads.
+GRANT SELECT ON audit_access_contexts,audit_access_domains,audit_resource_epochs TO vmcp_audit_query;
+-- A separately provisioned gateway writer also needs INSERT on
+-- audit_access_contexts/audit_access_domains, SELECT on those context rows and
+-- audit_resource_epochs, and SELECT(event_id,tenant_id) on audit_events for
+-- provenance validation triggers. Data-plane snapshot readers need SELECT on
+-- audit_resource_epochs. Do not grant UPDATE on immutable context/domain rows.

@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream, key } from '../src/connections/fixtures'
@@ -6,9 +7,13 @@ async function setup(page:Page){
  const writes:{path:string;body:Record<string,unknown>}[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),path=new URL(req.url()).pathname
+  if(path==='/api/v1/upstreams/alpha')return route.fulfill({json:upstream})
+  if(path==='/api/v1/virtual-servers/demo')return route.fulfill({json:server})
   if(['POST','PUT','PATCH','DELETE'].includes(req.method())){
    const body=req.postDataJSON();writes.push({path,body})
    if(path.includes('/virtual-servers/'))return route.fulfill({json:{...server,...body,slug:path.split('/').at(-1)}})
@@ -57,20 +62,20 @@ test('read-only switches stay disabled, capability radios support arrows, and ed
  expect(writes).toHaveLength(0)
 })
 
-test('mobile grant rows preserve hidden selections and allow removing unavailable grants',async({page})=>{
+test('mobile grant rows preserve hidden selections and disable unverified targets',async({page})=>{
  await page.setViewportSize({width:390,height:844})
  const writes=await setup(page);await page.goto('/agent-keys')
  await page.getByRole('button',{name:'team-key',exact:true}).click()
  await page.getByRole('button',{name:'Edit key',exact:true}).click()
  const dialog=page.getByRole('dialog')
  const missing=dialog.getByRole('checkbox',{name:'missing-server',exact:true})
- await expect(missing).toBeChecked();await expect(missing).toBeEnabled()
+ await expect(missing).toBeChecked();await expect(missing).toBeDisabled()
  await dialog.getByLabel('Search virtual servers').fill('Demo')
  await expect(missing).toHaveCount(0)
  const demo=dialog.getByRole('checkbox',{name:'Demo',exact:true});await expect(demo).toBeChecked()
  const bounds=await demo.locator('..').boundingBox();expect(bounds!.height).toBeGreaterThanOrEqual(44)
  await dialog.getByLabel('Search virtual servers').fill('')
- await expect(missing).toBeChecked();await missing.locator('..').click();await expect(missing).toHaveCount(0)
+ await expect(missing).toBeChecked();await expect(missing).toBeDisabled()
  await demo.scrollIntoViewIfNeeded();await page.screenshot({path:test.info().outputPath('selection-controls-mobile.png'),animations:'disabled'})
  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true)
  expect(writes).toHaveLength(0)
@@ -89,7 +94,8 @@ test('audit view radios change with arrows and the incomplete checkbox remains a
 test('server field errors focus switches and clear on draft change without replaying the save',async({page})=>{
  await setup(page)
  let saves=0
- await page.route('**/api/v1/virtual-servers/support-workspace',route=>{
+ await page.route('**/api/v1/virtual-servers',route=>{
+  if(route.request().method()!=='POST')return route.fallback()
   saves++
   return route.fulfill({status:422,json:{detail:'Validation failed',code:'validation_failed',errors:[{field:'/authRequired',message:'This workspace requires client authentication.'}]}})
  })

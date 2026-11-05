@@ -73,3 +73,58 @@ The current SQL containment workflow requires restricted incident-operator
 access and an externally recorded change ticket; it is not a self-service
 revocation API. Retention of expired identity records is an operator task until
 the retention phase integrates their cleanup.
+
+
+## Administrator recovery
+
+Recovery authority belongs to the team controlling the deployment and its secret
+store. `VMCP_ADMIN_TOKEN` is required at control-plane startup. Keep its value in
+an access-controlled secret manager and verify that the on-call deployment
+operators can replace it. It is a full administrator credential, including audit
+request/response payload access. Granular roles and claim mappings cannot replace
+or revoke it. It is not a runtime MCP credential.
+
+A recovery drill must establish a working management login; a positive access
+simulation or a nonzero assignment count is insufficient.
+
+1. Obtain deployment and secret-store access. Preserve the database,
+   `VMCP_MASTER_KEY` and decryption keyring; recovery does not require deleting
+   assignments, editing authorization tables or resetting encrypted data.
+2. Generate a new high-entropy bootstrap credential in the secret-management
+   workflow and update the control-plane source of `VMCP_ADMIN_TOKEN`. For Helm,
+   this is `credentials.adminToken` and its configured secret reference. Keep
+   credential values out of shell arguments, tickets, repository files and logs.
+3. Restart/redeploy **every control-plane replica** with the new secret. Environment
+   changes do not hot-reload. Until replacement is complete, old replicas may
+   still accept the previous bootstrap credential. Do not rotate the master key
+   merely to replace this credential.
+4. If invalid OIDC discovery/configuration prevents control-plane startup,
+   temporarily remove `VMCP_OIDC_ISSUER` from the deployment and restart in token-only
+   mode. Bootstrap is independent of IdP login, but cannot rescue a process that
+   never starts. Fix deployment OIDC settings through the deployment workflow;
+   Access Management edits claim mappings, not the configured issuer/admin groups.
+5. Connect to the protected control-plane management API with the replacement
+   bearer credential. Verify `/api/v1/me` reports `role: admin` and
+   `via: bootstrap-token`, then verify `/api/v1/roles` can be read. Use tooling that
+   injects the credential without exposing it in command history or output.
+6. Repair explicit permissions/mappings as needed, or issue a named `admin` token
+   for normal management. Restore OIDC deployment settings and prove normal admin
+   access from a fresh session. Revoke obsolete sessions and compromised named
+   tokens; replacing bootstrap does not revoke either automatically.
+7. Review the recovery operations in audit records. Replace the temporary recovery
+   credential again with the retained recovery secret and redeploy all replicas;
+   verify the temporary credential is rejected. The startup contract requires a
+   bootstrap credential, so do not leave it blank after recovery.
+
+Bootstrap requests still require a healthy policy database and the normal audit
+admission/durability rules. Recovery does not bypass authorization loading,
+resource validation, tenant boundaries or strict audit failures. Repair a database
+or audit dependency through its operational procedure first. Cookie-authenticated
+administrators still require CSRF protection. Admin credentials themselves are
+not recorded as audit payloads; actions retain normal actor/operation metadata.
+
+Acceptance includes token-only recovery with no assignments or usable named admin,
+old bootstrap rejection after replacement, immediate named-token revocation,
+OIDC administrator access with no assignments, and operator/custom-role rejection
+from management APIs. A real multi-replica/IdP deployment drill remains an operator
+acceptance step; repository tests do not certify secret-store availability.

@@ -4,7 +4,7 @@ vmcp_acceptance_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 vmcp_acceptance_tmp="$(mktemp -d /tmp/vmcp-acceptance.XXXXXX)"
 vmcp_acceptance_project="vmcp-acceptance-$(date +%s)-$$"
 vmcp_acceptance_compose="$vmcp_acceptance_root/benchmark/acceptance/compose.yaml"
-export VMCP_ACCEPTANCE_OUTPUT="${VMCP_ACCEPTANCE_OUTPUT:-$vmcp_acceptance_root/benchmark/results/acceptance-$(date +%Y%m%d-%H%M%S)}"
+export VMCP_ACCEPTANCE_OUTPUT="${VMCP_ACCEPTANCE_OUTPUT:-$vmcp_acceptance_root/artifacts/benchmark-runs/acceptance-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$VMCP_ACCEPTANCE_OUTPUT"
 export VMCP_ACCEPTANCE_OUTPUT="$(cd "$VMCP_ACCEPTANCE_OUTPUT" && pwd)"
 cleanup() {

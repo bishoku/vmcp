@@ -95,3 +95,10 @@ an arbitrary signer is insufficient. A missing signature or verification failure
 must stop installation. The chart itself does not install an admission controller
 or enforce signatures inside the cluster; organizations can additionally enforce
 this identity with their existing image admission policy.
+
+## v2 authorization transition
+
+v2.0.0 requires explicit control-plane permissions and new browser sign-in.
+Before upgrading a v1 installation, follow the [v2 release migration checklist](../release-notes/v2.0.0.md#installation-and-upgrade), including migrations 36–42,
+bootstrap recovery, role assignments and the tested database restore plan.
+Do not assume coarse roles or a mixed-version rolling deployment remain compatible.

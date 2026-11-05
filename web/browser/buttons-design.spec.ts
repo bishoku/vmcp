@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { upstream, server, key } from '../src/connections/fixtures'
@@ -5,6 +6,8 @@ test.use({viewport:{width:1280,height:1000}})
 async function setup(page:Page,role='admin'){
  const writes:string[]=[]
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),path=new URL(req.url()).pathname
@@ -18,7 +21,8 @@ async function setup(page:Page,role='admin'){
 test('save exposes busy feedback, blocks duplicate writes and recovers after a failed request',async({page})=>{
  await setup(page)
  let writes=0,release!:()=>void
- await page.route('**/api/v1/virtual-servers/support-workspace',async route=>{
+ await page.route('**/api/v1/virtual-servers',async route=>{
+  if(route.request().method()!=='POST')return route.fallback()
   writes++;await new Promise<void>(resolve=>{release=resolve})
   return route.fulfill({status:500,json:{detail:'Temporary save failure'}})
  })

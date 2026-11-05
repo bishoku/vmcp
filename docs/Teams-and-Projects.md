@@ -15,10 +15,9 @@ paths). Missing claims never create teams or grant default editor access.
 - A virtual server has one `project` (default `default`) and inherits its owner.
 - A project can contain multiple virtual servers. Upstreams are independent of projects.
 - Only platform admins manage team mappings, projects, and ownership transfers.
-- Team members manage their own connections, virtual servers and credentials.
+- Explicit team-scoped role assignments authorize management of connections, virtual servers and credentials. Group membership alone is not an authorization grant.
   A credential spanning another team's virtual server cannot be managed by them.
-- Existing global viewer/editor roles retain access to unmanaged resources.
-  They do not override team ownership. Platform admins retain full management access.
+- Viewer/editor labels do not grant unmanaged-resource access. Assign tenant or unmanaged permissions explicitly. Platform admins have explicit full management authority.
 - Team-only users can create owned upstreams and virtual servers in their projects;
   they cannot create unmanaged resources. API checks enforce this independently of UI.
 

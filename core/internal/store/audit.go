@@ -94,8 +94,13 @@ func (t *Tx) ListAudit(ctx context.Context, f AuditFilter, limit int) ([]AuditEv
 }
 
 func auditWhere(ctx context.Context, f AuditFilter, grouped bool) ([]string, []any) {
-	var where []string
-	if a, ok := AccessFrom(ctx); ok && a.Role != "admin" {
+	where := []string{"tenant_id=vmcp_tenant_id()"}
+	if p, ok := ctx.Value(auditPolicyKey{}).(auditPolicy); ok {
+		where = append(where, auditPermissionSQL(p.policy, p.who, "audit.events.read"))
+		if f.ActorID != "" || f.Subject != "" || f.AgentKey != "" {
+			where = append(where, auditPermissionSQL(p.policy, p.who, "audit.identities.read"))
+		}
+	} else if a, ok := AccessFrom(ctx); ok && a.Role != "admin" {
 		where = append(where, `(EXISTS(SELECT 1 FROM virtual_servers v WHERE v.slug=audit_events.virtual_server AND `+vsPredicate(ctx, "v")+`) OR actor_id=`+literal(a.Actor)+`)`)
 	}
 	var args []any
@@ -119,7 +124,11 @@ func auditWhere(ctx context.Context, f AuditFilter, grouped bool) ([]string, []a
 		where = append(where, `scope='upstream'`)
 	}
 	if f.Incomplete {
-		where = append(where, `stage='admission' AND NOT EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=audit_events.operation_id AND o.stage='outcome')`)
+		outcomeScope := ""
+		if p, ok := ctx.Value(auditPolicyKey{}).(auditPolicy); ok {
+			outcomeScope = " AND (" + auditPermissionSQLFor(p.policy, p.who, "audit.events.read", "o") + ")"
+		}
+		where = append(where, `stage='admission' AND NOT EXISTS(SELECT 1 FROM audit_events o WHERE o.operation_id=audit_events.operation_id AND o.stage='outcome'`+outcomeScope+`)`)
 	}
 	for column, value := range map[string]string{"conversation_id": f.ConversationID, "root_conversation_id": f.RootConversationID, "turn_id": f.TurnID, "conversation_group_id": f.ConversationGroupID} {
 		if value != "" {
@@ -170,7 +179,7 @@ func auditWhere(ctx context.Context, f AuditFilter, grouped bool) ([]string, []a
 type AuditConversation struct {
 	ConversationGroupID string    `json:"conversationGroupId"`
 	RootConversationID  string    `json:"rootConversationId"`
-	ActorID             string    `json:"actorId"`
+	ActorID             string    `json:"actorId,omitempty"`
 	FirstTime           time.Time `json:"firstTime"`
 	LastTime            time.Time `json:"lastTime"`
 	LastID              int64     `json:"lastId"`
@@ -183,7 +192,11 @@ type AuditConversation struct {
 func (t *Tx) ListAuditConversations(ctx context.Context, f AuditFilter, limit int) ([]AuditConversation, bool, error) {
 	where, args := auditWhere(ctx, f, true)
 	where = append(where, "conversation_group_id<>''")
-	q := `SELECT conversation_group_id,max(COALESCE(NULLIF(root_conversation_id,''),conversation_id)),max(actor_id),min(ts),max(ts),max(id),count(*),count(DISTINCT operation_id) FILTER(WHERE parent_operation_id IS NULL),count(DISTINCT operation_id) FILTER(WHERE parent_operation_id IS NULL AND stage='outcome' AND status IN ('error','tool_error','denied')),count(DISTINCT conversation_id) FILTER(WHERE conversation_id<>'') FROM audit_events WHERE ` + strings.Join(where, " AND ") + ` GROUP BY tenant_id,conversation_group_id`
+	actor := `max(actor_id)`
+	if p, ok := ctx.Value(auditPolicyKey{}).(auditPolicy); ok {
+		actor = `CASE WHEN bool_and(` + auditPermissionSQL(p.policy, p.who, "audit.identities.read") + `) THEN max(actor_id) ELSE '' END`
+	}
+	q := `SELECT conversation_group_id,max(COALESCE(NULLIF(root_conversation_id,''),conversation_id)),` + actor + `,min(ts),max(ts),max(id),count(*),count(DISTINCT operation_id) FILTER(WHERE parent_operation_id IS NULL),count(DISTINCT operation_id) FILTER(WHERE parent_operation_id IS NULL AND stage='outcome' AND status IN ('error','tool_error','denied')),count(DISTINCT conversation_id) FILTER(WHERE conversation_id<>'') FROM audit_events WHERE ` + strings.Join(where, " AND ") + ` GROUP BY tenant_id,conversation_group_id`
 	if f.BeforeID > 0 {
 		args = append(args, f.BeforeID)
 		q += " HAVING max(id)<$" + strconv.Itoa(len(args))

@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { answerConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
@@ -6,10 +7,15 @@ import { server, upstream, key, binding } from '../src/connections/fixtures'
 async function login(page:Page,role:'viewer'|'admin'='admin', path='/', inventory?:{servers:VirtualServer[];keys:AgentKey[]}) {
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
+  if(path==='/api/v1/upstreams/alpha')return route.fulfill({json:upstream})
+  if(path==='/api/v1/virtual-servers/demo')return route.fulfill({json:server})
   if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role,via:'admin-token'}})
+  if(path==='/api/v1/upstreams/'+(upstream).slug)return route.fulfill({json:upstream})
   if(path.endsWith('/upstreams'))return route.fulfill({json:{items:[upstream]}})
   if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:inventory?.servers ?? [server]}})
   if(path.endsWith('/agent-keys'))return route.fulfill({json:{items:inventory?.keys ?? [key]}})

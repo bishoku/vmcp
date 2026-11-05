@@ -10,10 +10,10 @@ import (
 	"github.com/bishoku/vmcp/core/internal/apierror"
 )
 
-// Admin token scopes. Fine-grained RBAC arrives with SSO in a later phase.
+// Admin token identity scopes. Non-admin identities use granular assignments.
 const (
 	ScopeAdmin = "admin" // full access
-	ScopeRead  = "read"  // GET only
+	ScopeRead  = "read"  // permissions come exclusively from assignments
 )
 
 // AdminToken is the API read model; the secret is never returned after creation.

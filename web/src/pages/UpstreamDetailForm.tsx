@@ -1,31 +1,31 @@
+import { useConfigurationPermissions,ConfigurationFields,configurationPatch,configurationCreate } from '../configuration-access'
 import { TeamSelect } from '../OwnershipSelect'
 import ConfigurationGroup from '../connections/ConfigurationGroup'
 import RequestHeaderMappings from '../connections/RequestHeaderMappings'
 import CallerContextEditor from '../connections/CallerContextEditor'
 import Button from '../Button'
-import RESTUpstreamEditor, { RESTConnectionSettings } from '../connections/RESTUpstreamEditor'
+import RESTUpstreamEditor,{ RESTConnectionSettings } from '../connections/RESTUpstreamEditor'
 import { emptyREST } from '../connections/rest-config'
 import { TagBadge } from '../Badge'
 import { Switch } from '../SelectionControls'
 import Select from '../Select'
-import { FormField, FormScope, FormErrors } from '../FormField'
-import { useFormValidation, slugError, requiredText, urlError } from '../form-validation'
+import { FormField,FormScope,FormErrors } from '../FormField'
+import { useFormValidation,slugError,requiredText,urlError } from '../form-validation'
 import { useNotifications } from '../notifications'
 import { EmptyState } from '../Feedback'
-import { source, useSources } from '../requests'
-import { useCapabilities } from '../interaction'
-import { useOperation, useUnsaved } from '../interaction'
-import { useEffect, useState, type ChangeEvent } from 'react'
-import { Activity, Cable, CheckCircle2, ChevronRight, Code2, Fingerprint, KeyRound, Layers3, Pencil, PlugZap, ShieldCheck, Wrench, X, XCircle } from 'lucide-react'
+import { source,useSources } from '../requests'
+import { useOperation,useUnsaved } from '../interaction'
+import { useEffect,useState,type ChangeEvent } from 'react'
+import { Activity,Cable,CheckCircle2,ChevronRight,Code2,Fingerprint,KeyRound,Layers3,Pencil,PlugZap,ShieldCheck,Wrench,X,XCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { ErrorBox, Modal, Pill, StaleRecovery } from '../ui'
-import { api, ApiError, type RequestHeaderMapping, type CallerContextConfig, type Catalog, type ConnectionTestResult, type Tool, type Upstream, type UpstreamTLSInput, type UpstreamAuthInput } from '../api'
+import { ErrorBox,Modal,Pill,StaleRecovery } from '../ui'
+import { api,ApiError,type RequestHeaderMapping,type CallerContextConfig,type Catalog,type ConnectionTestResult,type Tool,type Upstream,type UpstreamTLSInput,type UpstreamAuthInput } from '../api'
 
 import EditorSaveBar from '../connections/EditorSaveBar'
 import UpstreamDiscovery from '../connections/UpstreamDiscovery'
-import { DetailRow, ServerPanel, SummaryTile } from '../connections/ServerPanels'
+import { DetailRow,ServerPanel,SummaryTile } from '../connections/ServerPanels'
 import { fmt } from '../format'
-import { btn, input, primary } from '../styles'
+import { btn,input,primary } from '../styles'
 
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : String(e))
 
@@ -41,10 +41,15 @@ export default function UpstreamDetailForm({
   onReload: (upstream: Upstream) => void
   onSaved: (saved: Upstream) => void
 }) {
-  const { edit: canEdit } = useCapabilities()
+
   const [editing, setEditing] = useState(!upstream)
-  const editable = canEdit && editing
   const [ownerTeam,setOwnerTeam]=useState(upstream?.ownerTeam??'')
+  const creationAccess=useConfigurationPermissions('upstreams','',['create'])
+  const access=useConfigurationPermissions('upstreams',upstream?.slug??'',['read','create','update','connection.update','activation.update','credentials.update','tls.update','identity_forwarding.update','rest.manage','catalog.read','catalog.refresh','test','ownership.transfer'],{ownerTeam})
+  const canEdit=(upstream?access.can('update'):creationAccess.can('create'))
+  const editable=canEdit&&editing
+  const fieldAllowed=(field:string)=>((!upstream&&field==='ownerTeam'))||(field.startsWith('tls.client')?access.can('tls.update')&&access.can('credentials.update'):field.startsWith('tls.')?access.can('tls.update'):field.startsWith('auth.')||['headers','headerValue'].includes(field)?access.can('credentials.update'):access.can(({ownerTeam:'ownership.transfer',url:'connection.update',fallbackUrls:'connection.update',transport:'connection.update',kind:'connection.update',enabled:'activation.update'} as Record<string,string>)[field]??(upstream?'update':'create')))
+
   const [slug, setSlug] = useState(upstream?.slug ?? '')
   const [kind,setKind]=useState<'mcp'|'rest'>(upstream?.kind??'mcp')
   const [rest,setRest]=useState(upstream?.rest??emptyREST())
@@ -142,7 +147,7 @@ export default function UpstreamDetailForm({
         const headers: Record<string, string | null> = { ...replaced }
         removed.forEach((h) => (headers[h] = null))
         if (upstream) {
-          saved = await api.patchUpstream(upstream.slug, {ownerTeam,
+          saved = await api.patchUpstream(upstream.slug, configurationPatch({ownerTeam,
             requestHeaderMappings,
             callerContext,
             name,
@@ -150,12 +155,12 @@ export default function UpstreamDetailForm({
             fallbackUrls: kind==='rest'?[]:fallbackUrls(),
             transport,
             enabled,
-            tls: tlsInput(),
+            tls: (!access.can('credentials.update'))?{caPem,serverName}:tlsInput(),
             ...(kind==='rest'?{kind,rest}:{kind,auth:authInput()}),
             ...(Object.keys(headers).length && { headers }),
-          },upstream.version)
+          },{ownerTeam:upstream.ownerTeam??'',requestHeaderMappings:upstream.requestHeaderMappings??[],callerContext:{enabled:upstream.callerContext?.enabled??false,metaKey:upstream.callerContext?.metaKey||'com.bank/caller-context',fields:upstream.callerContext?.fields??[]},name:upstream.name,url:upstream.url,fallbackUrls:upstream.fallbackUrls??[],transport:upstream.transport,enabled:upstream.enabled,tls:{caPem:upstream.tls?.caPem??'',serverName:upstream.tls?.serverName??'',clientCertPem:upstream.tls?.clientCertPem??''},kind:upstream.kind??'mcp',rest:upstream.rest,auth:upstream.auth?.type==='oauth_client_credentials'?{type:'oauth_client_credentials',tokenUrl:upstream.auth.tokenUrl??'',clientId:upstream.auth.clientId??'',scopes:upstream.auth.scopes??[],audience:upstream.auth.audience||undefined}:{type:'none'}}),upstream.version)
         } else {
-          saved = await api.createUpstream(slug, {ownerTeam,
+          const body = {ownerTeam,
             requestHeaderMappings,
             callerContext,
             name: name || slug,
@@ -164,9 +169,10 @@ export default function UpstreamDetailForm({
             transport,
             enabled,
             headers: replaced,
-            tls: tlsInput(),
+            tls: (!access.can('credentials.update'))?{caPem,serverName}:tlsInput(),
             ...(kind==='rest'?{kind,rest}:{kind,auth:authInput()}),
-          })
+          }
+          saved = await api.createUpstream(slug,(configurationCreate(body,{enabled:'activation.update',headers:'credentials.update',tls:'tls.update',auth:'credentials.update',requestHeaderMappings:'identity_forwarding.update',callerContext:'identity_forwarding.update',rest:'rest.manage'},access.can)))
         }
         unsaved.clean()
       } catch (e) {
@@ -179,7 +185,7 @@ export default function UpstreamDetailForm({
   const runTest = () => run(async () => {
     try {
       // Stored secrets are never readable, so the test uses only headers typed in this session.
-      const result=await api.testConnection({ url, transport, headers: replaced, tls: tlsInput(), auth: authInput() })
+      const result=await api.testConnection({ url, transport, headers: replaced, tls: (!access.can('credentials.update'))?{caPem,serverName}:tlsInput(), auth: authInput() })
       setTest(result)
       if(result.ok)notify({title:'Connection test passed',description:'The supplied upstream settings were verified.'})
     } catch (e) {
@@ -187,18 +193,18 @@ export default function UpstreamDetailForm({
     }
   })
 
-  return <FormScope validation={validation}><div className="page-layout">
+  return <ConfigurationFields.Provider value={fieldAllowed}><FormScope validation={validation}><div className="page-layout">
     <header className="layout-stack">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight aria-hidden="true" className="icon-inline"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
       <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 aria-hidden="true" className="icon-hero"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream service for your virtual endpoints.'}</p></div></div>
       <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
-    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={kind==='rest'&&restBlocked?'Finish or cancel the import, and resolve editor errors before saving.':newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||(kind==='rest'&&restBlocked)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
+    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={kind==='rest'&&restBlocked?'Finish or cancel the import, and resolve editor errors before saving.':newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||((!upstream)&&!access.can('create'))||(kind==='rest'&&restBlocked)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
     {err && <ErrorBox>{err}</ErrorBox>}
     <FormErrors validation={validation}/>
     <StaleRecovery message={[err,...validation.issues.map(issue=>issue.message)].join('; ')} reload={async()=>{
-      const latest=(await api.listUpstreams()).find(item=>item.slug===upstream?.slug)
+      const latest=upstream?await api.getUpstream(upstream.slug):undefined
       if(!latest)throw new Error('This upstream was deleted. Cancel the draft and refresh the list.')
       unsaved.clean();onReload(latest)
     }}/>
@@ -213,7 +219,7 @@ export default function UpstreamDetailForm({
     <div className={clsx("grid items-start layout-grid",kind==='mcp'&&"xl:grid-cols-[1.4fr_1fr]")}>
       <ServerPanel title="Connection settings" description={editing?'Edit the endpoint and transport for this upstream':'Saved endpoint and routing configuration'} icon={Cable}>
         <fieldset disabled={!editable || busy} className="min-w-0 space-y-4 border-0 panel-body m-0">
- <TeamSelect value={ownerTeam} onChange={setOwnerTeam} existing={!!upstream}/>
+ <fieldset disabled={!fieldAllowed('ownerTeam')} className="m-0 min-w-0 border-0 p-0"><TeamSelect value={ownerTeam} onChange={setOwnerTeam}/></fieldset>
           {!upstream && (
             <FormField name="slug" label="Slug" required hint="Stable identifier: lowercase letters, numbers and hyphens, up to 63 characters."><input className={clsx(input, 'mt-1')} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="github" /></FormField>
           )}
@@ -232,8 +238,8 @@ export default function UpstreamDetailForm({
       {kind==='mcp'&&<div className="min-w-0 layout-stack">
         <ServerPanel title="Connection verification" description="Explicit tests for saved or edited settings" icon={PlugZap} footer="A test checks the gateway-to-upstream connection. It does not verify a client’s access to virtual servers.">
           <div className="space-y-4 panel-body">
-            {upstream && <div><Button loading={busy} className={btn} disabled={busy || !canEdit} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
-            {editing && <div className={upstream?'border-t border-line pt-4':''}><Button loading={busy} className={btn} disabled={!editable || busy || !url} onClick={runTest}>Test edited connection</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
+            {upstream && <div><Button loading={busy} className={btn} disabled={busy || ((!access.can('test')))} onClick={()=>run(async()=>{setErr('');try{const result=await api.testStoredConnection(upstream.slug);setTest(result);if(result.ok)notify({title:'Connection test passed',description:'The saved upstream settings were verified.'})}catch(e){setErr(errMsg(e))}})}>Test stored credentials</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">Uses the saved upstream settings and stored credentials.</p></div>}
+            {editing && <div className={upstream?'border-t border-line pt-4':''}><Button loading={busy} className={btn} disabled={!editable || busy || !url || ((!access.can('connection.update')))} onClick={runTest}>Test edited connection</Button><p className="mt-2 text-xs leading-relaxed text-ink-muted">The edited test only uses headers entered here; stored header values cannot be read back.</p></div>}
             {!canEdit && <p className="text-xs text-ink-muted">Connection tests require editor access.</p>}
             {busy && <p className="text-xs text-ink-muted">An operation is in progress…</p>}
             {test && <div role="status" className={clsx('flex items-start gap-2 rounded-lg border p-3 text-xs leading-relaxed',test.ok?'border-green-200 bg-green-50 text-green-700':'border-red-200 bg-red-50 text-red-700')}>{test.ok?<CheckCircle2 aria-hidden="true" className="mt-0.5 icon-control shrink-0"/>:<XCircle aria-hidden="true" className="mt-0.5 icon-control shrink-0"/>}<span>{test.ok?`Connected${test.toolCount!=null?` · ${test.toolCount} tools`:''}`:test.error ?? 'Connection failed'}</span></div>}
@@ -249,11 +255,11 @@ export default function UpstreamDetailForm({
     </div></ConfigurationGroup>
     <ConfigurationGroup title="Security & shared headers" description="Authentication, TLS certificates and static request headers">
     <div className="layout-stack mt-4">
-    {kind==='rest'&&<RESTConnectionSettings value={rest} onChange={editable&&!busy?setRest:undefined}/>}
+    {kind==='rest'&&<RESTConnectionSettings value={rest} onChange={editable&&!busy&&access.can('rest.manage')&&access.can('credentials.update')?setRest:undefined}/>}
     <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>
     <div className="grid items-start layout-grid xl:grid-cols-2">
       <ServerPanel title="Transport security" description="Custom trust and mutual TLS settings" icon={ShieldCheck}>
-        <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
+        <fieldset disabled={!editable || busy || !access.can('tls.update')} className="min-w-0 border-0 panel-body m-0">
           <>{!editing && !(caPem || serverName || clientCert) && <p className="mb-3 text-xs leading-relaxed text-ink-muted">Uses system trust. No custom CA, server name or client certificate is configured.</p>}<details className="min-w-0" open={!!(caPem || serverName || clientCert)}>
             <summary className="cursor-pointer text-sm font-medium">TLS (custom CA, server name, mTLS)</summary>
             <div className="mt-3 space-y-3">
@@ -271,7 +277,7 @@ export default function UpstreamDetailForm({
               )}
               <FormField name="tls.serverName" label="Server name" hint="Optional. Override the TLS server name."><input className={clsx(input, 'mt-1')} value={serverName} onChange={(e) => setServerName(e.target.value)} placeholder="mcp.internal.example" /></FormField>
               <FormField name="tls.clientCertPem" label="Client certificate" hint="Optional. PEM certificate used for mutual TLS."><textarea className={clsx(input, 'mt-1 font-mono text-xs')} rows={3} value={clientCert} onChange={(e) => setClientCert(e.target.value)} /></FormField>
-              <input type="file" accept=".pem,.crt,.cer" onChange={readFile(setClientCert)} className="max-w-full text-xs" aria-label="Upload client certificate" />
+              <input type="file" accept=".pem,.crt,.cer" disabled={!fieldAllowed('tls.clientCertPem')} onChange={readFile(setClientCert)} className="max-w-full text-xs" aria-label="Upload client certificate" />
               <FormField name="tls.clientKeyPem" label="Client key" hint="Write-only. Leave empty to keep the stored private key."><textarea
                   className={clsx(input, 'mt-1 font-mono text-xs')}
                   rows={3}
@@ -286,7 +292,7 @@ export default function UpstreamDetailForm({
         </fieldset>
       </ServerPanel>
       {kind==='mcp'&&<ServerPanel title="OAuth authentication" description="Token endpoint and client credentials" icon={Fingerprint}>
-        <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
+        <fieldset disabled={!editable || busy || !access.can('credentials.update')} className="min-w-0 border-0 panel-body m-0">
           <details className="min-w-0" open={authType === 'oauth_client_credentials'}>
             <summary className="cursor-pointer text-sm font-medium">OAuth 2.0 Client Credentials</summary>
             <div className="mt-3 space-y-3">
@@ -337,7 +343,7 @@ export default function UpstreamDetailForm({
 
     <ServerPanel title="Request headers" description="Stored values remain masked; only explicit changes are sent" icon={Code2} footer="Header values are write-only. Replacing or removing a header takes effect after Save.">
       {editing ? (
-      <fieldset disabled={!editable || busy} className="min-w-0 border-0 panel-body m-0">
+      <fieldset disabled={!editable || busy || !access.can('credentials.update')} className="min-w-0 border-0 panel-body m-0">
           <div>
 
             <div className="space-y-2">
@@ -376,12 +382,12 @@ export default function UpstreamDetailForm({
     </ServerPanel>
     </div></ConfigurationGroup>
     <ConfigurationGroup title="Per-call context" description={`${requestHeaderMappings.length} HTTP header mappings · Caller metadata ${callerContext.enabled?'enabled':'disabled'}`} defaultOpen={callerContext.enabled||requestHeaderMappings.length>0}>
-      <RequestHeaderMappings value={requestHeaderMappings} onChange={editable&&!busy?setRequestHeaderMappings:undefined}/>
-      <CallerContextEditor value={callerContext} kind={kind} onChange={editable&&!busy?setCallerContext:undefined}/>
+      <fieldset disabled={!editable||busy||!access.can('identity_forwarding.update')} className="m-0 min-w-0 border-0 p-0"><RequestHeaderMappings value={requestHeaderMappings} onChange={editable&&!busy?setRequestHeaderMappings:undefined}/>
+      <CallerContextEditor value={callerContext} kind={kind} onChange={editable&&!busy?setCallerContext:undefined}/></fieldset>
     </ConfigurationGroup>
-    {kind==='rest'&&<ConfigurationGroup title="REST operations" description={`${rest.operations.length} operations · Define requests and preview their MCP tools`} defaultOpen><RESTUpstreamEditor value={rest} onChange={editable&&!busy?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/></ConfigurationGroup>}
+    {kind==='rest'&&<ConfigurationGroup title="REST operations" description={`${rest.operations.length} operations · Define requests and preview their MCP tools`} defaultOpen><RESTUpstreamEditor value={rest} onChange={editable&&!busy&&access.can('rest.manage')&&access.can('credentials.update')?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/></ConfigurationGroup>}
     {headerToReplace&&<Modal title={`Replace ${headerToReplace}`} description="The new header value stays in this draft until you save the upstream." onClose={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}><div className="layout-stack"><FormField name="headers" label="Replacement header value" hint="Write-only. The replacement stays in this draft until Save."><input type="password" autoComplete="off" className={`${input} mt-2`} value={headerReplacement} onChange={e=>setHeaderReplacement(e.target.value)}/></FormField><div className="flex flex-wrap justify-end gap-3"><button className={btn} onClick={()=>{setHeaderToReplace(null);setHeaderReplacement('')}}>Cancel</button><button className={primary} onClick={()=>{setReplaced(r=>({...r,[headerToReplace]:headerReplacement}));setHeaderToReplace(null);setHeaderReplacement('')}}>Use replacement</button></div></div></Modal>}
     {kind==='mcp' && editing && !upstream && <ServerPanel title="Capability discovery" description="Discover tools, resources and prompts after saving the upstream" icon={Wrench}><div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted"><p>Save the connection settings, test stored credentials, then refresh discovery from the upstream list.</p><p>Capability selections and aliases are configured separately in a virtual server.</p></div></ServerPanel>}
     {kind==='mcp' && upstream && <UpstreamDiscovery tools={tools} catalog={catalog} loading={discoveryLoading} error={discoveryError} reload={loadDiscovery}/>}
-  </div></FormScope>
+  </div></FormScope></ConfigurationFields.Provider>
 }

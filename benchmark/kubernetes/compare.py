@@ -2,11 +2,9 @@
 """Render an evidence-based comparison; never equate different hardware/platforms."""
 import json, pathlib, sys
 
-def render(directory):
+def render(directory, baseline=None):
     root=pathlib.Path(directory).resolve()
-    repository=pathlib.Path(__file__).resolve().parents[2]
-    baseline_path=repository/'benchmark/results/rest-release-20261020/after-fix/report.json'
-    previous=json.loads(baseline_path.read_text())
+    previous=json.loads(pathlib.Path(baseline).read_text()) if baseline else {'Phases':[], 'Profile':{}}
     current=json.loads((root/'report.json').read_text())
     if current['Profile'].get('Smoke'):
         path=root/'comparison.md'
@@ -32,11 +30,13 @@ def render(directory):
     scheduled=sum(p['Scheduled'] for p in current['Phases'])
     elapsed=sum(p['ElapsedSeconds'] for p in current['Phases'])
     faults=current.get('Failures') or []
-    lines=['# MicroK8s yük testi — Compose karşılaştırması','',f"Sonuç: **{'Kabul eşikleri karşılandı' if current.get('Pass') else 'Kabul bulguları var'}**. {elapsed/60:.1f} dakika aşama süresinde {scheduled:,} planlanan çağrı; {c.get('successful_client_calls',0):,} başarılı ve audit ile eşleşen çağrı.",'',
+    lines=['# MicroK8s yük testi — Compose karşılaştırması','',f"Sonuç: **{'Kabul eşikleri karşılandı' if current.get('Pass') else 'Kabul bulguları var'}**. {elapsed/60:.1f} dakika aşama süresinde {scheduled:,} planlanan çağrı; {c.get('successful_client_calls',0):,} başarılı istemci çağrısı; audit eşleşmeleri aşağıda ayrıca raporlanır.",'',
       'Önceki REST koşusu macOS/arm64 ve native data-plane + Compose PostgreSQL/Redis kullanıyordu. Bu koşu Linux/amd64, MicroK8s podları ve Kubernetes Service/CNI yolunu kullanıyor. Yazılım ağacı, Go sürümü ve kaynak limitleri de farklıdır; gecikme farkları tek başına Kubernetes veya kod optimizasyonu kazancı sayılamaz.','',
-      'Envanter her iki koşuda 300 REST upstream, 300 virtual server, 60.000 tool, 600 oturum ve 64 agent key. Strict metadata audit açık; payload capture, aktif rate limit ve JWT/IdP yükü kapsam dışı.','',
+      f"Güncel envanter: {current['Profile']['Servers']} upstream/virtual server, {current['Profile']['Servers']*current['Profile']['Tools']:,} tool, {current['Profile']['Sessions']} oturum. Strict metadata audit açık; payload capture, aktif rate limit ve JWT/IdP yükü kapsam dışı.",'',
       '| Aşama | Önceki hedef/sn · süre | Önceki başarı/sn · p95 / p99 ms | MicroK8s hedef/sn · süre | MicroK8s başarı/sn · p95 / p99 ms | Yeni hata / gönderilemeyen |',
       '|---|---:|---:|---:|---:|---:|']
+    if baseline is None:
+        lines.insert(2, 'Yerel karşılaştırma raporu sağlanmadı; önceki ölçüm sütunları ölçülmedi. Tarihsel ortam açıklamaları referans bağlamıdır.')
     for name in ['baseline','steady','spike','recovery','config-refresh','node-loss','node-rejoin','soak']:
         new=after.get(name)
         if not new:continue
@@ -44,17 +44,25 @@ def render(directory):
         a=f"{old['target_rps']} · {old['PlannedSeconds']:.0f}s" if old else '—'
         b=f"{old['CompletedRPS']:.1f} · {old['P95MS']:.1f} / {old['P99MS']:.1f}" if old else '—'
         lines.append(f"| {name} | {a} | {b} | {new['target_rps']} · {new['PlannedSeconds']:.0f}s | {new['CompletedRPS']:.1f} · {new['P95MS']:.1f} / {new['P99MS']:.1f} | {new['Errors']} / {new['Dropped']} |")
-    lines+=['','## Sonuç ve öncelikler','',
-      '200 çağrı/sn referansı geçti. 600 çağrı/sn sabit yük ve 400 çağrı/sn uzun süreklilik bu kaynak profilinde kabul edilmedi. Hedef hızın artırılması, bu hızın gerçekten üretildiği/karşılandığı anlamına gelmez: gönderilemeyen talep tabloya ayrı yazıldı.',
-      'Tüm başarılı yanıtlar kalıcı audit admission/outcome kayıtlarıyla eşleşti; bozuk sonuç ve çift yürütme yok. Sonucu belirsiz işlemler başarısız istemci çağrılarıyla ilişkili; başarılı kabul edilmedi ve yeniden yürütülmedi.',
-      'Konfigürasyon yayılımı ve key iptalinin iki node’da doğrulanması geçmedi. Key iptali kontrolünde snapshot revizyonu 30 saniyelik pencerede iki node’da doğrulanamadı; rapordaki genel “accepted or timed out” mesajı tek başına yetkisiz çağrının kabul edildiğinin kanıtı değildir.',
-      'Öncelikli inceleme: delivery cascade/temizlik indeksleri ve bakım bütçesi; DB pool/lock beklemeleri; büyük katalog altında snapshot tazeliği. Düzeltme sonrasında aynı Kubernetes profili yeniden çalıştırılmalı.','']
+    lines+=['','## Sonuç ve öncelikler','']
+    for name in ('baseline','steady','spike','recovery','config-refresh','node-loss','node-rejoin','soak'):
+        phase=after.get(name)
+        if phase:
+            lines.append(f"- {name}: hedef {phase['target_rps']} çağrı/sn, başarılı {phase['CompletedRPS']:.1f} çağrı/sn; eşik {'geçti' if phase.get('slo_pass') else 'geçmedi'}.")
+    functional=current.get('Functional') or {}
+    for name in ('configuration_refresh_under_rest_load','key_revocation_propagated_and_rejected_on_both_nodes'):
+        value=functional.get(name)
+        status='geçti' if value is True else 'geçmedi' if value is False else 'ölçülmedi'
+        lines.append(f'- {name}: {status}.')
+    lines+=['','Başarılı çağrıların audit eşleşmesi, bozuk sonuçlar ve çift yürütme aşağıdaki ölçümlerle değerlendirilir. Geçmeyen kontroller Bulgular bölümünde korunur; başarısızlık tek başına yetkisiz erişim gerçekleştiğini kanıtlamaz.','']
+    cfg=current.get('DataPlaneConfiguration') or {}
+    pg_limits='CPU/bellek limiti yok' if cfg.get('postgres_limits')=='none' else str(cfg.get('postgres_limits','raporlanmadı; manifesti inceleyin'))
     lines+=['','## Kaynak ve tutarlılık','',
-      '- Data-plane başına Go limiti 2 CPU / 768MiB olarak korundu. Kubernetes hard limit 4CPU/3GiB; PostgreSQL hard limit 4CPU/4GiB, Redis 1CPU/512MiB. Önceki PostgreSQL 2CPU/2GiB ve Redis 0,5CPU/256MiB idi. Bu kapasite farkı karşılaştırmanın parçasıdır.',
-      '- Yük sürücüsü host üzerinde 8 Go scheduler CPU’su ve 512 bounded worker kullanır; önceki worker sayısı 128 idi. Talep üretilemediğinde dropped demand olarak raporlanır.',
-      '- Pod arızası bir data-plane Deployment’ının sıfıra indirilip geri açılmasıdır. Önceki koşunun native SIGKILL arızasıyla aynı değildir; fiziksel Kubernetes node kaybı ölçülmedi.',
+      f"- Data-plane başına GOMAXPROCS={cfg.get('gomaxprocs_each','raporlanmadı')}, GOMEMLIMIT={cfg.get('go_soft_memory_limit_each','raporlanmadı')}; Kubernetes hard limit {cfg.get('cpu_limit_each','raporlanmadı')} CPU / {cfg.get('memory_limit_each','raporlanmadı')}. PostgreSQL: {pg_limits}. Gerçek kaynak manifesti karşılaştırmanın parçasıdır.",
+      f"- Yük sürücüsü host üzerinde {current['Profile'].get('Workers','raporlanmadı')} bounded worker kullanır; önceki worker sayısı {previous['Profile'].get('Workers','raporlanmadı')}. Talep üretilemediğinde dropped demand olarak raporlanır.",
+      ('- Pod arızası bir data-plane Deployment’ının sıfıra indirilip geri açılmasıdır. Önceki koşunun native SIGKILL arızasıyla aynı değildir; fiziksel Kubernetes node kaybı ölçülmedi.' if 'node-loss' in after else '- Bu koşuda pod/node kaybı aşaması çalıştırılmadı.'),
       f"- Audit eşleşmesi: {c.get('matching_admissions',0):,} admission / {c.get('matching_ok_outcomes',0):,} başarılı outcome. Çift yürütme: {c.get('duplicate_executions',0)}. Sonucu belirsiz admission: {c.get('incomplete_operations',0)}; hatalı istemci çağrısıyla açıklanamayan: {c.get('incomplete_unrelated_to_failed_calls',0)}.",
-      f"- Snapshot yayılımı: {current.get('DataPlaneConfiguration',{}).get('rest_refresh_ms','ölçülmedi')} ms."]
+      f"- Snapshot yayılımı: {cfg.get('rest_refresh_ms','ölçülmedi')} ms."]
     refresh_ok=current.get('Functional',{}).get('configuration_refresh_under_rest_load')
     if refresh_ok is False:lines[-1]=f"- Snapshot yayılımı {current.get('DataPlaneConfiguration',{}).get('rest_refresh_ms')} ms gözlem penceresinde doğrulanamadı; bu değer tamamlanmış yayılım süresi değildir."
     for name,values in (current.get('Resources') or {}).items():
@@ -100,4 +108,4 @@ def render(directory):
     lines+=['## Kanıtlar','', '- [Ayrıntılı rapor ve grafikler](report.md)', '- [Ham ölçümler](report.json)', '- [Ortam, kaynak HEAD ve çalışma ağacı](environment.json)', '- [Önceden belirlenen profil](profile.json)', '- [Uygulanan kaynak manifesti](manifest.json)', '- [Pod durumları](kubernetes-pods.json)', '- [Kubernetes olayları](kubernetes-events.json)','', 'Tekrar çalıştırma: `python3 benchmark/kubernetes/run.py`. Sonuçlar çalışma ağacından derlenen binary’ye aittir; kaynak/binary/imaj kimlikleri rapor ve environment/images dosyalarındadır.']
     path=root/'comparison.md';path.write_text('\n'.join(lines)+'\n');return path
 
-if __name__=='__main__':print(render(sys.argv[1]))
+if __name__=='__main__':print(render(sys.argv[1], sys.argv[2] if len(sys.argv)>2 else None))

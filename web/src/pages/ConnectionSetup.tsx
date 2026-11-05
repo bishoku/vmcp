@@ -1,22 +1,23 @@
 import Button from '../Button'
 import { StatusBadge } from '../Badge'
 import Select from '../Select'
-import { EmptyState, LoadingState } from '../Feedback'
-import { ArrowUpRight, BookOpen, Cable, GitBranch, KeyRound, Layers, ListChecks, PlugZap, RefreshCw, Server, ShieldCheck } from 'lucide-react'
+import { EmptyState,LoadingState } from '../Feedback'
+import { ArrowUpRight,BookOpen,Cable,GitBranch,KeyRound,Layers,ListChecks,PlugZap,RefreshCw,Server,ShieldCheck } from 'lucide-react'
 import Connect from '../connections/Connect'
-import { DetailRow, ServerPanel, SummaryTile } from '../connections/ServerPanels'
-import { Link, useSearchParams } from 'react-router-dom'
+import { DetailRow,ServerPanel,SummaryTile } from '../connections/ServerPanels'
+import { Link,useSearchParams } from 'react-router-dom'
 import { useInventory } from '../connections/useInventory'
-import { capabilityCounts, editorPath, keyState, serverPath } from '../connections/model'
-import { useCapabilities } from '../interaction'
-import { btn, input } from '../styles'
+import { capabilityCounts,editorPath,keyState,serverPath } from '../connections/model'
+import {useConfigurationPermissions} from '../configuration-access'
+import { btn,input } from '../styles'
 import { ErrorBox } from '../ui'
 
 export default function ConnectionSetup() {
   const inventory = useInventory()
   const [params,setParams] = useSearchParams()
   const slug = params.get('server') ?? ''
-  const {edit} = useCapabilities()
+  const access=useConfigurationPermissions('virtual_servers','',['create','update'])
+ const edit=access.can('create')||access.can('update')
   const server = inventory.servers.find(s=>s.slug===slug)
   const referenced = new Set(server ? [...server.tools.map(t=>t.upstream),...(server.catalog ?? []).map(c=>c.upstream)] : [])
   const upstreams = inventory.upstreams.filter(u=>referenced.has(u.slug))
@@ -37,7 +38,7 @@ export default function ConnectionSetup() {
       <div><div className="mb-3 flex items-center gap-2 text-xs font-medium text-accent-700"><BookOpen aria-hidden="true" className="icon-control"/>SETUP GUIDE</div><h1 className="page-title">Connection setup guide</h1><p className="page-description mt-2 max-w-2xl text-sm leading-relaxed text-ink-muted">Build the path from upstream capabilities to your client. Review saved configuration, prepare connection settings and explicitly verify discovery.</p></div>
       <div className="flex flex-wrap gap-2"><Button loading={inventory.loading} className={btn} disabled={inventory.loading} onClick={()=>void inventory.load()}><RefreshCw aria-hidden="true" className="icon-inline"/>Refresh context</Button><Link className={btn} to="/connections"><GitBranch aria-hidden="true" className="icon-inline"/>View configured connection flow</Link></div>
     </header>
-    {!edit && <p role="status" className="surface-inset surface-white px-4 py-3 text-xs leading-relaxed text-ink-muted">Read-only access: inspect configuration and verify with a separate gateway credential. An editor must perform configuration changes.</p>}
+    {!edit && <p role="status" className="surface-inset surface-white px-4 py-3 text-xs leading-relaxed text-ink-muted">Read-only access: inspect configuration and verify with a separate gateway credential. Configuration changes require their own permissions.</p>}
     {inventory.loading && <LoadingState label="Loading setup context…" compact/>}
     {inventory.readError && <ErrorBox title="Configuration could not be loaded" onRetry={inventory.load} busy={inventory.loading}>{inventory.readError}. Step status may be incomplete; retained configuration is not proof of current access.</ErrorBox>}
     <ServerPanel title="Setup context" description="Choose the saved virtual server to guide connection settings and access checks" icon={Layers}>

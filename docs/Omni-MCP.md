@@ -310,7 +310,7 @@ from `core/`.
 
 The v1.2.0 end-to-end acceptance used 1,000 tools and 100 TPS in three ten-minute
 phases, plus live bilingual relevance and loaded governance revocation checks.
-See [results, provider fallback and resource costs](../benchmark/results/omni-1000-100-20261027.md).
+See [results, provider fallback and resource costs — local evidence](../benchmark/results/README.md).
 The synthetic development corpus passed with the tested multilingual MPNet model;
 institution-specific held-out relevance still requires separate validation.
 

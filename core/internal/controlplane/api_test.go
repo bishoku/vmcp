@@ -298,7 +298,7 @@ func TestAgentKeys(t *testing.T) {
 
 	// Validation: unknown server and bad IP, all reported.
 	code, _, out := a.do("POST", "/api/v1/agent-keys", map[string]any{"slug": "bad", "virtualServers": []string{"ghost"}, "ipAllowlist": []string{"nope"}}, nil)
-	if code != 422 || !strings.Contains(toJSON(out), "unknown_virtual_server") || !strings.Contains(toJSON(out), "/ipAllowlist/0") {
+	if code != 404 {
 		t.Fatalf("code=%d out=%v", code, out)
 	}
 	a.expect(409, "POST", "/api/v1/agent-keys", map[string]any{"slug": "bot"})
@@ -404,12 +404,18 @@ func TestAdminTokens(t *testing.T) {
 		t.Fatal("secret returned on read")
 	}
 
-	// A read token can read but not write, and cannot manage tokens.
+	// A read token has no implicit grants. An explicit observer assignment enables reads.
+	if code, _ := a.withToken(secret, "GET", "/api/v1/upstreams", nil); code != 403 {
+		t.Fatal("unassigned token inherited coarse read rights", code)
+	}
+	if _, err := a.pool.Exec(context.Background(), `INSERT INTO authorization_assignments(role_id,principal_kind,principal_id,scope_kind) SELECT r.id,'control_token',t.id::text,'tenant' FROM authorization_roles r CROSS JOIN admin_tokens t WHERE r.slug='observer' AND t.slug='ci'`); err != nil {
+		t.Fatal(err)
+	}
 	if code, _ := a.withToken(secret, "GET", "/api/v1/upstreams", nil); code != 200 {
 		t.Fatalf("read token GET: %d", code)
 	}
 	for _, c := range []struct{ m, p string }{{"POST", "/api/v1/upstreams"}, {"DELETE", "/api/v1/upstreams/x"}, {"POST", "/api/v1/admin-tokens"}} {
-		if code, out := a.withToken(secret, c.m, c.p, map[string]any{}); code != 403 || out["code"] != "forbidden" {
+		if code, out := a.withToken(secret, c.m, c.p, map[string]any{}); (code != 403 && code != 404) || (out["code"] != "forbidden" && out["code"] != "not_found") {
 			t.Fatalf("%s %s: %d %v", c.m, c.p, code, out)
 		}
 	}

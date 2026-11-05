@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -160,7 +159,7 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 		return auditUnavailable()
 	}
 	recorder.SetSettings(settings)
-	sensitive := r.Method != "GET" && r.Method != "HEAD" || r.URL.Path == "/api/v1/export" || strings.HasPrefix(r.URL.Path, "/api/v1/upstreams")
+	sensitive := strings.Contains(r.Pattern, "/{slug}/audit-settings") || authorizationManagementRoute(r) || r.Method != "GET" && r.Method != "HEAD" || r.URL.Path == "/api/v1/export" || strings.HasPrefix(r.URL.Path, "/api/v1/upstreams")
 	if c := settings.Scopes["reads"]; c.Request || c.Response {
 		sensitive = true
 	}
@@ -178,6 +177,9 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 	target := r.Pattern
 	if slug := r.PathValue("slug"); store.ValidSlug(slug) {
 		target += ":" + slug
+	}
+	if authorizationManagementRoute(r) && audit.ValidID(r.PathValue("id")) {
+		target += ":" + r.PathValue("id")
 	}
 	if strings.HasSuffix(r.URL.Path, "/payload") && audit.ValidID(r.PathValue("event")) {
 		target += ":" + r.PathValue("event")
@@ -207,22 +209,24 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 	if strings.HasPrefix(r.URL.Path, "/api/v1/virtual-servers/") {
 		e.VirtualServer = r.PathValue("slug")
 	}
-	excluded := r.URL.Path == "/api/v1/audit-preview" || strings.HasPrefix(r.URL.Path, "/api/v1/audit-events") || r.URL.Path == "/api/v1/audit-settings"
+	excluded := strings.Contains(r.Pattern, "/{slug}/audit-settings") || r.URL.Path == "/api/v1/configuration-access" || authorizationManagementRoute(r) || r.URL.Path == "/api/v1/audit-preview" || strings.HasPrefix(r.URL.Path, "/api/v1/audit-events") || r.URL.Path == "/api/v1/audit-settings"
 	if excluded {
 		e.Scope = ""
 	}
 	d := recorder
 	w.Header().Set("X-Request-Id", id)
-	// Admission must contain the request before the handler runs. Read only
-	// when request capture is enabled, and preserve existing handler limits.
-	if !excluded && settings.Scopes[e.Scope].Request && r.Body != nil {
-		raw, readErr := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
-		if readErr != nil {
-			return apierror.New(400, "invalid_body", "Invalid body", "request could not be read")
+	// Capture and scope are independently decided before the handler runs.
+	access, raw, scopeErr := s.pinControlAudit(r, !excluded && settings.Scopes[e.Scope].Request)
+	if scopeErr != nil {
+		var problem *apierror.Error
+		if errors.As(scopeErr, &problem) && problem.Status == 400 {
+			return scopeErr
 		}
-		r.Body = io.NopCloser(bytes.NewReader(raw))
-		e.RawPayload = raw
+		return auditUnavailable()
 	}
+	e.Access = access
+	e.Revision = access.Revision
+	e.RawPayload = raw
 	e, err = d.Admit(r.Context(), e)
 	if err != nil {
 		return auditUnavailable()
@@ -248,6 +252,20 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 		}
 		apierror.Write(response, r, err, s.Log)
 		err = nil
+	}
+	// Reads can span a concurrent transfer. Never expose a response under the
+	// original team's grant if its ownership epoch changed while the handler ran.
+	// This is deliberately conservative for deletes and transfers as well.
+	scopeCtx, scopeCancel := context.WithTimeout(context.WithoutCancel(r.Context()), audit.WriteTimeout)
+	current, scopeErr := s.Store.ControlAuditCurrent(scopeCtx, e.Access)
+	scopeCancel()
+	if scopeErr != nil {
+		return auditUnavailable()
+	}
+	if !current {
+		e.Access = e.Access.Clone()
+		e.Access.Classification = "tenant"
+		e.Access.Domains = nil
 	}
 	e.RawPayload = response.body.Bytes()
 	e.RawPayloadBytes = response.totalBytes
@@ -338,7 +356,8 @@ func (s *Server) revokeJWT(w http.ResponseWriter, r *http.Request) error {
 
 func (s *Server) revokeSessions(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
-		Subject string `json:"subject"`
+		Subject string  `json:"subject"`
+		Issuer  *string `json:"issuer,omitempty"`
 	}
 	if err := decode(r, &body); err != nil {
 		return err
@@ -347,7 +366,17 @@ func (s *Server) revokeSessions(w http.ResponseWriter, r *http.Request) error {
 	if sub == "" || len(sub) > 512 {
 		return apierror.Validation([]apierror.FieldError{{Field: "subject", Code: apierror.CodeValidationFailed, Message: "subject is required"}})
 	}
-	if err := (oidc.PostgresSessions{Pool: s.Store.Pool}).RevokeSubject(r.Context(), sub); err != nil {
+	issuer := ""
+	if s.OIDC != nil {
+		issuer = s.OIDC.Issuer()
+	}
+	if body.Issuer != nil {
+		issuer = *body.Issuer
+	}
+	if len(issuer) > 2048 {
+		return apierror.Validation([]apierror.FieldError{{Field: "issuer", Message: "issuer exceeds limit"}})
+	}
+	if err := (oidc.PostgresSessions{Pool: s.Store.Pool}).RevokeIssuerSubject(r.Context(), issuer, sub); err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)

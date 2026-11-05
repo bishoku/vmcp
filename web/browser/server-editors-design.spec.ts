@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream } from '../src/connections/fixtures'
@@ -8,6 +9,8 @@ async function login(page:Page,path:string,many=false){
  const writes:{path:string;body:Record<string,unknown>;version?:string}[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
@@ -24,6 +27,8 @@ async function login(page:Page,path:string,many=false){
    }
    return route.fulfill({json:{ok:true}})
   }
+  if(path.startsWith('/api/v1/upstreams/')&&path.split('/').length===5)return route.fulfill({json:upstreams.find(u=>u.slug===path.split('/').at(-1))})
+  if(path.startsWith('/api/v1/virtual-servers/')&&path.split('/').length===5)return route.fulfill({json:servers.find(v=>v.slug===path.split('/').at(-1))})
   if(path.endsWith('/upstreams'))return route.fulfill({json:{items:upstreams}})
   if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:servers}})
   if(path.endsWith('/tools')&&many)return route.fulfill({json:{items:Array.from({length:80},(_,i)=>({name:`operation-${i}`,description:i<3?'Customer lookup':'Stored operation'}))}})

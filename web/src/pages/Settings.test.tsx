@@ -1,3 +1,4 @@
+import {RoleContext} from '../interaction'
 import { render } from '../test-utils'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -18,7 +19,7 @@ test('viewers can download both specifications using the authenticated API', asy
   const download = vi.spyOn(api, 'downloadOpenAPI').mockResolvedValue(new Blob(['spec']))
   const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:spec')
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-  render(<Settings role="viewer" />)
+  render(<RoleContext.Provider value="viewer"><Settings role="viewer"/></RoleContext.Provider>)
   fireEvent.click(screen.getByRole('button', { name: 'Download OpenAPI JSON' }))
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   await waitFor(() => expect((screen.getByRole('button', { name: 'Download OpenAPI YAML' }) as HTMLButtonElement).disabled).toBe(false))
@@ -34,15 +35,15 @@ function setupTokens(){
 }
 
 test.each(['viewer','editor'] as const)('%s can inspect token metadata without admin mutations',async(role)=>{
- setupTokens();render(<Settings role={role}/>)
+ setupTokens();render(<RoleContext.Provider value={role}><Settings role={role}/></RoleContext.Provider>)
  fireEvent.click(await screen.findByRole('button',{name:'pipeline'}))
  const detail=screen.getByRole('dialog',{name:'pipeline'})
  expect(within(detail).getByText('vmcp_admin_…')).toBeTruthy()
  expect(within(detail).getByRole('region',{name:'Token metadata'})).toBeTruthy()
  expect(screen.queryByRole('button',{name:'New token'})).toBeNull()
- expect(screen.queryByRole('button',{name:'Rotate'})).toBeNull()
- expect(screen.queryByRole('button',{name:'Revoke'})).toBeNull()
- expect(screen.queryByRole('button',{name:'Delete'})).toBeNull()
+ for(const button of screen.queryAllByRole('button',{name:'Rotate'}))expect((button as HTMLButtonElement).disabled).toBe(true)
+ for(const button of screen.queryAllByRole('button',{name:'Revoke'}))expect((button as HTMLButtonElement).disabled).toBe(true)
+ for(const button of screen.queryAllByRole('button',{name:'Delete'}))expect((button as HTMLButtonElement).disabled).toBe(true)
 })
 
 test('token scope and expiry filters combine without changing gateway metadata',async()=>{

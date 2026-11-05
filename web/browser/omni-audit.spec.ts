@@ -1,13 +1,16 @@
+import { configurationFixture } from './configuration-fixtures'
 import {expect,test} from '@playwright/test'
-import {auditSettings} from './audit-fixtures'
+import {auditSettings,auditMetadataCapabilities} from './audit-fixtures'
 
 for(const width of [390,1440])test(`Omni discovery audit payload is loaded explicitly at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:900})
  let payloadRequests=0
- const base={time:'2026-10-30T10:00:00Z',schemaVersion:1,virtualServer:'',method:'tools/call',tool:'discover_tools',status:'ok',durationMs:10,stage:'outcome',actorType:'agent_key',actorId:'bot',redactions:0,payloadState:'captured'}
+ const base={capabilities:{...auditMetadataCapabilities,canReadPayload:true,canReadResponsePayload:true},time:'2026-10-30T10:00:00Z',schemaVersion:1,virtualServer:'',method:'tools/call',tool:'discover_tools',status:'ok',durationMs:10,stage:'outcome',actorType:'agent_key',actorId:'bot',redactions:0,payloadState:'captured'}
  const events=[{...base,id:2,eventId:'diag',scope:'omni_diagnostics',boundary:'omni_discovery',operationId:'diag',parentOperationId:'root',direction:'response',reason:'eligible=4; unauthorized=2'},{...base,id:1,eventId:'root',scope:'omni',boundary:'omni',operationId:'root'}]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'administrator'); if (capability) return capability
+
   const url=new URL(r.request().url())
   if(url.pathname.endsWith('/me'))return r.fulfill({status:r.request().headers().authorization?200:401,json:{name:'Admin',role:'admin'}})
   if(url.pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})

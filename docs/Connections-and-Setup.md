@@ -91,7 +91,7 @@ results; referenced upstreams missing from loaded inventory remain visible.
 
 Configuration alone never marks a connectivity test or client verification as
 complete. Viewers can inspect configuration and verify with a separate gateway
-credential; editors perform configuration changes. Server authorization remains
+credential; configuration changes require their own scoped permissions. Server authorization remains
 independent of the UI role.
 
 ## Server inventories
@@ -114,7 +114,7 @@ version checks and deletion confirmations remain in place.
 
 Each saved virtual server has Overview, Capabilities, Access, Protection, Connect
 and Activity views. URLs follow `/virtual-servers/<slug>/<view>`, for example
-`/virtual-servers/team/connect`. The full-page editor is available to editors from **Edit configuration** at
+`/virtual-servers/team/connect`. The full-page editor is available with update permission from **Edit configuration** at
 `/virtual-servers/<slug>/edit` and marks saved version versus unsaved draft changes.
 Both upstream and virtual-server lists open dedicated read-only detail pages.
 Creation and editing use the same section panels as saved details. A sticky Save /

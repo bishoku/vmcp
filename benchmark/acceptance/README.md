@@ -9,7 +9,7 @@ the child processes and random test database are cleaned up by the test harness.
 
 The default run takes about eleven minutes, plus build/startup. Set
 `VMCP_ACCEPTANCE_RACE=1` only for functional smoke/race validation, not capacity measurements. Output is saved
-under `benchmark/results/acceptance-<timestamp>`, or `VMCP_ACCEPTANCE_OUTPUT`.
+under `artifacts/benchmark-runs/acceptance-<timestamp>`, or `VMCP_ACCEPTANCE_OUTPUT`.
 The wrapper renders the human report automatically after cleanup. To render it again:
 
 ```sh

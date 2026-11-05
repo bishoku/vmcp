@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
@@ -6,6 +7,8 @@ test('setup context and explicit verification work across desktop and mobile',as
  const methods:string[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'reader'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname

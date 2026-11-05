@@ -263,13 +263,13 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 	}
 	raw, _ := json.Marshal(params)
 	if err := h.Approval.Check(ctx, PolicyDecision{Actor: sess.owner.CredentialID, Server: vs.Slug, Method: msg.Method, Object: exposed, Revision: snap.Revision}, raw); err != nil {
-		h.record(audit.Event{Time: time.Now().UTC(), Action: msg.Method, Method: msg.Method, Target: vs.Slug, Status: "denied", Reason: "approval policy", ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Revision: snap.Revision})
+		h.record(audit.Event{Access: snap.ConsumerAudit(vs), Time: time.Now().UTC(), Action: msg.Method, Method: msg.Method, Target: vs.Slug, Status: "denied", Reason: "approval policy", ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Revision: snap.Revision})
 		fail(-32003, "approval policy denied operation")
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	ev := audit.Event{Time: time.Now().UTC(), VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method, ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: msg.Method, Target: vs.Slug, Upstream: up.Slug, TraceID: audit.TraceFrom(ctx)}
+	ev := audit.Event{Access: snap.ConsumerAudit(vs), Time: time.Now().UTC(), VirtualServer: vs.Slug, AgentKey: sess.keySlug, ClientIP: ip, Subject: subjectFrom(ctx), Method: msg.Method, ActorType: sess.owner.Mode, ActorID: sess.owner.CredentialID, Issuer: sess.owner.Issuer, Revision: snap.Revision, Action: msg.Method, Target: vs.Slug, Upstream: up.Slug, TraceID: audit.TraceFrom(ctx)}
 	if id, ok := ctx.Value(deliveryRequestKey{}).(string); ok {
 		ev.RequestID = id
 	}
@@ -290,7 +290,7 @@ func (h *Handler) catalogCall(ctx context.Context, w http.ResponseWriter, msg *m
 		}
 	}
 	if runtime, ok := h.Audit.(*audit.Runtime); ok {
-		ctx = audit.WithUpstream(audit.WithOperation(ctx, runtime, ev), up.Slug)
+		ctx = audit.WithProvider(audit.WithOperation(ctx, runtime, ev), up.Slug, up.AuditDomain)
 	}
 	var result json.RawMessage
 	if object.Local != nil {

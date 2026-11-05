@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import {expect,test} from '@playwright/test'
 import {auditSettings} from './audit-fixtures'
 import {upstream} from '../src/connections/fixtures'
@@ -9,10 +10,13 @@ for(const fixture of fixtures.slice(0,2))for(const width of [390,1440])test(`${f
  const writes:Record<string,unknown>[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'administrator'); if (capability) return capability
+
   const req=r.request(),path=new URL(req.url()).pathname
   if(path.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
   if(path.endsWith('/me'))return r.fulfill({json:{role:'admin',name:'Tester'}})
   if(req.method()==='PATCH'){const body=req.postDataJSON();writes.push(body);saved={...saved,...body,version:3};return r.fulfill({json:saved})}
+  if(path==='/api/v1/upstreams/'+(saved).slug)return r.fulfill({json:saved})
   if(path.endsWith('/upstreams'))return r.fulfill({json:{items:[saved]}})
   if(path.endsWith('/catalog'))return r.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
   return r.fulfill({json:{items:[]}})

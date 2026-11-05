@@ -49,6 +49,11 @@ func (e *env) exec(t testing.TB, q string, args ...any) {
 
 func setup(t testing.TB) *env {
 	t.Helper()
+	return setupTenant(t, "default")
+}
+
+func setupTenant(t testing.TB, tenantID string) *env {
+	t.Helper()
 	url := testdb.New(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := store.Migrate(ctx, url); err != nil {
@@ -78,6 +83,9 @@ func setup(t testing.TB) *env {
 	e := &env{ctx: ctx, syncer: syncer, pool: pool}
 	e.exec(t, `DELETE FROM virtual_servers`)
 	e.exec(t, `DELETE FROM upstreams`)
+	// Bind the empty fixture before resource epochs are created. Tenant identity
+	// cannot be changed after seeding immutable ownership evidence.
+	e.exec(t, `UPDATE tenant_runtime_identity SET tenant_id=$1`, tenantID)
 
 	// Two real fixture servers: alpha needs a bearer token (JSON replies), beta streams SSE.
 	alpha := httptest.NewServer(fixture.New(fixture.Options{Token: "fixture-secret"}))

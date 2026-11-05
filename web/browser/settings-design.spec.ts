@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
@@ -9,6 +10,8 @@ async function login(page:Page,role:'admin'|'editor'|'viewer'='admin'){
  let tokens:AdminToken[]=[token,{...token,slug:'expired-admin',scope:'admin',expiresAt:'2020-01-01T00:00:00Z',lastUsedAt:null}]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, role === 'viewer' ? 'reader' : role === 'admin' ? 'administrator' : 'operator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),url=new URL(request.url()),path=url.pathname
@@ -99,7 +102,7 @@ test('rotation retains one-time acknowledgement and versioned token mutation',as
 for(const role of ['viewer','editor'] as const)test(`${role} keeps token management restricted while configuration controls match its role`,async({page})=>{
  await login(page,role)
  await expect(page.getByRole('button',{name:'New token',exact:true})).toHaveCount(0)
- await expect(page.getByRole('button',{name:'Rotate',exact:true})).toHaveCount(0)
+ for(const button of await page.getByRole('button',{name:'Rotate',exact:true}).all())await expect(button).toBeDisabled()
  await page.getByRole('button',{name:'deploy-bot',exact:true}).click()
  const detail=page.getByRole('dialog',{name:'deploy-bot',exact:true})
  await expect(detail.getByRole('region',{name:'Token metadata'})).toBeVisible()

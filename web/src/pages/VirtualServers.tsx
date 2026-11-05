@@ -1,27 +1,31 @@
+import { useConfigurationRows,useConfigurationPermissions } from '../configuration-access'
 import { filterItem } from '../search-filters'
 import { useTableSort } from '../table-sorting'
 import { useNotifications } from '../notifications'
 import { LoadingState } from '../Feedback'
 import { useConfirm } from '../confirmation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect,useMemo,useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Cable, KeyRound, Layers, Plus, RefreshCw, ShieldCheck, Trash2, Wrench } from 'lucide-react'
-import { api, type VirtualServer } from '../api'
-import { useCapabilities, useOperation } from '../interaction'
-import { source, useSources } from '../requests'
-import { serverPath, capabilityCounts } from '../connections/model'
-import { ErrorBox, Pill } from '../ui'
-import { btn, primary } from '../styles'
+import { ArrowUpRight,Cable,KeyRound,Layers,Plus,RefreshCw,ShieldCheck,Trash2,Wrench } from 'lucide-react'
+import { api,type VirtualServer } from '../api'
+import { useOperation } from '../interaction'
+import { source,useSources } from '../requests'
+import { serverPath,capabilityCounts } from '../connections/model'
+import { ErrorBox,Pill } from '../ui'
+import { btn,primary } from '../styles'
 
-import { DetailRow, SummaryTile } from '../connections/ServerPanels'
-import { ServerListFilters, ServerListResults, ServerListSelect, serverPageSize } from '../connections/ServerList'
+import { DetailRow,SummaryTile } from '../connections/ServerPanels'
+import { ServerListFilters,ServerListResults,ServerListSelect,serverPageSize } from '../connections/ServerList'
 
 export default function VirtualServers() {
   const {notify}=useNotifications()
   const confirm=useConfirm()
-  const { edit } = useCapabilities()
+
+ const access=useConfigurationPermissions('virtual_servers','',['create'])
+ const edit=(access.can('create'))
   const { busy, run } = useOperation()
   const [servers, setServers] = useState<VirtualServer[]>([])
+ const rowCan=useConfigurationRows('virtual_servers',servers.map(server=>server.slug),['delete'])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [auth,setAuth] = useState('')
@@ -51,7 +55,7 @@ export default function VirtualServers() {
       {sorting.rows.slice(currentPage*serverPageSize,(currentPage+1)*serverPageSize).map(server=><article key={server.slug} aria-label={server.name} className="min-w-0 flex flex-col overflow-hidden surface-card surface-interactive">
         <div className="flex items-start gap-3 panel-body"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-50 text-accent-700"><Layers aria-hidden="true" className="icon-feature"/></div><div className="min-w-0 flex-1"><h2 className="panel-title break-words"><Link className="text-accent-700 hover:underline" to={serverPath(server.slug)}>{server.name}</Link></h2><p className="meta-copy mt-1 break-all font-mono text-xs text-ink-muted">{server.slug}</p></div><Pill status={server.enabled?'enabled':'disabled'}/></div>
         <div className="flex-1 panel-inset pb-5"><p className="line-clamp-2 min-h-10 text-xs leading-relaxed text-ink-muted">{server.description || 'Virtual MCP endpoint with explicitly selected upstream capabilities.'}</p><div className="mt-4 surface-inset p-3"><p className="text-xs font-medium">Selected capabilities</p><p className="mt-1 text-xs leading-relaxed text-ink-muted">{capabilityCounts(server)}</p></div><dl className="mt-2 divide-y divide-line"><DetailRow label="Omni MCP">{server.omniEnabled?'Published':'Not published'}</DetailRow><DetailRow label="Authentication">{server.authRequired?'Required':'Anonymous'}</DetailRow><DetailRow label="Upstream references">{new Set([...server.tools,...(server.catalog??[])].map(c=>c.upstream)).size}</DetailRow><DetailRow label="Rate limit">{server.rateLimitPerMinute == null ? 'Unlimited' : `${server.rateLimitPerMinute}/min`}</DetailRow></dl><div className="mt-2 flex items-start gap-2 surface-inset p-3 text-xs text-ink-muted"><ShieldCheck aria-hidden="true" className="icon-control shrink-0"/><span>{server.authRequired?'Access depends on configured grants and policy.':'Anonymous access bypasses credential authentication.'}</span></div></div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line panel-footer"><span className="text-xs text-ink-muted">Saved version {server.version}</span><div className="flex items-center gap-2"><Link className={btn} aria-label={`View ${server.name}`} to={serverPath(server.slug)}>View server<ArrowUpRight aria-hidden="true" className="icon-inline"/></Link><button className={`${btn} action-danger-outline action-icon`} disabled={!edit || busy} aria-label={`Delete ${server.name}`} onClick={()=>void remove(server)}><Trash2 aria-hidden="true" className="icon-inline text-red-600"/></button></div></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line panel-footer"><span className="text-xs text-ink-muted">Saved version {server.version}</span><div className="flex items-center gap-2"><Link className={btn} aria-label={`View ${server.name}`} to={serverPath(server.slug)}>View server<ArrowUpRight aria-hidden="true" className="icon-inline"/></Link><button className={`${btn} action-danger-outline action-icon`} disabled={!rowCan(server.slug,'delete') || busy} aria-label={`Delete ${server.name}`} onClick={()=>void remove(server)}><Trash2 aria-hidden="true" className="icon-inline text-red-600"/></button></div></footer>
       </article>)}
     </ServerListResults>
   </div>

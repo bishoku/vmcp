@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream } from '../src/connections/fixtures'
@@ -6,6 +7,8 @@ test.use({viewport:{width:1280,height:1000}})
 async function setup(page:Page){
  const writes:string[]=[]
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
@@ -15,6 +18,7 @@ async function setup(page:Page){
    return route.fulfill({status:422,json:{detail:'Validation failed',code:'validation_failed',errors:path.includes('agent-keys')?[{field:'/ipAllowlist/0',message:'Enter a valid IP address or CIDR.'}]:[{field:'/url',message:'This endpoint is not permitted by network policy.'}]}})
   }
   if(path.endsWith('/info'))return route.fulfill({json:{version:'dev-test',configRevision:1}})
+  if(path==='/api/v1/upstreams/'+(upstream).slug)return route.fulfill({json:upstream})
   if(path.endsWith('/upstreams'))return route.fulfill({json:{items:[upstream]}})
   if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:Array.from({length:60},(_,i)=>({...server,slug:`workspace-${i}`,name:`Workspace ${i}`}))}})
   if(path.endsWith('/tools'))return route.fulfill({json:{items:Array.from({length:120},(_,i)=>({name:`tool-${i}`,description:`Tool definition ${i}`}))}})

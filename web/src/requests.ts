@@ -1,3 +1,4 @@
+import { ApiError } from './api'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 interface Source { name: string; load: (signal: AbortSignal) => Promise<void> }
@@ -5,6 +6,19 @@ export function source<T>(name: string, read: (signal: AbortSignal) => Promise<T
   return { name, load: async signal => {
     const data = await read(signal)
     if (!signal.aborted) accept(data)
+  } }
+}
+
+/** Optional catalogs may be unavailable under an otherwise valid scoped role.
+ * Only the local capability denial is optional; server/authentication errors remain visible.
+ */
+export function optionalSource<T>(name: string, read: (signal: AbortSignal) => Promise<T>, accept: (data: T) => void, empty: T): Source {
+  return { name, load: async signal => {
+    try { await source(name, read, accept).load(signal) }
+    catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 403 || error.code !== 'configuration_access_denied') throw error
+      if (!signal.aborted) accept(empty)
+    }
   } }
 }
 

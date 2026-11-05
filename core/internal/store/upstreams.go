@@ -199,7 +199,7 @@ func (t *Tx) getUpstream(ctx context.Context, slug string, lock bool) (*upstream
 	if err := t.checkUpstreamAccess(ctx, slug); err != nil {
 		return nil, err
 	}
-	q := upstreamSelect + ` AND u.slug = $1 AND ` + ownerPredicate(ctx, "u.owner_team_id")
+	q := upstreamSelect + ` AND u.slug = $1 AND ` + upstreamConfigurationPredicate(ctx)
 	if lock {
 		q += ` FOR UPDATE OF u`
 	}
@@ -230,7 +230,7 @@ func (t *Tx) GetUpstream(ctx context.Context, slug string) (*Upstream, error) {
 
 // ListUpstreams pages through upstreams ordered by slug.
 func (t *Tx) ListUpstreams(ctx context.Context, after string, limit int, enabled *bool) ([]Upstream, bool, error) {
-	rows, err := t.q.Query(ctx, upstreamSelect+` AND `+ownerPredicate(ctx, "u.owner_team_id")+`
+	rows, err := t.q.Query(ctx, upstreamSelect+` AND `+upstreamConfigurationPredicate(ctx)+`
 		AND u.slug > $1 AND ($2::boolean IS NULL OR u.enabled = $2)
 		ORDER BY u.slug LIMIT $3`, after, enabled, limit+1)
 	if err != nil {

@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import {auditSettings} from './audit-fixtures'
 import {expect,test} from '@playwright/test'
 import {upstream} from '../src/connections/fixtures'
@@ -7,10 +8,13 @@ for(const width of [1280,390])test(`REST operation and schema modal drafts at ${
  let saved:Record<string,unknown>|null=null
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'administrator'); if (capability) return capability
+
   const req=r.request(),path=new URL(req.url()).pathname
   if(path.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
   if(path.endsWith('/me'))return r.fulfill({status:req.headers().authorization?200:401,json:{role:'admin',name:'Tester'}})
   if(path.endsWith('/upstreams')&&req.method()==='POST'){writes.push(req.postDataJSON());saved={...upstream,...req.postDataJSON(),version:1};return r.fulfill({status:201,json:saved})}
+  if(saved&&path==='/api/v1/upstreams/'+saved.slug)return r.fulfill({json:saved})
   if(path.endsWith('/upstreams'))return r.fulfill({json:{items:saved?[saved]:[]}})
   if(path.includes('/rest/')){actions.push(path);return r.fulfill({json:{method:'GET',url:'https://api.example.com/orders',headers:{}}})}
   if(path.endsWith('/catalog'))return r.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})

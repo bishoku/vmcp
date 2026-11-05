@@ -51,6 +51,7 @@ func (r *Runtime) SetSettings(s Settings) {
 }
 func (r *Runtime) Settings() Settings { return *r.current.Load() }
 func (r *Runtime) Pin(e Event) Event {
+	e.Access = e.Access.Clone()
 	if e.Policy == nil {
 		s := r.Settings()
 		e.Policy = &s
@@ -220,6 +221,8 @@ func InheritOperation(ctx context.Context, e Event) Event {
 		e.Policy = op.base.Policy
 		e.Mode = op.base.Mode
 		e.PolicyRevision = op.base.PolicyRevision
+		e.Access = op.base.Access.Clone()
+		e.Revision = op.base.Revision
 	}
 	return e
 }

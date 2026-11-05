@@ -11,12 +11,11 @@ import (
 )
 
 func TestDedicatedTenantsRejectCredentialsSessionsAndConfiguration(t *testing.T) {
-	a, b := setup(t), setup(t)
+	a, b := setupTenant(t, "tenant-a"), setupTenant(t, "tenant-b")
 	for _, tenant := range []struct {
 		e         *env
 		id, token string
 	}{{a, "tenant-a", "vmcp_tenant_a"}, {b, "tenant-b", "vmcp_tenant_b"}} {
-		tenant.e.exec(t, `UPDATE tenant_runtime_identity SET tenant_id=$1`, tenant.id)
 		tenant.e.exec(t, `UPDATE virtual_servers SET auth_required=true WHERE slug='agent'`)
 		tenant.e.exec(t, `INSERT INTO agent_keys(tenant_id,slug,key_hash,key_prefix) SELECT id,'same-slug',$1,'vmcp_test' FROM tenants WHERE slug='default'`, store.HashKey(tenant.token))
 		tenant.e.exec(t, `INSERT INTO agent_key_servers SELECT k.id,v.id FROM agent_keys k,virtual_servers v WHERE k.slug='same-slug' AND v.slug='agent'`)
