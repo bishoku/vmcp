@@ -8,6 +8,8 @@ import UpstreamDetail from './UpstreamDetail'
 import { RoleContext } from '../interaction'
 
 beforeEach(()=>{
+ vi.spyOn(api,'getUpstream').mockResolvedValue(upstream)
+ vi.spyOn(api,'localAuditSettings').mockResolvedValue({revision:1,rules:[]})
  vi.spyOn(api,"teams").mockResolvedValue({items:[]})
  vi.spyOn(api,'auditSettings').mockResolvedValue({mode:'',retentionDays:7,maxPayloadBytes:65536,revision:1,scopes:{},rules:[],virtualServers:{},upstreams:{},exportPayloads:{}})
 
@@ -27,7 +29,7 @@ test('opens a full read-only page and saving returns to read-only with the lates
   expect(screen.queryByRole('button',{name:'Save'})).toBeNull()
   fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
   fireEvent.change(name,{target:{value:'Updated'}})
-  vi.mocked(api.listUpstreams).mockResolvedValue([{...upstream,version:3,name:'Updated'}])
+  vi.mocked(api.getUpstream).mockResolvedValue({...upstream,version:3,name:'Updated'})
   fireEvent.click(screen.getByRole('button',{name:'Save'}))
   await waitFor(()=>expect(api.patchUpstream).toHaveBeenCalledWith('alpha',expect.objectContaining({name:'Updated'}),2))
   expect(await screen.findByRole('button',{name:'Edit upstream'})).toBeTruthy()
@@ -60,7 +62,7 @@ test('a stale write retains the draft and requires explicit recovery',async()=>{
   expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Draft')
 })
 test('missing upstream has a useful error state and list navigation',async()=>{
-  vi.mocked(api.listUpstreams).mockResolvedValue([]);open()
+  vi.mocked(api.getUpstream).mockRejectedValue(new ApiError(404,'Not found'));open()
   expect(await screen.findByText('Upstream “alpha” was not found.')).toBeTruthy()
   expect(screen.getByRole('link',{name:'Back to upstreams'}).getAttribute('href')).toBe('/upstreams')
 })
@@ -129,5 +131,5 @@ test('saving a name change preserves stored secrets by omitting write-only repla
  expect(version).toBe(2)
  expect(payload.headers).toBeUndefined()
  expect(payload.tls?.clientKeyPem).toBeUndefined()
- expect(payload.auth && 'clientSecret' in payload.auth).toBe(false)
+ expect(payload.auth).toBeUndefined()
 })

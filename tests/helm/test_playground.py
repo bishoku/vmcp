@@ -22,15 +22,20 @@ def args(*extra):
 
 class MemoryAPI:
     def __init__(self):
-        self.data = {key: [] for key in ['teams', 'projects', 'upstreams', 'virtual-servers', 'tool-grants', 'agent-keys', 'identity-bindings']}
+        self.data = {key: [] for key in ['teams', 'projects', 'upstreams', 'virtual-servers', 'tool-grants', 'agent-keys', 'identity-bindings', 'identity-mappings', 'role-assignments']}
+        self.data['roles'] = [dict(slug=s,id=s) for s in ['observer','upstream-maintainer','virtual-server-editor','credential-manager','access-approver','auditor']]
         self.writes = []
 
-    def items(self, path): return copy.deepcopy(self.data[path.rsplit('/', 1)[-1]])
+    def items(self, path):
+        if path.startswith('/api/v1/access/scopes?kind=team'):
+            return [dict(slug=t['slug'],id=t['slug']) for t in self.data['teams']]
+        return copy.deepcopy(self.data[path.rsplit('/', 1)[-1]])
 
     def request(self, method, path, body):
         assert method == 'POST'
         kind = path.rsplit('/', 1)[-1]
         row = copy.deepcopy(body)
+        if kind in ['identity-mappings','role-assignments']: row['id'] = str(len(self.writes))
         row['version'] = 2 if kind == 'virtual-servers' else 1
         if kind == 'virtual-servers':
             project = next(v for v in self.data['projects'] if v['slug'] == row['project'])
@@ -89,6 +94,22 @@ class PlaygroundTests(unittest.TestCase):
         before = copy.deepcopy(api.data)
         api.writes.clear()
         with redirect_stdout(io.StringIO()): p.seed(api, args('--keycloak'), lambda *_: None)
+        self.assertEqual(api.data, before)
+        self.assertEqual(api.writes, [])
+
+    def test_keycloak_only_seeds_console_grants_without_runtime_resources(self):
+        api, ledger = MemoryAPI(), {}
+        p.seed_console_access(api, args('--keycloak'), ledger, lambda _: None)
+        self.assertEqual(len(api.data['teams']), 30)
+        self.assertEqual(len(api.data['identity-mappings']), 31)
+        self.assertEqual(len(api.data['role-assignments']), 151)
+        for kind in ['projects','upstreams','virtual-servers','agent-keys','identity-bindings']:
+            self.assertEqual(api.data[kind], [])
+        api.data['role-assignments'][0]['enabled'] = False
+        api.data['role-assignments'].pop()
+        before = copy.deepcopy(api.data)
+        api.writes.clear()
+        p.seed_console_access(api, args('--keycloak'), ledger, lambda _: None)
         self.assertEqual(api.data, before)
         self.assertEqual(api.writes, [])
 

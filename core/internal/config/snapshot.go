@@ -19,6 +19,7 @@ import (
 // Snapshot is the immutable, versioned configuration the data plane serves from.
 // The control plane produces it; the data plane swaps it in atomically.
 type Snapshot struct {
+	AuditTenant    string
 	Audit          audit.Settings
 	Revision       int64
 	Upstreams      map[string]Upstream      // keyed by upstream ID
@@ -62,6 +63,7 @@ func (b Binding) Principal() string { return "oauth:" + b.Slug }
 
 // Upstream is a physical MCP server. Headers are already decrypted.
 type Upstream struct {
+	AuditDomain           audit.AccessDomain
 	RequestHeaderMappings []callercontext.HeaderMapping `json:"requestHeaderMappings,omitempty"`
 	CallerContext         *callercontext.Config
 	Kind                  string
@@ -97,6 +99,7 @@ func (u Upstream) WithPrecomputedFingerprint() Upstream {
 
 // VirtualServer is an agent-facing endpoint exposing a filtered set of upstream tools.
 type VirtualServer struct {
+	AuditDomain    audit.AccessDomain
 	OmniEnabled    bool
 	Description    string
 	Project        string

@@ -1,22 +1,27 @@
+import { useConfigurationPermissions,useConfigurationChecks } from '../configuration-access'
 import Button from '../Button'
 import { StatusBadge } from '../Badge'
 import { Checkbox } from '../SelectionControls'
 import { DataTable } from '../DataTable'
 import { useTableSort } from '../table-sorting'
-import { FormField, FormScope, FormErrors } from '../FormField'
-import { useFormValidation, requiredText } from '../form-validation'
+import { FormField,FormScope,FormErrors } from '../FormField'
+import { useFormValidation,requiredText } from '../form-validation'
 import { useNotifications } from '../notifications'
-import { EmptyState, LoadingState } from '../Feedback'
+import { EmptyState,LoadingState } from '../Feedback'
 import { useConfirm } from '../confirmation'
-import { useOperation, useUnsaved } from '../interaction'
-import { Braces, FileCode2, GitCompareArrows, Upload } from 'lucide-react'
+import { useOperation,useUnsaved } from '../interaction'
+import { Braces,FileCode2,GitCompareArrows,Upload } from 'lucide-react'
 import { useState } from 'react'
-import { api, ApiError, type ApplyResult, type ConfigDocument } from '../api'
-import { btn, input, primary } from '../styles'
-import { DetailRow, ServerPanel } from '../connections/ServerPanels'
-import { CopyButton, ErrorBox } from '../ui'
+import { api,ApiError,type ApplyResult,type ConfigDocument } from '../api'
+import { btn,input,primary } from '../styles'
+import { DetailRow,ServerPanel } from '../connections/ServerPanels'
+import { CopyButton,ErrorBox } from '../ui'
 
-export default function GitOps({ canManage }: { canManage: boolean }) {
+export default function GitOps() {
+  const access=useConfigurationPermissions('config','',['apply','validate','prune'])
+  const canManage=(access.can('apply'))
+  const exportAccess=useConfigurationChecks([{method:'GET',path:'/export'}])
+  const canExport=(exportAccess.allowed[0]===true)
   const {notify}=useNotifications()
   const validation=useFormValidation()
   const confirm=useConfirm()
@@ -45,7 +50,7 @@ export default function GitOps({ canManage }: { canManage: boolean }) {
   }catch(e){validation.fail(new ApiError(0,'Configuration could not be processed',undefined,e instanceof ApiError && e.errors.length?e.errors.map(issue=>({field:'/document',message:`${issue.field??''} ${issue.message}`.trim()})):[{field:e instanceof SyntaxError?'/document':undefined,message:e instanceof SyntaxError?'Configuration is not valid JSON. Check the document and try again.':e instanceof Error?e.message:String(e)}]));setPreview(null)}
  })
  return <FormScope validation={validation}><section aria-label="Configuration as code" className="layout-stack">
-  <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="section-title">Configuration as code</h2><p className="section-description mt-1 text-sm text-ink-muted">Export saved configuration or review a proposed import before applying it.</p></div><button className={btn} disabled={busy} onClick={exportDocument}><Braces aria-hidden="true" className="icon-inline"/>Export configuration</button></div>
+  <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="section-title">Configuration as code</h2><p className="section-description mt-1 text-sm text-ink-muted">Export saved configuration or review a proposed import before applying it.</p></div><button className={btn} disabled={busy||!canExport} onClick={exportDocument}><Braces aria-hidden="true" className="icon-inline"/>Export configuration</button></div>
   {busy&&<LoadingState label="Working with configuration…" detail="Wait for the current operation to finish." compact/>}
   {error && <ErrorBox>{error}</ErrorBox>}
   <FormErrors validation={validation} title="Configuration could not be processed"/>
@@ -54,8 +59,8 @@ export default function GitOps({ canManage }: { canManage: boolean }) {
     {canManage?<fieldset disabled={busy} className="min-w-0 space-y-4 border-0 panel-body m-0">
      <label className="block rounded-lg border border-dashed border-line bg-canvas/50 p-4 text-xs font-medium"><span className="mb-3 inline-flex items-center gap-2"><Upload aria-hidden="true" className="icon-inline"/>Import JSON file</span><input aria-label="Import configuration" type="file" accept="application/json,.json" className="block w-full min-w-0 text-xs text-ink-muted" onChange={async(e)=>{const file=e.target.files?.[0];if(file){try{const content=await file.text();unsaved.guard(()=>{setText(content);setPreview(null)})}catch{setError('Could not read configuration file.')}}}}/></label>
      <FormField name="document" label="Configuration document" required hint="Paste a JSON object or import a file. Preview changes before applying."><textarea aria-label="Configuration document" className={`${input} min-h-64 font-mono text-xs leading-relaxed`} rows={12} value={text} onChange={e=>{setText(e.target.value);setPreview(null)}} placeholder='{"apiVersion":"vmcp/v1","upstreams":[],"virtualServers":[]}'/></FormField>
-     <Checkbox label="Prune configuration absent from document" description="Review the preview and confirm before removing configuration." checked={prune} onChange={e=>{setPrune(e.target.checked);setPreview(null)}}/>
-     <Button loading={busy} className={btn} disabled={busy} onClick={()=>run(true)}><GitCompareArrows aria-hidden="true" className="icon-inline"/>Preview changes</Button>
+     <Checkbox disabled={(!access.can('prune'))} label="Prune configuration absent from document" description="Review the preview and confirm before removing configuration." checked={prune} onChange={e=>{setPrune(e.target.checked);setPreview(null)}}/>
+     <Button loading={busy} className={btn} disabled={busy||((!access.can('validate')))} onClick={()=>run(true)}><GitCompareArrows aria-hidden="true" className="icon-inline"/>Preview changes</Button>
     </fieldset>:<div className="space-y-4 panel-body">{text?<><pre className="overflow-x-auto whitespace-pre-wrap break-all surface-inset p-4 font-mono text-xs leading-relaxed">{text}</pre><CopyButton label="Copy exported configuration" value={text}/></>:<p className="text-xs leading-relaxed text-ink-muted">Export the saved configuration to inspect its JSON document. Import and apply require editor or admin access.</p>}</div>}
    </ServerPanel>
    <ServerPanel headingLevel={3} title="Change preview" description="Proposed configuration changes before apply" icon={GitCompareArrows} footer="Editing the document or prune option invalidates the preview. Apply uses the preview’s base revision.">

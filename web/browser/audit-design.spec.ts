@@ -1,7 +1,7 @@
-import { auditSettings } from './audit-fixtures'
+import { auditSettings,auditMetadataCapabilities } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 
-const base={eventId:'event-1',operationId:'operation-123',requestId:'request-123',traceId:'trace-123',schemaVersion:1,actorType:'agent_key',actorId:'team-key',agentKey:'team-key',subject:'team',issuer:'https://idp.example',action:'tools/call',target:'lookup',configRevision:7,id:5,time:'2026-10-15T10:00:00Z',virtualServer:'demo',method:'tools/call',tool:'lookup',upstream:'alpha',status:'started',stage:'admission',durationMs:0,redactions:0}
+const base={capabilities:auditMetadataCapabilities,eventId:'event-1',operationId:'operation-123',requestId:'request-123',traceId:'trace-123',schemaVersion:1,actorType:'agent_key',actorId:'team-key',agentKey:'team-key',subject:'team',issuer:'https://idp.example',action:'tools/call',target:'lookup',configRevision:7,id:5,time:'2026-10-15T10:00:00Z',virtualServer:'demo',method:'tools/call',tool:'lookup',upstream:'alpha',status:'started',stage:'admission',durationMs:0,redactions:0}
 const outcome={...base,eventId:'event-2',id:6,stage:'outcome',status:'error',reason:'Upstream timeout',durationMs:250,redactions:2}
 const pending={...base,eventId:'event-3',id:4,operationId:'operation-pending',requestId:'request-pending',tool:'search'}
 const mutation={...base,eventId:'event-4',id:3,operationId:null,requestId:null,traceId:'mutation-trace',stage:'mutation',status:'ok',actorType:'admin_token',actorId:'admin-console',agentKey:null,subject:null,virtualServer:'',tool:null,action:'upstream.update',method:'',target:'upstream/alpha',durationMs:0}
@@ -18,7 +18,7 @@ for (const width of [390, 1440]) test(`tool and upstream calls share one operati
  await page.route('**/api/v1/**',route=>{
   const path=new URL(route.request().url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{name:'Reviewer',role:'viewer'}})
-  return route.fulfill({json:{items:path.endsWith('/audit-events')?events:[]}})
+  return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:path.endsWith('/audit-events')?events:[]}})
  })
  await page.goto('/audit')
  const details=page.getByRole('button',{name:'Details',exact:true})
@@ -46,11 +46,11 @@ async function login(page:Page){
   const url=new URL(route.request().url())
   if(url.pathname.endsWith('/me'))return route.fulfill({status:route.request().headers().authorization?200:401,json:{name:'Reviewer',role:'viewer'}})
   if(url.pathname.endsWith('/audit-events')){
-   if(url.searchParams.get('operationId'))return route.fulfill({json:{items:[outcome,base]}})
-   if(url.searchParams.get('cursor'))return route.fulfill({json:{items:[pending,mutation]}})
-   return route.fulfill({json:{items:[outcome,base,pending],nextCursor:'older'}})
+   if(url.searchParams.get('operationId'))return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:[outcome,base]}})
+   if(url.searchParams.get('cursor'))return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:[pending,mutation]}})
+   return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:[outcome,base,pending],nextCursor:'older'}})
   }
-  return route.fulfill({json:{items:[]}})
+  return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:[]}})
  })
  await page.goto('/audit?virtualServer=demo&subject=team')
  await page.getByLabel('Admin token').fill('test-token');await page.getByRole('button',{name:'Continue',exact:true}).click()
@@ -144,7 +144,7 @@ for (const role of ['admin','viewer']) test(`audit modal keeps payloads scoped t
   const path=new URL(route.request().url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{name:'Tester',role}})
   if(path.endsWith('/payload')){fetched.push(path);return route.fulfill({json:path.includes('child-out')?{state:'expired'}:{state:'redacted',content:{source:path,order:{items:[{productId:'SKU-1',quantity:2}]}}}})}
-  return route.fulfill({json:{items:path.endsWith('/audit-events')?events:[]}})
+  return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:path.endsWith('/audit-events')?events.map(e=>({...e,capabilities:{...auditMetadataCapabilities,canReadPayload:role==='admin',canReadRequestPayload:role==='admin'&&e.direction==='request',canReadResponsePayload:role==='admin'&&e.direction==='response'}})):[]}})
  })
  await page.setViewportSize({width:1440,height:900})
  await page.goto('/audit');await page.getByRole('button',{name:'Details',exact:true}).click()

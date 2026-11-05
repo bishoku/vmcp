@@ -40,14 +40,6 @@ func TestOmniPreviewUsesExplicitRuntimeIdentity(t *testing.T) {
 	}
 }
 func TestOmniAdminControlsAndStatusIsolation(t *testing.T) {
-	for _, role := range []string{"viewer", "editor"} {
-		if permit(role, httptest.NewRequest("POST", "/api/v1/omni/reindex", nil)) == nil {
-			t.Fatal("nonadmin reindex allowed")
-		}
-		if err := permit(role, httptest.NewRequest("POST", "/api/v1/omni/preview", nil)); err != nil {
-			t.Fatal("runtime preview blocked", err)
-		}
-	}
 	t.Setenv("VMCP_OMNI_URL", "http://not-contacted.invalid")
 	s := &Server{}
 	r := httptest.NewRequest("GET", "/api/v1/omni", nil)

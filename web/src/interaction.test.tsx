@@ -1,13 +1,8 @@
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { capabilities, useDraft, useOperation } from './interaction'
+import { useDraft, useOperation } from './interaction'
 import { CopyButton, StaleRecovery } from './ui'
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
-test.each([
- ['viewer',false,false],['editor',true,false],['admin',true,true],
-] as const)('%s capabilities match server authorization', (role,edit,manageTokens)=>{
- expect(capabilities(role)).toEqual({edit,manageTokens})
-})
 test('dirty drafts guard switching and dismissal; success resets without confirmation',()=>{
  const confirm=vi.spyOn(window,'confirm').mockReturnValue(false)
  const {result}=renderHook(()=>useDraft<{slug:string;text:string}|null>(null,d=>d?.slug))

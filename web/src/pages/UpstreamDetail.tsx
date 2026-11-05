@@ -1,9 +1,9 @@
 import AuditSettingsPanel from '../AuditSettingsPanel'
-import { EmptyState, LoadingState } from '../Feedback'
-import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { api, type Upstream } from '../api'
-import { source, useSources } from '../requests'
+import { EmptyState,LoadingState } from '../Feedback'
+import { useEffect,useState } from 'react'
+import { Link,useNavigate,useParams } from 'react-router-dom'
+import { api,ApiError,type Upstream } from '../api'
+import { source,useSources } from '../requests'
 import { ErrorBox } from '../ui'
 import { btn } from '../styles'
 import UpstreamDetailForm from './UpstreamDetailForm'
@@ -14,7 +14,7 @@ export default function UpstreamDetail({create = false}: {create?: boolean}) {
   const [items, setItems] = useState<Upstream[]>([])
   const [replacement, setReplacement] = useState<Upstream | null>(null)
   const [revision, setRevision] = useState(0)
-  const { load, loading, readError } = useSources(() => create ? [] : [source('Upstreams', api.listUpstreams, setItems)])
+  const { load, loading, readError } = useSources(() => create ? [] : [(source('Upstream', async signal=>{try{return await api.getUpstream(slug,signal)}catch(error){if(error instanceof ApiError&&error.status===404)return undefined;throw error}}, item=>setItems(item?[item]:[])))])
   useEffect(() => {void load()}, [load])
   const upstream = (replacement?.slug === slug ? replacement : null) ?? items.find(item => item.slug === slug)
   if (!create && !upstream) return <div className="page-layout"><h1 className="page-title">Upstream</h1>{loading?<LoadingState label="Loading saved configuration…" detail="Reading the saved upstream inventory."/>:readError?<ErrorBox title="Upstream configuration is unavailable." onRetry={load} retryLabel="Retry" busy={loading}>{readError}</ErrorBox>:<div className="surface-card"><EmptyState title={`Upstream “${slug}” was not found.`} description="Check the identifier or return to the upstream inventory."/></div>}<div className="flex flex-wrap gap-3"><Link className={btn} to="/upstreams">Back to upstreams</Link>{!loading&&!readError&&<button className={btn} onClick={()=>void load()}>Retry</button>}</div></div>

@@ -229,3 +229,13 @@ func (b *Box) OpenHeaders(data []byte) (map[string]string, error) {
 	err = json.Unmarshal(raw, &headers)
 	return headers, err
 }
+
+// BoundOnly shares the immutable keyring, but requires authenticated envelopes
+// for new sensitive records even during a legacy configuration rolling upgrade.
+// It preserves key IDs and deployment namespace without changing the source box.
+func (b *Box) BoundOnly() *Box {
+	copy := *b
+	copy.legacyWrites = false
+	copy.disallowLegacy = true
+	return &copy
+}

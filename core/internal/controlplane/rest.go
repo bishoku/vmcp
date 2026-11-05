@@ -7,6 +7,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/restapi"
+	"github.com/bishoku/vmcp/core/internal/store"
 )
 
 func (s *Server) restOperation(w http.ResponseWriter, r *http.Request) error {
@@ -47,8 +48,8 @@ func (s *Server) restOperation(w http.ResponseWriter, r *http.Request) error {
 		return apierror.NotFound("REST action", r.PathValue("action"))
 	}
 	principal, _ := r.Context().Value(principalKey{}).(*principal)
-	if principal == nil || principal.Role != "admin" {
-		return apierror.Forbidden("REST execution tests require admin access")
+	if principal == nil || !store.HasConfigurationPolicy(r.Context()) {
+		return apierror.Forbidden("REST execution tests require an authorized configuration context")
 	}
 	if !conn.Enabled {
 		return apierror.Forbidden("Enable the upstream before executing a test")

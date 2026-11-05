@@ -140,7 +140,7 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		AgentKeys:      map[string]config.AgentKey{},
 		KeyLimits:      map[string]int{},
 	}
-	if err := tx.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&snap.Revision); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT revision,vmcp_tenant_id() FROM config_revision`).Scan(&snap.Revision, &snap.AuditTenant); err != nil {
 		return nil, fmt.Errorf("read revision: %w", err)
 	}
 
@@ -323,6 +323,9 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		snap.VirtualServers[slug] = vs.WithToolIndex()
 	}
 	if err := loadVirtualCatalog(ctx, tx, snap, idToSlug); err != nil {
+		return nil, err
+	}
+	if err := loadAuditDomains(ctx, tx, snap); err != nil {
 		return nil, err
 	}
 	if err := applyOwnership(ctx, tx, snap); err != nil {

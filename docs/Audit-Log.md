@@ -153,8 +153,25 @@ call an upstream or predict its response. Saving settings uses optimistic
 concurrency and rejects stale writes with HTTP 409. `auditSettings` is included in
 configuration export/apply; applying it requires administrator access.
 
-Only administrators can read payloads, edit policies or use previews. Payload
-reads are themselves audited, without recursively capturing their returned
+Authorization is always enforced for audit metadata, identity/details and request/response payloads.
+Named tokens and OIDC subjects need explicit assignments, including verified claim/scope mappings.
+Migration 40 removes both authorization mode selectors; no mode switch can disable these checks.
+Role and assignment administration is available in Access Management.
+
+Records without
+verified event context remain legacy and require tenant-level legacy grants;
+current ownership and matching slugs never supply historical payload access.
+Unknown directions/capture scopes require the separate unclassified grant.
+Platform administrators have explicit full access. Stored resource
+contexts enforce historical epoch and consumer boundaries. Omni discovery
+payloads conservatively require the additional denied-diagnostics permission.
+Policy/context checks precede ciphertext reads. Denied and nonexistent events use
+the same 404 response; query parameters cannot change an event's recorded direction.
+Payload responses use `Cache-Control: no-store`. Database/policy failures deny
+access. Payload access decisions record metadata, never a second copy of the
+viewed message. Existing legal-hold and cleanup retention behavior is preserved.
+
+Payload reads are themselves audited, without recursively capturing their returned
 content. Metadata lists do not load/decrypt payloads. Audit details fetch content
 on demand and show when content has expired. Local policies are keyed by slug;
 configuration export/apply can also manage policies for objects not yet created.
@@ -190,3 +207,119 @@ Explicit parent IDs identify child relationships; incomplete selections remain
 marked as incomplete. Technical context and every raw record are available in
 an expandable section. Payloads are loaded on demand by administrators, with
 capture-disabled, redacted, expired, and retrieval-error states kept distinct.
+
+### Snapshot ownership provenance
+
+Migration 38 establishes current ownership epochs for existing resources without
+backfilling any historical event. Database triggers rotate epochs when an upstream
+changes owner, a virtual server moves project, or its project's owner changes.
+Deleting and recreating a slug creates a distinct resource identity. Metadata-only
+edits preserve the epoch. Live resource assignments are disabled on transfer;
+epoch-pinned historical assignments remain separate.
+
+An authorized snapshot includes the deployment tenant, resource UUIDs, project and
+owner team UUIDs, and epoch UUIDs. Each operation copies that context at admission;
+its outcome and upstream attempts retain the same consumer context even if an
+ownership transfer commits before completion. Provider identity is additional
+evidence and does not grant the upstream owner access to consumer messages. No
+ownership database lookup is added to dispatch. Existing freshness and pre-dispatch
+authorization checks continue to govern whether a call can execute.
+
+Event metadata, provenance and encrypted payload commit atomically in strict and
+relax persistence paths. Replay does not add context to an already-existing legacy
+event. Queue accounting includes provenance. Omni admission/completion tickets and
+model-provider records retain a tenant context; these mixed discovery records do
+not become project-readable through a parent operation ID.
+
+Control-plane request producers now record verified tenant or resource contexts
+using the rules below. Context-free maintenance facts remain legacy. Existing
+event visibility and payload permissions always apply. Provisioned database roles
+must include the provenance INSERT/SELECT privileges described in
+[the role script](../deploy/postgres/audit-roles.sql). A snapshot missing a live
+resource epoch is rejected. Migration rollback/re-upgrade retains historical epoch
+evidence; perform schema rollback with services stopped.
+
+### Control-plane request and response scope
+
+The administrative request audit pipeline now pins a server-owned context before
+admission. An explicit route allowlist covers existing upstream and virtual-server
+detail reads and normal PUT/PATCH/DELETE operations. Resource UUID, owner team,
+project and epoch are read with the configuration revision in one repeatable-read
+transaction. Historical payload reads use that persisted context, not today's
+resource ownership.
+
+Create/upsert-without-existing-target, collection reads, credentials, identity
+bindings, governance, GitOps, imports and network test/refresh operations are tenant
+scoped. PUT/PATCH documents containing a top-level `ownerTeam` or `project` key
+also remain tenant scoped, even if the value is unchanged. Case variants accepted
+by the JSON decoder follow the same rule. This conservative first implementation
+does not expose transfer documents to either individual team. Network attempts
+inherit their administrative parent's tenant context.
+
+For resource-scoped writes, the store rechecks the pinned epoch after acquiring the
+configuration revision lock. A concurrent transfer before mutation causes HTTP
+412 with no configuration change. Resource-scoped responses are checked again
+before payload persistence. If the epoch changed during the handler (including
+deletion), the response is conservatively tenant scoped; its request retains the
+original attempt context. This avoids recording data read from a new owner under
+an old owner's grant. Mutation facts have a cloned context with their post-write
+revision; changing them does not relabel admission/outcome evidence.
+
+For all payload requests, `audit.payloads.request.read` and
+`audit.payloads.response.read` remain independent. Management writes use capture
+scope `control`; GET/HEAD payloads use `reads`; observed network boundaries use
+`upstream`. Each requires its own allowlist entry. A `virtual` capture grant does
+not open control-plane messages. Metadata-only roles receive no message bodies.
+Preview, audit settings and payload-read responses remain excluded from recursive
+payload capture. Mandatory secret masking still removes issued key/token values;
+public key prefixes remain metadata.
+
+### Audit list and detail visibility
+
+For all audit lists, `audit.events.read` is required to list events. Resource
+contexts are matched against historical team/project/epoch domains before SQL
+pagination and conversation aggregation. Multiple consumer/target domains require
+access to all of them. Context-free legacy metadata requires tenant-level
+`audit.events.read` and `audit.legacy.events.read`; an ordinary scoped grant does
+not reconstruct ownership from today's resource tables. There is no coarse-role fallback.
+
+`audit.identities.read` controls actor ID, issuer, subject, agent key and client IP.
+These fields are omitted from event responses without that permission. Identity
+filters are forbidden without a relevant grant; when granted only for some scopes,
+filtering is limited to those authorized scopes. Conversation credentials are
+omitted unless every counted row permits identity visibility. `audit.details.read`
+controls free-form reason and target fields and does not grant message bodies.
+Conversation counts and incomplete-operation filters never include hidden events.
+
+Event responses include metadata/identity/details capabilities, separate request
+and response capabilities, and an authorization revision. List queries never read
+ciphertext or include inline payload content. Capability calculation uses one batch
+of immutable context metadata, not one payload request per row. The payload endpoint
+still reauthorizes every explicit request.
+
+The Audit UI uses these capabilities instead of the global admin/token-management
+flag. Opening details, raw metadata, or a linked step never prefetches a message.
+Only an explicit click on an authorized direction can request its payload. Missing
+payload capabilities fail closed, including for an admin-shaped UI session. Unknown legacy
+directions use a separate event-payload view rather than guessing from lifecycle
+stage. Raw/copy views are restricted to known permitted metadata fields.
+
+Closing or switching a step, changing a capability/revision, session expiry and a
+new list refresh discard loaded messages and abort pending downloads. Late results
+cannot repopulate a revoked or closed panel. Forbidden refreshes clear old metadata;
+transient network errors may retain previously authorized rows with a warning.
+There is no live permission-push channel: changes become visible at the next read;
+already-delivered data cannot be recalled. Audit fetches and responses use no-store.
+
+### Resource-local masking management
+
+Resource pages use GET/PUT /api/v1/upstreams/{slug}/audit-settings or
+/api/v1/virtual-servers/{slug}/audit-settings. They return only rules and the common revision.
+Read requires audit.settings.read; save requires audit.redaction.local.update on that live resource.
+Other resources and global settings cannot be included in a local write. A stale revision returns 409.
+Global and mandatory masking remain active even when local rules are cleared.
+
+The corresponding POST /audit-settings/preview suffix requires audit.settings.read and
+audit.redaction.preview. It accepts only revision, local rules, direction and synthetic payload;
+the server fixes the source and combines current global protection. Samples and local settings
+bodies are excluded from audit payload capture. No saved messages are read.

@@ -198,8 +198,8 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 			return apierror.New(422, "invalid_audit_settings", "Invalid audit settings", err.Error())
 		}
 		p, _ := r.Context().Value(principalKey{}).(*principal)
-		if p == nil || p.Role != "admin" {
-			return apierror.Forbidden("audit settings require admin access")
+		if p == nil || !store.HasConfigurationPolicy(r.Context()) {
+			return apierror.Forbidden("audit settings require an authorized configuration context")
 		}
 	}
 	if doc.APIVersion != apiVersion {

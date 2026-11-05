@@ -1,3 +1,4 @@
+import { ConfigurationRoute } from './ConfigurationRoute'
 import KeyboardNavigation from './KeyboardNavigation'
 import TooltipProvider from './TooltipProvider'
 import NotificationsProvider from './NotificationsProvider'
@@ -8,24 +9,26 @@ import VirtualServerDetail from './pages/VirtualServerDetail'
 import VirtualServerEdit from './pages/VirtualServerEdit'
 import UpstreamDetail from './pages/UpstreamDetail'
 import ManagementRoute from './connections/ManagementRoute'
-import { createBrowserRouter, RouterProvider, Navigate, Route, Routes, useSearchParams } from 'react-router-dom'
+import { createBrowserRouter,RouterProvider,Navigate,Route,Routes,useSearchParams } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import AppNavigation from './AppNavigation'
 import ConfirmationProvider from './ConfirmationProvider'
-import { discardConfirmation, useConfirm } from './confirmation'
+import { discardConfirmation,useConfirm } from './confirmation'
 import { btn } from './styles'
-import { useContext, useEffect, useState } from 'react'
-import { api, signOut, type Me } from './api'
+import { useContext,useEffect,useRef,useState } from 'react'
+import { api,signOut,resetConfigurationIdentity,type Me } from './api'
 import SignIn from './SignIn'
 import SessionRecovery from './SessionRecovery'
+import ClaimSessionNotice from './ClaimSessionNotice'
 import InteractionProvider from './InteractionProvider'
-import { RoleContext, Drafts, capabilities, useOperation } from './interaction'
+import { RoleContext,Drafts,useOperation } from './interaction'
 import Upstreams from './pages/Upstreams'
 import VirtualServers from './pages/VirtualServers'
 import AgentKeys from './pages/AgentKeys'
 import Identities from './pages/Identities'
 import Audit from './pages/Audit'
 import Ownership from './pages/Ownership'
+import Authorization from './pages/Authorization'
 import Omni from './pages/Omni'
 import SettingsPage from './pages/Settings'
 
@@ -44,50 +47,59 @@ function Application() {
   // undefined = still checking; null = signed out.
   const [me, setMe] = useState<Me | null | undefined>(undefined)
   const [expired, setExpired] = useState(false)
-  const refresh = () => api.me().then(value => { setMe(value); setExpired(false) }, () => setMe(null))
+ const [configurationRevision,setConfigurationRevision]=useState(0)
+ const claimsExpirationHandled=useRef(false)
+  const refresh = () => api.me().then(value => { resetConfigurationIdentity(); setMe(value); setExpired(false) }, () => setMe(null))
   useEffect(() => {
     void refresh()
-    const expired = () => setExpired(true)
+    const expired = () => {resetConfigurationIdentity();setExpired(true)}
     window.addEventListener('vmcp:session-expired', expired)
-    return () => window.removeEventListener('vmcp:session-expired', expired)
+    const denied=()=>{setConfigurationRevision(value=>value+1);void refresh()}
+    window.addEventListener('vmcp:configuration-denied',denied)
+    const claimsExpired=()=>{if(claimsExpirationHandled.current)return;claimsExpirationHandled.current=true;setConfigurationRevision(value=>value+1);void refresh()}
+    window.addEventListener('vmcp:claims-expired',claimsExpired)
+    return () => {window.removeEventListener('vmcp:session-expired', expired);window.removeEventListener('vmcp:configuration-denied',denied);window.removeEventListener('vmcp:claims-expired',claimsExpired)}
   }, [])
-  const signedIn = (identity: Me) => { setMe(identity); setExpired(false) }
+  const signedIn = (identity: Me) => { claimsExpirationHandled.current=false; resetConfigurationIdentity(); setMe(identity); setExpired(false) }
   if (me === undefined) return <div className="grid h-full place-items-center p-6"><LoadingState label="Checking session…" detail="Verifying access to your workspace."/></div>
   if (me === null) return <SignIn onDone={signedIn} />
   return (
-    <RoleContext.Provider value={me.role==='viewer' && me.teamMember?'team':me.role}><ConfirmationProvider><InteractionProvider>
+    <RoleContext.Provider value={me.role==='viewer' && me.teamMember?'team':me.role}><ConfirmationProvider><InteractionProvider key={expired?'expired':JSON.stringify([me.id,me.issuer,me.name,me.role,configurationRevision])}>
       {expired && <SessionRecovery onDone={signedIn}/>}
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <AppNavigation me={me} sessionExpired={expired} signOut={<SignOut onDone={()=>setMe(null)}/>}/>
         <KeyboardNavigation/><main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
-          {!capabilities(me.role).edit && <p role="status" className="mx-4 mt-4 surface-inset surface-white px-4 py-3 text-xs leading-relaxed text-ink-muted sm:mx-6 lg:mx-10">Read-only access. Ask an administrator for an editor role to change configuration.</p>}
+          <ClaimSessionNotice me={me}/>
+ {configurationRevision>0&&<p role="status" className="mx-4 mt-4 text-sm">Configuration permissions changed. The view was reloaded; no denied operation was submitted.</p>}
 
-          <Routes>
- <Route path="/omni" element={<Omni/>}/><Route path="/ownership" element={<Ownership/>}/>
-            <Route path="/connections" element={<Connections/>}/>
-            <Route path="/setup" element={<ConnectionSetup/>}/>
-            <Route path="/upstreams/new" element={<UpstreamDetail key="new" create/>}/>
-            <Route path="/upstreams/:slug" element={<UpstreamDetail key="detail"/>}/>
-            <Route path="/virtual-servers/new" element={<VirtualServerEdit create/>}/>
-            <Route path="/virtual-servers/:slug/edit" element={<VirtualServerEdit/>}/>
-            <Route path="/virtual-servers/:slug/:view?" element={<VirtualServerDetail/>}/>
+
+          {expired?<p role="status" className="page-layout">Sign in again to reload your permitted configuration.</p>:<Routes>
+ <Route path="/omni" element={<ConfigurationRoute><Omni/></ConfigurationRoute>}/><Route path="/ownership" element={<ConfigurationRoute><Ownership/></ConfigurationRoute>}/>
+            <Route path="/connections" element={<ConfigurationRoute><Connections/></ConfigurationRoute>}/>
+            <Route path="/setup" element={<ConfigurationRoute><ConnectionSetup/></ConfigurationRoute>}/>
+            <Route path="/upstreams/new" element={<ConfigurationRoute><UpstreamDetail key="new" create/></ConfigurationRoute>}/>
+            <Route path="/upstreams/:slug" element={<ConfigurationRoute><UpstreamDetail key="detail"/></ConfigurationRoute>}/>
+            <Route path="/virtual-servers/new" element={<ConfigurationRoute><VirtualServerEdit create/></ConfigurationRoute>}/>
+            <Route path="/virtual-servers/:slug/edit" element={<ConfigurationRoute><VirtualServerEdit/></ConfigurationRoute>}/>
+            <Route path="/virtual-servers/:slug/:view?" element={<ConfigurationRoute><VirtualServerDetail/></ConfigurationRoute>}/>
             <Route path="/" element={<Navigate to="/virtual-servers" replace />} />
             <Route
               path="/upstreams"
-              element={<ManagementRoute page={Upstreams} detailBase="/upstreams" />}
+              element={<ConfigurationRoute><ManagementRoute page={Upstreams} detailBase="/upstreams" /></ConfigurationRoute>}
             />
             <Route
               path="/virtual-servers"
-              element={<ManagementRoute page={VirtualServers} detailBase="/virtual-servers" />}
+              element={<ConfigurationRoute><ManagementRoute page={VirtualServers} detailBase="/virtual-servers" /></ConfigurationRoute>}
             />
             <Route
               path="/audit"
               element={<AuditRoute />}
             />
-            <Route path="/agent-keys" element={<ManagementRoute page={AgentKeys} />} />
-            <Route path="/identities" element={<ManagementRoute page={Identities} />} />
-            <Route path="/settings" element={<SettingsPage role={me.role} />} />
-          </Routes>
+            <Route path="/agent-keys" element={<ConfigurationRoute><ManagementRoute page={AgentKeys} /></ConfigurationRoute>} />
+            <Route path="/identities" element={<ConfigurationRoute><ManagementRoute page={Identities} /></ConfigurationRoute>} />
+            <Route path="/settings" element={<ConfigurationRoute><SettingsPage role={me.role} /></ConfigurationRoute>} />
+            <Route path="/access" element={<Authorization key={expired?'expired':'current'} active={!expired}/>} />
+          </Routes>}
 
         </main>
       </div>

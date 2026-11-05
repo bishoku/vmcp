@@ -34,7 +34,7 @@ test('unrelated edits preserve the exact expiry instant including seconds/millis
   const [slug, body, version] = await save()
   expect(slug).toBe('bot')
   expect(version).toBe(9)
-  expect(body).toMatchObject({ description: 'Updated', expiresAt: key.expiresAt })
+  expect(body).toEqual({description:'Updated'})
 })
 test('explicit expiry edits interpret the entered datetime in the displayed local timezone', async () => {
   await open()

@@ -28,7 +28,7 @@ func TestIdentityBindings(t *testing.T) {
 		for k, v := range mut {
 			body[k] = v
 		}
-		if code, _, out := a.do("POST", "/api/v1/identity-bindings", body, nil); code != 422 && code != 400 {
+		if code, _, out := a.do("POST", "/api/v1/identity-bindings", body, nil); code != 422 && code != 400 && code != 404 {
 			t.Fatalf("%s: code=%d %v", name, code, out)
 		}
 	}

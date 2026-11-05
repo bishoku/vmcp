@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react'
-import { api, type ToolCatalogEntry, type ToolGrant, type VirtualServer } from '../api'
+import { useConfigurationChecks } from '../configuration-access'
+import { useEffect,useState } from 'react'
+import { api,type ToolCatalogEntry,type ToolGrant,type VirtualServer } from '../api'
 import Button from '../Button'
 import Select from '../Select'
-import { FormErrors, FormField, FormScope } from '../FormField'
-import { useFormValidation, requiredText } from '../form-validation'
+import { FormErrors,FormField,FormScope } from '../FormField'
+import { useFormValidation,requiredText } from '../form-validation'
 import { LoadingState } from '../Feedback'
-import { useOperation, useUnsaved } from '../interaction'
-import { source, useSources } from '../requests'
+import { useOperation,useUnsaved } from '../interaction'
+import { source,useSources } from '../requests'
 import { SearchField } from '../SearchControls'
-import { btn, input, primary } from '../styles'
-import { ErrorBox, Modal } from '../ui'
+import { btn,input,primary } from '../styles'
+import { ErrorBox,Modal } from '../ui'
 
 export default function AccessRequest({ servers, grants, onClose, onSaved }: { servers: VirtualServer[]; grants: ToolGrant[]; onClose: () => void; onSaved: (title: string) => Promise<void> }) {
  const [tools, setTools] = useState<ToolCatalogEntry[]>([])
@@ -22,6 +23,7 @@ export default function AccessRequest({ servers, grants, onClose, onSaved }: { s
  const options = shown.slice(0, 100)
  if (selected && !options.includes(selected)) options.unshift(selected)
  const existing = grants.find(grant => grant.virtualServer === draft.server && grant.upstream === selected?.upstream && grant.tool === selected?.name)
+ const access=useConfigurationChecks([{method:'POST',path:'/tool-grants',body:{virtualServer:draft.server,upstream:selected?.upstream??'',tool:selected?.name??'',status:'pending',reason:draft.reason,version:existing?.version??0}}])
  const save = () => run(async () => {
   if (!validation.check({ virtualServer: requiredText(draft.server, 'Virtual server'), tool: selected ? undefined : 'Select an upstream tool.', reason: draft.reason.length > 2000 ? 'Use 2,000 characters or fewer.' : undefined })) return
   if (!selected || loading || readError) return
@@ -32,7 +34,7 @@ export default function AccessRequest({ servers, grants, onClose, onSaved }: { s
  })
  const close = () => unsaved.guard(onClose)
  return <Modal title="Request tool access" size="wide" busy={busy} onClose={close} description="Request permission to expose one upstream tool through a virtual server."
-  footer={<div className="flex flex-wrap justify-end gap-2"><button className={btn} onClick={close}>Cancel</button><Button className={primary} type="submit" form="access-request" loading={busy} disabled={loading || !!readError || !servers.length || existing?.status === 'approved' || existing?.status === 'pending'}>Submit request</Button></div>}>
+  footer={<div className="flex flex-wrap justify-end gap-2"><button className={btn} onClick={close}>Cancel</button><Button className={primary} type="submit" form="access-request" loading={busy} disabled={((access.allowed[0]!==true)) || loading || !!readError || !servers.length || existing?.status === 'approved' || existing?.status === 'pending'}>Submit request</Button></div>}>
   <FormScope validation={validation}><form id="access-request" noValidate onSubmit={event => { event.preventDefault(); void save() }} className="space-y-6">
    <FormErrors validation={validation}/>
    <FormField name="virtualServer" label="Virtual server" required hint="The approval applies only to this server, not every server in its project."><Select value={draft.server} onChange={event => setDraft({ ...draft, server: event.target.value })}><option value="">Select a virtual server</option>{servers.map(server => <option key={server.slug} value={server.slug}>{server.name} · {server.slug}</option>)}</Select></FormField>

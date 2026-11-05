@@ -159,17 +159,25 @@ OIDC verifier with audience `vmcp-runtime`.
 | Demo user | Group / console access |
 |---|---|
 | `platform.admin` | `vmcp-platform-admins` → platform admin |
-| `security.auditor` | `vmcp-auditors` → global viewer |
-| 105 team members, e.g. `oliver.harrison` | their team slug (e.g. `core-banking-platform`) → that team's scope |
+| `security.auditor` | `vmcp-auditors` → tenant audit metadata only |
+| 105 team members, e.g. `oliver.harrison` | their team slug (e.g. `core-banking-platform`) → explicit team-scoped roles |
 
 Every team has 3–4 members (`first.last`, `@meridianbank.example`) with banking
-roles; `./deploy/helm/vmcp/demo.sh users` lists them all. The legacy
-`demo-admins`/`demo-viewers` groups remain mapped so earlier installs keep working.
+roles; `./deploy/helm/vmcp/demo.sh users` lists them all. Team console access is
+explicitly mapped to Observer, Upstream Maintainer, Virtual Server Editor,
+Credential Manager and Access Approver. Auditor access does not include request or
+response payloads, identity details or historical legacy audit. Viewer/editor group
+labels grant no implicit permissions; no viewer compatibility mapping is installed.
+`demo-admins` remains an additional configured real administrator group.
+Platform administrator identity is separate from the builtin Platform Operator
+permission bundle; see [administrator recovery](SECURITY_OPERATIONS.md#administrator-recovery).
 
 A `groups` claim mapper is configured on the confidential `vmcp-console` client
 with PKCE and an exact console callback URL. The realm is `vmcp-demo`. Keycloak
 can be installed without `--mock`; the 30 team mappings and SSO users are still
-created, but upstreams/projects/servers and runtime fixtures are not.
+created with explicit console role assignments, but upstreams/projects/servers and
+runtime fixtures are not. Both Keycloak-only and mock+Keycloak installs provision
+the same console authorization model.
 
 With both flags, one `<team>-sso` identity binding per team grants its members
 runtime access to the team's virtual servers. A separate public client
@@ -232,7 +240,12 @@ Secret. A partially completed seed can finish initial cross-team approvals only
 while the affected upstream, project and virtual server still match their recorded
 creation versions. Edited resources are skipped, and revoked/rejected grants are
 never reapproved. Seed failures leave the partial installation for inspection and
-retry. Seed state and one-time keys are not written to local values files or logs.
+retry. The ledger also retains console mapping/assignment creation receipts:
+deleted or edited mappings and deleted/disabled assignments are not restored on
+rerun. Preserve the ledger; without it prior deliberate removals cannot be inferred.
+Existing teams whose issuer or group differs from the fixture are not given new
+console mappings. Seed state and one-time keys are not written to local values
+files or logs.
 
 This preservation concerns API/Keycloak data and retained credentials. Rerunning
 quickstart still applies its generated Helm values; it does not merge arbitrary

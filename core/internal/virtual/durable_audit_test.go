@@ -113,6 +113,25 @@ func TestRuntimePayloadsOnVirtualAndUpstreamBoundaries(t *testing.T) {
 			policy.VirtualServers["support"] = []audit.Rule{{Name: "customer", Pattern: `CUST-[0-9]+`}}
 			policy.Upstreams["github"] = []audit.Rule{{Name: "employee", Pattern: `EMP-[0-9]+`}}
 			r.handler.Snap.(staticSnap).s.Audit = policy
+			snap := r.handler.Snap.(staticSnap).s
+			snap.AuditTenant = "default"
+			domain := func(kind, resourceKind string) audit.AccessDomain {
+				t.Helper()
+				resourceID, _ := audit.NewID()
+				var epoch string
+				if err := pool.QueryRow(ctx, `INSERT INTO audit_resource_epochs(resource_kind,resource_id,start_revision) VALUES($1,$2,1) RETURNING epoch_id::text`, resourceKind, resourceID).Scan(&epoch); err != nil {
+					t.Fatal(err)
+				}
+				return audit.AccessDomain{Kind: kind, ResourceKind: resourceKind, ResourceID: resourceID, EpochID: epoch}
+			}
+			consumer := domain("consumer", "virtual_server")
+			v := snap.VirtualServers["support"]
+			v.AuditDomain = consumer
+			snap.VirtualServers["support"] = v
+			for id, u := range snap.Upstreams {
+				u.AuditDomain = domain("provider", "upstream")
+				snap.Upstreams[id] = u
+			}
 			runtime.SetSettings(policy)
 			sid := r.initialize(t)
 			response, msg := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Arguments: json.RawMessage(`{"email":"a@example.com","customer":"CUST-123","employee":"EMP-456","token":"never-store"}`)})
@@ -143,6 +162,17 @@ func TestRuntimePayloadsOnVirtualAndUpstreamBoundaries(t *testing.T) {
 							t.Fatal("unmasked request", string(raw))
 						}
 					}
+				}
+				access, err := (&store.Store{Pool: pool}).AuditPayloadAccess(ctx, id)
+				if err != nil || access.Classification != "resource" || len(access.Domains) != 1 || access.Domains[0].Epoch != consumer.EpochID {
+					t.Fatal("producer lost pinned consumer provenance", access, err)
+				}
+				var providers int
+				if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_access_domains WHERE event_id=$1 AND domain_kind='provider'`, id).Scan(&providers); err != nil {
+					t.Fatal(err)
+				}
+				if boundary == "upstream" && providers != 1 {
+					t.Fatal("adapter did not attach provider evidence")
 				}
 				seen[boundary+":"+direction] = true
 			}

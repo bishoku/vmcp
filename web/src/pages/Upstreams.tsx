@@ -1,3 +1,4 @@
+import { useConfigurationRows,useConfigurationPermissions } from '../configuration-access'
 import Button from '../Button'
 import { StatusBadge } from '../Badge'
 import { filterItem } from '../search-filters'
@@ -5,19 +6,18 @@ import { useTableSort } from '../table-sorting'
 import { useNotifications } from '../notifications'
 import { LoadingState } from '../Feedback'
 import { useConfirm } from '../confirmation'
-import { Link, useNavigate } from 'react-router-dom'
-import { useCapabilities } from '../interaction'
-import { ErrorBox, Pill } from '../ui'
+import { Link,useNavigate } from 'react-router-dom'
+import { ErrorBox,Pill } from '../ui'
 import { useOperation } from '../interaction'
-import { useSources, source } from '../requests'
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, Cable, Database, Plus, RefreshCw, Server, ShieldCheck, Trash2, Wrench } from 'lucide-react'
-import { api, ApiError, type Upstream } from '../api'
+import { useSources,source } from '../requests'
+import { useEffect,useMemo,useState } from 'react'
+import { ArrowUpRight,Cable,Database,Plus,RefreshCw,Server,ShieldCheck,Trash2,Wrench } from 'lucide-react'
+import { api,ApiError,type Upstream } from '../api'
 
-import { btn, primary } from '../styles'
+import { btn,primary } from '../styles'
 
-import { DetailRow, SummaryTile } from '../connections/ServerPanels'
-import { ServerListFilters, ServerListResults, ServerListSelect, serverPageSize } from '../connections/ServerList'
+import { DetailRow,SummaryTile } from '../connections/ServerPanels'
+import { ServerListFilters,ServerListResults,ServerListSelect,serverPageSize } from '../connections/ServerList'
 
 function ago(iso: string | null) {
   if (!iso) return 'never'
@@ -45,8 +45,11 @@ export default function Upstreams() {
   const {notify}=useNotifications()
   const confirm=useConfirm()
   const navigate = useNavigate()
-  const { edit: canEdit } = useCapabilities()
+
+ const access=useConfigurationPermissions('upstreams','',['create'])
+ const canEdit=(access.can('create'))
   const [items, setItems] = useState<Upstream[]>([])
+ const rowCan=useConfigurationRows('upstreams',items.map(item=>item.slug),['delete','catalog.refresh'])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
   const [transport,setTransport] = useState('')
@@ -117,7 +120,7 @@ export default function Upstreams() {
       {sorting.rows.slice(currentPage*serverPageSize,(currentPage+1)*serverPageSize).map(u=><article key={u.slug} aria-label={u.name} className="min-w-0 flex flex-col overflow-hidden surface-card surface-interactive">
         <div className="flex items-start gap-3 panel-body"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-50 text-accent-700"><Server aria-hidden="true" className="icon-feature"/></div><div className="min-w-0 flex-1"><h2 className="panel-title break-words"><Link className="text-accent-700 hover:underline" to={`/upstreams/${encodeURIComponent(u.slug)}`}>{u.name}</Link></h2><p className="meta-copy mt-1 break-all font-mono text-xs text-ink-muted">{u.slug}</p></div><Pill status={u.enabled?'enabled':'disabled'}/></div>
         <div className="flex-1 panel-inset pb-5"><p className="line-clamp-2 min-h-10 text-xs leading-relaxed text-ink-muted">{u.description||'Upstream service supplying capabilities to virtual servers.'}</p><div className="mt-4 surface-inset p-3"><p className="text-xs font-medium">Connection endpoint</p><p className="mt-1 break-all font-mono text-xs leading-relaxed text-ink-muted">{u.url}</p></div><dl className="mt-2 divide-y divide-line"><DetailRow label="Transport">{u.rest?.mock?'Mock / WireMock':u.kind==='rest'?'REST API':u.transport==='sse'?'SSE':'Streamable HTTP'}</DetailRow><DetailRow label="Discovered tools">{u.toolCount}</DetailRow><DetailRow label="Last discovery refresh"><span tabIndex={u.lastRefreshAt?0:undefined} data-tooltip={u.lastRefreshAt??undefined}>{ago(u.lastRefreshAt)}</span></DetailRow><DetailRow label="Recorded health"><Pill status={u.health?.state??'unknown'}/></DetailRow></dl><div className="mt-2 flex flex-wrap items-center justify-between gap-2"><DiscoveryStatus u={u}/><span className="inline-flex items-center gap-1.5 text-xs text-ink-muted"><ShieldCheck aria-hidden="true" className="icon-inline"/>{u.kind==='rest'?u.rest?.auth.type:u.auth?.type==='oauth_client_credentials'?'OAuth':u.headerNames.length?'Configured headers':'No auth headers'}</span></div>{u.lastRefreshError&&<p className="mt-3 line-clamp-2 text-xs leading-relaxed text-red-700">{u.lastRefreshError}</p>}</div>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line panel-footer"><span className="text-xs text-ink-muted">Saved version {u.version}</span><div className="flex items-center gap-2"><Link className={btn} aria-label={`View ${u.name}`} to={`/upstreams/${encodeURIComponent(u.slug)}`}>View server<ArrowUpRight aria-hidden="true" className="icon-inline"/></Link><button disabled={!canEdit||busy} className={`${btn} action-icon`} hidden={u.kind==='rest'} data-tooltip="Refresh capabilities" aria-label={`Refresh capabilities for ${u.name}`} onClick={()=>void refresh(u)}><RefreshCw aria-hidden="true" className="icon-inline"/></button><button disabled={!canEdit||busy} className={`${btn} action-danger-outline action-icon`} data-tooltip="Delete" aria-label={`Delete ${u.name}`} onClick={()=>void remove(u)}><Trash2 aria-hidden="true" className="icon-inline text-red-600"/></button></div></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line panel-footer"><span className="text-xs text-ink-muted">Saved version {u.version}</span><div className="flex items-center gap-2"><Link className={btn} aria-label={`View ${u.name}`} to={`/upstreams/${encodeURIComponent(u.slug)}`}>View server<ArrowUpRight aria-hidden="true" className="icon-inline"/></Link><button disabled={!rowCan(u.slug,'catalog.refresh')||busy} className={`${btn} action-icon`} hidden={u.kind==='rest'} data-tooltip="Refresh capabilities" aria-label={`Refresh capabilities for ${u.name}`} onClick={()=>void refresh(u)}><RefreshCw aria-hidden="true" className="icon-inline"/></button><button disabled={!rowCan(u.slug,'delete')||busy} className={`${btn} action-danger-outline action-icon`} data-tooltip="Delete" aria-label={`Delete ${u.name}`} onClick={()=>void remove(u)}><Trash2 aria-hidden="true" className="icon-inline text-red-600"/></button></div></footer>
       </article>)}
     </ServerListResults>
     <p className="text-xs leading-relaxed text-ink-muted">Health and discovery describe recorded observations. Reloading this list does not test upstream connectivity or refresh discovery.</p>

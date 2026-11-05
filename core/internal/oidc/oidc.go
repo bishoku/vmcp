@@ -30,6 +30,7 @@ const (
 	RoleViewer = "viewer"
 	RoleEditor = "editor"
 	RoleAdmin  = "admin"
+	RoleCustom = "custom"
 )
 
 const (
@@ -58,18 +59,25 @@ type Config struct {
 	// HTTPClient is used for discovery and token exchange (tests only).
 	HTTPClient *http.Client
 	Sessions   SessionStore
-	TeamLogin  func(context.Context, string, []string) (bool, error)
+	// Only called after ID-token signature, issuer, audience and nonce validation.
+	ClaimPaths  func(context.Context) ([]string, error)
+	CustomLogin func(context.Context, string, string, map[string]any) (bool, error)
+	TeamLogin   func(context.Context, string, []string) (bool, error)
 }
 
 // Session is the signed-in user.
 type Session struct {
-	Groups       []string  `json:"groups,omitempty"`
-	GroupsExpire time.Time `json:"groupsExp,omitempty"`
-	ID           string    `json:"sid,omitempty"`
-	Subject      string    `json:"sub"`
-	Name         string    `json:"name"`
-	Role         string    `json:"role"`
-	Expires      time.Time `json:"exp"`
+	Issuer       string         `json:"issuer,omitempty"`
+	Version      int            `json:"v,omitempty"`
+	Claims       map[string]any `json:"-"`
+	ClaimsExpire time.Time      `json:"-"`
+	Groups       []string       `json:"groups,omitempty"`
+	GroupsExpire time.Time      `json:"groupsExp,omitempty"`
+	ID           string         `json:"sid,omitempty"`
+	Subject      string         `json:"sub"`
+	Name         string         `json:"name"`
+	Role         string         `json:"role"`
+	Expires      time.Time      `json:"exp"`
 }
 
 // Provider runs the sign-in flow.
@@ -91,8 +99,14 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	if len(cfg.SessionKey) < 32 {
 		return nil, errors.New("oidc: session key must be at least 32 bytes")
 	}
-	if len(cfg.AdminGroups)+len(cfg.EditorGroups)+len(cfg.ViewerGroups) == 0 && cfg.TeamLogin == nil {
+	if len(cfg.AdminGroups)+len(cfg.EditorGroups)+len(cfg.ViewerGroups) == 0 && cfg.TeamLogin == nil && cfg.CustomLogin == nil {
 		return nil, errors.New("oidc: configure at least one group-to-role mapping, otherwise nobody could sign in")
+	}
+	if cfg.ClaimPaths != nil || cfg.CustomLogin != nil {
+		secure, ok := cfg.Sessions.(ServerSessions)
+		if !ok || !secure.SecureSessions() {
+			return nil, errors.New("oidc: claim callbacks require encrypted server sessions")
+		}
 	}
 	if cfg.GroupsClaim == "" {
 		cfg.GroupsClaim = "groups"
@@ -174,7 +188,7 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := tok.Extra("id_token").(string)
 	idt, err := p.verifier.Verify(ctx, raw)
-	if err != nil || idt.Nonce != f.Nonce {
+	if err != nil || idt.Nonce != f.Nonce || idt.Subject == "" {
 		http.Error(w, "invalid id token", http.StatusForbidden)
 		return
 	}
@@ -182,6 +196,24 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 	if err := idt.Claims(&claims); err != nil {
 		http.Error(w, "invalid id token", http.StatusForbidden)
 		return
+	}
+	_, secure := p.serverSessions()
+	selected := map[string]any{}
+	if p.cfg.ClaimPaths != nil {
+		if !secure {
+			http.Error(w, "secure session storage unavailable", 503)
+			return
+		}
+		paths, err := p.cfg.ClaimPaths(ctx)
+		if err != nil {
+			http.Error(w, "claim authorization unavailable", 503)
+			return
+		}
+		selected, err = captureClaims(claims, paths)
+		if err != nil {
+			http.Error(w, "claim authorization unavailable", 503)
+			return
+		}
 	}
 	role := p.RoleFor(Groups(claims, p.cfg.GroupsClaim))
 	if role == "" && p.cfg.TeamLogin != nil {
@@ -192,6 +224,16 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 		if ok {
 			role = "team"
+		}
+	}
+	if role == "" && secure && p.cfg.CustomLogin != nil {
+		allowed, err := p.cfg.CustomLogin(ctx, p.cfg.Issuer, idt.Subject, selected)
+		if err != nil {
+			http.Error(w, "custom authorization unavailable", 503)
+			return
+		}
+		if allowed {
+			role = RoleCustom
 		}
 	}
 	if role == "" {
@@ -206,13 +248,29 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 		name = idt.Subject
 	}
 	s := Session{Groups: Groups(claims, p.cfg.GroupsClaim), GroupsExpire: p.now().Add(15 * time.Minute), ID: random(), Subject: idt.Subject, Name: name, Role: role, Expires: p.now().Add(p.cfg.SessionTTL)}
+	if secure {
+		s.Version = 1
+		s.Issuer = p.cfg.Issuer
+		s.Claims = selected
+		if len(selected) > 0 {
+			s.ClaimsExpire = p.now().Add(15 * time.Minute)
+			if idt.Expiry.Before(s.ClaimsExpire) {
+				s.ClaimsExpire = idt.Expiry
+			}
+		}
+	}
 	if p.cfg.Sessions != nil {
 		if err := p.cfg.Sessions.Save(r.Context(), s); err != nil {
 			http.Error(w, "session storage unavailable", http.StatusServiceUnavailable)
 			return
 		}
 	}
-	p.setCookie(w, sessionCookie, s, p.cfg.SessionTTL)
+	if secure {
+		p.clearCookie(w, sessionCookie)
+		p.setCookie(w, p.sessionCookieName(), sessionReference{ID: s.ID, Version: 1, Expires: s.Expires}, p.cfg.SessionTTL)
+	} else {
+		p.setCookie(w, sessionCookie, s, p.cfg.SessionTTL)
+	}
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -238,7 +296,7 @@ func (p *Provider) EndSessionURL() string {
 func (p *Provider) Logout(w http.ResponseWriter, r *http.Request) bool {
 	if p.cfg.Sessions != nil {
 		var s Session
-		if p.readCookie(r, sessionCookie, &s) && s.ID != "" {
+		if p.readCookie(r, p.sessionCookieName(), &s) && s.ID != "" {
 			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 			defer cancel()
 			if err := p.cfg.Sessions.Revoke(ctx, s.ID); err != nil {
@@ -247,17 +305,41 @@ func (p *Provider) Logout(w http.ResponseWriter, r *http.Request) bool {
 			}
 		}
 	}
-	p.clearCookie(w, sessionCookie)
+	p.clearCookie(w, p.sessionCookieName())
+	if p.sessionCookieName() != sessionCookie {
+		p.clearCookie(w, sessionCookie)
+	}
 	return true
 }
 
 // Session returns the signed-in user of a request, if any.
 func (p *Provider) Session(r *http.Request) (Session, bool) {
 	var s Session
-	if !p.readCookie(r, sessionCookie, &s) || p.now().After(s.Expires) {
+	if !p.readCookie(r, p.sessionCookieName(), &s) || p.now().After(s.Expires) {
 		return Session{}, false
 	}
-	if p.cfg.Sessions != nil {
+	if _, secure := p.serverSessions(); !secure && s.Version != 0 {
+		return Session{}, false
+	}
+	if db, secure := p.serverSessions(); secure {
+		if s.ID == "" || s.Version != 1 {
+			return Session{}, false
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		loaded, ok, err := db.LoadSession(ctx, s.ID, p.cfg.Issuer)
+		if err != nil || !ok || !p.now().Before(loaded.Expires) {
+			return Session{}, false
+		}
+		s = loaded
+		if !p.ClaimSessionsEnabled() || s.ClaimsExpire.IsZero() || !p.now().Before(s.ClaimsExpire) {
+			s.Claims = nil
+		}
+	} else if p.cfg.Sessions != nil {
+		// Reference cookies must never fall back to old client-owned identity data.
+		if s.Version != 0 {
+			return Session{}, false
+		}
 		if s.ID == "" {
 			return Session{}, false
 		}
@@ -268,10 +350,7 @@ func (p *Provider) Session(r *http.Request) (Session, bool) {
 			return Session{}, false
 		}
 	}
-	if !s.GroupsExpire.IsZero() && p.now().After(s.GroupsExpire) {
-		if s.Role == "team" {
-			return Session{}, false
-		}
+	if !s.GroupsExpire.IsZero() && !p.now().Before(s.GroupsExpire) {
 		s.Groups = nil
 	}
 	return s, true
@@ -330,10 +409,22 @@ func (p *Provider) sign(payload []byte) string {
 	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
 
+// Domain-separate the new reference signature. Renaming a v2 cookie to the
+// legacy name must not authenticate it on an older node during rolling upgrade.
+func (p *Provider) signCookie(name string, payload []byte) string {
+	if name != "vmcp_session_v2" {
+		return p.sign(payload)
+	}
+	m := hmac.New(sha256.New, p.cfg.SessionKey)
+	m.Write([]byte("vmcp:server-session:v2\x00"))
+	m.Write(payload)
+	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+}
+
 func (p *Provider) setCookie(w http.ResponseWriter, name string, v any, ttl time.Duration) {
 	payload, _ := json.Marshal(v)
 	http.SetCookie(w, &http.Cookie{
-		Name: name, Value: p.sign(payload), Path: "/", MaxAge: int(ttl.Seconds()),
+		Name: name, Value: p.signCookie(name, payload), Path: "/", MaxAge: int(ttl.Seconds()),
 		HttpOnly: true, Secure: p.secure, SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -355,7 +446,7 @@ func (p *Provider) readCookie(r *http.Request, name string, dst any) bool {
 	if err != nil {
 		return false
 	}
-	if !hmac.Equal([]byte(p.sign(payload)), []byte(body+"."+sig)) {
+	if !hmac.Equal([]byte(p.signCookie(name, payload)), []byte(body+"."+sig)) {
 		return false
 	}
 	return json.Unmarshal(payload, dst) == nil

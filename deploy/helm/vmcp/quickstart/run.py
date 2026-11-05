@@ -233,7 +233,7 @@ def values(a, refs):
         cfg['runtime']['oidc'] = dict(issuer=playground.issuer(a), discoveryURL=discovery,
             clientId='vmcp-console', redirectURL=web + '/auth/callback', clientSecret=source('keycloak-client-secret'),
             groupsClaim='groups', adminGroups=[playground.catalog.ADMIN_GROUP, 'demo-admins'],
-            viewerGroups=[playground.catalog.VIEWER_GROUP, 'demo-viewers'], editorGroups=[])
+            viewerGroups=[], editorGroups=[])
         cfg['runtime']['agentOIDC'] = dict(issuer=playground.issuer(a), discoveryURL=discovery, audience='vmcp-runtime', algorithms=['RS256'])
     if a.monitoring:
         cfg['monitoring'] = {'serviceMonitor': {'enabled': True, 'labels': {'release': a.monitoring_release}},
@@ -488,9 +488,9 @@ def main(argv=None):
                                 lambda state: installer.save_demo_key('playground-seed-ledger', json.dumps(state)))
                 if a.omni: api.request('POST', '/api/v1/omni/reindex', {})
             else:
-                existing = {t['slug'] for t in api.items('/api/v1/teams')}
-                for team in playground.fixtures(a)[0]:
-                    if team['slug'] not in existing: api.request('POST', '/api/v1/teams', team)
+                playground.seed_console_access(api, a,
+                    json.loads(credentials.get('playground-seed-ledger', '{}')),
+                    lambda state: installer.save_demo_key('playground-seed-ledger', json.dumps(state)))
     installer.access()
 
 

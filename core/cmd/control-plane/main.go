@@ -244,7 +244,12 @@ func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oi
 		}
 		return out
 	}
-	// Cookies are signed with a key derived from the master key, so no extra secret to manage.
+	box, err := secrets.FromEnv(masterKey)
+	if err != nil {
+		return nil, err
+	}
+	// Cookies contain only signed references; sensitive records use the keyring.
+	// A separate cookie name prevents older nodes interpreting references as identities.
 	key := sha256.Sum256([]byte("vmcp-session-v1:" + masterKey + ":" + store.TenantID()))
 	return oidc.New(ctx, oidc.Config{
 		Issuer:       issuer,
@@ -257,7 +262,14 @@ func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oi
 		EditorGroups: list("VMCP_OIDC_EDITOR_GROUPS"),
 		ViewerGroups: list("VMCP_OIDC_VIEWER_GROUPS"),
 		SessionKey:   key[:],
-		Sessions:     oidc.PostgresSessions{Pool: pool},
-		TeamLogin:    (&store.Store{Pool: pool}).Reader().CheckTeamLogin,
+		Sessions:     oidc.PostgresSessions{Pool: pool, Box: box, Issuer: issuer},
+		ClaimPaths:   func(ctx context.Context) ([]string, error) { return store.LoadOIDCClaimPaths(ctx, pool, issuer) },
+		CustomLogin: func(ctx context.Context, verifiedIssuer, subject string, claims map[string]any) (bool, error) {
+			if verifiedIssuer != issuer {
+				return false, nil
+			}
+			return store.CanOIDCLogin(ctx, pool, issuer, subject, claims)
+		},
+		TeamLogin: (&store.Store{Pool: pool}).Reader().CheckTeamLogin,
 	})
 }

@@ -377,6 +377,316 @@
         }
       }
     },
+    "/api/v1/upstreams/{slug}/audit-settings": {
+      "parameters": [
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "getUpstreamLocalAuditSettings",
+        "summary": "Get only this resource's local masking rules",
+        "description": "Requires audit.settings.read for GET or audit.redaction.local.update for PUT on the live\nresource. These resource checks always apply.\nNever returns global settings or another resource's rules. PUT preserves all other settings\nand uses the shared settings revision; stale revisions return 409. Bodies are excluded from audit capture.\n",
+        "responses": {
+          "200": {
+            "description": "Local rules and common policy revision; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAuditSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "saveUpstreamLocalAuditSettings",
+        "summary": "Save only this resource's local masking rules",
+        "description": "Requires audit.settings.read for GET or audit.redaction.local.update for PUT on the live\nresource. These resource checks always apply.\nNever returns global settings or another resource's rules. PUT preserves all other settings\nand uses the shared settings revision; stale revisions return 409. Bodies are excluded from audit capture.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalAuditSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local rules and common policy revision; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAuditSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/upstreams/{slug}/audit-settings/preview": {
+      "parameters": [
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "previewUpstreamLocalAuditSettings",
+        "summary": "Preview local rules with server-controlled global protection",
+        "description": "Requires audit.settings.read and audit.redaction.preview on the live resource.\nApplies current global and mandatory rules, fixes resource and capture scope from the route,\nand accepts only synthetic samples. No saved messages are read and samples are not captured.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "revision",
+                  "rules",
+                  "direction",
+                  "payload"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "rules": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "$ref": "#/components/schemas/AuditMaskRule"
+                    }
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "request",
+                      "response"
+                    ]
+                  },
+                  "payload": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Synthetic preview; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPreview"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/api/v1/virtual-servers/{slug}/audit-settings": {
+      "parameters": [
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "getVirtualServerLocalAuditSettings",
+        "summary": "Get only this resource's local masking rules",
+        "description": "Requires audit.settings.read for GET or audit.redaction.local.update for PUT on the live\nresource. These resource checks always apply.\nNever returns global settings or another resource's rules. PUT preserves all other settings\nand uses the shared settings revision; stale revisions return 409. Bodies are excluded from audit capture.\n",
+        "responses": {
+          "200": {
+            "description": "Local rules and common policy revision; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAuditSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "saveVirtualServerLocalAuditSettings",
+        "summary": "Save only this resource's local masking rules",
+        "description": "Requires audit.settings.read for GET or audit.redaction.local.update for PUT on the live\nresource. These resource checks always apply.\nNever returns global settings or another resource's rules. PUT preserves all other settings\nand uses the shared settings revision; stale revisions return 409. Bodies are excluded from audit capture.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalAuditSettings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local rules and common policy revision; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalAuditSettings"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
+      }
+    },
+    "/api/v1/virtual-servers/{slug}/audit-settings/preview": {
+      "parameters": [
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "previewVirtualServerLocalAuditSettings",
+        "summary": "Preview local rules with server-controlled global protection",
+        "description": "Requires audit.settings.read and audit.redaction.preview on the live resource.\nApplies current global and mandatory rules, fixes resource and capture scope from the route,\nand accepts only synthetic samples. No saved messages are read and samples are not captured.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "revision",
+                  "rules",
+                  "direction",
+                  "payload"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "rules": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                      "$ref": "#/components/schemas/AuditMaskRule"
+                    }
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "request",
+                      "response"
+                    ]
+                  },
+                  "payload": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Synthetic preview; no-store.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPreview"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
     "/api/v1/audit-settings": {
       "get": {
         "tags": [
@@ -384,7 +694,7 @@
         ],
         "operationId": "getAuditSettings",
         "summary": "Read audit capture and masking settings",
-        "description": "Admin only. An empty mode preserves the deployment default.",
+        "description": "Requires tenant audit.settings.read. Audit durability settings are independent of authorization.",
         "responses": {
           "200": {
             "description": "Success",
@@ -410,7 +720,7 @@
         ],
         "operationId": "putAuditSettings",
         "summary": "Replace audit settings",
-        "description": "Admin only. Supply the current revision; stale settings return 409. New operations use the saved policy after snapshot propagation. Existing operations retain their mode and policy.",
+        "description": "Requires the corresponding tenant audit settings permissions. Supply the current revision; stale settings return 409. New operations use the saved policy after snapshot propagation. Existing operations retain their mode and policy.",
         "requestBody": {
           "required": true,
           "content": {
@@ -454,7 +764,7 @@
         ],
         "operationId": "previewAuditPayload",
         "summary": "Preview an audit payload with unsaved masking rules",
-        "description": "Admin only. Uses the production masking engine, mandatory secret filters and selected global/virtual-server/upstream rules. Samples and preview results are excluded from audit payload capture.",
+        "description": "Requires tenant audit.settings.read and audit.redaction.preview. Uses the production masking engine, mandatory secret filters and selected global/virtual-server/upstream rules. Samples and preview results are excluded from audit payload capture.",
         "requestBody": {
           "required": true,
           "content": {
@@ -495,7 +805,7 @@
         ],
         "operationId": "getAuditPayload",
         "summary": "Read an audit payload",
-        "description": "Admin only. Access is audited without recursively capturing the returned payload. Expired payloads return metadata state without content.",
+        "description": "Requires explicit resource-scoped request or response permissions with capture-scope restrictions. Historical records without verified context require tenant-level legacy permissions; unclassified records require a separate grant. Platform administrators have explicit full access. Policy, event context and direction are checked before ciphertext is loaded. Denied and missing events always return the same 404. Access is audited without recursively capturing returned content. Responses use Cache-Control no-store. Released payloads return state without content.",
         "parameters": [
           {
             "in": "path",
@@ -526,6 +836,9 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "description": "Authorization, audit persistence or payload encryption unavailable"
           }
         }
       }
@@ -586,6 +899,105 @@
         }
       }
     },
+    "/api/v1/configuration-access": {
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "checkOwnConfigurationAccess",
+        "summary": "Inspect the caller's current configuration affordances",
+        "description": "Evaluates only the authenticated caller against current server-held policy and live resource facts.\nReturns booleans, no resource data, raw claims or assignments. A decision is advisory and never\nreplaces authorization on the real request. Authorization always applies; there is no bypass mode.\nThe body is excluded from audit payload capture and responses use no-store.\nPermission checks must belong to the matched configuration family, or ownership.transfer.\nA collection permission without a body reports whether any applicable grant exists; it does\nnot authorize a target or replace the exact operation check. No policy state is changed.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "checks"
+                ],
+                "properties": {
+                  "checks": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "method",
+                        "path"
+                      ],
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "enum": [
+                            "GET",
+                            "POST",
+                            "PATCH",
+                            "PUT",
+                            "DELETE"
+                          ]
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "Relative configuration API path without /api/v1. External URLs are denied."
+                        },
+                        "body": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "permission": {
+                          "type": "string",
+                          "description": "Optional registered field/action permission for affordances. Omit to check the exact proposed operation."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Own decisions in request order; never a reusable authorization token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "authorizationRevision",
+                    "allowed"
+                  ],
+                  "properties": {
+                    "authorizationRevision": {
+                      "type": "integer"
+                    },
+                    "allowed": {
+                      "type": "array",
+                      "items": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Authentication, validation or policy inspection failure.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [
@@ -593,7 +1005,7 @@
         ],
         "operationId": "getMe",
         "summary": "The authenticated caller and its role",
-        "description": "Roles: `viewer` (read only), `editor` (changes configuration, cannot manage admin tokens),\n`admin` (everything). Admin tokens map `read` to `viewer` and `admin` to `admin`; the\nbootstrap token is `admin`; browser sign-in (OIDC) maps IdP groups to a role.\n",
+        "description": "Returns authenticated identity labels; granular authorization always applies.\nOnly platform `admin` has administrator authority. Other labels confer no implicit permissions.\nNon-admin named tokens and OIDC sessions require explicit assignments or verified claim mappings.\n",
         "responses": {
           "200": {
             "description": "OK",
@@ -615,8 +1027,19 @@
                       "enum": [
                         "viewer",
                         "editor",
-                        "admin"
+                        "admin",
+                        "team",
+                        "custom"
                       ]
+                    },
+                    "claimsFresh": {
+                      "type": "boolean",
+                      "description": "Whether fresh server-held claim data is available; raw claims are never returned."
+                    },
+                    "claimsExpire": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Deadline for mapping-derived permissions; direct subject and platform administrator rights have independent lifetimes."
                     },
                     "via": {
                       "type": "string",
@@ -2474,7 +2897,7 @@
         ],
         "operationId": "createAdminToken",
         "summary": "Create a named admin API token",
-        "description": "For integrations. The secret (`token`) is returned **only in this response**.\nScope `read` allows GET requests only; `admin` allows everything. Requires an `admin` caller.\n",
+        "description": "For integrations. The secret (`token`) is returned **only in this response**.\nScope `read` uses explicit permission assignments and grants no implicit access; `admin` grants platform administrator authority.\n",
         "requestBody": {
           "required": true,
           "content": {
@@ -2782,7 +3205,7 @@
         ],
         "operationId": "revokeJWT",
         "summary": "Revoke an IdP-issued agent JWT by raw token or SHA-256 hex digest",
-        "description": "Requires an `admin` caller. Immediately invalidates the token across data-plane nodes on next sync.",
+        "description": "Requires tenant runtime_jwts.revoke. Immediately invalidates the token across data-plane nodes on next sync.",
         "parameters": [
           {
             "$ref": "#/components/parameters/CSRF"
@@ -2839,7 +3262,7 @@
         ],
         "operationId": "revokeSessions",
         "summary": "Revoke active OIDC browser sessions for a subject",
-        "description": "Requires an `admin` caller. Revokes all active browser sessions matching `subject` (OIDC `sub`).",
+        "description": "Requires tenant sessions.revoke. Revokes active browser sessions by exact issuer plus subject. Omitted issuer selects the configured OIDC provider, or legacy rows when no provider is configured. Explicit empty issuer selects only legacy records; no issuer is inferred or backfilled.",
         "parameters": [
           {
             "$ref": "#/components/parameters/CSRF"
@@ -2858,6 +3281,11 @@
                 "properties": {
                   "subject": {
                     "type": "string"
+                  },
+                  "issuer": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "description": "Exact recorded issuer; omit for the configured provider, or use an empty string for legacy rows."
                   }
                 }
               }
@@ -2917,6 +3345,7 @@
         ],
         "operationId": "listAuditEvents",
         "summary": "List audit events, newest first",
+        "description": "Returns authorized metadata only, never payload bodies. Event domains are always filtered before pagination and conversation aggregation. Sensitive identity/details fields are omitted without their permissions; identity filters require identity permission. Each event includes direction-specific payload capabilities. Responses use no-store.",
         "parameters": [
           {
             "name": "groupBy",
@@ -3117,6 +3546,18 @@
                         ]
                       }
                     },
+                    "capabilities": {
+                      "type": "object",
+                      "properties": {
+                        "canFilterIdentities": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "authorizationRevision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
                     "nextCursor": {
                       "type": [
                         "string",
@@ -3131,8 +3572,14 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "422": {
             "$ref": "#/components/responses/Unprocessable"
+          },
+          "503": {
+            "description": "Authorization policy or audit storage unavailable"
           }
         }
       }
@@ -3614,6 +4061,976 @@
           }
         }
       }
+    },
+    "/api/v1/permissions": {
+      "get": {
+        "operationId": "listAuthorizationPermissions",
+        "summary": "List the fixed permission catalog (platform admin)",
+        "responses": {
+          "200": {
+            "description": "Catalog; Capture restrictions require explicit assignment scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthorizationPermission"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Platform admin required"
+          }
+        }
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "operationId": "listAuthorizationRoles",
+        "summary": "List builtin and custom roles (platform admin)",
+        "responses": {
+          "200": {
+            "description": "Roles from a coherent policy snapshot; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "authorizationRevision"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthorizationRole"
+                      }
+                    },
+                    "authorizationRevision": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Platform admin required"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAuthorizationRole",
+        "summary": "Create a custom role or freeze a copy of an existing role",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationRoleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created; ETag and Location headers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationRole"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Platform admin required"
+          },
+          "409": {
+            "description": "Slug already exists"
+          },
+          "422": {
+            "description": "Invalid role input"
+          }
+        }
+      }
+    },
+    "/api/v1/roles/{slug}": {
+      "get": {
+        "operationId": "getAuthorizationRole",
+        "summary": "Read a role (platform admin)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Slug"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Role with ETag; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationRole"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Platform admin required"
+          },
+          "404": {
+            "description": "Role not found"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateAuthorizationRole",
+        "summary": "Replace a custom role; builtin roles are immutable",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Slug"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "Explicit numeric ETag; missing or wildcard returns 428, stale version returns 412.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationRoleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated role and ETag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationRole"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Platform admin required"
+          },
+          "404": {
+            "description": "Role not found"
+          },
+          "409": {
+            "description": "Assignments require capture scopes before payload permission can be added"
+          },
+          "412": {
+            "description": "Stale ETag"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "428": {
+            "description": "Explicit If-Match required"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAuthorizationRole",
+        "summary": "Delete an unassigned custom role; builtin roles are protected",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Slug"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "Explicit numeric ETag; missing or wildcard returns 428, stale version returns 412.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Platform admin required"
+          },
+          "404": {
+            "description": "Role not found"
+          },
+          "409": {
+            "description": "Role has assignments, including disabled assignments"
+          },
+          "412": {
+            "description": "Stale ETag"
+          },
+          "428": {
+            "description": "Explicit If-Match required"
+          }
+        }
+      }
+    },
+    "/api/v1/role-assignments": {
+      "get": {
+        "operationId": "listAuthorizationAssignments",
+        "summary": "List direct and mapping role assignments (platform admin)",
+        "description": "Coherent policy snapshot; filters precede pagination; no-store.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assignments and authorization revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthorizationAssignment"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "authorizationRevision": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAuthorizationAssignment",
+        "summary": "Create a scoped role assignment (platform admin)",
+        "description": "Audit resource scopes pin the current epoch unless an explicit recorded epoch is supplied. Project scopes pin ownership. Enabled OIDC assignments require the configured issuer; enabled token assignments require an active immutable token ID.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationAssignmentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created assignment, ETag and Location; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          }
+        }
+      }
+    },
+    "/api/v1/role-assignments/{id}": {
+      "get": {
+        "operationId": "getAuthorizationAssignment",
+        "summary": "Read an assignment with its pinned scope (platform admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assignment and ETag; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Assignment not found"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateAuthorizationAssignment",
+        "summary": "Replace a role assignment (platform admin)",
+        "description": "Omitting an existing resource epoch or project owner on the same scope preserves its pin. Changing scope or supplying an explicit validated pin is an intentional regrant. Assignments grant permissions, never platform administrator identity; the final operator assignment may be revoked.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationAssignmentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated assignment and ETag; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationAssignment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Assignment not found"
+          },
+          "412": {
+            "description": "Stale ETag"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          },
+          "428": {
+            "description": "Explicit numeric If-Match required; wildcard is rejected"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAuthorizationAssignment",
+        "summary": "Delete a role assignment (platform admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Assignment not found"
+          },
+          "412": {
+            "description": "Stale ETag"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          },
+          "428": {
+            "description": "Explicit numeric If-Match required; wildcard is rejected"
+          }
+        }
+      }
+    },
+    "/api/v1/access/scopes": {
+      "get": {
+        "operationId": "listAuthorizationScopes",
+        "summary": "List immutable IDs for scope and token selection (platform admin)",
+        "description": "Live resources and active tokens only; no credentials or token secrets. Resource options include the current epoch. All responses are no-store.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "team",
+                "project",
+                "upstream",
+                "virtual_server",
+                "control_token"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scope options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthorizationScopeOption"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          }
+        }
+      }
+    },
+    "/api/v1/access/resource-epochs": {
+      "get": {
+        "operationId": "listAuthorizationResourceEpochs",
+        "summary": "List current and historical resource ownership epochs (platform admin)",
+        "description": "Supports deleted resources by immutable UUID. This does not classify or backfill legacy audit events. All responses are no-store.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "upstream",
+                "virtual_server"
+              ]
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded epochs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthorizationResourceEpoch"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input or scope"
+          }
+        }
+      }
+    },
+    "/api/v1/identity-mappings": {
+      "get": {
+        "operationId": "listAuthorizationMappings",
+        "summary": "List claim/scope mappings (platform admin)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "name": "enabled",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coherent policy snapshot, filtered before pagination; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "authorizationRevision"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthorizationMapping"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "authorizationRevision": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAuthorizationMapping",
+        "summary": "Create an OIDC claim/scope mapping (platform admin)",
+        "description": "Does not add trusted issuers or authenticate external OAuth bearers. Enabled mappings must exactly match the configured provider issuer; disabled drafts may be staged before configuring SSO. Conditions are ANDed. Enabled defaults to false.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationMappingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created mapping, ETag and Location; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationMapping"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          }
+        }
+      }
+    },
+    "/api/v1/identity-mappings/{id}": {
+      "get": {
+        "operationId": "getAuthorizationMapping",
+        "summary": "Read a versioned mapping (platform admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mapping and ETag; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationMapping"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Mapping not found"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateAuthorizationMapping",
+        "summary": "Replace a claim/scope mapping (platform admin)",
+        "description": "Enabled assignments prevent changing their mapping to an untrusted issuer. Mappings grant scoped permissions, never platform administrator identity. The final operator mapping may be disabled or reconditioned; referenced mappings still cannot be deleted.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "Explicit numeric ETag; missing or wildcard returns 428; stale version returns 412.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationMappingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated mapping and ETag; no-store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationMapping"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Mapping not found"
+          },
+          "409": {
+            "description": "Enabled assignments prevent changing the mapping to an untrusted issuer"
+          },
+          "412": {
+            "description": "Stale ETag"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          },
+          "428": {
+            "description": "Explicit numeric If-Match required"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAuthorizationMapping",
+        "summary": "Delete an unreferenced mapping (platform admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "Explicit numeric ETag; missing or wildcard returns 428; stale version returns 412.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Mapping not found"
+          },
+          "409": {
+            "description": "Assignments refer to the mapping, including disabled assignments"
+          },
+          "412": {
+            "description": "Stale ETag"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          },
+          "428": {
+            "description": "Explicit numeric If-Match required"
+          }
+        }
+      }
+    },
+    "/api/v1/access/evaluate": {
+      "post": {
+        "operationId": "evaluateAuthorization",
+        "summary": "Simulate stored permission policy with sample claims (platform admin)",
+        "description": "What-if only. Does not validate authentication, audience, signatures or claim freshness, issue cookies/tokens, or alter sessions or assignments. OIDC principal issuer must be the configured provider. Samples cannot establish trust. Named token IDs must be active. Claims are typed samples, not raw tokens; sample iss/sub, if present, must agree with the selected principal. Resource ownership is read from DB. Audit visibility requires an existing event ID; only immutable metadata/provenance is read, never ciphertext. Only stored assignments are simulated; platform administrator identity authority is not inferred. A positive policy result is not a promise of live configuration access. Payload directions are checked separately. Samples and results are excluded from audit payload capture.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizationEvaluationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Policy-only decision with revision and explicit simulation flags; no-store; no sample claims echoed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationEvaluation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "404": {
+            "description": "Resource or event not found"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          }
+        }
+      }
+    },
+    "/api/v1/access/status": {
+      "get": {
+        "operationId": "getAuthorizationStatus",
+        "summary": "Inspect authorization migration state (platform admin)",
+        "description": "Read-only counts and operational diagnostics from one repeatable-read snapshot. Does not change permissions, backfill historical contexts or certify working administrator logins. Configuration enforcement is not connected yet; configurationEnforcementReady is false. claimMappings reports live-audit only when encrypted server claim sessions are configured. The endpoint itself produces ordinary audit metadata.",
+        "responses": {
+          "200": {
+            "description": "State and aggregate counters; no-store; no subjects, condition values or credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Global platform admin required"
+          },
+          "422": {
+            "description": "Invalid input, unknown permission, unsupported sample or issuer outside the configured provider"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3626,8 +5043,8 @@
       "cookieAuth": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "vmcp_session",
-        "description": "SSO session cookie. Unsafe methods require X-VMCP-CSRF."
+        "name": "vmcp_session_v2",
+        "description": "Signed server-session reference only. Sensitive typed claims remain encrypted in PostgreSQL. Old vmcp_session cookies require sign-in again. Unsafe methods require X-VMCP-CSRF."
       }
     },
     "parameters": {
@@ -3768,6 +5185,716 @@
       }
     },
     "schemas": {
+      "AuthorizationMappingCondition": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "operator",
+          "value"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Exact full claim key takes precedence over dotted nested lookup."
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "equals",
+              "array_contains",
+              "scope_contains"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "description": "equals requires string equality; array_contains requires an array string element; scope_contains requires one exact whitespace-delimited scope token in a string claim."
+          }
+        }
+      },
+      "AuthorizationMappingInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "issuer",
+          "principalKind",
+          "conditions"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "principalKind": {
+            "type": "string",
+            "enum": [
+              "oidc"
+            ]
+          },
+          "conditions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationMappingCondition"
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "AuthorizationMapping": {
+        "type": "object",
+        "required": [
+          "id",
+          "issuer",
+          "principalKind",
+          "conditions",
+          "enabled",
+          "version"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "principalKind": {
+            "type": "string",
+            "enum": [
+              "oidc"
+            ]
+          },
+          "conditions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationMappingCondition"
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "AuthorizationEvaluationResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind"
+        ],
+        "description": "Live DB resource; ownership/project/epoch cannot be supplied as sample data. For history use auditEventId.",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tenant",
+              "team",
+              "project",
+              "upstream",
+              "virtual_server"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "AuthorizationEvaluationInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "principal",
+          "permission"
+        ],
+        "properties": {
+          "principal": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "oidc",
+                  "control_token"
+                ]
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "claims": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Unverified OIDC samples only; not accepted for named token principals."
+          },
+          "permission": {
+            "type": "string"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/AuthorizationEvaluationResource"
+          },
+          "auditEventId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "resource"
+            ],
+            "not": {
+              "required": [
+                "auditEventId"
+              ]
+            }
+          },
+          {
+            "required": [
+              "auditEventId"
+            ],
+            "not": {
+              "required": [
+                "resource"
+              ]
+            }
+          }
+        ]
+      },
+      "AuthorizationEvaluation": {
+        "type": "object",
+        "required": [
+          "simulationOnly",
+          "authenticationValidated",
+          "authorizationRevision",
+          "claimMappings",
+          "matchedMappingIds",
+          "candidateAssignmentIds",
+          "decision"
+        ],
+        "properties": {
+          "simulationOnly": {
+            "type": "boolean",
+            "const": true
+          },
+          "authenticationValidated": {
+            "type": "boolean",
+            "const": false
+          },
+          "authorizationRevision": {
+            "type": "integer"
+          },
+          "claimMappings": {
+            "type": "string",
+            "enum": [
+              "simulation-only",
+              "live-audit"
+            ]
+          },
+          "matchedMappingIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "candidateAssignmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Enabled direct or resolved assignments for the selected principal; candidates are not a grant of scope or permission."
+          },
+          "decision": {
+            "type": "object",
+            "required": [
+              "allowed",
+              "reason"
+            ],
+            "properties": {
+              "allowed": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "assignmentId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          }
+        }
+      },
+      "AuthorizationStatus": {
+        "type": "object",
+        "required": [
+          "authorizationRevision",
+          "schemaVersion",
+          "trustedIssuer",
+          "claimMappings",
+          "externalOAuthBearer",
+          "blockers",
+          "counts"
+        ],
+        "properties": {
+          "authorizationRevision": {
+            "type": "integer"
+          },
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "trustedIssuer": {
+            "type": "string",
+            "description": "Configured provider issuer, or empty when OIDC is absent."
+          },
+          "claimMappings": {
+            "type": "string",
+            "enum": [
+              "simulation-only",
+              "live-audit"
+            ]
+          },
+          "externalOAuthBearer": {
+            "type": "boolean",
+            "const": false
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "roles, customRoles, assignments, enabledAssignments, mappings, enabledMappings, untrustedEnabledMappings, untrustedEnabledOIDCAssignments, inactiveTokenAssignments, unpinnedAuditResourceAssignments, legacyAuditEvents, resourceAuditEvents, tenantAuditEvents, legacyBrowserSessions, serverBrowserSessions, expiredBrowserSessions."
+          }
+        }
+      },
+      "AuthorizationAssignmentInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "roleId",
+          "scope"
+        ],
+        "description": "Use exactly one principal or mappingId. Enabled defaults to false. Payload permissions require nonempty explicit captureScopes. UUIDs are immutable database IDs, not slugs. Disabled drafts still validate resource references.",
+        "properties": {
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "control_token",
+                  "oidc"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              }
+            }
+          },
+          "mappingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tenant",
+                  "unmanaged",
+                  "team",
+                  "project",
+                  "upstream",
+                  "virtual_server"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "epoch": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "ownerTeam": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          "captureScopes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "virtual",
+                "upstream",
+                "control",
+                "reads",
+                "system",
+                "omni",
+                "omni_diagnostics",
+                "omni_embedding",
+                "omni_rerank"
+              ]
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "principal"
+            ],
+            "not": {
+              "required": [
+                "mappingId"
+              ]
+            }
+          },
+          {
+            "required": [
+              "mappingId"
+            ],
+            "not": {
+              "required": [
+                "principal"
+              ]
+            }
+          }
+        ]
+      },
+      "AuthorizationAssignment": {
+        "type": "object",
+        "required": [
+          "id",
+          "roleId",
+          "principal",
+          "scope",
+          "captureScopes",
+          "enabled",
+          "version"
+        ],
+        "properties": {
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "principal": {
+            "type": "object",
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              }
+            }
+          },
+          "mappingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "tenant",
+                  "unmanaged",
+                  "team",
+                  "project",
+                  "upstream",
+                  "virtual_server"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "epoch": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "ownerTeam": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          "captureScopes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "virtual",
+                "upstream",
+                "control",
+                "reads",
+                "system",
+                "omni",
+                "omni_diagnostics",
+                "omni_embedding",
+                "omni_rerank"
+              ]
+            }
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "AuthorizationScopeOption": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerTeam": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "epoch": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "AuthorizationResourceEpoch": {
+        "type": "object",
+        "required": [
+          "id",
+          "resourceId",
+          "kind",
+          "startRevision",
+          "endRevision"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "upstream",
+              "virtual_server"
+            ]
+          },
+          "ownerTeam": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startRevision": {
+            "type": "integer"
+          },
+          "endRevision": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "AuthorizationPermission": {
+        "type": "object",
+        "required": [
+          "id",
+          "scopes",
+          "captureRestricted"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "captureRestricted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AuthorizationRole": {
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "builtin",
+          "version",
+          "permissions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AuthorizationRoleInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "description": "POST requires slug and either explicit permissions (empty allowed) or copyFrom (source slug). PUT requires permissions, forbids copyFrom, and preserves slug.",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "permissions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "copyFrom": {
+            "type": "string"
+          }
+        }
+      },
       "Team": {
         "type": "object",
         "additionalProperties": false,
@@ -3879,6 +6006,26 @@
           "version": {
             "type": "integer",
             "default": 0
+          }
+        }
+      },
+      "LocalAuditSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "rules"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer"
+          },
+          "rules": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/AuditMaskRule"
+            }
           }
         }
       },
@@ -5447,7 +7594,6 @@
         "required": [
           "conversationGroupId",
           "rootConversationId",
-          "actorId",
           "firstTime",
           "lastTime",
           "lastId",
@@ -6202,7 +8348,8 @@
               "admin",
               "read"
             ],
-            "default": "read"
+            "default": "read",
+            "description": "Non-admin read tokens use explicit permission assignments; the scope label grants no implicit GET access."
           },
           "expiresAt": {
             "type": [
@@ -6295,6 +8442,42 @@
           }
         }
       },
+      "AuditCapabilities": {
+        "type": "object",
+        "required": [
+          "canReadMetadata",
+          "canReadIdentities",
+          "canReadDetails",
+          "canReadPayload",
+          "canReadRequestPayload",
+          "canReadResponsePayload",
+          "authorizationRevision"
+        ],
+        "properties": {
+          "canReadMetadata": {
+            "type": "boolean"
+          },
+          "canReadIdentities": {
+            "type": "boolean"
+          },
+          "canReadDetails": {
+            "type": "boolean"
+          },
+          "canReadPayload": {
+            "type": "boolean"
+          },
+          "canReadRequestPayload": {
+            "type": "boolean"
+          },
+          "canReadResponsePayload": {
+            "type": "boolean"
+          },
+          "authorizationRevision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "AuditEvent": {
         "type": "object",
         "required": [
@@ -6310,6 +8493,9 @@
           "durationMs"
         ],
         "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/AuditCapabilities"
+          },
           "conversationId": {
             "type": "string",
             "maxLength": 256

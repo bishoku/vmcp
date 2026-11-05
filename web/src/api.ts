@@ -1,10 +1,16 @@
+import { authorizationClient } from './authorization/client';
 // Thin typed client for the vMCP control plane (api/openapi.yaml).
 // Token login is deliberately memory-only. SSO uses the server's session cookie.
+const downloadedConfiguration = new Set<string>()
+let configurationIdentityRevision=0
+export const resetConfigurationIdentity = () => { configurationIdentityRevision++; downloadedConfiguration.clear() }
+export interface ConfigurationCheck {method:string;path:string;body?:unknown;permission?:string}
+export interface ConfigurationAccess {authorizationRevision:number;allowed:boolean[]}
 let token = ''
 try { localStorage.removeItem('vmcp.adminToken') } catch { /* Storage may be disabled; token login still works. */ }
 export const getToken = () => token
-export const setToken = (value: string) => { token = value }
-export const clearToken = () => { token = '' }
+export const setToken = (value: string) => { token = value; configurationIdentityRevision++ }
+export const clearToken = () => { token = ''; resetConfigurationIdentity() }
 
 export interface NodeHealth {
   node: string
@@ -171,7 +177,7 @@ export interface PiiConfig {
 }
 
 export interface AuditCorrelation {conversationId?:string;rootConversationId?:string;turnId?:string}
-export interface AuditConversation {conversationGroupId:string;rootConversationId:string;actorId:string;firstTime:string;lastTime:string;lastId:number;records:number;operations:number;errors:number;conversations:number}
+export interface AuditConversation {conversationGroupId:string;rootConversationId:string;actorId?:string;firstTime:string;lastTime:string;lastId:number;records:number;operations:number;errors:number;conversations:number}
 export interface AgentKey {
  auditCorrelation?:AuditCorrelation
   version: number
@@ -237,7 +243,15 @@ export interface AuditSettings {
  virtualServers:Record<string,AuditRule[]>; upstreams:Record<string,AuditRule[]>;exportPayloads:Record<string,boolean>
 }
 export interface AuditPreview {state:string;content?:unknown;originalBytes:number;storedBytes:number;redactions:number;revision:number;matches:{source:string;name:string;count:number}[]}
+export interface AuditCapabilities {
+ canReadMetadata:boolean;canReadIdentities:boolean;canReadDetails:boolean
+ canReadPayload:boolean;canReadRequestPayload:boolean;canReadResponsePayload:boolean
+ authorizationRevision?:number
+}
+export interface AuditListCapabilities {canFilterIdentities:boolean}
 export interface AuditEvent {
+ tenantId?:string
+ capabilities?:AuditCapabilities
  conversationId?:string;rootConversationId?:string;turnId?:string;conversationGroupId?:string;correlationStatus?:string
  auditMode?:string;policyRevision?:number;scope?:string;boundary?:string;direction?:string;parentOperationId?:string|null
  payloadState?:string;payloadOriginalBytes?:number;payloadStoredBytes?:number;payloadRedactions?:number
@@ -248,10 +262,10 @@ export interface AuditEvent {
   traceId: string
   schemaVersion: number
   actorType: string
-  actorId: string
-  issuer: string
+  actorId?: string
+  issuer?: string
   action: string
-  target: string
+  target?: string
   configRevision: number
   stage: 'event' | 'admission' | 'outcome' | 'mutation'
   id: number
@@ -323,8 +337,12 @@ export interface ValidationProblem {
 }
 
 export interface Me {
+ id?:string
+ issuer?:string
   name: string
-  role: 'viewer' | 'editor' | 'admin' | 'team'
+  role: 'viewer' | 'editor' | 'admin' | 'team' | 'custom'
+ claimsFresh?: boolean
+ claimsExpire?: string
  teamMember?: boolean
   via: 'bootstrap-token' | 'admin-token' | 'oidc'
 }
@@ -361,9 +379,23 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown, version?: number, signal?: AbortSignal, responseType: 'json' | 'blob' = 'json', extraHeaders: Record<string,string> = {}): Promise<T> {
+  const identityRevision=configurationIdentityRevision
+  const protectedConfiguration = !/^\/(me|configuration-access|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(path)
+  if(protectedConfiguration){
+    const access=await request<ConfigurationAccess>('POST','/configuration-access',{checks:[{method,path,body}]},undefined,signal)
+    if(identityRevision!==configurationIdentityRevision)throw new ApiError(403,'Your session changed. Reload before continuing.','configuration_identity_changed')
+    if(access.allowed[0]!==true){
+      if(downloadedConfiguration.has(path.split('?')[0])){
+        downloadedConfiguration.clear()
+        window.dispatchEvent(new Event('vmcp:configuration-denied'))
+      }
+      throw new ApiError(403,'You do not have permission for this configuration operation.','configuration_access_denied')
+    }
+  }
   const res = await fetch(`/api/v1${path}`, {
     method,
     signal,
+    cache:'no-store',
     headers: {
       // With SSO there is no token: the session cookie authenticates and the CSRF header is required.
       ...(getToken() && { Authorization: `Bearer ${getToken()}` }),
@@ -380,6 +412,11 @@ async function request<T>(method: string, path: string, body?: unknown, version?
     clearToken()
     window.dispatchEvent(new Event('vmcp:session-expired'))
   }
+  if((protectedConfiguration)&&res.status===403){
+    downloadedConfiguration.clear()
+    window.dispatchEvent(new Event('vmcp:configuration-denied'))
+  }
+  if((protectedConfiguration)&&res.ok&&method==='GET')downloadedConfiguration.add(path.split('?')[0])
   if (res.status === 204) return undefined as T
   if (res.ok && responseType === 'blob') return await res.blob() as T
   const data = await res.json().catch(() => ({}))
@@ -412,7 +449,14 @@ export interface ToolGrant {consumerProject?:string;consumerTeam?:string;upstrea
 export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;description:string}
 export interface OmniStatus { configured:boolean; endpoint:string; index?:{rerankEnabled?:boolean;rerankNoMatchScore?:number;rerankConfidenceScore?:number;rerankCandidates?:number;rerankMinScore?:number;rerankFailurePolicy?:string;embeddedDocuments?:number;dimensions?:number;embeddingProfile?:string;ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
 export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
+export interface LocalAuditSettings {revision:number;rules:AuditRule[]}
 export const api = {
+ localAuditSettings:(path:string,signal?:AbortSignal)=>request<LocalAuditSettings>('GET',path,undefined,undefined,signal),
+ saveLocalAuditSettings:(path:string,body:LocalAuditSettings)=>request<LocalAuditSettings>('PUT',path,body),
+ previewLocalAudit:(path:string,body:LocalAuditSettings&{direction:string;payload:unknown})=>request<AuditPreview>('POST',path+'/preview',body),
+ configurationAccess:(checks:ConfigurationCheck[],signal?:AbortSignal)=>request<ConfigurationAccess>('POST','/configuration-access',{checks},undefined,signal),
+
+ ...authorizationClient(request),
   omniStatus: (signal?:AbortSignal) => request<OmniStatus>('GET','/omni',undefined,undefined,signal),
   omniReindex: () => request<{accepted:boolean}>('POST','/omni/reindex'),
   omniPreview: (token:string, query:string, ref?:string) => request<{tools?:OmniHit[];search_mode?:string;tool?:unknown;schema_version?:string}>('POST','/omni/preview',{query,tool_ref:ref},undefined,undefined,'json',{'X-VMCP-Runtime-Authorization':`Bearer ${token}`}),
@@ -427,7 +471,7 @@ export const api = {
  auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),
  saveAuditSettings:(settings:AuditSettings)=>request<AuditSettings>('PUT','/audit-settings',settings),
  previewAudit:(body:{editScope?:'global'|'virtual'|'upstream';settings:AuditSettings;scope:string;direction:string;virtualServer:string;upstream:string;payload:unknown})=>request<AuditPreview>('POST','/audit-preview',body),
- auditPayload:(id:string)=>request<{state:string;content?:unknown}>('GET',`/audit-events/${encodeURIComponent(id)}/payload`),
+ auditPayload:(id:string,signal?:AbortSignal)=>request<{state:string;content?:unknown}>('GET',`/audit-events/${encodeURIComponent(id)}/payload`,undefined,undefined,signal),
 
   downloadOpenAPI: (format: 'json' | 'yaml') => request<Blob>('GET', `/openapi.${format}`, undefined, undefined, undefined, 'blob'),
   exportConfig: () => request<ConfigDocument>('GET','/export'),
@@ -454,9 +498,12 @@ export const api = {
     request<RefreshResult>('POST', `/upstreams/${encodeURIComponent(slug)}/refresh-tools`),
   testConnection: (input: { url: string; transport: string; headers?: Record<string, string>; tls?: UpstreamTLSInput; auth?: UpstreamAuthInput }) =>
     request<ConnectionTestResult>('POST', '/connection-tests', input),
+  getUpstream:(slug:string,signal?:AbortSignal)=>request<Upstream>('GET',`/upstreams/${encodeURIComponent(slug)}`,undefined,undefined,signal),
+  patchVirtualServer:(slug:string,v:Record<string,unknown>,version?:number)=>request<VirtualServer>('PATCH',`/virtual-servers/${encodeURIComponent(slug)}`,v,version),
   getVirtualServer: (slug:string,signal?:AbortSignal)=>request<VirtualServer>('GET',`/virtual-servers/${encodeURIComponent(slug)}`,undefined,undefined,signal),
   listVirtualServers: async (signal?: AbortSignal) =>
     listAll<VirtualServer>('/virtual-servers', signal),
+  createVirtualServer:(slug:string,v:Record<string,unknown>)=>request<VirtualServer>('POST','/virtual-servers',{slug,...v}),
   putVirtualServer: (
     slug: string,
     v: { project?:string; guidance?:Guidance; name: string; description?: string; enabled: boolean; omniEnabled?: boolean; authRequired: boolean; pii?: PiiConfig; policy?: ToolPolicy; rateLimitPerMinute?: number | null; tools: ToolSelection[];catalog?:CatalogSelection[];clientFeatures?:ClientFeatures },
@@ -490,11 +537,11 @@ export const api = {
   deleteAdminToken: (slug: string, version?: number) => request<void>('DELETE', `/admin-tokens/${encodeURIComponent(slug)}`, undefined, version),
   listAuditConversations: (q:AuditQuery,signal?:AbortSignal) => {
     const p=new URLSearchParams(Object.entries(q).filter((e):e is [string,string]=>typeof e[1]==='string'&&!!e[1]));p.set('groupBy','conversation')
-    return request<{items:AuditConversation[];nextCursor?:string|null}>('GET',`/audit-events?${p}`,undefined,undefined,signal)
+    return request<{items:AuditConversation[];nextCursor?:string|null;capabilities?:AuditListCapabilities;authorizationRevision?:number}>('GET',`/audit-events?${p}`,undefined,undefined,signal)
   },
   listAudit: (q: AuditQuery, signal?: AbortSignal) => {
     const p = new URLSearchParams({ limit: '50' })
     Object.entries(q).forEach(([k, v]) => v && p.set(k, v))
-    return request<{ items: AuditEvent[]; nextCursor?: string | null }>('GET', `/audit-events?${p}`, undefined, undefined, signal)
+    return request<{ items: AuditEvent[]; nextCursor?: string | null;capabilities?:AuditListCapabilities;authorizationRevision?:number }>('GET', `/audit-events?${p}`, undefined, undefined, signal)
   },
 }

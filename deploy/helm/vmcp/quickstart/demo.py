@@ -144,7 +144,7 @@ def need(mapping, key, kind):
 
 def team_name(slug):
     return catalog.TEAM[slug]['name'] if slug in catalog.TEAM else {catalog.ADMIN_GROUP: 'Platform administrators (console admin)',
-                                                                   catalog.VIEWER_GROUP: 'Auditors (read-only console)'}.get(slug, slug)
+                                                                   catalog.VIEWER_GROUP: 'Auditors (audit metadata only)'}.get(slug, slug)
 
 
 def user_row(u):
@@ -180,7 +180,7 @@ def cmd_user(a, c):
     u = need(USERS, a.username, 'user')
     password = c.value('keycloak-demo-password', 'Install with --keycloak.')
     data = dict(user_row(u), servers=catalog.team_servers(u['team']) if u['team'] else [], initialPassword=password,
-                consoleRole='admin' if catalog.ADMIN_GROUP in u['groups'] else 'viewer' if catalog.VIEWER_GROUP in u['groups'] else 'team member (' + u['team'] + ')')
+                consoleRole='admin' if catalog.ADMIN_GROUP in u['groups'] else 'auditor (audit metadata only)' if catalog.VIEWER_GROUP in u['groups'] else 'explicit team-scoped roles (' + u['team'] + ')')
     def render():
         for label, key in [('Username', 'username'), ('Name', 'name'), ('Email', 'email'), ('Role', 'title'), ('Console', 'consoleRole')]:
             print(f'{label + ":":<18}{data[key]}')

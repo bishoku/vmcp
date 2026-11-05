@@ -7,14 +7,14 @@ import (
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/omni"
+	"github.com/bishoku/vmcp/core/internal/store"
 )
 
 func (s *Server) omni(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Cache-Control", "no-store")
 	url := config.Env("VMCP_OMNI_URL", "")
 	endpoint := config.Env("VMCP_OMNI_PUBLIC_URL", "")
-	p, _ := r.Context().Value(principalKey{}).(*principal)
-	admin := p != nil && p.Role == "admin"
+	admin := store.ConfigurationAllowsTenant(r.Context(), "omni.status.details.read")
 	if url == "" {
 		if r.Method == "GET" {
 			return writeJSON(w, 200, map[string]any{"configured": false, "endpoint": endpoint})

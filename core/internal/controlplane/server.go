@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/audit"
@@ -60,7 +61,16 @@ func (s *Server) Handler() http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	api := func(pattern string, h handlerFunc) { mux.Handle(pattern, s.wrap(h)) }
+	probe := http.NewServeMux()
+	api := func(pattern string, h handlerFunc) {
+		mux.Handle(pattern, s.wrap(h))
+		probe.HandleFunc(pattern, func(_ http.ResponseWriter, r *http.Request) {
+			if target, ok := r.Context().Value(configurationProbeKey{}).(*configurationProbe); ok {
+				target.operation, target.known = configurationOperation(r)
+			}
+		})
+	}
+	api("POST /api/v1/configuration-access", s.configurationAccess(probe))
 	mux.HandleFunc("GET /auth/config", s.authConfig)
 	mux.HandleFunc("GET /auth/login", func(w http.ResponseWriter, r *http.Request) {
 		if s.OIDC == nil {
@@ -127,6 +137,26 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/v1/openapi.json", s.getOpenAPI)
 	api("GET /api/v1/openapi.yaml", s.getOpenAPI)
 	api("GET /api/v1/info", s.getInfo)
+	api("GET /api/v1/permissions", s.authorizationPermissions)
+	api("GET /api/v1/identity-mappings", s.authorizationMappings)
+	api("POST /api/v1/identity-mappings", s.authorizationMappings)
+	api("GET /api/v1/identity-mappings/{id}", s.authorizationMappings)
+	api("PUT /api/v1/identity-mappings/{id}", s.authorizationMappings)
+	api("DELETE /api/v1/identity-mappings/{id}", s.authorizationMappings)
+	api("POST /api/v1/access/evaluate", s.evaluateAuthorization)
+	api("GET /api/v1/access/status", s.authorizationStatus)
+	api("GET /api/v1/role-assignments", s.authorizationAssignments)
+	api("POST /api/v1/role-assignments", s.authorizationAssignments)
+	api("GET /api/v1/role-assignments/{id}", s.authorizationAssignments)
+	api("PUT /api/v1/role-assignments/{id}", s.authorizationAssignments)
+	api("DELETE /api/v1/role-assignments/{id}", s.authorizationAssignments)
+	api("GET /api/v1/access/scopes", s.authorizationScopeOptions)
+	api("GET /api/v1/access/resource-epochs", s.authorizationResourceEpochs)
+	api("GET /api/v1/roles", s.authorizationRoles)
+	api("POST /api/v1/roles", s.authorizationRoles)
+	api("GET /api/v1/roles/{slug}", s.authorizationRoles)
+	api("PUT /api/v1/roles/{slug}", s.authorizationRoles)
+	api("DELETE /api/v1/roles/{slug}", s.authorizationRoles)
 	for _, method := range []string{"GET", "POST"} {
 		api(method+" /api/v1/teams", s.teams)
 		api(method+" /api/v1/projects", s.projects)
@@ -187,6 +217,12 @@ func (s *Server) Handler() http.Handler {
 	api("POST /api/v1/revocations/jwts", s.revokeJWT)
 	api("POST /api/v1/revocations/sessions", s.revokeSessions)
 
+	api("GET /api/v1/upstreams/{slug}/audit-settings", s.localAuditSettings)
+	api("PUT /api/v1/upstreams/{slug}/audit-settings", s.localAuditSettings)
+	api("POST /api/v1/upstreams/{slug}/audit-settings/preview", s.localAuditSettings)
+	api("GET /api/v1/virtual-servers/{slug}/audit-settings", s.localAuditSettings)
+	api("PUT /api/v1/virtual-servers/{slug}/audit-settings", s.localAuditSettings)
+	api("POST /api/v1/virtual-servers/{slug}/audit-settings/preview", s.localAuditSettings)
 	api("GET /api/v1/audit-settings", s.getAuditSettings)
 	api("PUT /api/v1/audit-settings", s.putAuditSettings)
 	api("POST /api/v1/audit-preview", s.previewAuditPayload)
@@ -204,13 +240,16 @@ func (s *Server) Handler() http.Handler {
 
 // principal is the authenticated caller.
 type principal struct {
-	Groups     []string `json:"-"`
-	TeamMember bool     `json:"teamMember"`
-	Name       string   `json:"name"`
-	ID         string   `json:"id,omitempty"`
-	Subject    string   `json:"subject,omitempty"`
-	Issuer     string   `json:"issuer,omitempty"`
-	Role       string   `json:"role"`
+	Groups       []string       `json:"-"`
+	Claims       map[string]any `json:"-"`
+	ClaimsFresh  bool           `json:"claimsFresh,omitempty"`
+	ClaimsExpire *time.Time     `json:"claimsExpire,omitempty"`
+	TeamMember   bool           `json:"teamMember"`
+	Name         string         `json:"name"`
+	ID           string         `json:"id,omitempty"`
+	Subject      string         `json:"subject,omitempty"`
+	Issuer       string         `json:"issuer,omitempty"`
+	Role         string         `json:"role"`
 	// Via is "bootstrap-token", "admin-token" or "oidc".
 	Via string `json:"via"`
 }
@@ -218,70 +257,53 @@ type principal struct {
 // wrap adds authentication, role checks and problem+json error rendering.
 func (s *Server) wrap(h handlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/configuration-access" || payloadRoute(r) || auditListRoute(r) || authorizationManagementRoute(r) {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		p, err := s.authorize(r)
 		if err == nil && p == nil {
 			err = apierror.Unauthorized()
 		}
-		if err == nil {
-			if p.Role == "team" && (strings.HasPrefix(r.URL.Path, "/api/v1/admin-tokens") || strings.HasPrefix(r.URL.Path, "/api/v1/revocations")) {
-				err = apierror.Forbidden("platform role required")
-			}
-			role := p.Role
-			if p.TeamMember && role != "admin" {
-				role = "editor"
-			}
-			if err == nil {
-				err = permit(role, r)
-			}
-			if err == nil && p.Role != "admin" && (r.URL.Path == "/api/v1/apply" || r.URL.Path == "/api/v1/export" || r.URL.Path == "/api/v1/audit-status") {
-				var managed bool
-				err = s.Store.Pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM teams)`).Scan(&managed)
-				if err == nil && (managed || p.Role == "team") {
-					err = apierror.Forbidden("tenant-wide GitOps and audit status require platform admin when teams are configured; use scoped resource APIs")
-				}
-			}
+		if err == nil && s.Store == nil {
+			err = apierror.New(503, "authorization_unavailable", "Authorization unavailable", "Authorization database unavailable")
 		}
+		if err == nil && authorizationManagementRoute(r) && p.Role != "admin" {
+			err = apierror.Forbidden("platform admin required for authorization management")
+		}
+		configurationActive := false
+		if err == nil {
+			r, configurationActive, err = s.prepareConfiguration(r, p)
+		}
+		if err == nil && (payloadRoute(r) || auditListRoute(r)) {
+			r, err = s.preparePayloadPolicy(r)
+		}
+
 		if err != nil {
 			s.recordDenial(r, p, err)
 			apierror.Write(w, r, err, s.Log)
 			return
 		}
-		r = r.WithContext(store.WithAccess(r.Context(), store.Access{Role: p.Role, Issuer: p.Issuer, Groups: p.Groups, Actor: p.ID, Write: r.Method != "GET" && r.Method != "HEAD"}))
-		if err := s.audited(h, w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)), p); err != nil {
+		if configurationActive {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		accessRole := p.Role
+		if configurationActive {
+			accessRole = "admin"
+		}
+		r = r.WithContext(store.WithAccess(r.Context(), store.Access{Role: accessRole, Issuer: p.Issuer, Groups: p.Groups, Actor: p.ID, Write: r.Method != "GET" && r.Method != "HEAD"}))
+		selected := h
+		if configurationActive && (r.Method == "GET" || r.Method == "HEAD") {
+			selected = func(w http.ResponseWriter, r *http.Request) error {
+				return s.Store.ConfigurationRead(r.Context(), func(ctx context.Context) error { return h(w, r.WithContext(ctx)) })
+			}
+		}
+		if err := s.audited(selected, w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)), p); err != nil {
 			apierror.Write(w, r, err, s.Log)
 		}
 	})
 }
 
 type principalKey struct{}
-
-// permit enforces roles: viewers read; editors change configuration but not admin tokens or revocations;
-// admins do everything.
-func permit(role string, r *http.Request) error {
-	if (strings.HasPrefix(r.URL.Path, "/api/v1/audit-settings") || strings.HasPrefix(r.URL.Path, "/api/v1/audit-preview") || strings.HasSuffix(r.URL.Path, "/payload")) && role != oidc.RoleAdmin {
-		return apierror.Forbidden("audit payloads and settings require admin access")
-	}
-	if r.URL.Path == "/api/v1/omni/reindex" && role != oidc.RoleAdmin {
-		return apierror.Forbidden("reindex requires platform admin")
-	}
-	if r.URL.Path == "/api/v1/omni/preview" && (role == oidc.RoleViewer || role == oidc.RoleEditor || role == oidc.RoleAdmin) {
-		return nil
-	}
-	safe := r.Method == http.MethodGet || r.Method == http.MethodHead
-	switch role {
-	case oidc.RoleAdmin:
-		return nil
-	case oidc.RoleEditor:
-		if safe || (!strings.HasPrefix(r.URL.Path, "/api/v1/admin-tokens") && !strings.HasPrefix(r.URL.Path, "/api/v1/revocations")) {
-			return nil
-		}
-		return apierror.Forbidden("editors cannot manage admin tokens or identity revocations")
-	}
-	if safe {
-		return nil
-	}
-	return apierror.Forbidden("your role is read-only")
-}
 
 // authorize identifies the caller, or returns nil when credentials are missing or invalid.
 // The static bootstrap token is always a full admin; named tokens come from the database;
@@ -317,10 +339,12 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sess.Role == "team" && !member {
-		return nil, apierror.Forbidden("team membership no longer grants access")
+	var claimsExpire *time.Time
+	if !sess.ClaimsExpire.IsZero() {
+		value := sess.ClaimsExpire
+		claimsExpire = &value
 	}
-	p := &principal{Groups: sess.Groups, TeamMember: member, Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}
+	p := &principal{Claims: sess.Claims, ClaimsFresh: sess.Claims != nil, ClaimsExpire: claimsExpire, Groups: sess.Groups, TeamMember: member, Name: sess.Name, ID: sess.Subject, Subject: sess.Subject, Issuer: s.OIDC.Issuer(), Role: sess.Role, Via: "oidc"}
 	// Cookies are sent automatically by browsers; demand a header a cross-site form cannot set.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("X-VMCP-CSRF") == "" {
 		return p, apierror.Forbidden("missing X-VMCP-CSRF header")
@@ -329,7 +353,9 @@ func (s *Server) authorize(r *http.Request) (*principal, error) {
 }
 
 func (s *Server) getMe(w http.ResponseWriter, r *http.Request) error {
-	return writeJSON(w, http.StatusOK, r.Context().Value(principalKey{}))
+	p := *r.Context().Value(principalKey{}).(*principal)
+	w.Header().Set("Cache-Control", "no-store")
+	return writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) authConfig(w http.ResponseWriter, _ *http.Request) {

@@ -24,7 +24,7 @@ type ToolGrant struct {
 }
 
 func (t *Tx) ListToolGrants(ctx context.Context) ([]ToolGrant, error) {
-	rows, err := t.q.Query(ctx, `SELECT v.slug,u.slug,g.tool_name,g.status,g.reason,g.actor,g.version,p.slug,COALESCE(pt.slug,''),COALESCE(ut.slug,''),`+ownerPredicate(ctx, "u.owner_team_id")+` FROM tool_grants g JOIN virtual_servers v ON v.id=g.virtual_server_id JOIN upstreams u ON u.id=g.upstream_id JOIN projects p ON p.id=v.project_id LEFT JOIN teams pt ON pt.id=p.owner_team_id LEFT JOIN teams ut ON ut.id=u.owner_team_id WHERE (`+vsPredicate(ctx, "v")+` OR `+ownerPredicate(ctx, "u.owner_team_id")+`) ORDER BY v.slug,u.slug,g.tool_name`)
+	rows, err := t.q.Query(ctx, `SELECT v.slug,u.slug,g.tool_name,g.status,g.reason,g.actor,g.version,p.slug,COALESCE(pt.slug,''),COALESCE(ut.slug,''),`+configurationGrantDecisionSQL(ctx)+` FROM tool_grants g JOIN virtual_servers v ON v.id=g.virtual_server_id JOIN upstreams u ON u.id=g.upstream_id JOIN projects p ON p.id=v.project_id LEFT JOIN teams pt ON pt.id=p.owner_team_id LEFT JOIN teams ut ON ut.id=u.owner_team_id WHERE (`+vsPredicate(ctx, "v")+` OR `+upstreamConfigurationPredicate(ctx)+`) ORDER BY v.slug,u.slug,g.tool_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +44,13 @@ func (t *Tx) PutToolGrant(ctx context.Context, g ToolGrant) error {
 }
 
 func (t *Tx) putToolGrant(ctx context.Context, g ToolGrant, changed *bool) error {
+	if c, ok := configurationFrom(ctx); ok {
+		body := map[string]any{"status": g.Status, "virtualserver": g.VirtualServer, "upstream": g.Upstream}
+		if err := t.checkConfigurationGrant(ctx, c, body); err != nil {
+			return err
+		}
+	}
+
 	if len(g.Reason) > 2000 || strings.TrimSpace(g.Tool) == "" {
 		return apierror.Validation([]apierror.FieldError{vf("/tool", "tool required and reason limited to 2000 bytes")})
 	}

@@ -293,7 +293,7 @@ func TestExternalTeamLoginAndClaimFreshness(t *testing.T) {
 		t.Fatalf("team identity lost: %+v", s)
 	}
 	p.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
-	if _, ok := p.Session(req); ok {
-		t.Fatal("stale team membership retained")
+	if expired, ok := p.Session(req); !ok || len(expired.Groups) != 0 {
+		t.Fatal("valid identity lost or stale groups retained")
 	}
 }

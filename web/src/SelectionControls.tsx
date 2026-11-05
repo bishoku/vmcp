@@ -1,4 +1,5 @@
-import { useContext, useId, useLayoutEffect, useRef, type ComponentProps, type ReactNode } from 'react'
+import { useConfigurationField } from './configuration-access'
+import { useContext,useId,useLayoutEffect,useRef,type ComponentProps,type ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { FormContext } from './form-validation'
 import { btn } from './styles'
@@ -13,6 +14,7 @@ type ChoiceProps = Omit<ComponentProps<'input'>, 'type' | 'children' | 'ref'> & 
   indeterminate?: boolean
 }
 function Choice({ label, description, end, field, error, variant = 'card', indeterminate = false, kind, className = '', id: suppliedId, onChange, ...props }: ChoiceProps & { kind: 'checkbox' | 'switch' }) {
+  const fieldAllowed=useConfigurationField(field)
   const validation = useContext(FormContext)
   const generatedId = useId()
   const id = suppliedId ?? `${generatedId}-choice`
@@ -23,7 +25,7 @@ function Choice({ label, description, end, field, error, variant = 'card', indet
   const describedBy = [props['aria-describedby'], description ? `${id}-description` : '', errors.length ? `${id}-error` : ''].filter(Boolean).join(' ') || undefined
   return <div className={`choice-field choice-${variant} ${className}`}>
     <label htmlFor={id} className="choice-label">
-      <input {...props} ref={native} id={id} type="checkbox" role={kind === 'switch' ? 'switch' : undefined} className={`choice-input choice-${kind}`} aria-labelledby={props['aria-label'] ? props['aria-labelledby'] : props['aria-labelledby'] ?? `${id}-label`} aria-describedby={describedBy} aria-invalid={invalid || undefined} data-validation-field={field} onChange={event => { if (field) validation?.clear(field); onChange?.(event) }}/>
+      <input {...props} disabled={props.disabled||!fieldAllowed} ref={native} id={id} type="checkbox" role={kind === 'switch' ? 'switch' : undefined} className={`choice-input choice-${kind}`} aria-labelledby={props['aria-label'] ? props['aria-labelledby'] : props['aria-labelledby'] ?? `${id}-label`} aria-describedby={describedBy} aria-invalid={invalid || undefined} data-validation-field={field} onChange={event => { if (field) validation?.clear(field); onChange?.(event) }}/>
       <span className="min-w-0 flex-1"><span id={`${id}-label`} className="block text-xs font-medium text-ink">{label}</span>{description && <span id={`${id}-description`} className="mt-1.5 block text-xs font-normal leading-relaxed text-ink-muted">{description}</span>}</span>
       {end && <span className="shrink-0">{end}</span>}
     </label>

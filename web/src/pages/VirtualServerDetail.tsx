@@ -1,30 +1,32 @@
+import { useConfigurationPermissions } from '../configuration-access'
 import AuditSettingsPanel from '../AuditSettingsPanel'
-import { useEffect, useState } from 'react'
-import { api, type VirtualServer } from '../api'
+import { useEffect,useState } from 'react'
+import { api,type VirtualServer } from '../api'
 import GuidanceEditor from '../GuidanceEditor'
 import Button from '../Button'
 import { TagBadge } from '../Badge'
-import { EmptyState, LoadingState } from '../Feedback'
-import { BookOpen, Box, Cable, ChevronRight, Fingerprint, LayoutDashboard, Pencil, Radio, RefreshCw, Server, ShieldCheck, Wrench } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { EmptyState,LoadingState } from '../Feedback'
+import { BookOpen,Box,Cable,ChevronRight,Fingerprint,LayoutDashboard,Pencil,Radio,RefreshCw,Server,ShieldCheck,Wrench } from 'lucide-react'
+import { Link,useParams } from 'react-router-dom'
 import { useInventory } from '../connections/useInventory'
-import { relationships, serverPath } from '../connections/model'
+import { relationships,serverPath } from '../connections/model'
 import ServerProtection from '../connections/ServerProtection'
 import ServerOverview from '../connections/ServerOverview'
 import ServerCapabilities from '../connections/ServerCapabilities'
 import ServerAccess from '../connections/ServerAccess'
 import Connect from '../connections/Connect'
 import RecentActivity from '../connections/RecentActivity'
-import { ErrorBox, Pill } from '../ui'
-import { btn, primary } from '../styles'
-import { useCapabilities } from '../interaction'
+import { ErrorBox,Pill } from '../ui'
+import { btn,primary } from '../styles'
 
 const viewIcons = {guidance:BookOpen,overview:LayoutDashboard,capabilities:Wrench,access:Fingerprint,protection:ShieldCheck,connect:Cable,activity:Radio}
 const views = ['overview','capabilities','guidance','access','protection','connect','activity'] as const
 export default function VirtualServerDetail() {
   const {slug='',view='overview'} = useParams()
   const inventory = useInventory()
-  const {edit} = useCapabilities()
+
+ const access=useConfigurationPermissions('virtual_servers',slug,['update'])
+ const edit=(access.can('update'))
   const server = inventory.servers.find(s=>s.slug===slug)
   const active = views.includes(view as typeof views[number]) ? view : 'overview'
   const grants = relationships(inventory.servers,inventory.upstreams,inventory.keys,inventory.bindings).filter(e=>e.server===slug && e.kind!=='upstream')

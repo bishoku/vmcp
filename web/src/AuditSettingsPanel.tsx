@@ -1,19 +1,29 @@
-import { useEffect, useState } from 'react'
+import LocalAuditSettingsPanel from './LocalAuditSettingsPanel'
+import { useConfigurationPermissions } from './configuration-access'
+import { useEffect,useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
-import { api, type AuditSettings, type AuditRule, type AuditPreview } from './api'
-import { useCapabilities, useDraft, useOperation } from './interaction'
+import { api,type AuditSettings,type AuditRule,type AuditPreview } from './api'
+import { useDraft,useOperation } from './interaction'
 import { ErrorBox } from './ui'
 import { ServerPanel } from './connections/ServerPanels'
-import { btn, input, primary } from './styles'
+import { btn,input,primary } from './styles'
 
 const scopes=['virtual','upstream','control','system','reads','omni','omni_diagnostics','omni_embedding','omni_rerank'] as const
 const labels:Record<string,string>={virtual:'Virtual-server calls',upstream:'Upstream calls',control:'Management API',system:'System payload scope',reads:'Read API calls',omni:'Omni MCP calls',omni_diagnostics:'Omni discovery pipeline',omni_embedding:'Omni embedding provider',omni_rerank:'Omni reranker provider'}
 export default function AuditSettingsPanel({scope='global',slug=''}:{scope?:'global'|'virtual'|'upstream';slug?:string}){
- const {manageTokens}=useCapabilities()
- if(!manageTokens)return null
- return <AuditEditor key={`${scope}:${slug}`} scope={scope} slug={slug}/>
+ if(scope!=='global')return <LocalAuditSettingsPanel scope={scope} slug={slug}/>
+ return <GlobalAuditSettingsPanel/>
 }
-function AuditEditor({scope,slug}:{scope:'global'|'virtual'|'upstream';slug:string}){
+function GlobalAuditSettingsPanel(){
+ const scope='global',slug=''
+
+ const access=useConfigurationPermissions('audit','',['settings.read','durability.update','retention.update','capture.update','redaction.global.update','export_policy.update','diagnostics.update','redaction.local.update'])
+ const readable=(access.can('settings.read'))
+ const writable=(['durability.update','retention.update','capture.update','redaction.global.update','export_policy.update','diagnostics.update','redaction.local.update'].every(access.can))
+ if(!readable)return null
+ return <AuditEditor key={`${scope}:${slug}`} scope={scope} slug={slug} writable={writable}/>
+}
+function AuditEditor({scope,slug,writable}:{scope:'global'|'virtual'|'upstream';slug:string;writable:boolean}){
  const [draft,setDraft,resetDraft,openDraft]=useDraft<AuditSettings|null>(null,()=>scope+slug)
  const [error,setError]=useState(''),[notice,setNotice]=useState('')
  const {busy,run}=useOperation()
@@ -37,7 +47,7 @@ function AuditEditor({scope,slug}:{scope:'global'|'virtual'|'upstream';slug:stri
  const test=async()=>{if(!draft)return;setError('');setResults(null);await run(async()=>{try{const request=JSON.parse(requestText),response=JSON.parse(responseText);const common={editScope:scope,settings:draft,scope:previewScope,virtualServer:vs,upstream:up};const [a,b]=await Promise.all([api.previewAudit({...common,direction:'request',payload:request}),api.previewAudit({...common,direction:'response',payload:response})]);setResults({request:a,response:b})}catch(e){setError(e instanceof Error?e.message:String(e))}})}
  const save=async()=>{if(!draft)return;setError('');await run(async()=>{try{const saved=await api.saveAuditSettings(draft);resetDraft(saved);setResults(null);setNotice('Audit settings saved. New operations use the updated policy after configuration refresh.')}catch(e){setError(e instanceof Error?e.message:String(e))}})}
  return <ServerPanel title={scope==='global'?'Audit capture & masking':'Audit payload masking'} description={scope==='global'?'Durability, payload retention and global masking rules':'Local rules add to global protection and apply to both requests and responses.'} icon={ShieldCheck}>
- <fieldset disabled={busy} className="space-y-5 panel-body">
+ <fieldset disabled={busy||!writable} className="space-y-5 panel-body">
  {error&&<ErrorBox>{error}<button className={btn} onClick={()=>{void api.auditSettings().then(v=>{openDraft(v);setError('');setResults(null)}).catch(e=>setError(String(e)))}}>Reload audit settings</button></ErrorBox>}{notice&&<p role="status" className="text-sm">{notice}</p>}
  {!draft?<p className="text-sm text-ink-muted">Loading audit settings…</p>:<>
  {scope==='global'&&<>

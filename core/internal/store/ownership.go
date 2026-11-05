@@ -45,6 +45,9 @@ func ownerPredicate(ctx context.Context, column string) string {
 	return "(" + strings.Join(parts, " OR ") + ")"
 }
 func vsPredicate(ctx context.Context, alias string) string {
+	if HasConfigurationPolicy(ctx) {
+		return configurationSQL(ctx, "virtual_server", alias)
+	}
 	return ownerPredicate(ctx, "(SELECT owner_team_id FROM projects WHERE id="+alias+".project_id)")
 }
 func (t *Tx) checkOwner(ctx context.Context, team string) error {
@@ -107,7 +110,13 @@ type Project struct {
 }
 
 func (t *Tx) ListTeams(ctx context.Context) ([]Team, error) {
-	rows, err := t.q.Query(ctx, `SELECT slug,name,issuer,group_value,version,`+ownerPredicate(ctx, "id")+` FROM teams ORDER BY slug`)
+	predicate, manage := "TRUE", ownerPredicate(ctx, "id")
+	if v, ok := configurationFrom(ctx); ok {
+		predicate = configurationSQL(ctx, "team", "teams")
+		manage = configurationPermissionSQL(v.Policy, v.Who, "teams.manage", "team", "teams")
+	}
+
+	rows, err := t.q.Query(ctx, `SELECT slug,name,issuer,group_value,version,`+manage+` FROM teams WHERE `+predicate+` ORDER BY slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +151,7 @@ func (t *Tx) PutTeam(ctx context.Context, v Team) error {
 	return mapWriteErr(err, "team", v.Slug)
 }
 func (t *Tx) ListProjects(ctx context.Context) ([]Project, error) {
-	rows, err := t.q.Query(ctx, `SELECT p.slug,p.name,COALESCE(t.slug,''),p.version FROM projects p LEFT JOIN teams t ON t.id=p.owner_team_id WHERE `+ownerPredicate(ctx, "p.owner_team_id")+` ORDER BY p.slug`)
+	rows, err := t.q.Query(ctx, `SELECT p.slug,p.name,COALESCE(t.slug,''),p.version FROM projects p LEFT JOIN teams t ON t.id=p.owner_team_id WHERE `+projectConfigurationPredicate(ctx)+` ORDER BY p.slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +206,9 @@ func (t *Tx) PutProject(ctx context.Context, v Project) error {
 // credentialPredicate prevents a scoped editor from controlling a key/binding
 // that also grants access outside their scope. Empty legacy grants remain default.
 func credentialPredicate(ctx context.Context, kind, alias string) string {
+	if HasConfigurationPolicy(ctx) {
+		return configurationCredentialSQL(ctx, kind, alias)
+	}
 	a, ok := AccessFrom(ctx)
 	if !ok || a.Role == "admin" {
 		return "TRUE"
@@ -234,7 +246,7 @@ func (t *Tx) checkCredential(ctx context.Context, kind, id string) error {
 func internalAccess(ctx context.Context) context.Context {
 	a, _ := AccessFrom(ctx)
 	a.Role = "admin"
-	return WithAccess(ctx, a)
+	return configurationInternal(WithAccess(ctx, a))
 }
 func (t *Tx) PutVirtualServer(ctx context.Context, slug string, in VirtualServerInput, match *int64, create bool) (*VirtualServer, Outcome, error) {
 	var oldProject string

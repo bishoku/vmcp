@@ -6,7 +6,7 @@ import Audit from './Audit'
 const render=(ui:ReactNode)=>renderUI(<MemoryRouter>{ui}</MemoryRouter>)
 import { api, type AuditEvent } from '../api'
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
-const event=(id:number,tool:string)=>({id,tool,time:'2026-10-11T12:00:00Z',status:'ok',durationMs:1,virtualServer:'demo'}) as AuditEvent
+const event=(id:number,tool:string)=>({id,tool,time:'2026-10-11T12:00:00Z',status:'ok',durationMs:1,virtualServer:'demo',capabilities:{canReadMetadata:true,canReadIdentities:true,canReadDetails:true,canReadPayload:false,canReadRequestPayload:false,canReadResponsePayload:false}}) as AuditEvent
 test('obsolete audit responses cannot replace the current filter and are aborted',async()=>{
  let old!:(value:{items:AuditEvent[]})=>void
  const list=vi.spyOn(api,'listAudit').mockImplementationOnce(()=>new Promise(resolve=>{old=resolve})).mockResolvedValue({items:[event(2,'current')]})
@@ -145,4 +145,21 @@ test('Omni activity is separately filterable',async()=>{
  render(<Audit/>);await waitFor(()=>expect(list).toHaveBeenCalled())
  fireEvent.change(screen.getByRole('combobox',{name:'Activity'}),{target:{value:'omni'}})
  await waitFor(()=>expect(list.mock.calls.at(-1)?.[0].activity).toBe('omni'))
+})
+
+test('forbidden refresh clears cached metadata instead of retaining old rows',async()=>{
+ const {ApiError}=await import('../api')
+ vi.spyOn(api,'listAudit').mockResolvedValueOnce({items:[event(1,'previously-visible')]}).mockRejectedValueOnce(new ApiError(403,'Audit metadata permission required'))
+ render(<Audit/>);await screen.findByText('previously-visible')
+ fireEvent.click(screen.getByRole('button',{name:'Refresh'}))
+ await waitFor(()=>expect(screen.queryByText('previously-visible')).toBeNull())
+ expect(screen.queryByRole('button',{name:'Details'})).toBeNull()
+})
+
+test('identity filters and sensitive metadata are absent when capabilities deny them',async()=>{
+ vi.spyOn(api,'listAudit').mockResolvedValue({items:[{...event(1,'visible-action'),actorId:'hidden-identity',reason:'hidden-reason',capabilities:{canReadMetadata:true,canReadIdentities:false,canReadDetails:false,canReadPayload:false,canReadRequestPayload:false,canReadResponsePayload:false}}],capabilities:{canFilterIdentities:false}})
+ render(<Audit/>);await screen.findByText('visible-action')
+ fireEvent.click(screen.getByRole('button',{name:'Correlation filters'}))
+ for(const label of ['Actor ID','Subject','Agent key / oauth:binding'])expect(screen.queryByLabelText(label)).toBeNull()
+ expect(document.body.textContent).not.toContain('hidden-identity');expect(document.body.textContent).not.toContain('hidden-reason')
 })

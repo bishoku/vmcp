@@ -54,7 +54,7 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request, vs config
 // authenticateRuntime validates credentials and IP restrictions even for public Omni targets.
 func (h *Handler) authenticateRuntime(w http.ResponseWriter, r *http.Request, vs config.VirtualServer, snap *config.Snapshot, requireAssignment bool) (Owner, bool) {
 	deny := func(status int, msg, subject string, invalidToken bool) (Owner, bool) {
-		h.record(audit.Event{VirtualServer: vs.Slug, ClientIP: h.ipString(r), Method: r.Method, Subject: subject, Status: "denied", Reason: msg})
+		h.record(audit.Event{Access: snap.ConsumerAudit(vs), Revision: snap.Revision, VirtualServer: vs.Slug, ClientIP: h.ipString(r), Method: r.Method, Subject: subject, Status: "denied", Reason: msg})
 		if status == http.StatusUnauthorized {
 			ch := `Bearer realm="vmcp"`
 			if h.JWT != nil {

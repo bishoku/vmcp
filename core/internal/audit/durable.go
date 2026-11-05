@@ -63,6 +63,18 @@ func TraceID(parent string) string {
 }
 
 func Prepare(e Event) (Event, error) {
+	if err := e.Access.validate(); err != nil {
+		return e, err
+	}
+	e.Access = e.Access.Clone()
+	if e.Access != nil {
+		if e.Revision == 0 {
+			e.Revision = e.Access.Revision
+		}
+		if e.Revision != e.Access.Revision {
+			return e, errors.New("audit revision differs from pinned context")
+		}
+	}
 	var err error
 	if e.EventID == "" {
 		e.EventID, err = NewID()
@@ -129,7 +141,8 @@ func Prepare(e Event) (Event, error) {
 	return e, nil
 }
 
-// Sink is shared by a pool and a transaction. Insert never stores request bodies or credentials.
+// Sink is implemented by pools and transactions. Insert requires a caller-owned
+// transaction for atomic event, provenance and encrypted payload persistence.
 type Sink interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
@@ -156,8 +169,14 @@ func Insert(ctx context.Context, q Sink, e Event) error {
 	if err != nil {
 		return err
 	}
-	_, err = q.Exec(ctx, insertSQL, args...)
+	tag, err := q.Exec(ctx, insertSQL, args...)
 	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil
+	}
+	if err = insertAccess(ctx, q, e); err != nil {
 		return err
 	}
 	if len(e.Ciphertext) > 0 {
@@ -178,6 +197,9 @@ func Persist(ctx context.Context, pool *pgxpool.Pool, e Event) error {
 	defer tx.Rollback(context.Background())
 	if _, err = tx.Exec(ctx, `SET LOCAL synchronous_commit=on`); err != nil {
 		return err
+	}
+	if e.Revision == 0 && e.Access != nil {
+		e.Revision = e.Access.Revision
 	}
 	if e.Revision == 0 {
 		if err = tx.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&e.Revision); err != nil {
@@ -236,7 +258,7 @@ func (d *Durable) groupPersist(ctx context.Context, e Event) error {
 	if len(batchFromTest(d)) == 0 && d.Pool == nil {
 		return Persist(ctx, d.Pool, e)
 	}
-	size := int64(len(e.Ciphertext) + 4096)
+	size := eventQueueBytes(e)
 	if d.queuedBytes.Add(size) > 32<<20 {
 		d.queuedBytes.Add(-size)
 		return errors.New("strict audit queue capacity exceeded")
@@ -325,9 +347,13 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 		return err
 	}
 	var fallbackRev int64
+	prepared := make([]Event, len(batch))
 	statements := &pgx.Batch{}
-	for _, r := range batch {
-		e := r.event
+	for i, r := range batch {
+		e, err := Prepare(r.event)
+		if err != nil {
+			return err
+		}
 		if e.Revision == 0 {
 			if fallbackRev == 0 {
 				if err = tx.QueryRow(ctx, `SELECT revision FROM config_revision`).Scan(&fallbackRev); err != nil {
@@ -340,20 +366,45 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 		if err != nil {
 			return err
 		}
+		prepared[i] = e
 		statements.Queue(insertSQL, args...)
-		if len(e.Ciphertext) > 0 {
-			statements.Queue(`INSERT INTO audit_payloads(event_id,ciphertext,expires_at) VALUES($1::uuid,$2,$3) ON CONFLICT(event_id) DO NOTHING`, e.EventID, e.Ciphertext, e.PayloadExpiresAt)
-		}
 	}
 	results := tx.SendBatch(ctx, statements)
-	for range statements.Len() {
-		if _, err := results.Exec(); err != nil {
+	inserted := make([]bool, len(prepared))
+	for i := range prepared {
+		tag, err := results.Exec()
+		if err != nil {
 			_ = results.Close()
 			return err
 		}
+		inserted[i] = tag.RowsAffected() > 0
 	}
-	if err := results.Close(); err != nil {
+	if err = results.Close(); err != nil {
 		return err
+	}
+	// Only rows inserted in this transaction may gain context or payload. This
+	// keeps replay idempotent and cannot backfill ownership onto legacy evidence.
+	dependents := &pgx.Batch{}
+	for i, e := range prepared {
+		if !inserted[i] {
+			continue
+		}
+		queueAccess(dependents, e)
+		if len(e.Ciphertext) > 0 {
+			dependents.Queue(`INSERT INTO audit_payloads(event_id,ciphertext,expires_at) VALUES($1,$2,$3)`, e.EventID, e.Ciphertext, e.PayloadExpiresAt)
+		}
+	}
+	if dependents.Len() > 0 {
+		results = tx.SendBatch(ctx, dependents)
+		for range dependents.Len() {
+			if _, err = results.Exec(); err != nil {
+				_ = results.Close()
+				return err
+			}
+		}
+		if err = results.Close(); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

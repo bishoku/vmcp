@@ -236,3 +236,30 @@ python3 benchmark/kubernetes/run.py --database-focus --data-plane-cpus 8 \
 
 This exercises the NodePort/CNI path via the test proxy, not a production ingress.
 Changing `VMCP_ACCEPTANCE_ROUTING=pod` excludes NodePort from the experiment.
+
+
+## Authorization major release: measurement scope
+
+The runner builds the current source tree, including embedded migrations; the
+acceptance seed migrates a disposable database to the current schema. Transfer the
+complete source tree, including new migration files, to the test server. Published
+older quickstart image digests do not contain local authorization changes. This
+runner is independent of the Helm quickstart demo seed.
+
+The existing profile is suitable for comparing **MCP data-plane throughput,
+latency, snapshot refresh and metadata-only strict audit costs** before/after the
+authorization changes. Run `--smoke` on the test server before the full profile,
+and use identical host resources, inventory, PostgreSQL settings and audit mode
+for both measurements. Preserve the source-tree hash and exported evidence.
+
+This profile does not generate control-plane role/claim evaluations, scoped
+configuration requests, or audit list/detail/request/response reads. It also does
+not enable payload capture. A control-plane pod and bootstrap credential being
+present does not make those authorization paths part of the load measurement.
+Measure those paths with separate declared traffic profiles before making claims
+about their latency or capacity. Keep metadata-only and payload-capture results
+separate, and include ownership-scoped inventories and different assignment counts
+when evaluating granular authorization scaling.
+
+A successful load run does not replace a real-IdP login or multi-replica
+administrator recovery drill. The existing runner has one control-plane pod.

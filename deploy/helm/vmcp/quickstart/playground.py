@@ -41,7 +41,7 @@ class API:
     def items(self, path):
         result, cursor = [], ''
         while True:
-            response = self.request('GET', path + ('?cursor=' + urllib.parse.quote(cursor, safe='') if cursor else ''))
+            response = self.request('GET', path + (('&' if '?' in path else '?') + 'cursor=' + urllib.parse.quote(cursor, safe='') if cursor else ''))
             if isinstance(response, list): return response
             result.extend(response['items'])
             cursor = response.get('nextCursor')
@@ -178,8 +178,67 @@ def seed(api, a, save_key, ledger=None, save_ledger=lambda _state: None):
             if selected and slug not in existing:
                 api.request('POST', '/api/v1/identity-bindings', dict(slug=slug, description=team['name'] + ' SSO group access to team virtual servers',
                     enabled=True, conditions=[dict(claim='groups', op='contains', value=team['slug'])], virtualServers=selected))
+    if a.keycloak:
+        seed_authorization(api, a, ledger, save_ledger)
     print(f'Playground ready: {created} missing resources created; existing resources and grant decisions preserved.')
 
+
+
+
+def seed_console_access(api, a, ledger, save_ledger):
+    """Keycloak-only installs need explicit console grants too, without runtime fixtures."""
+    existing = {t['slug'] for t in api.items('/api/v1/teams')}
+    for team in fixtures(a)[0]:
+        if team['slug'] not in existing:
+            api.request('POST', '/api/v1/teams', team)
+    seed_authorization(api, a, ledger, save_ledger)
+
+def seed_authorization(api, a, ledger, save_ledger):
+    """Explicit console grants, separate from runtime identity bindings.
+
+    Creation receipts prevent a rerun from restoring mappings/assignments deleted
+    by the demo user. Existing disabled/edited records are never overwritten.
+    """
+    roles = {r['slug']: r for r in api.items('/api/v1/roles')}
+    mappings = api.items('/api/v1/identity-mappings')
+    assignments = api.items('/api/v1/role-assignments')
+    teams = {r['slug']: r for r in api.items('/api/v1/teams')}
+    scopes = {r['slug']: r['id'] for r in api.items('/api/v1/access/scopes?kind=team')}
+
+    def grant(group, role_names, scope):
+        key = 'console/mapping/' + group
+        conditions = [dict(path='groups', operator='array_contains', value=group)]
+        mapping = next((m for m in mappings if m['issuer'] == issuer(a) and
+                        m['principalKind'] == 'oidc' and m['conditions'] == conditions), None)
+        if key in ledger and (mapping is None or mapping['id'] != ledger[key]):
+            return  # deleted/replaced by the user; do not restore access
+        if mapping is None:
+            mapping = api.request('POST', '/api/v1/identity-mappings', dict(
+                issuer=issuer(a), principalKind='oidc', conditions=conditions, enabled=True))
+            mappings.append(mapping)
+        ledger[key] = mapping['id']
+        save_ledger(ledger)
+        if not mapping['enabled']: return
+        for name in role_names:
+            receipt = 'console/assignment/' + group + '/' + name
+            if receipt in ledger: continue
+            existing = next((v for v in assignments if v.get('mappingId') == mapping['id'] and
+                             v['roleId'] == roles[name]['id'] and v['scope'] == scope), None)
+            if existing is None:
+                existing = api.request('POST', '/api/v1/role-assignments', dict(
+                    roleId=roles[name]['id'], mappingId=mapping['id'], scope=scope,
+                    captureScopes=[], enabled=True))
+                assignments.append(existing)
+            ledger[receipt] = existing['id']
+            save_ledger(ledger)
+
+    for slug in catalog.TEAM:
+        if (teams.get(slug, {}).get('issuer') != issuer(a) or
+                teams.get(slug, {}).get('group') != slug or slug not in scopes): continue
+        grant(slug, ['observer', 'upstream-maintainer', 'virtual-server-editor',
+                     'credential-manager', 'access-approver'], dict(kind='team', id=scopes[slug]))
+    # Metadata only. No request/response, identity details or historical legacy grants.
+    grant(catalog.VIEWER_GROUP, ['auditor'], dict(kind='tenant'))
 
 def seed_keycloak(api, credentials, a):
     auth = api.request('POST', '/realms/master/protocol/openid-connect/token',

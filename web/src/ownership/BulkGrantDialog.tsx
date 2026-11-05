@@ -1,8 +1,9 @@
+import { useConfigurationChecks } from '../configuration-access'
 import { groupGrants } from './grants'
 import { useState } from 'react'
-import { api, type ToolGrant, type BulkToolGrantResult } from '../api'
+import { api,type ToolGrant,type BulkToolGrantResult } from '../api'
 import Button from '../Button'
-import { Modal, ErrorBox } from '../ui'
+import { Modal,ErrorBox } from '../ui'
 import { input } from '../styles'
 
 export default function BulkGrantDialog({ items, status, onClose, onComplete }: {
@@ -10,6 +11,8 @@ export default function BulkGrantDialog({ items, status, onClose, onComplete }: 
 }) {
  const [reason, setReason] = useState(''), [busy, setBusy] = useState(false)
  const [result, setResult] = useState<BulkToolGrantResult>(), [error, setError] = useState('')
+ const access=useConfigurationChecks(items.map(item=>({method:'POST',path:'/tool-grants',body:{...item,status,reason:reason.trim()||item.reason}})))
+ const allowed=(access.ready&&access.allowed.every(Boolean))
  const label = status === 'pending' ? 'Request access' : status === 'approved' ? 'Approve access' : status === 'rejected' ? 'Reject requests' : 'Revoke access'
  const groups = groupGrants(items)
  const submit = async () => {
@@ -22,7 +25,7 @@ export default function BulkGrantDialog({ items, status, onClose, onComplete }: 
   finally { setBusy(false) }
  }
  return <Modal title={label} description="Review the selected tools before submitting. Each tool keeps its own approval and audit record." size="wide" busy={busy} onClose={onClose}
-  footer={<div className="flex justify-end gap-2"><Button disabled={busy} onClick={onClose}>{result || error ? 'Close' : 'Cancel'}</Button>{!result && !error && <Button variant={status === 'revoked' ? 'danger' : 'primary'} loading={busy} disabled={!items.length || items.length > 200 || ((status === 'rejected' || status === 'revoked') && !reason.trim())} onClick={() => void submit()}>{label} ({items.length})</Button>}</div>}>
+  footer={<div className="flex justify-end gap-2"><Button disabled={busy} onClick={onClose}>{result || error ? 'Close' : 'Cancel'}</Button>{!result && !error && <Button variant={status === 'revoked' ? 'danger' : 'primary'} loading={busy} disabled={!allowed || !items.length || items.length > 200 || ((status === 'rejected' || status === 'revoked') && !reason.trim())} onClick={() => void submit()}>{label} ({items.length})</Button>}</div>}>
   <div className="space-y-4">
    {error && <ErrorBox>{error}</ErrorBox>}
    {result && <div role="status" className="surface-inset rounded-xl p-4"><p>{result.changed} updated · {result.unchanged} unchanged · {result.failed} failed</p><p className="supporting-copy mt-2">Approval changes take effect after configuration publication. This does not confirm data-plane propagation.</p>{result.items.filter(item => item.result === 'failed').map(item => <p key={JSON.stringify([item.virtualServer,item.upstream,item.tool])} className="mt-2 text-sm">{item.virtualServer} / {item.upstream} / {item.tool}: {item.code} — {item.message}</p>)}</div>}

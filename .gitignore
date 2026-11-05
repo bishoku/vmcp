@@ -31,3 +31,5 @@ artifacts/
 
 # Local GPU model guide, chart and build artifacts (never commit).
 /local/omni-gpu-models/
+
+CODE_REVIEW_REPORT.md
