@@ -1,0 +1,14 @@
+goos: linux
+goarch: amd64
+pkg: github.com/bishoku/vmcp/core/internal/authz
+cpu: Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz
+BenchmarkPolicyScaling/assignments=10/decision-64         	   82263	      2936 ns/op	    1000 B/op	       9 allocs/op
+BenchmarkPolicyScaling/assignments=10/audit-page-50-64    	     230	   1197857 ns/op	  400000 B/op	    3600 allocs/op
+BenchmarkPolicyScaling/assignments=100/decision-64        	   13340	     18438 ns/op	    7240 B/op	      15 allocs/op
+BenchmarkPolicyScaling/assignments=100/audit-page-50-64   	      32	   7360874 ns/op	 2896008 B/op	    6000 allocs/op
+BenchmarkPolicyScaling/assignments=1000/decision-64       	    1054	    233815 ns/op	  109304 B/op	      26 allocs/op
+BenchmarkPolicyScaling/assignments=1000/audit-page-50-64  	       3	  92998181 ns/op	43721674 B/op	   10400 allocs/op
+BenchmarkPolicyScaling/assignments=10000/decision-64      	     130	   1779695 ns/op	  873816 B/op	      85 allocs/op
+BenchmarkPolicyScaling/assignments=10000/audit-page-50-64 	       1	 729834202 ns/op	349526736 B/op	   34003 allocs/op
+PASS
+ok  	github.com/bishoku/vmcp/core/internal/authz	2.533s

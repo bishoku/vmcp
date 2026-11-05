@@ -4058,6 +4058,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Console permission denied, or runtime_access_denied when the separately supplied runtime identity is rejected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -8855,6 +8865,7 @@
             "enum": [
               "unauthorized",
               "forbidden",
+              "runtime_access_denied",
               "not_found",
               "already_exists",
               "in_use",

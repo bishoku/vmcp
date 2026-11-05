@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { upstream } from '../src/connections/fixtures'
@@ -6,6 +7,8 @@ test.use({viewport:{width:1280,height:900}})
 async function setup(page:Page,fail=false){
  let saved={...upstream}
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),path=new URL(req.url()).pathname
@@ -18,6 +21,7 @@ async function setup(page:Page,fail=false){
   if(path.endsWith('/admin-tokens')&&req.method()==='POST')return route.fulfill({json:{slug:'release-agent',token:'private-test-secret',version:1}})
   if(path.endsWith('/info'))return route.fulfill({json:{version:'dev-test',configRevision:1}})
   if(path.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
+  if(path==='/api/v1/upstreams/'+(saved).slug)return route.fulfill({json:saved})
   if(path.endsWith('/upstreams'))return route.fulfill({json:{items:[saved]}})
   return route.fulfill({json:{items:[]}})
  })

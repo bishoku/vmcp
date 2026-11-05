@@ -412,14 +412,15 @@ async function request<T>(method: string, path: string, body?: unknown, version?
     clearToken()
     window.dispatchEvent(new Event('vmcp:session-expired'))
   }
-  if((protectedConfiguration)&&res.status===403){
-    downloadedConfiguration.clear()
-    window.dispatchEvent(new Event('vmcp:configuration-denied'))
-  }
   if((protectedConfiguration)&&res.ok&&method==='GET')downloadedConfiguration.add(path.split('?')[0])
   if (res.status === 204) return undefined as T
   if (res.ok && responseType === 'blob') return await res.blob() as T
   const data = await res.json().catch(() => ({}))
+  // Omni's separately supplied runtime credential does not revoke console access.
+  if(protectedConfiguration && res.status===403 && !(path==='/omni/preview' && data.code==='runtime_access_denied')){
+    downloadedConfiguration.clear()
+    window.dispatchEvent(new Event('vmcp:configuration-denied'))
+  }
   if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "Your session expired. Sign in again to continue." : res.status === 412 ? "This item changed in another session. Reload before saving again." : data.detail ?? data.title ?? res.statusText, data.code, data.errors)
   return data as T
 }

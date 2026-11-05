@@ -1,0 +1,214 @@
+{
+  "sourceRevision": "5d49db89e89de698bdfdeb4e0c8d04fdb918fc8b",
+  "sourceTreeSHA256": "903be23b8bd39e23bd8dfba0e96d1222309f7cca75bc5dc7b5051f751248fb5a",
+  "workingTree": "?? local/\n",
+  "images": {
+    "data-plane": "sha256:57e177a77dc9df551950e7918d11d510642f179691eb036ea1fd3d42bfec7f92",
+    "control-plane": "sha256:11769238232de053ddb4fbd44ecb4a86149a52cdc7e7be2b683abd3bb13813a7"
+  },
+  "node": {
+    "architecture": "amd64",
+    "containerRuntimeVersion": "containerd://2.1.6",
+    "kernelVersion": "7.0.0-34-generic",
+    "kubeletVersion": "v1.35.6",
+    "operatingSystem": "linux",
+    "osImage": "Ubuntu 24.04.5 LTS"
+  },
+  "capacity": {
+    "cpu": "64",
+    "ephemeral-storage": "959218776Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164651880Ki",
+    "nvidia.com/gpu": "1",
+    "pods": "110"
+  },
+  "allocatable": {
+    "cpu": "64",
+    "ephemeral-storage": "958170200Ki",
+    "hugepages-1Gi": "0",
+    "hugepages-2Mi": "0",
+    "memory": "164549480Ki",
+    "nvidia.com/gpu": "1",
+    "pods": "110"
+  },
+  "loadDriver": "native host Go process; fixtures bound to selected node IP",
+  "routing": "host test proxy -> dedicated Kubernetes NodePort Services -> data-plane pods",
+  "profileEnvironment": {
+    "VMCP_ACCEPTANCE_MEMORY_LIMIT": "3Gi",
+    "VMCP_ACCEPTANCE_KUBERNETES": "1",
+    "VMCP_ACCEPTANCE_REST": "1",
+    "VMCP_ACCEPTANCE_SERVERS": "8",
+    "VMCP_ACCEPTANCE_TOOLS": "20",
+    "VMCP_ACCEPTANCE_WORKERS": "512",
+    "VMCP_ACCEPTANCE_RPS": "20",
+    "VMCP_ACCEPTANCE_BURST_RPS": "60",
+    "VMCP_ACCEPTANCE_WARMUP_SECONDS": "30",
+    "VMCP_ACCEPTANCE_STEADY_SECONDS": "300",
+    "VMCP_ACCEPTANCE_SPIKE_SECONDS": "60",
+    "VMCP_ACCEPTANCE_SOAK_RPS": "400",
+    "VMCP_ACCEPTANCE_SOAK_SECONDS": "1800",
+    "VMCP_ACCEPTANCE_AUDIT_CHECK_SECONDS": "180",
+    "VMCP_ACCEPTANCE_POSTGRES_TUNED": "0",
+    "VMCP_ACCEPTANCE_POLL_PROBE": "0",
+    "VMCP_ACCEPTANCE_DP_CPUS": "2",
+    "VMCP_ACCEPTANCE_DATABASE_FOCUS": "0",
+    "VMCP_ACCEPTANCE_SMOKE": "1"
+  },
+  "workloads": [
+    {
+      "name": "postgres",
+      "replicas": 1,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "postgres",
+          "image": "docker.io/library/postgres:17-alpine",
+          "resources": {
+            "requests": {
+              "cpu": "2",
+              "memory": "2Gi"
+            }
+          },
+          "args": [
+            "postgres",
+            "-c",
+            "max_connections=256",
+            "-c",
+            "shared_preload_libraries=pg_stat_statements",
+            "-c",
+            "pg_stat_statements.track=all",
+            "-c",
+            "track_io_timing=on",
+            "-c",
+            "track_wal_io_timing=on"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "redis",
+      "replicas": 1,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "redis",
+          "image": "docker.io/library/redis:7-alpine",
+          "resources": {
+            "requests": {
+              "cpu": "250m",
+              "memory": "128Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "512Mi"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acceptance-node-1",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "data-plane",
+          "image": "docker.io/vmcp-load/data-plane:903be23b8bd39e23",
+          "resources": {
+            "requests": {
+              "cpu": "2",
+              "memory": "2Gi"
+            },
+            "limits": {
+              "cpu": "4",
+              "memory": "3Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acceptance-node-2",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "data-plane",
+          "image": "docker.io/vmcp-load/data-plane:903be23b8bd39e23",
+          "resources": {
+            "requests": {
+              "cpu": "2",
+              "memory": "2Gi"
+            },
+            "limits": {
+              "cpu": "4",
+              "memory": "3Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "control-plane",
+      "replicas": 0,
+      "securityContext": null,
+      "containers": [
+        {
+          "name": "control-plane",
+          "image": "docker.io/vmcp-load/control-plane:903be23b8bd39e23",
+          "resources": {
+            "requests": {
+              "cpu": "250m",
+              "memory": "256Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "1Gi"
+            }
+          },
+          "securityContext": {
+            "runAsNonRoot": true,
+            "runAsUser": 65532,
+            "readOnlyRootFilesystem": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rawArchive": {
+    "filename": "microk8s-20261105-193915-a64db003372b.tar.gz",
+    "sha256": "5cb94cd06ae72758d5305f97880c123ac93620552875482971e5e3ec5bcc3067",
+    "bytes": 73689,
+    "fileCount": 25,
+    "originalBytes": 1256506
+  }
+}

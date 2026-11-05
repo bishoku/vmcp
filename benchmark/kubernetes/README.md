@@ -263,3 +263,8 @@ when evaluating granular authorization scaling.
 
 A successful load run does not replace a real-IdP login or multi-replica
 administrator recovery drill. The existing runner has one control-plane pod.
+
+For a reproducible real-Keycloak/two-control-plane recovery drill and separately
+declared granular configuration/audit HTTP diagnostics, see
+[Issue 31 server acceptance](AUTHORIZATION_ACCEPTANCE.md). Run these sequentially
+after MCP capacity measurements so they do not compete for host resources.

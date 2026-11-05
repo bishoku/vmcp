@@ -1,0 +1,469 @@
+{
+  "StartedUTC": "2026-11-05T17:28:42Z",
+  "SourceRevision": "5d49db89e89de698bdfdeb4e0c8d04fdb918fc8b",
+  "BinarySHA256": "abcbfa287846eab945ae01f7fbad10c2e1c7ef23e88d6eb3ede64efbb45f5ee9",
+  "GoVersion": "go1.27.3",
+  "HostOS": "linux",
+  "HostArch": "amd64",
+  "Profile": {
+    "Servers": 300,
+    "Tools": 200,
+    "Resources": 0,
+    "Sessions": 600,
+    "SteadyRPS": 1000,
+    "BurstRPS": 1000,
+    "Workers": 1024,
+    "REST": true,
+    "Smoke": false
+  },
+  "DataPlaneConfiguration": {
+    "audit": "strict",
+    "correlation_metadata": false,
+    "cpu_limit_each": "8",
+    "database_focus": true,
+    "db_acquire_timeout": "2s",
+    "db_pool_max_each": 64,
+    "delivery_wakeup": "local channel; cross-replica polling; no delivery NOTIFY",
+    "expired_fixture_operations": 100000,
+    "fault": "none; focused database capacity run",
+    "go_soft_memory_limit_each": "4GiB",
+    "gomaxprocs_each": 8,
+    "health_interval": "30s",
+    "loaded_revocation": {
+      "budget_seconds": 5,
+      "committed_utc": "2026-11-05T17:34:47.282629017Z",
+      "first_401_seconds": 3.760747345,
+      "key_slug": "accept-key-64",
+      "observations": [
+        {
+          "ready_status": 200,
+          "seconds": 0.061313319,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.189176862,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.297985193,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.412290973,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.522905867,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.631294013,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.740440584,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.859144044,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 0.972901055,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.08202274,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.18988383,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.300423395,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.409248735,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.5185021939999999,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.6326935809999998,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.744986934,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.8567326149999999,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 1.9660314840000002,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.074886524,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.183863362,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.2914390510000002,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.399844705,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.509413887,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.62104877,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.731449805,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.846682959,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 2.957225581,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.064981746,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.174528555,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.288159412,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.398329639,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.506619607,
+          "status": 200
+        },
+        {
+          "ready_status": 200,
+          "seconds": 3.760747345,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.073512105,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.33860596,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.627826675,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 4.899547773,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.208125636,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.487861251,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 5.764696426,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.038588701,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.272847379,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.545382663,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 6.806478127,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.056718697,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.317098543,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.558467733,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 7.806868019,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.077622968,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.332514085,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.594743219,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 8.832157528,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.069617913,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.292939029,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.493365896,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.669182965,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 9.849044657,
+          "status": 401
+        },
+        {
+          "ready_status": 200,
+          "seconds": 10.053353516,
+          "status": 401
+        }
+      ],
+      "readiness_healthy": true,
+      "rejection_stable": true
+    },
+    "memory_limit_each": "6Gi",
+    "memory_measurement": "kubelet container RSS; CPU recent usageNanoCores",
+    "namespace": "vmcp-load-20261105-202806",
+    "nodes": 1,
+    "platform": "MicroK8s Kubernetes",
+    "postgres_limits": "none",
+    "postgres_tuned": true,
+    "redis_failure_policy": "strict",
+    "remote_poll_probe": {
+      "budget_ms": 500,
+      "connection_attempts": 1,
+      "connection_setup_ms": 9.107,
+      "interval_ms": 250,
+      "max_ms": 257.2,
+      "p50_ms": 241.281,
+      "p95_ms": 250.463,
+      "reader": "acceptance-node-1",
+      "samples": 24,
+      "writer": "native host"
+    },
+    "routing": "nodeport",
+    "steady_seconds": 600,
+    "team_ownership": true
+  },
+  "ProxyPolicy": "same host test round-robin proxy, passive 10s cooldown, no POST retries; real Kubernetes NodePort Services/CNI to data-plane pods; no ingress capacity claim",
+  "Thresholds": {
+    "burst_max_p99_ms": 10000,
+    "burst_min_success_percent": 80,
+    "burst_min_target_completion_percent": 80,
+    "fault_phase_min_success_percent": 99,
+    "fault_transition_grace_seconds": 10,
+    "loaded_revocation_max_seconds": 5,
+    "per_node_max_container_usage_bytes": 5798205849,
+    "per_node_max_rss_bytes": 5368709120,
+    "post_fault_max_errors_percent": 0.1,
+    "soak_max_rss_growth_percent": 20,
+    "steady_max_rss_growth_percent": 20,
+    "steady_min_target_completion_percent": 99,
+    "steady_p95_ms": 250,
+    "steady_p99_ms": 1000,
+    "steady_success_percent": 99.9
+  },
+  "Resources": {
+    "acceptance-node-1": {
+      "max_container_usage_bytes": 2201882624,
+      "max_metric_label_overflows": 1177099,
+      "max_os_reported_cpu_percent": 225.5064384,
+      "max_pool_acquired": 60,
+      "max_pool_cancelled_acquires": 0,
+      "max_rss_bytes": 2184904704,
+      "median_os_reported_cpu_percent": 195.6328445,
+      "median_rss_bytes": 2017529856,
+      "pool_acquire_seconds_observed": 141.822986259,
+      "steady_rss_growth_percent": 9.407461046743908
+    }
+  },
+  "Consistency": {
+    "active_agent_keys": 64,
+    "active_upstreams": 300,
+    "active_virtual_servers": 300,
+    "active_virtual_tools": 60000,
+    "duplicate_executions": 0,
+    "failed_calls": 664,
+    "incomplete_operations": 0,
+    "incomplete_unrelated_to_failed_calls": 0,
+    "matching_admissions": 600078,
+    "matching_ok_outcomes": 600078,
+    "successful_client_calls": 600078,
+    "synthetic_upstream_executions": 600078
+  },
+  "Functional": {
+    "cross_replica_polling_under_500ms": true,
+    "invalid_keys_rejected_on_both_nodes": true,
+    "key_revocation_propagated_and_rejected_on_single_node": true,
+    "key_revocation_under_load_within_5s": true,
+    "no_data_plane_restart_or_oom": true,
+    "session_termination_authoritative_on_both_nodes": true,
+    "single_node_session_and_paginated_masked_metadata": true
+  },
+  "Pass": true,
+  "Failures": null,
+  "Phases": [
+    {
+      "name": "warmup",
+      "target_rps": 50,
+      "PlannedSeconds": 15,
+      "ElapsedSeconds": 14.996176381,
+      "Scheduled": 750,
+      "Offered": 750,
+      "Success": 250,
+      "Errors": 500,
+      "Dropped": 0,
+      "InvalidResults": 0,
+      "CompletedRPS": 16.670916215465926,
+      "SuccessPercent": 33.333333333333336,
+      "P50MS": 16.137677,
+      "P95MS": 23.382407,
+      "P99MS": 34.433819,
+      "MaxMS": 45.517965,
+      "HTTPStatuses": {
+        "200": 250,
+        "502": 1,
+        "503": 499
+      },
+      "Nodes": {
+        "acceptance-node-1": 250
+      },
+      "slo_pass": true
+    },
+    {
+      "name": "steady",
+      "target_rps": 1000,
+      "PlannedSeconds": 600,
+      "ElapsedSeconds": 600.069422315,
+      "Scheduled": 600000,
+      "Offered": 599992,
+      "Success": 599828,
+      "Errors": 164,
+      "Dropped": 8,
+      "InvalidResults": 0,
+      "CompletedRPS": 999.5976760254362,
+      "SuccessPercent": 99.97266630221736,
+      "P50MS": 107.684117,
+      "P95MS": 168.838045,
+      "P99MS": 366.13471,
+      "MaxMS": 594.197111,
+      "HTTPStatuses": {
+        "200": 599992
+      },
+      "Nodes": {
+        "acceptance-node-1": 599992
+      },
+      "fault_second": 300,
+      "slo_pass": true
+    }
+  ],
+  "ReportAvailable": true
+}

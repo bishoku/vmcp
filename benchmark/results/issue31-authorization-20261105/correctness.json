@@ -1,0 +1,447 @@
+{
+  "sourceRevision": "5d49db89e89de698bdfdeb4e0c8d04fdb918fc8b",
+  "profile": "Keycloak authorization code + PKCE; two native CP replicas; shared PostgreSQL",
+  "limitations": [
+    "Not a Kubernetes Secret-store/RBAC or rolling Deployment drill",
+    "Synthetic local IdP; not an external production IdP"
+  ],
+  "checks": [
+    {
+      "name": "IdP admin identity on replica 0",
+      "passed": true
+    },
+    {
+      "name": "IdP admin management on replica 0",
+      "passed": true
+    },
+    {
+      "name": "IdP admin identity on replica 1",
+      "passed": true
+    },
+    {
+      "name": "IdP admin management on replica 1",
+      "passed": true
+    },
+    {
+      "name": "OIDC mutation requires CSRF",
+      "passed": true
+    },
+    {
+      "name": "create narrow role",
+      "passed": true
+    },
+    {
+      "name": "create verified claim mapping",
+      "passed": true
+    },
+    {
+      "name": "create mapping grant",
+      "passed": true
+    },
+    {
+      "name": "custom-only IdP login reads on replica 0",
+      "passed": true
+    },
+    {
+      "name": "custom role cannot administer on replica 0",
+      "passed": true
+    },
+    {
+      "name": "custom-only IdP login reads on replica 1",
+      "passed": true
+    },
+    {
+      "name": "custom role cannot administer on replica 1",
+      "passed": true
+    },
+    {
+      "name": "disable mapping grant",
+      "passed": true
+    },
+    {
+      "name": "grant revocation visible on replica 0",
+      "passed": true
+    },
+    {
+      "name": "grant revocation visible on replica 1",
+      "passed": true
+    },
+    {
+      "name": "logout through second replica",
+      "passed": true
+    },
+    {
+      "name": "logged-out session rejected on replica 0",
+      "passed": true
+    },
+    {
+      "name": "logged-out session rejected on replica 1",
+      "passed": true
+    },
+    {
+      "name": "create named administrator",
+      "passed": true
+    },
+    {
+      "name": "old bootstrap rejected after restart 0",
+      "passed": true
+    },
+    {
+      "name": "replacement bootstrap works on replica 0",
+      "passed": true
+    },
+    {
+      "name": "named token independent of bootstrap rotation 0",
+      "passed": true
+    },
+    {
+      "name": "old bootstrap rejected after restart 1",
+      "passed": true
+    },
+    {
+      "name": "replacement bootstrap works on replica 1",
+      "passed": true
+    },
+    {
+      "name": "named token independent of bootstrap rotation 1",
+      "passed": true
+    },
+    {
+      "name": "revoke last named admin",
+      "passed": true
+    },
+    {
+      "name": "named revocation visible on replica 0",
+      "passed": true
+    },
+    {
+      "name": "named revocation visible on replica 1",
+      "passed": true
+    },
+    {
+      "name": "token-only recovery without IdP on replica 0",
+      "passed": true
+    },
+    {
+      "name": "revoked named token remains rejected 0",
+      "passed": true
+    },
+    {
+      "name": "token-only recovery without IdP on replica 1",
+      "passed": true
+    },
+    {
+      "name": "revoked named token remains rejected 1",
+      "passed": true
+    },
+    {
+      "name": "recovery can repair roles",
+      "passed": true
+    },
+    {
+      "name": "temporary recovery credential retired on replica 0",
+      "passed": true
+    },
+    {
+      "name": "final bootstrap works on replica 0",
+      "passed": true
+    },
+    {
+      "name": "temporary recovery credential retired on replica 1",
+      "passed": true
+    },
+    {
+      "name": "final bootstrap works on replica 1",
+      "passed": true
+    },
+    {
+      "name": "normal IdP administration restored on replica 0",
+      "passed": true
+    },
+    {
+      "name": "old logged-out session remains revoked after recovery 0",
+      "passed": true
+    },
+    {
+      "name": "normal IdP administration restored on replica 1",
+      "passed": true
+    },
+    {
+      "name": "old logged-out session remains revoked after recovery 1",
+      "passed": true
+    },
+    {
+      "name": "create profile team profile-a",
+      "passed": true
+    },
+    {
+      "name": "create profile team profile-b",
+      "passed": true
+    },
+    {
+      "name": "read capture settings",
+      "passed": true
+    },
+    {
+      "name": "enable control payload capture",
+      "passed": true
+    },
+    {
+      "name": "create profile reader",
+      "passed": true
+    },
+    {
+      "name": "create profile permissions",
+      "passed": true
+    },
+    {
+      "name": "grant team-scoped profile access",
+      "passed": true
+    },
+    {
+      "name": "cross-team profile detail denied",
+      "passed": true
+    },
+    {
+      "name": "profile list excludes other team",
+      "passed": true
+    },
+    {
+      "name": "captured request and response fixtures visible",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile scoped-list, unrelated assignments=10",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile scoped-detail, unrelated assignments=10",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile cross-team-denial, unrelated assignments=10",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile audit-list-details, unrelated assignments=10",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile request-payload, unrelated assignments=10",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile response-payload, unrelated assignments=10",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile scoped-list, unrelated assignments=1000",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile scoped-detail, unrelated assignments=1000",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile cross-team-denial, unrelated assignments=1000",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile audit-list-details, unrelated assignments=1000",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile request-payload, unrelated assignments=1000",
+      "passed": true
+    },
+    {
+      "name": "HTTP profile response-payload, unrelated assignments=1000",
+      "passed": true
+    },
+    {
+      "name": "revoke profile grant",
+      "passed": true
+    },
+    {
+      "name": "profile payload revoked on replica 0",
+      "passed": true
+    },
+    {
+      "name": "profile payload revoked on replica 1",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "driverSHA256": {
+    "authorization_acceptance.py": "418913c908ee82ddfbcf65326c1b8ee89d3051a64d98bd9e342f7b24098b7507",
+    "authorization_profile.py": "eab68f39005fc3fcf29e16ac6db24c4a464021346193badf8422681939873231"
+  },
+  "binarySHA256": "9aa8dbbd578b310e3bcd4f4c0022341c3543ee7de046c9d04ae92c50dbe81849",
+  "images": {
+    "postgres:17-alpine": "sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b",
+    "quay.io/keycloak/keycloak:26.8": "sha256:3879c623248408de29a5303178b5816c77e8dfef3890c361f8c0bbeaa979ba3b"
+  },
+  "httpProfile": {
+    "mode": "closed-loop diagnostic; fresh connection per request; one native CP process GOMAXPROCS=2",
+    "inventory": {
+      "teams": 2,
+      "upstreams": 20,
+      "visibleUpstreams": 10
+    },
+    "audit": "strict, control payload capture enabled; read capture disabled",
+    "threshold": "all responses correct, no HTTP/transport/validation errors; latency descriptive only",
+    "notMeasured": [
+      "open-loop saturation",
+      "large audit history",
+      "production ingress",
+      "payload capture throughput"
+    ],
+    "stages": [
+      {
+        "unrelatedAssignments": 10,
+        "totalAssignments": 12,
+        "paths": {
+          "scoped-list": {
+            "durationSeconds": 10.150981656042859,
+            "concurrency": 8,
+            "successful": 249,
+            "errors": 0,
+            "successfulRequestsPerSecond": 24.529647322510016,
+            "p50Ms": 326.1420289054513,
+            "p95Ms": 390.1117811910808,
+            "p99Ms": 423.044690862298,
+            "passed": true
+          },
+          "scoped-detail": {
+            "durationSeconds": 10.157670072978362,
+            "concurrency": 8,
+            "successful": 257,
+            "errors": 0,
+            "successfulRequestsPerSecond": 25.301077722899915,
+            "p50Ms": 321.3733590673655,
+            "p95Ms": 374.75884007290006,
+            "p99Ms": 382.64206307940185,
+            "passed": true
+          },
+          "cross-team-denial": {
+            "durationSeconds": 10.150510180043057,
+            "concurrency": 8,
+            "successful": 245,
+            "errors": 0,
+            "successfulRequestsPerSecond": 24.136717825444393,
+            "p50Ms": 337.6004509627819,
+            "p95Ms": 400.23656585253775,
+            "p99Ms": 495.5042009241879,
+            "passed": true
+          },
+          "audit-list-details": {
+            "durationSeconds": 10.183541984064505,
+            "concurrency": 8,
+            "successful": 240,
+            "errors": 0,
+            "successfulRequestsPerSecond": 23.567438556796724,
+            "p50Ms": 339.06662510707974,
+            "p95Ms": 393.21441506035626,
+            "p99Ms": 510.66659297794104,
+            "passed": true
+          },
+          "request-payload": {
+            "durationSeconds": 10.163163373945281,
+            "concurrency": 8,
+            "successful": 253,
+            "errors": 0,
+            "successfulRequestsPerSecond": 24.893823969080493,
+            "p50Ms": 321.07712305150926,
+            "p95Ms": 395.7433688919991,
+            "p99Ms": 485.8885540161282,
+            "passed": true
+          },
+          "response-payload": {
+            "durationSeconds": 10.250493646133691,
+            "concurrency": 8,
+            "successful": 262,
+            "errors": 0,
+            "successfulRequestsPerSecond": 25.559744637159195,
+            "p50Ms": 312.7189490478486,
+            "p95Ms": 399.4039299432188,
+            "p99Ms": 421.8374849297106,
+            "passed": true
+          }
+        }
+      },
+      {
+        "unrelatedAssignments": 1000,
+        "totalAssignments": 1002,
+        "paths": {
+          "scoped-list": {
+            "durationSeconds": 10.240361816016957,
+            "concurrency": 8,
+            "successful": 263,
+            "errors": 0,
+            "successfulRequestsPerSecond": 25.68268628835375,
+            "p50Ms": 314.9902781005949,
+            "p95Ms": 387.6349441707134,
+            "p99Ms": 482.7660769224167,
+            "passed": true
+          },
+          "scoped-detail": {
+            "durationSeconds": 10.178348504006863,
+            "concurrency": 8,
+            "successful": 288,
+            "errors": 0,
+            "successfulRequestsPerSecond": 28.295356548916004,
+            "p50Ms": 274.477117927745,
+            "p95Ms": 372.073468985036,
+            "p99Ms": 470.2547178603709,
+            "passed": true
+          },
+          "cross-team-denial": {
+            "durationSeconds": 10.138773831073195,
+            "concurrency": 8,
+            "successful": 266,
+            "errors": 0,
+            "successfulRequestsPerSecond": 26.23591416792101,
+            "p50Ms": 308.6662159767002,
+            "p95Ms": 387.11416511796415,
+            "p99Ms": 439.84608608298004,
+            "passed": true
+          },
+          "audit-list-details": {
+            "durationSeconds": 10.36685258592479,
+            "concurrency": 8,
+            "successful": 167,
+            "errors": 0,
+            "successfulRequestsPerSecond": 16.10903585401977,
+            "p50Ms": 477.0548581145704,
+            "p95Ms": 664.7102350834757,
+            "p99Ms": 812.2858561109751,
+            "passed": true
+          },
+          "request-payload": {
+            "durationSeconds": 10.163015760015696,
+            "concurrency": 8,
+            "successful": 257,
+            "errors": 0,
+            "successfulRequestsPerSecond": 25.28776950352806,
+            "p50Ms": 320.7432981580496,
+            "p95Ms": 393.1944698560983,
+            "p99Ms": 442.93129397556186,
+            "passed": true
+          },
+          "response-payload": {
+            "durationSeconds": 10.181885739089921,
+            "concurrency": 8,
+            "successful": 282,
+            "errors": 0,
+            "successfulRequestsPerSecond": 27.696244804374103,
+            "p50Ms": 288.81726297549903,
+            "p95Ms": 374.2547750007361,
+            "p99Ms": 487.4580889008939,
+            "passed": true
+          }
+        }
+      }
+    ]
+  },
+  "measurementCaveat": "This first correctness run overlapped regression/browser diagnostics. Latencies are not isolated capacity evidence."
+}

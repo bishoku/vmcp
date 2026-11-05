@@ -2229,6 +2229,11 @@ paths:
           content:
             application/json:
               schema: { type: object, additionalProperties: true }
+        "403":
+          description: Console permission denied, or runtime_access_denied when the separately supplied runtime identity is rejected
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /api/v1/permissions:
     get:
@@ -5120,6 +5125,7 @@ components:
           enum:
             - unauthorized
             - forbidden
+            - runtime_access_denied
             - not_found
             - already_exists
             - in_use

@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { upstream, server, key } from '../src/connections/fixtures'
@@ -8,6 +9,8 @@ async function setup(page:Page){
  const keys=[key,{...key,slug:'expired-key',expiresAt:'2020-01-01T00:00:00Z'},{...key,slug:'revoked-key',status:'revoked',revokedAt:'2026-01-01T00:00:00Z'}]
  const events=[{id:1,eventId:'event-1',operationId:'pending',time:'2026-10-15T10:00Z',stage:'admission',status:'started',tool:'lookup',method:'tools/call',virtualServer:'demo'},{id:2,eventId:'event-2',operationId:'failed',time:'2026-10-15T10:00Z',stage:'outcome',status:'error',tool:'search',method:'tools/call',virtualServer:'demo'}]
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),path=new URL(req.url()).pathname

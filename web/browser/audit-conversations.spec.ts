@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import {expect,test} from '@playwright/test'
 import {auditSettings} from './audit-fixtures'
 for(const width of [390,1440])test(`conversation audit aggregates and drills down at ${width}px`,async({page})=>{
@@ -5,6 +6,8 @@ for(const width of [390,1440])test(`conversation audit aggregates and drills dow
  const queries:URLSearchParams[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'reader'); if (capability) return capability
+
  const u=new URL(r.request().url())
  if(u.pathname.endsWith('/me'))return r.fulfill({json:{name:'Viewer',role:'viewer'}})
  if(u.pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})

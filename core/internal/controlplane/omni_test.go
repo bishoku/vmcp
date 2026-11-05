@@ -3,6 +3,8 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/bishoku/vmcp/core/internal/apierror"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -50,5 +52,24 @@ func TestOmniAdminControlsAndStatusIsolation(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "documents") {
 		t.Fatal("global index counts exposed")
+	}
+}
+
+func TestOmniRuntimeDenialIsDistinctFromConsoleAuthorization(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
+			defer backend.Close()
+			t.Setenv("VMCP_OMNI_URL", backend.URL)
+			t.Setenv("VMCP_OMNI_SECRET", strings.Repeat("s", 32))
+			req := httptest.NewRequest("POST", "/api/v1/omni/preview", strings.NewReader(`{"query":"orders"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-VMCP-Runtime-Authorization", "Bearer denied-runtime-key")
+			err := (&Server{}).omni(httptest.NewRecorder(), req)
+			var problem *apierror.Error
+			if !errors.As(err, &problem) || problem.Status != http.StatusForbidden || problem.Code != "runtime_access_denied" {
+				t.Fatal("runtime denial lost its boundary", err)
+			}
+		})
 	}
 }

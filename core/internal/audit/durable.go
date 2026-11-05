@@ -147,9 +147,11 @@ type Sink interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
-const insertSQL = `INSERT INTO audit_events
+const insertPrefix = `INSERT INTO audit_events
  (event_id,operation_id,request_id,trace_id,schema_version,actor_type,actor_id,issuer,action,target,config_revision,stage,
- ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions,conversation_id,root_conversation_id,turn_id,conversation_group_id,correlation_status)
+ ts,virtual_server,agent_key,client_ip,method,subject,tool,upstream,status,reason,duration_ms,redactions,audit_mode,policy_revision,scope,boundary,direction,parent_operation_id,payload_state,payload_original_bytes,payload_stored_bytes,payload_redactions,conversation_id,root_conversation_id,turn_id,conversation_group_id,correlation_status)`
+
+const insertSQL = insertPrefix + `
  VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::uuid,$31,$32,$33,$34,$35,$36,$37,$38,$39)
  ON CONFLICT(event_id) DO NOTHING`
 
@@ -337,7 +339,35 @@ func (d *Durable) flushPendingBatches() {
 	}
 }
 
+// bulkInsert builds only internally selected INSERT statements. Values remain
+// bound parameters, including nullable UUIDs and encrypted payload bytes.
+func bulkInsert(prefix string, rows [][]any, suffix string) (string, []any) {
+	var query strings.Builder
+	query.WriteString(prefix)
+	query.WriteString(" VALUES ")
+	var args []any
+	for i, row := range rows {
+		if i > 0 {
+			query.WriteByte(',')
+		}
+		query.WriteByte('(')
+		for j, value := range row {
+			if j > 0 {
+				query.WriteByte(',')
+			}
+			args = append(args, value)
+			fmt.Fprintf(&query, "$%d", len(args))
+		}
+		query.WriteByte(')')
+	}
+	query.WriteString(suffix)
+	return query.String(), args
+}
+
 func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) error {
+	if len(batch) == 0 {
+		return nil
+	}
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -347,9 +377,10 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 		return err
 	}
 	var fallbackRev int64
-	prepared := make([]Event, len(batch))
-	statements := &pgx.Batch{}
-	for i, r := range batch {
+	prepared := make([]Event, 0, len(batch))
+	eventRows := make([][]any, 0, len(batch))
+	seen := make(map[string]bool, len(batch))
+	for _, r := range batch {
 		e, err := Prepare(r.event)
 		if err != nil {
 			return err
@@ -366,43 +397,73 @@ func persistBatch(ctx context.Context, pool *pgxpool.Pool, batch []*persistReq) 
 		if err != nil {
 			return err
 		}
-		prepared[i] = e
-		statements.Queue(insertSQL, args...)
-	}
-	results := tx.SendBatch(ctx, statements)
-	inserted := make([]bool, len(prepared))
-	for i := range prepared {
-		tag, err := results.Exec()
-		if err != nil {
-			_ = results.Close()
-			return err
-		}
-		inserted[i] = tag.RowsAffected() > 0
-	}
-	if err = results.Close(); err != nil {
-		return err
-	}
-	// Only rows inserted in this transaction may gain context or payload. This
-	// keeps replay idempotent and cannot backfill ownership onto legacy evidence.
-	dependents := &pgx.Batch{}
-	for i, e := range prepared {
-		if !inserted[i] {
+		// Match sequential ON CONFLICT semantics even for duplicate IDs in one batch.
+		if seen[e.EventID] {
 			continue
 		}
-		queueAccess(dependents, e)
+		seen[e.EventID] = true
+		prepared = append(prepared, e)
+		eventRows = append(eventRows, args)
+	}
+	query, args := bulkInsert(insertPrefix, eventRows, " ON CONFLICT(event_id) DO NOTHING RETURNING event_id::text")
+	results, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	inserted := make(map[string]bool, len(prepared))
+	for results.Next() {
+		var id string
+		if err = results.Scan(&id); err != nil {
+			results.Close()
+			return err
+		}
+		inserted[id] = true
+	}
+	err = results.Err()
+	results.Close()
+	if err != nil {
+		return err
+	}
+	// Dependents are restricted to newly inserted events. Replays cannot backfill
+	// ownership onto historical/legacy evidence or replace immutable payloads.
+	var contexts, domains, payloads [][]any
+	for _, e := range prepared {
+		if !inserted[e.EventID] {
+			continue
+		}
+		if c := e.Access; c != nil {
+			contexts = append(contexts, []any{e.EventID, c.Tenant, c.Classification, c.Origin, c.Revision, "verified"})
+			for _, d := range c.Domains {
+				domains = append(domains, []any{e.EventID, d.Kind, d.ResourceKind, d.ResourceID, nullable(d.ProjectID), nullable(d.OwnerTeamID), d.EpochID})
+			}
+		}
 		if len(e.Ciphertext) > 0 {
-			dependents.Queue(`INSERT INTO audit_payloads(event_id,ciphertext,expires_at) VALUES($1,$2,$3)`, e.EventID, e.Ciphertext, e.PayloadExpiresAt)
+			payloads = append(payloads, []any{e.EventID, e.Ciphertext, e.PayloadExpiresAt})
+		}
+	}
+	dependents := &pgx.Batch{}
+	for _, group := range []struct {
+		prefix string
+		rows   [][]any
+	}{
+		{`INSERT INTO audit_access_contexts(event_id,tenant_id,classification,origin,operation_config_revision,provenance_state)`, contexts},
+		{`INSERT INTO audit_access_domains(event_id,domain_kind,resource_kind,resource_id,project_id,owner_team_id,epoch_id)`, domains},
+		{`INSERT INTO audit_payloads(event_id,ciphertext,expires_at)`, payloads},
+	} {
+		if len(group.rows) > 0 {
+			query, args := bulkInsert(group.prefix, group.rows, "")
+			dependents.Queue(query, args...)
 		}
 	}
 	if dependents.Len() > 0 {
-		results = tx.SendBatch(ctx, dependents)
+		result := tx.SendBatch(ctx, dependents)
 		for range dependents.Len() {
-			if _, err = results.Exec(); err != nil {
-				_ = results.Close()
+			if _, err = result.Exec(); err != nil {
+				_ = result.Close()
 				return err
 			}
 		}
-		if err = results.Close(); err != nil {
+		if err = result.Close(); err != nil {
 			return err
 		}
 	}

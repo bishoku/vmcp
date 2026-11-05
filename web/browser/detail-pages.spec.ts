@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test } from '@playwright/test'
@@ -8,11 +9,13 @@ test.beforeEach(async({page})=>{
   let upstream = {...originalUpstream}
   await page.route('**/auth/config',route=>route.fulfill({json:{oidc:false}}))
   await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
     const request=route.request(), path=new URL(request.url()).pathname
     if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Admin',role:'admin'}})
-    if(request.method()==='PUT'){
+    if(request.method()==='PATCH' && path.includes('/virtual-servers/')){
       expect(request.headers()['if-match']).toBe('"7"')
       server={...server,...request.postDataJSON(),version:8}
       return route.fulfill({json:server})
@@ -22,7 +25,11 @@ test.beforeEach(async({page})=>{
       upstream={...upstream,...request.postDataJSON(),version:3}
       return route.fulfill({json:upstream})
     }
+    if(path.endsWith('/virtual-servers/demo'))return route.fulfill({json:server})
+    if(path.endsWith('/upstreams/alpha'))return route.fulfill({json:upstream})
+    if(path==='/api/v1/virtual-servers/'+(server).slug)return route.fulfill({json:server})
     if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:[server]}})
+    if(path==='/api/v1/upstreams/'+(upstream).slug)return route.fulfill({json:upstream})
     if(path.endsWith('/upstreams'))return route.fulfill({json:{items:[upstream]}})
     if(path.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
     return route.fulfill({json:{items:[]}})

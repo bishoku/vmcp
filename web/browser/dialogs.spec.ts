@@ -1,9 +1,12 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/auth/config', r => r.fulfill({ json: { oidc: false } }))
   await page.route('**/api/v1/**', route => {
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
     const request = route.request(), path = new URL(request.url()).pathname

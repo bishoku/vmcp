@@ -54,7 +54,7 @@ func (s *Server) omni(w http.ResponseWriter, r *http.Request) error {
 	if err = b.Request(r.Context(), r.Method, path, token, s.clientIPString(r), r.Header.Get("traceparent"), body, &out); err != nil {
 		var e *omni.HTTPError
 		if errors.As(err, &e) && (e.Status == 401 || e.Status == 403) {
-			return apierror.Forbidden("runtime identity cannot access the requested Omni catalog")
+			return apierror.New(http.StatusForbidden, "runtime_access_denied", "Runtime access denied", "runtime identity cannot access the requested Omni catalog")
 		}
 		return apierror.New(503, "omni_unavailable", "Omni unavailable", "Omni request could not be completed")
 	}

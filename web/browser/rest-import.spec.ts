@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 import { upstream } from '../src/connections/fixtures'
@@ -10,12 +11,15 @@ for(const width of [1280,390])test(`OpenAPI import stays in draft and preserves 
  let saved={...upstream,kind:'rest',headerNames:['X-API-Key'],rest:{auth:{type:'basic',username:'service',hasPassword:true},forwardIdentity:true,requireIdentity:true,allowInsecureHttp:false,timeoutSeconds:30,operations:[existing]}}
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'administrator'); if (capability) return capability
+
  if(new URL(r.request().url()).pathname.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
 
   const request=r.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return r.fulfill({status:request.headers().authorization?200:401,json:{role:'admin',name:'Tester'}})
   if(path.endsWith('/rest-imports')){expect(request.postDataJSON()).toEqual({document:definition});analyzed++;return r.fulfill({json:{title:'Orders',version:'3.1.0',servers:['https://orders.example'],warnings:['Authentication and headers are preserved.'],operations:[{id:'GET /orders',method:'GET',path:'/orders',summary:'List orders',tags:['orders'],operation:imported,warnings:[],errors:[]},{id:'POST /upload',method:'POST',path:'/upload',summary:'Upload files',tags:[],warnings:[],errors:['Multipart is unsupported']}]}})}
   if(request.method()==='PATCH'){writes.push(request.postDataJSON());saved={...saved,...request.postDataJSON(),version:3};return r.fulfill({json:saved})}
+  if(path==='/api/v1/upstreams/'+(saved).slug)return r.fulfill({json:saved})
   if(path.endsWith('/upstreams'))return r.fulfill({json:{items:[saved]}})
   if(path.endsWith('/catalog'))return r.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
   return r.fulfill({json:{items:[]}})
@@ -42,7 +46,7 @@ for(const width of [1280,390])test(`OpenAPI import stays in draft and preserves 
  await expect(editor.getByLabel('MCP tool definition')).toContainText('imported_orders')
  await editor.getByRole('button',{name:'Apply operation',exact:true}).click();await expect(editor).not.toBeVisible()
  expect(writes).toHaveLength(0);await page.getByRole('button',{name:'Save',exact:true}).click();await expect.poll(()=>writes.length).toBe(1)
- expect(writes[0]).toMatchObject({kind:'rest',rest:{auth:{type:'basic',username:'service',hasPassword:true},forwardIdentity:true,requireIdentity:true,allowInsecureHttp:false,operations:[existing,{...imported,name:'imported_orders'}]}})
+ expect(writes[0]).toMatchObject({rest:{auth:{type:'basic',username:'service',hasPassword:true},forwardIdentity:true,requireIdentity:true,allowInsecureHttp:false,operations:[existing,{...imported,name:'imported_orders'}]}})
  expect(writes[0]).not.toHaveProperty('headers')
  await expect(page.getByRole('button',{name:'Edit upstream',exact:true})).toBeVisible()
 })

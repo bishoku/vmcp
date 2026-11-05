@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import {expect,test} from '@playwright/test'
 import {auditSettings} from './audit-fixtures'
 import {upstream} from '../src/connections/fixtures'
@@ -7,6 +8,8 @@ for(const width of [390,1440])test(`mock upstream creation, scoped publication a
  const writes:Record<string,unknown>[]=[];const syncs:string[]=[]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'administrator'); if (capability) return capability
+
   const req=r.request(),path=new URL(req.url()).pathname
   if(path.endsWith('/audit-settings'))return r.fulfill({json:auditSettings})
   if(path.endsWith('/me'))return r.fulfill({status:req.headers().authorization?200:401,json:{role:'admin',name:'Tester'}})
@@ -14,6 +17,7 @@ for(const width of [390,1440])test(`mock upstream creation, scoped publication a
   if(path.endsWith('/upstreams')&&req.method()==='POST'){const body=req.postDataJSON();writes.push(body);saved={...upstream,...body,rest:{...body.rest,mock:{namespace:'a'.repeat(32)}},version:1};return r.fulfill({status:201,json:saved})}
   if(path.endsWith('/mock/sync')){syncs.push(req.headers()['if-match']);active=true;return r.fulfill({json:{state:'active',ruleCount:2}})}
   if(path.endsWith('/mock/status'))return r.fulfill({json:{state:active?'active':'pending',ruleCount:2}})
+  if(saved&&path==='/api/v1/upstreams/'+saved.slug)return r.fulfill({json:saved})
   if(path.endsWith('/upstreams'))return r.fulfill({json:{items:saved?[saved]:[]}})
   if(path.endsWith('/catalog'))return r.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
   return r.fulfill({json:{items:[]}})
@@ -79,6 +83,8 @@ for(const width of [390,1440])test(`mock upstream creation, scoped publication a
 })
 test('mock integration stays optional and unavailable provider does not block REST creation',async({page})=>{
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
- await page.route('**/api/v1/**',r=>{const path=new URL(r.request().url()).pathname;if(path.endsWith('/me'))return r.fulfill({json:{role:'admin',name:'Tester'}});if(path.endsWith('/audit-settings'))return r.fulfill({json:auditSettings});if(path.endsWith('/mock-provider'))return r.fulfill({json:{enabled:false,url:''}});return r.fulfill({json:{items:[]}})})
+ await page.route('**/api/v1/**',r=>{
+ const capability = configurationFixture(r, 'administrator'); if (capability) return capability
+const path=new URL(r.request().url()).pathname;if(path.endsWith('/me'))return r.fulfill({json:{role:'admin',name:'Tester'}});if(path.endsWith('/audit-settings'))return r.fulfill({json:auditSettings});if(path.endsWith('/mock-provider'))return r.fulfill({json:{enabled:false,url:''}});return r.fulfill({json:{items:[]}})})
  await page.goto('/upstreams/new');await expect(page.getByLabel('Upstream type',{exact:true}).locator('option[value="mock"]')).toBeDisabled();await page.getByLabel('Upstream type',{exact:true}).selectOption('rest');await expect(page.getByRole('button',{name:'Add operation',exact:true})).toBeEnabled()
 })

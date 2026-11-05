@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 
 async function fixture(page: Page, role = 'admin') {
@@ -7,6 +8,8 @@ async function fixture(page: Page, role = 'admin') {
  const state = { teams, projects, grants, catalogReads: 0, failTeams: false, failSave: false, failSaveStatus: 500 }
  await page.route('**/auth/config', route => route.fulfill({ json: { oidc: false } }))
  await page.route('**/api/v1/**', route => {
+ const capability = configurationFixture(route, role === 'admin' ? 'administrator' : role === 'team' ? 'approver' : 'reader'); if (capability) return capability
+
   const request = route.request(), path = new URL(request.url()).pathname
   if (path.endsWith('/me')) return route.fulfill({ json: { role, name: 'Platform admin' } })
   const items = path.endsWith('/teams') ? teams : path.endsWith('/projects') ? projects : path.endsWith('/tool-grants') ? grants : null
@@ -181,7 +184,7 @@ for (const role of ['viewer', 'editor']) test(`${role} sees permitted actions on
  await page.getByRole('navigation', { name: 'Ownership sections' }).getByRole('button', { name: /Tool access/ }).click()
  await page.getByRole('button', { name: 'View request', exact: true }).click()
  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
- await expect(page.getByRole('dialog')).toContainText('Only the upstream owner')
+ await expect(page.getByRole('dialog')).toContainText('Each decision requires its own scoped permission.')
 })
 
 test('partial read failure preserves other panels and retry recovers', async ({ page }) => {

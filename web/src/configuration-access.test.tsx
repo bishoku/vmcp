@@ -53,3 +53,19 @@ test('identity changes during preflight never send the approved operation',async
  await expect(operation).rejects.toMatchObject({code:'configuration_identity_changed'})
  expect(fetch).toHaveBeenCalledTimes(1)
 })
+
+test.each([
+ ['runtime_access_denied',true,0],
+ ['forbidden',true,1],
+ ['runtime_access_denied',false,1],
+] as const)('403 %s on Omni=%s preserves only the independent runtime boundary',async(code,omni,expected)=>{
+ const denied=vi.fn()
+ window.addEventListener('vmcp:configuration-denied',denied)
+ try {
+  const fetch=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({allowed:[true]}))).mockResolvedValueOnce(new Response(JSON.stringify({code,detail:'Denied'}),{status:403}))
+  vi.stubGlobal('fetch',fetch)
+  await expect(omni?api.omniPreview('runtime-key','query'):api.getUpstream('private')).rejects.toMatchObject({status:403,code})
+  expect(fetch).toHaveBeenCalledTimes(2)
+  expect(denied).toHaveBeenCalledTimes(expected)
+ } finally {window.removeEventListener('vmcp:configuration-denied',denied)}
+})

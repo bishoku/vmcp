@@ -45,7 +45,7 @@ export default function SignIn({onDone,reauthenticate=false}:{onDone:(identity:M
         <Button type="submit" loading={busy} loadingLabel="Signing in…" variant={method==='sso'?'secondary':'primary'} className="w-full py-2.5">Continue<ArrowRight aria-hidden="true" className="icon-control"/></Button>
         {busy&&<p role="status" className="text-xs text-ink-muted">Verifying your session…</p>}
       </form>
-      <div className="flex items-start gap-2 surface-inset p-3 text-xs leading-relaxed text-ink-muted"><ShieldCheck aria-hidden="true" className="mt-0.5 icon-control shrink-0"/><p>Token sign-in lasts until this tab reloads. {reauthenticate?'Signing in with a token keeps your current draft.':'The token is held in memory for this tab.'}</p></div>
+      <div className="flex items-start gap-2 surface-inset p-3 text-xs leading-relaxed text-ink-muted"><ShieldCheck aria-hidden="true" className="mt-0.5 icon-control shrink-0"/><p>Token sign-in lasts until this tab reloads. {reauthenticate?'Signing in reloads your permitted configuration.':'The token is held in memory for this tab.'}</p></div>
     </div>
   </ServerPanel></FormScope>
   if(reauthenticate)return form

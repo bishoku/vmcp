@@ -1,9 +1,12 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { withConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 async function login(page: Page, role: 'viewer'|'editor'|'admin'='admin') {
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),path=new URL(request.url()).pathname
@@ -31,7 +34,6 @@ for(const role of ['viewer','editor','admin'] as const) {
  test(`${role} controls reflect API permissions`,async({page})=>{
   await login(page,role)
   if(role==='viewer') {
-   await expect(page.getByText('Read-only access.',{exact:false})).toBeVisible()
    await expect(page.getByRole('button',{name:'New virtual server',exact:true})).toBeDisabled()
   } else await expect(page.getByRole('link',{name:'New virtual server',exact:true})).toHaveAttribute('href','/virtual-servers/new')
   await expect(page.getByRole('button',{name:'Refresh list',exact:true})).toBeEnabled()
@@ -45,7 +47,7 @@ test('token sign-in is memory-only',async({page})=>{
  await page.reload()
  await expect(page.getByLabel('Admin token')).toBeVisible()
 })
-test('expired mutation requires sign-in, retains the draft and never replays the write',async({page})=>{
+test('expired mutation clears the draft and never replays the write',async({page})=>{
  await login(page)
  let writes=0
  await page.route('**/api/v1/agent-keys',route=>{
@@ -61,6 +63,31 @@ test('expired mutation requires sign-in, retains the draft and never replays the
  await expired.getByLabel('Admin token').fill('replacement')
  await expired.getByRole('button',{name:'Continue',exact:true}).click()
  await expect(expired).toHaveCount(0)
- await expect(page.getByLabel('Name',{exact:true})).toHaveValue('retained')
+ await expect(page.getByRole('dialog')).toHaveCount(0)
+ await page.getByRole('button',{name:'New key',exact:true}).click()
+ await expect(page.getByLabel('Name',{exact:true})).toHaveValue('')
+ expect(writes).toBe(1)
+})
+
+test('reauthentication as another identity discards the previous draft without replay',async({page})=>{
+ await login(page)
+ let writes=0
+ await page.route('**/api/v1/me',route=>route.fulfill({json:{id:'replacement-identity',issuer:'local',name:'Another operator',role:'admin',via:'admin-token'}}))
+ await page.route('**/api/v1/agent-keys',route=>{
+  if(route.request().method()==='POST'){writes++;return route.fulfill({status:401,json:{detail:'Session expired'}})}
+  return route.fulfill({json:{items:[]}})
+ })
+ await page.getByRole('link',{name:'Agent Keys',exact:true}).click()
+ await page.getByRole('button',{name:'New key',exact:true}).click()
+ await page.getByLabel('Name',{exact:true}).fill('previous-identity-draft')
+ await page.getByRole('button',{name:'Create',exact:true}).click()
+ const expired=page.getByRole('dialog',{name:'Session expired',exact:true})
+ await expect(expired).toBeVisible()
+ await expired.getByLabel('Admin token').fill('replacement-other-identity')
+ await expired.getByRole('button',{name:'Continue',exact:true}).click()
+ await expect(expired).toHaveCount(0)
+ await expect(page.getByRole('dialog')).toHaveCount(0)
+ await page.getByRole('button',{name:'New key',exact:true}).click()
+ await expect(page.getByLabel('Name',{exact:true})).toHaveValue('')
  expect(writes).toBe(1)
 })

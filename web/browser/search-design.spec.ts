@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
@@ -8,6 +9,8 @@ async function setup(page:Page){
  const tokens=[{slug:'pipeline',scope:'read',status:'active',version:1,expiresAt:null,revokedAt:null,lastUsedAt:null,createdAt:'2026-10-15T10:00Z',tokenPrefix:'vmcp_admin_',description:'Build pipeline'}]
  const audit=[{id:1,eventId:'e-1',operationId:'op-1',stage:'admission',status:'started',time:'2026-10-15T10:00:00Z',method:'tools/call',tool:'lookup',virtualServer:'workspace-0'},{id:2,eventId:'e-2',operationId:'op-1',stage:'outcome',status:'ok',time:'2026-10-15T10:00:01Z',method:'tools/call',tool:'lookup',virtualServer:'workspace-0'}]
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),url=new URL(req.url()),path=url.pathname

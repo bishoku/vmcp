@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings,auditMetadataCapabilities } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 
@@ -16,6 +17,8 @@ for (const width of [390, 1440]) test(`tool and upstream calls share one operati
  ]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'reader'); if (capability) return capability
+
   const path=new URL(route.request().url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{name:'Reviewer',role:'viewer'}})
   return route.fulfill({json:{capabilities:{canFilterIdentities:true},items:path.endsWith('/audit-events')?events:[]}})
@@ -41,6 +44,8 @@ for (const width of [390, 1440]) test(`tool and upstream calls share one operati
 async function login(page:Page){
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'reader'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const url=new URL(route.request().url())
@@ -141,6 +146,8 @@ for (const role of ['admin','viewer']) test(`audit modal keeps payloads scoped t
  ]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'reader'); if (capability) return capability
+
   const path=new URL(route.request().url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{name:'Tester',role}})
   if(path.endsWith('/payload')){fetched.push(path);return route.fulfill({json:path.includes('child-out')?{state:'expired'}:{state:'redacted',content:{source:path,order:{items:[{productId:'SKU-1',quantity:2}]}}}})}

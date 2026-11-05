@@ -1,9 +1,12 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 test('login loads all management pages and rejects a concurrent edit',async({page})=>{
  let writes=0
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',async route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),url=new URL(req.url())
@@ -12,6 +15,7 @@ test('login loads all management pages and rejects a concurrent edit',async({pag
   if(url.pathname.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
   if(url.pathname.endsWith('/tools'))return route.fulfill({json:{items:[]}})
   const upstream=(i:number)=>({slug:`upstream-${i}`,name:`Upstream ${i}`,version:7,url:'https://example.com/mcp',transport:'streamable_http',enabled:true,headerNames:[],tls:{caPem:'',serverName:'',clientCertPem:'',hasClientKey:false,caCerts:[],clientCert:null},auth:{type:'none'},health:{state:'unknown',nodes:[]},toolCount:0,fallbackUrls:[]})
+  if(url.pathname==='/api/v1/upstreams/upstream-200')return route.fulfill({json:upstream(200)})
   if(url.pathname.endsWith('/upstreams'))return route.fulfill({json:url.searchParams.has('cursor')?{items:[upstream(200)],nextCursor:null}:{items:Array.from({length:200},(_,i)=>upstream(i)),nextCursor:'page2'}})
   return route.fulfill({json:{items:[]}})
  })
@@ -24,6 +28,7 @@ test('login loads all management pages and rejects a concurrent edit',async({pag
  await page.getByText('Upstream 200',{exact:true}).click()
  await expect(page.getByLabel('Name',{exact:true})).toBeDisabled()
  await page.getByRole('button',{name:'Edit upstream',exact:true}).click()
+ await page.getByLabel('Name',{exact:true}).fill('Concurrent edit')
  await page.getByRole('button',{name:'Save',exact:true}).click()
  await expect(page.getByText('This item changed in another session. Reload before saving again.')).toBeVisible()
  expect(writes).toBe(1)

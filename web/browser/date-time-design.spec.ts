@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, key } from '../src/connections/fixtures'
@@ -5,6 +6,8 @@ test.use({viewport:{width:1280,height:1000},timezoneId:'Europe/Istanbul'})
 async function setup(page:Page){
  const writes:{path:string;body:Record<string,unknown>}[]=[],queries:URL[]=[]
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const req=route.request(),url=new URL(req.url()),path=url.pathname
@@ -39,7 +42,8 @@ test('calendar navigation, cancellation and Escape preserve exact saved expiry u
  await page.getByLabel('Description',{exact:true}).fill('Keep original precision')
  expect(writes).toHaveLength(0)
  await page.getByRole('button',{name:'Save',exact:true}).click()
- expect(writes[0].body.expiresAt).toBe('2027-02-03T04:05:06.789Z')
+ await expect.poll(()=>writes.length).toBe(1)
+ expect(writes[0].body).toEqual({description:'Keep original precision'})
 })
 
 test('mobile expiry picker stays inside the viewport, applies local time and saves only on request',async({page})=>{
@@ -53,6 +57,7 @@ test('mobile expiry picker stays inside the viewport, applies local time and sav
  await picker.getByRole('button',{name:'Apply',exact:true}).click()
  await expect(page.getByLabel('Expires',{exact:true})).toHaveValue('2027-02-04T14:45');expect(writes).toHaveLength(0)
  await page.getByRole('button',{name:'Save',exact:true}).click()
+ await expect.poll(()=>writes.length).toBe(1)
  expect(writes[0].body.expiresAt).toBe('2027-02-04T11:45:00.000Z')
 })
 
@@ -92,7 +97,7 @@ test('token expiry errors stay linked to the input and explicit clearing removes
  await dialog.getByRole('button',{name:'Choose expires at date and time'}).click()
  await page.getByRole('dialog',{name:'Expires at date and time',exact:true}).getByRole('button',{name:'No expiry',exact:true}).click()
  await expect(dialog.getByLabel('Expires at',{exact:true})).toHaveValue('');await expect(dialog.getByLabel('Expires at',{exact:true})).not.toHaveAttribute('aria-invalid','true')
- await dialog.getByRole('button',{name:'Create',exact:true}).click();expect(body!.expiresAt).toBeNull()
+ await dialog.getByRole('button',{name:'Create',exact:true}).click();await expect.poll(()=>body?.expiresAt).toBeNull()
 })
 
 test.describe('daylight saving time',()=>{

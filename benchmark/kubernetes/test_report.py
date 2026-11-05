@@ -51,6 +51,30 @@ class ReportContract(unittest.TestCase):
             text=reports.render(source).read_text()
             self.assertIn('25000 ms gözlem penceresinde doğrulanamadı',text)
             self.assertNotIn('snapshot yayılımı: **25000 ms**',text)
+    def test_comparison_uses_current_gates_and_resource_limits(self):
+        data=json.loads((ROOT/'benchmark/results/rest-release-20261020/after-fix/report.json').read_text())
+        data['DataPlaneConfiguration'].update(postgres_limits='none', cpu_limit_each='8', memory_limit_each='6Gi', go_soft_memory_limit_each='4GiB', gomaxprocs_each=8)
+        for phase in data['Phases']:
+            phase['slo_pass']=True
+        with tempfile.TemporaryDirectory() as directory:
+            source=pathlib.Path(directory)/'report.json'
+            source.write_text(json.dumps(data))
+            text=comparison.render(directory).read_text()
+            self.assertIn('steady: hedef 200 çağrı/sn',text)
+            self.assertIn('configuration_refresh_under_rest_load: geçti',text)
+            self.assertIn('key_revocation_propagated_and_rejected_on_both_nodes: geçti',text)
+            self.assertIn('PostgreSQL: CPU/bellek limiti yok',text)
+            self.assertIn('8 CPU / 6Gi',text)
+            self.assertNotIn('600 çağrı/sn sabit yük ve 400 çağrı/sn',text)
+            self.assertNotIn('PostgreSQL hard limit 4CPU/4GiB',text)
+            next(p for p in data['Phases'] if p['name']=='steady')['slo_pass']=False
+            data['Functional']['key_revocation_propagated_and_rejected_on_both_nodes']=False
+            source.write_text(json.dumps(data))
+            failed=comparison.render(directory).read_text()
+            self.assertIn('key_revocation_propagated_and_rejected_on_both_nodes: geçmedi',failed)
+            steady=next(line for line in failed.splitlines() if line.startswith('- steady:'))
+            self.assertIn('eşik geçmedi',steady)
+
     def test_smoke_is_not_reported_as_capacity_comparison(self):
         with tempfile.TemporaryDirectory() as directory:
             (pathlib.Path(directory)/'report.json').write_text(json.dumps({'Profile':{'Smoke':True}}))

@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { auditSettings } from './audit-fixtures'
 import { expect, test, type Page } from '@playwright/test'
 import { server, upstream } from '../src/connections/fixtures'
@@ -7,6 +8,8 @@ async function login(page:Page,path:string,headers:string[]=[]){
  let upstreams=[{...upstream,headerNames:headers}],servers=[{...server}]
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),url=new URL(request.url()),path=url.pathname
@@ -19,6 +22,8 @@ async function login(page:Page,path:string,headers:string[]=[]){
    }else servers=[]
    return route.fulfill({status:204})
   }
+  if(path==='/api/v1/upstreams/alpha')return route.fulfill({json:upstreams[0]})
+  if(path==='/api/v1/virtual-servers/demo')return route.fulfill({json:servers[0]})
   if(path.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
   return route.fulfill({json:{items:path.endsWith('/upstreams')?upstreams:path.endsWith('/virtual-servers')?servers:[]}})
  })

@@ -1,3 +1,4 @@
+import { configurationFixture } from './configuration-fixtures'
 import { expect,test } from '@playwright/test'
 import {server,upstream} from '../src/connections/fixtures'
 
@@ -8,6 +9,8 @@ for (const width of [390,1440]) test(`saved server requests its missing approval
  const tools=['lookup','search'].map(tool=>({upstream:'alpha',tool,exposedName:`alpha__${tool}`,approvalStatus:'required',orphaned:false}))
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
+ const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+
   const request=route.request(),path=new URL(request.url()).pathname
   if(path.endsWith('/me'))return route.fulfill({json:{role:'admin',name:'Tester'}})
   if(path.endsWith('/tool-grants/bulk')) {
@@ -16,7 +19,9 @@ for (const width of [390,1440]) test(`saved server requests its missing approval
    requests++;granted=true
    return route.fulfill({json:{items:body.items.map((i:object)=>({...i,result:'changed'})),changed:2,unchanged:0,failed:0}})
   }
+  if(path==='/api/v1/virtual-servers/'+({...server,project:'default',policy:{default:'allow',tools:{}},tools:tools.map(t=>({...t,approvalStatus:granted?'pending':'required'})),catalog:[]}).slug)return route.fulfill({json:{...server,project:'default',policy:{default:'allow',tools:{}},tools:tools.map(t=>({...t,approvalStatus:granted?'pending':'required'})),catalog:[]}})
   if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:[{...server,project:'default',policy:{default:'allow',tools:{}},tools:tools.map(t=>({...t,approvalStatus:granted?'pending':'required'})),catalog:[]}]}})
+  if(path==='/api/v1/upstreams/'+(upstream).slug)return route.fulfill({json:upstream})
   if(path.endsWith('/upstreams'))return route.fulfill({json:{items:[upstream]}})
   if(path.endsWith('/tools'))return route.fulfill({json:{items:tools.map(t=>({name:t.tool,description:'Read records'}))}})
   if(path.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[]}})
