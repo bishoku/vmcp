@@ -4,7 +4,7 @@ Issue: [#31](https://github.com/bishoku/vmcp/issues/31), “v2.0.0: enforce gran
 Branch: `feat/31-v2-control-plane-authorization`, base `5d49db89e89de698bdfdeb4e0c8d04fdb918fc8b`.
 The measurements include follow-up changes later committed as `accf72a`. Full source-tree/binary hashes and reproduction manifests are retained locally; public summaries are not a replacement for that evidence.
 
-**Merge is not approved by this report.** The selected capacity run, full backend verification and final frontend checks passed locally. PR CI and reviewer approval remain separate gates. No merge, release, tag, issue closure or CI success is implied.
+**Merge is not approved by this report.** The selected capacity run, full backend verification and final frontend checks passed locally. CI on `61f0b6f` passed all four jobs ([run 120](https://github.com/bishoku/vmcp/actions/runs/42084243752)). Later release-preparation commits require their own CI; reviewer approval remains a separate gate. No merge, release, tag, issue closure or CI success is implied.
 
 ## Design assessment and follow-up
 
