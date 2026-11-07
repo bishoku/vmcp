@@ -31,6 +31,7 @@ import Ownership from './pages/Ownership'
 import Authorization from './pages/Authorization'
 import Omni from './pages/Omni'
 import SettingsPage from './pages/Settings'
+import InvocationSecurity from './pages/InvocationSecurity'
 
 function SignOut({onDone}:{onDone:()=>void}) {
   const confirm=useConfirm()
@@ -97,7 +98,8 @@ function Application() {
             />
             <Route path="/agent-keys" element={<ConfigurationRoute><ManagementRoute page={AgentKeys} /></ConfigurationRoute>} />
             <Route path="/identities" element={<ConfigurationRoute><ManagementRoute page={Identities} /></ConfigurationRoute>} />
-            <Route path="/settings" element={<ConfigurationRoute><SettingsPage role={me.role} /></ConfigurationRoute>} />
+            <Route path="/invocation-security" element={<ConfigurationRoute><InvocationSecurity/></ConfigurationRoute>}/>
+<Route path="/settings" element={<ConfigurationRoute><SettingsPage role={me.role} /></ConfigurationRoute>} />
             <Route path="/access" element={<Authorization key={expired?'expired':'current'} active={!expired}/>} />
           </Routes>}
 

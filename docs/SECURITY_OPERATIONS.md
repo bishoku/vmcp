@@ -59,15 +59,8 @@ Tool JSON-RPC error messages and data follow the same policy. Inspection failure
 never echo rejected data. Regex detectors can miss personal information and do
 not establish data classification or semantic prompt-injection protection.
 
-Set `VMCP_APPROVAL_URL` to an operator-owned HTTPS policy service to require
-approval for every tool and catalog invocation. Requests carry actor, virtual
-server, method, object, configuration revision and SHA-256 of content; they never
-include raw arguments/content. Only HTTP 200 with exactly `{"allow":true}` permits
-execution. Timeout (2 seconds), malformed responses, denied egress and outages
-deny execution. Normal gateway SSRF restrictions apply. The external service
-owns human approval, policy and digest attestations. Prompt selection is checked
-before retrieval; raw prompt content still requires host-side trust boundaries
-and review. Description overrides and masking are not injection defenses.
+Configure upstream/tool policies through [Invocation security](Invocation-Security.md).
+The removed `VMCP_APPROVAL_URL` setting is rejected at startup.
 
 The current SQL containment workflow requires restricted incident-operator
 access and an externally recorded change ticket; it is not a self-service

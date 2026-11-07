@@ -497,6 +497,12 @@ func (s *Server) allowSearch(w http.ResponseWriter, r *http.Request, token strin
 	return ok
 }
 func (s *Server) fail(w http.ResponseWriter, err error) {
+	var challenge *challengeError
+	if errors.As(err, &challenge) {
+		w.Header().Set("WWW-Authenticate", challenge.Challenge)
+		fail(w, err)
+		return
+	}
 	var e *HTTPError
 	if errors.As(err, &e) && e.Status == 401 && s.Issuer != "" && s.PublicURL != "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="vmcp", resource_metadata="`+strings.TrimRight(s.PublicURL, "/")+`/.well-known/oauth-protected-resource/mcp/v1/omni"`)

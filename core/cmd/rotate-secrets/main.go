@@ -112,6 +112,9 @@ func run() error {
 			}
 		}
 	}
+	if err := rotateInvocationSecurity(ctx, pool, box); err != nil {
+		return err
+	}
 	if err := rotateAuditEnvelopes(ctx, pool, box); err != nil {
 		return err
 	}
@@ -172,4 +175,28 @@ func rotateAuditEnvelopes(ctx context.Context, pool *pgxpool.Pool, box *secrets.
 			}
 		}
 	}
+}
+
+func rotateInvocationSecurity(ctx context.Context, pool *pgxpool.Pool, box *secrets.Box) error {
+	var encrypted []byte
+	if err := pool.QueryRow(ctx, `SELECT ciphertext FROM invocation_security WHERE singleton`).Scan(&encrypted); err != nil {
+		return err
+	}
+	if len(encrypted) == 0 {
+		return nil
+	}
+	if key, ok := box.KeyID(encrypted); ok && key == box.PrimaryID() {
+		return nil
+	}
+	raw, err := box.OpenBound(encrypted, "invocation-security", "configuration")
+	if err != nil {
+		return err
+	}
+	defer clear(raw)
+	sealed, err := box.SealBound(raw, "invocation-security", "configuration")
+	if err != nil {
+		return err
+	}
+	_, err = pool.Exec(ctx, `UPDATE invocation_security SET ciphertext=$1 WHERE singleton AND ciphertext=$2`, sealed, encrypted)
+	return err
 }

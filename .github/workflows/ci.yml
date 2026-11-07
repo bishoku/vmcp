@@ -4,17 +4,7 @@ on:
   workflow_call:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'release-notes/**'
-      - 'maintainer/**'
-      - '*.md'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'release-notes/**'
-      - 'maintainer/**'
-      - '*.md'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -236,3 +226,28 @@ jobs:
           path: image-security/**/*.json
           if-no-files-found: warn
           retention-days: 30
+
+  security-demo:
+    name: Invocation security demo
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: cd web && npx playwright install --with-deps chromium
+      - name: Start isolated Keycloak and invocation security lab
+        run: python3 deploy/helm/vmcp/quickstart/security/run.py
+      - name: Verify both identity models and customer isolation
+        run: node web/scripts/test-security-demo.mjs
+      - name: Remove lab state and test credentials
+        if: always()
+        run: |
+          if [ -f local/security-demo/compose.json ]; then
+            docker compose -f local/security-demo/compose.json down -v
+          fi
+          rm -rf local/security-demo

@@ -1,0 +1,227 @@
+// Package invocation enforces authentication assurance and transaction approval.
+package invocation
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"reflect"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+)
+
+type StepUp struct {
+	AcceptedACR []string `json:"acceptedAcrValues"`
+	MaxAge      int64    `json:"maxAgeSeconds"`
+}
+type IdentityPolicy struct {
+	Source  string   `json:"source"`
+	Service string   `json:"service,omitempty"`
+	Fields  []string `json:"fields,omitempty"`
+}
+type Rule struct {
+	Identity         *IdentityPolicy `json:"identity,omitempty"`
+	StepUp           *StepUp         `json:"stepUp,omitempty"`
+	ApprovalServices []string        `json:"approvalServices,omitempty"`
+	// Only these top-level argument fields may leave the gateway as cleartext.
+	ShareFields []string `json:"shareFields,omitempty"`
+}
+type UpstreamPolicy struct {
+	Rule
+	Tools map[string]Rule `json:"tools,omitempty"`
+}
+type Service struct {
+	URL            string `json:"url"`
+	Token          string `json:"token,omitempty"` // write-only in management responses
+	HasToken       bool   `json:"hasToken,omitempty"`
+	ApprovalOrigin string `json:"approvalOrigin"`
+	CAPEM          string `json:"caPem,omitempty"`
+}
+type Settings struct {
+	Revision int64              `json:"revision"`
+	Services map[string]Service `json:"services"`
+	// Stable upstream UUIDs, never aliases or caller-provided slugs.
+	Upstreams map[string]UpstreamPolicy `json:"upstreams"`
+}
+
+var contextFieldPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
+var acrPattern = regexp.MustCompile(`^[A-Za-z0-9:._/-]{1,200}$`)
+
+func (s Settings) Validate() error {
+	if len(s.Services) > 100 || len(s.Upstreams) > 10000 {
+		return errors.New("too many invocation policies")
+	}
+	for name, svc := range s.Services {
+		if !acrPattern.MatchString(name) {
+			return errors.New("invalid service name")
+		}
+		u, e := url.Parse(svc.URL)
+		if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
+			return fmt.Errorf("service %s requires an HTTPS URL", name)
+		}
+		o, e := url.Parse(svc.ApprovalOrigin)
+		if e != nil || o.Scheme != "https" || o.Host == "" || o.User != nil || o.RawQuery != "" || o.Fragment != "" || (o.Path != "" && o.Path != "/") {
+			return errors.New("approvalOrigin must be an HTTPS origin")
+		}
+		if len(svc.Token) > 8192 || len(svc.CAPEM) > 65536 {
+			return errors.New("service credentials too large")
+		}
+	}
+	validate := func(r Rule) error {
+		if r.Identity != nil {
+			switch r.Identity.Source {
+			case "oauth_subject":
+				if r.Identity.Service != "" || len(r.Identity.Fields) > 0 {
+					return errors.New("oauth_subject cannot configure caller context")
+				}
+			case "caller_context":
+				if _, ok := s.Services[r.Identity.Service]; !ok {
+					return errors.New("caller_context requires a configured identity service")
+				}
+				if len(r.Identity.Fields) == 0 || len(r.Identity.Fields) > 16 {
+					return errors.New("caller_context requires 1 to 16 field names")
+				}
+				seen := map[string]bool{}
+				for _, field := range r.Identity.Fields {
+					if !contextFieldPattern.MatchString(field) || seen[field] {
+						return errors.New("invalid or duplicate caller context field")
+					}
+					seen[field] = true
+				}
+			default:
+				return errors.New("identity source must be oauth_subject or caller_context")
+			}
+		}
+		if r.StepUp != nil {
+			if len(r.StepUp.AcceptedACR) == 0 || len(r.StepUp.AcceptedACR) > 16 || r.StepUp.MaxAge < 1 || r.StepUp.MaxAge > 86400 {
+				return errors.New("stepUp requires acceptedAcrValues and maxAgeSeconds between 1 and 86400")
+			}
+			for _, a := range r.StepUp.AcceptedACR {
+				if !acrPattern.MatchString(a) {
+					return errors.New("invalid ACR")
+				}
+			}
+		}
+		if len(r.ApprovalServices) > 8 || len(r.ShareFields) > 64 {
+			return errors.New("too many services or shared fields")
+		}
+		for _, id := range r.ApprovalServices {
+			if _, ok := s.Services[id]; !ok {
+				return fmt.Errorf("unknown approval service %s", id)
+			}
+		}
+		for _, f := range r.ShareFields {
+			if f == "" || len(f) > 200 {
+				return errors.New("invalid shared field")
+			}
+		}
+		return nil
+	}
+	for id, p := range s.Upstreams {
+		if id == "" {
+			return errors.New("upstream ID required")
+		}
+		if e := validate(p.Rule); e != nil {
+			return e
+		}
+		if (p.StepUp != nil || len(p.ApprovalServices) > 0) && p.Identity == nil {
+			return errors.New("protected upstream requires an explicit identity source")
+		}
+		if len(p.Tools) > 10000 {
+			return errors.New("too many tool policies")
+		}
+		for tool, r := range p.Tools {
+			if tool == "" {
+				return errors.New("tool name required")
+			}
+			if e := validate(r); e != nil {
+				return e
+			}
+			if effective, e := Merge(p.Rule, r); e != nil {
+				return fmt.Errorf("tool %s: %w", tool, e)
+			} else if (effective.StepUp != nil || len(effective.ApprovalServices) > 0) && effective.Identity == nil {
+				return errors.New("protected tools require an explicit identity source")
+			}
+		}
+	}
+	return nil
+}
+
+// Merge is monotonic: approval services accumulate, ACRs intersect, age decreases.
+// Shared fields intersect when both levels define an allowlist.
+func Merge(a, b Rule) (Rule, error) {
+	out := a
+	if a.Identity == nil {
+		out.Identity = b.Identity
+	} else if b.Identity != nil && !reflect.DeepEqual(a.Identity, b.Identity) {
+		return Rule{}, errors.New("tool cannot replace inherited identity source, service or field mapping")
+	}
+	out.ApprovalServices = append([]string{}, a.ApprovalServices...)
+	for _, s := range b.ApprovalServices {
+		if !slices.Contains(out.ApprovalServices, s) {
+			out.ApprovalServices = append(out.ApprovalServices, s)
+		}
+	}
+	if a.StepUp == nil {
+		out.StepUp = b.StepUp
+	} else if b.StepUp != nil {
+		st := &StepUp{MaxAge: min(a.StepUp.MaxAge, b.StepUp.MaxAge)}
+		for _, v := range a.StepUp.AcceptedACR {
+			if slices.Contains(b.StepUp.AcceptedACR, v) {
+				st.AcceptedACR = append(st.AcceptedACR, v)
+			}
+		}
+		if len(st.AcceptedACR) == 0 {
+			return Rule{}, errors.New("inherited and tool ACR requirements have no intersection")
+		}
+		out.StepUp = st
+	}
+	if a.ShareFields == nil {
+		out.ShareFields = b.ShareFields
+	} else if b.ShareFields != nil {
+		out.ShareFields = []string{}
+		for _, v := range a.ShareFields {
+			if slices.Contains(b.ShareFields, v) {
+				out.ShareFields = append(out.ShareFields, v)
+			}
+		}
+	}
+	return out, nil
+}
+func (s Settings) Effective(upstream, tool string) (Rule, error) {
+	p := s.Upstreams[upstream]
+	return Merge(p.Rule, p.Tools[tool])
+}
+
+type Identity struct {
+	Mode         string `json:"mode"`
+	CredentialID string `json:"credentialId"`
+	Issuer       string `json:"issuer,omitempty"`
+	Subject      string `json:"subject,omitempty"`
+	ACR          string `json:"acr,omitempty"`
+	AuthTime     int64  `json:"authTime,omitempty"`
+}
+
+func ClaimsIdentity(mode, credential, issuer, subject string, claims map[string]any) Identity {
+	id := Identity{Mode: mode, CredentialID: credential, Issuer: issuer, Subject: subject}
+	id.ACR, _ = claims["acr"].(string)
+	switch n := claims["auth_time"].(type) {
+	case float64:
+		if n > 0 && n < 1e12 && n == float64(int64(n)) {
+			id.AuthTime = int64(n)
+		}
+	case json.Number:
+		id.AuthTime, _ = n.Int64()
+	}
+	return id
+}
+func (s StepUp) Satisfied(id Identity, now time.Time) bool {
+	return id.Mode == "oauth" && id.Subject != "" && slices.Contains(s.AcceptedACR, id.ACR) && id.AuthTime > 0 && id.AuthTime <= now.Unix()+30 && now.Unix()-id.AuthTime <= s.MaxAge
+}
+func (s StepUp) Challenge() string {
+	return `Bearer error="insufficient_user_authentication", acr_values="` + strings.Join(s.AcceptedACR, " ") + `", max_age="` + fmt.Sprint(s.MaxAge) + `"`
+}

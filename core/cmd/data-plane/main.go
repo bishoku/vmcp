@@ -223,12 +223,20 @@ func run(log *slog.Logger) error {
 	}
 	deliveryStore := &delivery.Store{Pool: pool, Box: box}
 	go deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
-	approval, err := virtual.NewApprovalPolicy(config.Env("VMCP_APPROVAL_URL", ""))
-	if err != nil {
-		return err
+	if config.Env("VMCP_APPROVAL_URL", "") != "" {
+		return fmt.Errorf("VMCP_APPROVAL_URL was removed; configure invocation-security policies")
 	}
 	metrics := telemetry.New()
-	virtualHandler := &virtual.Handler{Metrics: metrics, Approval: approval, Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
+	virtualHandler := &virtual.Handler{Metrics: metrics, ReserveInvocation: func(ctx context.Context, id, binding string) error {
+		tag, err := pool.Exec(ctx, `INSERT INTO invocation_dispatches(operation_id,binding_hash) VALUES($1,$2) ON CONFLICT DO NOTHING`, id, binding)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("operation already dispatched")
+		}
+		return nil
+	}, Snap: syncer, Sessions: sessions, Delivery: deliveryStore, Log: log, TrustedProxies: trusted, Audit: auditor, Breakers: breakers, Limiter: limiter,
 		JWT: jwt, PublicURL: config.Env("VMCP_PUBLIC_URL", "")}
 	virtualHandler.RunSubscriptions(ctx)
 	virtualHandler.Register(mux)

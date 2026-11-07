@@ -34,7 +34,7 @@ lacks context binding until rotated. See [security operations](SECURITY_OPERATIO
   injection through them. Use description overrides and policies to constrain what agents see.
 - PII masking is pattern-based and best effort.
 - SSO logout revokes the shared browser session. Operators can revoke a subject's sessions; role changes apply at the next sign-in. Agent JWT containment uses an exact-token denylist, not universal IdP introspection.
-- The optional approval hook gates request metadata/digests; it does not inspect returned prompt instructions. Treat upstream content as untrusted.
+- Invocation security policies gate operations using authentication assurance and external consent; they do not inspect returned prompt instructions. Treat upstream content as untrusted.
 
 ## Container images and release verification
 

@@ -149,16 +149,36 @@ func BenchmarkAuditMasking(b *testing.B) {
 	}
 }
 
-func TestOmniMaskingUnionAndOptions(t *testing.T){
- settings:=DefaultSettings()
- settings.Scopes["omni_diagnostics"]=Capture{Response:true}
- settings.VirtualServers["one"]=[]Rule{{Name:"customer",Pattern:"CUST-[0-9]+"}}
- settings.Upstreams["two"]=[]Rule{{Name:"employee",Pattern:"EMP-[0-9]+"}}
- if err:=settings.Validate();err!=nil{t.Fatal(err)}
- derived:=settings.ForOmni()
- p,err:=PreviewPayload(derived,"omni_diagnostics","response","","",[]byte(`{"text":"CUST-123 EMP-456"}`))
- if err!=nil||strings.Contains(string(p.Content),"CUST-123")||strings.Contains(string(p.Content),"EMP-456"){t.Fatalf("local masking lost %s %v",p.Content,err)}
- if len(settings.Rules)!=0{t.Fatal("published policy mutated")}
- settings.Omni.MaxCandidates=201
- if settings.Validate()==nil{t.Fatal("unbounded candidate trace accepted")}
+func TestOmniMaskingUnionAndOptions(t *testing.T) {
+	settings := DefaultSettings()
+	settings.Scopes["omni_diagnostics"] = Capture{Response: true}
+	settings.VirtualServers["one"] = []Rule{{Name: "customer", Pattern: "CUST-[0-9]+"}}
+	settings.Upstreams["two"] = []Rule{{Name: "employee", Pattern: "EMP-[0-9]+"}}
+	if err := settings.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	derived := settings.ForOmni()
+	p, err := PreviewPayload(derived, "omni_diagnostics", "response", "", "", []byte(`{"text":"CUST-123 EMP-456"}`))
+	if err != nil || strings.Contains(string(p.Content), "CUST-123") || strings.Contains(string(p.Content), "EMP-456") {
+		t.Fatalf("local masking lost %s %v", p.Content, err)
+	}
+	if len(settings.Rules) != 0 {
+		t.Fatal("published policy mutated")
+	}
+	settings.Omni.MaxCandidates = 201
+	if settings.Validate() == nil {
+		t.Fatal("unbounded candidate trace accepted")
+	}
+}
+
+func TestCallerSessionMetadataNeverCaptured(t *testing.T) {
+	s := DefaultSettings()
+	s.Scopes["virtual"] = Capture{Request: true}
+	p, err := PreviewPayload(s, "virtual", "request", "", "", []byte(`{"arguments":{"count":5},"_meta":{"app/customer":{"customerId":"alice","sessionId":"opaque-secret"}},"callerContext":{"handle":"other-secret"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(p.Content, []byte("opaque-secret")) || bytes.Contains(p.Content, []byte("other-secret")) || !bytes.Contains(p.Content, []byte("count")) {
+		t.Fatal("caller context retained or arguments lost")
+	}
 }

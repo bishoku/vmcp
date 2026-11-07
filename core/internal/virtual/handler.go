@@ -48,7 +48,7 @@ type Handler struct {
 	omniMu             sync.Mutex
 	omniPublished      *omniPublishedCatalog
 	Metrics            *telemetry.Registry
-	Approval           *ApprovalPolicy
+	ReserveInvocation  func(context.Context, string, string) error
 	Snap               SnapshotProvider
 	Sessions           *Manager
 	Delivery           *delivery.Store
@@ -537,14 +537,6 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	ctx = upstream.WithCallerMeta(ctx, selectedMeta)
 	ctx = callercontext.WithHeaders(ctx, dynamicHeaders)
 	ev.Upstream = up.Slug
-	if err := h.Approval.Check(ctx, PolicyDecision{Actor: sess.owner.CredentialID, Server: vs.Slug, Method: msg.Method, Object: p.Name, Revision: snap.Revision}, p.Arguments); err != nil {
-		if !finish("denied", "approval policy") {
-			http.Error(w, "audit outcome unavailable", 503)
-			return
-		}
-		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, -32003, "approval policy denied operation"))
-		return
-	}
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
@@ -560,6 +552,14 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			return
 		}
 		args, ev.Redactions = masked, n
+	}
+	if !h.enforceInvocation(ctx, w, msg, snap, vs, sess.owner, up.ID, vt.UpstreamName, args, p.Meta, selectedMeta, dynamicHeaders) {
+		return
+	}
+	rule, _ := snap.InvocationSecurity.Effective(up.ID, vt.UpstreamName)
+	ctx = invocationGuard(ctx, w, msg, rule)
+	if len(rule.ApprovalServices) > 0 || (rule.Identity != nil && rule.Identity.Source == "caller_context") {
+		ctx = context.WithValue(ctx, approvedInvocationKey{}, true)
 	}
 	if durable, ok := h.Audit.(audit.DurableRecorder); ok {
 		var err error
@@ -710,7 +710,7 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 	ctx = audit.WithProvider(ctx, up.Slug, up.AuditDomain)
 	br := h.Breakers.Get(up.ID)
 	attempts := 1
-	if up.REST == nil && idempotent(vt.Tool.Annotations) {
+	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && idempotent(vt.Tool.Annotations) {
 		attempts = 2
 		ctx = oauthtoken.WithReplaySafe(ctx)
 	}

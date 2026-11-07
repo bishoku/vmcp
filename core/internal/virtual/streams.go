@@ -22,6 +22,9 @@ import (
 )
 
 func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, r *http.Request, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot) {
+	if !h.preflightInvocation(requestCtx, w, msg, vs, snap) {
+		return
+	}
 	var parameters mcp.CallToolParams
 	if err := json.Unmarshal(msg.Params, &parameters); err != nil {
 		writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, "invalid call parameters"))

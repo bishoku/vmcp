@@ -170,7 +170,7 @@ func compiledRegex(pattern string) (*regexp.Regexp, error) {
 func secretKey(key string) bool {
 	k := strings.ToLower(strings.NewReplacer("_", "", "-", "", ".", "").Replace(key))
 	switch k {
-	case "authorization", "proxyauthorization", "cookie", "setcookie", "password", "passwd", "secret", "clientsecret", "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "masterkey", "clientkeypem", "privatekey", "headers", "tokenhash":
+	case "authorization", "proxyauthorization", "cookie", "setcookie", "password", "passwd", "secret", "clientsecret", "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "masterkey", "clientkeypem", "privatekey", "headers", "tokenhash", "meta", "callercontext", "sessionid":
 		return true
 	}
 	return false

@@ -223,6 +223,8 @@ func (s *Server) Handler() http.Handler {
 	api("GET /api/v1/virtual-servers/{slug}/audit-settings", s.localAuditSettings)
 	api("PUT /api/v1/virtual-servers/{slug}/audit-settings", s.localAuditSettings)
 	api("POST /api/v1/virtual-servers/{slug}/audit-settings/preview", s.localAuditSettings)
+	api("GET /api/v1/invocation-security", s.invocationSecurity)
+	api("PUT /api/v1/invocation-security", s.invocationSecurity)
 	api("GET /api/v1/audit-settings", s.getAuditSettings)
 	api("PUT /api/v1/audit-settings", s.putAuditSettings)
 	api("POST /api/v1/audit-preview", s.previewAuditPayload)
