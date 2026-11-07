@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Isolated Compose quickstart for invocation security, built from this checkout."""
-import argparse, json, os, pathlib, secrets, subprocess, time, urllib.request, urllib.error
+import argparse, json, os, pathlib, secrets, subprocess, time, ssl, urllib.request, urllib.error
 from realm import realm
 ROOT=pathlib.Path(__file__).resolve().parents[5]
 HERE=pathlib.Path(__file__).resolve().parent
@@ -21,7 +21,7 @@ def generate(directory):
     cert,key=directory/'cert.pem',directory/'key.pem'
     if not cert.exists():
         subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','30','-subj','/CN=localhost',
-                        '-addext','subjectAltName=DNS:localhost,DNS:security-demo','-keyout',str(key),'-out',str(cert)],check=True,capture_output=True)
+                        '-addext','subjectAltName=DNS:localhost,DNS:security-demo','-addext','keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign','-addext','extendedKeyUsage=serverAuth','-keyout',str(key),'-out',str(cert)],check=True,capture_output=True)
         # Isolated development certificate, readable by the non-root image.
         key.chmod(0o644)
     (directory/'realm.json').write_text(json.dumps(realm(),indent=2))
@@ -47,6 +47,17 @@ def generate(directory):
                            ports=['127.0.0.1:8844:8443'],volumes=[str(directory)+':/tls:ro'],depends_on=['keycloak'])}
     compose=directory/'compose.json';compose.write_text(json.dumps({'name':'vmcp-security-demo','services':services,'volumes':{'database':{}}},indent=2));compose.chmod(0o600)
     return compose,secret,cert.read_text()
+
+def wait_for_demo(cert, attempts=120):
+    # Discovery must not start while Keycloak/verifier initialization is pending.
+    context=ssl.create_default_context(cafile=str(cert))
+    for _ in range(attempts):
+        try:
+            with urllib.request.urlopen('https://localhost:8844/config',context=context,timeout=2) as response:
+                if response.status==200:return
+        except (OSError,ValueError):pass
+        time.sleep(2)
+    raise RuntimeError('Demo identity and approval service did not become ready')
 
 def seed(secret,ca,directory):
     tools=['echo','step_up','delete_records','export_records','execution_counts']
@@ -104,6 +115,7 @@ def main():
         try: request('GET','/info');break
         except (OSError,ValueError):time.sleep(2)
     else:raise RuntimeError('Control plane did not become ready')
+    wait_for_demo(a.directory.resolve()/'cert.pem')
     for _ in range(60):
         try:seed(secret,ca,a.directory.resolve());break
         except urllib.error.HTTPError as e:
