@@ -353,3 +353,7 @@ no-match behavior during outages choose `failurePolicy: closed`; fallback return
 retrieval results with an explicit fallback search mode. See
 [rerank configuration/calibration](../../../docs/Omni-MCP-Reranking.md). Requires
 v1.2.2 or later.
+
+## Invocation security protocol lab
+
+Run `./deploy/helm/vmcp/quickstart.sh --security-demo` from a source checkout for an isolated Docker Compose lab with Keycloak OTP, an approval service and a browser MCP client supporting both OAuth-user and shared-application/caller-context identity modes. See [Invocation security](../../../docs/Invocation-Security.md) for setup and scenarios. This option does not modify a Helm installation.

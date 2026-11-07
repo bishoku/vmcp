@@ -29,3 +29,6 @@ artifacts/
 /local/omni-gpu-models/
 
 CODE_REVIEW_REPORT.md
+
+# Generated invocation security quickstart credentials and certificates.
+/local/security-demo/

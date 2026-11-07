@@ -207,6 +207,8 @@ func (t *Tx) checkConfiguration(ctx context.Context, c configurationPolicy) erro
 			}
 		}
 		return nil
+	case "invocation_security":
+		return c.require("invocation_security."+op.Action, tenant)
 	case "config":
 		return t.checkConfigurationDocument(ctx, c, body)
 	case "audit":
@@ -630,6 +632,15 @@ func (t *Tx) checkConfigurationDocument(ctx context.Context, c configurationPoli
 		return err
 	}
 	if op.Action == "export" {
+		var configured bool
+		if err := t.q.QueryRow(ctx, `SELECT COALESCE(octet_length(ciphertext)>0,false) FROM invocation_security WHERE singleton`).Scan(&configured); err != nil {
+			return err
+		}
+		if configured {
+			if err := c.require("invocation_security.read", tenant); err != nil {
+				return err
+			}
+		}
 		for _, p := range []string{"upstreams.read", "virtual_servers.read", "identity_bindings.read", "teams.read", "projects.read", "tool_grants.read", "audit.settings.read"} {
 			if err := c.require(p, tenant); err != nil {
 				return err
@@ -681,6 +692,11 @@ func (t *Tx) checkConfigurationDocument(ctx context.Context, c configurationPoli
 			}
 		}
 	}
+	if _, ok := body["invocationsecurity"].(map[string]any); ok {
+		if err := c.require("invocation_security.manage", tenant); err != nil {
+			return err
+		}
+	}
 	if raw, ok := body["auditsettings"].(map[string]any); ok {
 		nested := c
 		nested.Operation = ConfigurationOperation{Family: "audit", Action: "settings.update", Body: raw}
@@ -706,7 +722,7 @@ func (t *Tx) checkConfigurationDocument(ctx context.Context, c configurationPoli
 		}
 	}
 	for key := range body {
-		if key != "apiversion" && key != "auditsettings" {
+		if key != "apiversion" && key != "auditsettings" && key != "invocationsecurity" {
 			if _, ok := families[key]; !ok {
 				return apierror.Forbidden(fmt.Sprintf("unclassified configuration document field: %s", key))
 			}

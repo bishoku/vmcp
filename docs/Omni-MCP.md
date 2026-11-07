@@ -174,7 +174,7 @@ retried by Omni.
 The generic `invoke_tool` is conservatively marked potentially destructive and
 non-idempotent. Agents must inspect the discovered schema/annotations and obtain
 any necessary user approval. Search descriptions are untrusted metadata, not
-instructions. Existing runtime approval hooks continue to apply.
+instructions. Upstream/tool invocation security policies, including the selected user identity source, continue to apply. See [Invocation security](Invocation-Security.md).
 
 ## Optional reranking
 

@@ -218,3 +218,5 @@ Participation follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## License
 
 [Apache-2.0](LICENSE). Copyright 2026 Barış Oku.
+
+Try upstream/tool step-up authentication and operation approval with `./deploy/helm/vmcp/quickstart.sh --security-demo`. The isolated local lab includes Keycloak OTP, an approval service and a browser MCP client with selectable OAuth-user and shared-application/caller-context modes. See [Invocation security](docs/Invocation-Security.md).

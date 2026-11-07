@@ -61,6 +61,34 @@ tags:
     description: Server information.
 
 paths:
+  /invocation-security:
+    get:
+      operationId: getInvocationSecurity
+      summary: Read invocation security policies
+      description: Requires tenant invocation_security.read.
+      responses:
+        "200": &a1
+          description: Invocation policies with service secrets omitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvocationSecurity"
+    put:
+      operationId: putInvocationSecurity
+      summary: Replace invocation security policies
+      description: Requires tenant invocation_security.manage. Revision must match. Omitted service tokens retain their current value. Upstream UUIDs bind rules independently of aliases. Inherited requirements cannot be weakened.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvocationSecurity"
+      responses:
+        "200": *a1
+        "412":
+          description: Revision conflict
+        "422":
+          description: Invalid policy
   /teams:
     get:
       operationId: listTeams
@@ -2980,6 +3008,97 @@ components:
             $ref: "#/components/schemas/Problem"
 
   schemas:
+    InvocationSecurity:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - services
+        - upstreams
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        services:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/InvocationApprovalService"
+        upstreams:
+          type: object
+          description: Stable upstream UUID to policy. Resolve IDs using /access/scopes?kind=upstream.
+          additionalProperties:
+            allOf:
+              - $ref: "#/components/schemas/InvocationRule"
+              - type: object
+                properties:
+                  tools:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/InvocationRule"
+    InvocationRule:
+      type: object
+      properties:
+        identity:
+          type: object
+          required: [source]
+          description: Explicit user identity source; tools inherit and cannot replace an upstream identity policy. No automatic fallback. Caller context requires a verification service and fields configured on the upstream.
+          properties:
+            source:
+              type: string
+              enum: [oauth_subject, caller_context]
+            service:
+              type: string
+              description: Required only for caller_context; references a configured service.
+            fields:
+              type: array
+              minItems: 1
+              maxItems: 16
+              items: {type: string}
+              description: Required only for caller_context; selected upstream caller context field names.
+        stepUp:
+          type: object
+          required:
+            - acceptedAcrValues
+            - maxAgeSeconds
+          properties:
+            acceptedAcrValues:
+              type: array
+              minItems: 1
+              items:
+                type: string
+            maxAgeSeconds:
+              type: integer
+              minimum: 1
+              maximum: 86400
+        approvalServices:
+          type: array
+          items:
+            type: string
+        shareFields:
+          type: array
+          description: Explicit top-level argument allowlist; raw bearer tokens are never shared.
+          items:
+            type: string
+    InvocationApprovalService:
+      type: object
+      required:
+        - url
+        - approvalOrigin
+      properties:
+        url:
+          type: string
+          format: uri
+        approvalOrigin:
+          type: string
+          format: uri
+        token:
+          type: string
+          writeOnly: true
+        hasToken:
+          type: boolean
+          readOnly: true
+        caPem:
+          type: string
     AuthorizationMappingCondition:
       type: object
       additionalProperties: false
@@ -5062,6 +5181,7 @@ components:
         toolGrants:
           type: array
           items: { $ref: "#/components/schemas/ToolGrant" }
+        invocationSecurity: { $ref: "#/components/schemas/InvocationSecurity", description: "Declarative upstream keys are slugs; management endpoint keys are UUIDs." }
         auditSettings: { $ref: "#/components/schemas/AuditSettings" }
         apiVersion:
           type: string
@@ -5097,7 +5217,7 @@ components:
             type: object
             required: [ kind, slug, action ]
             properties:
-              kind: { type: string, enum: [ upstream, virtualServer, identityBinding, team, project, toolGrant, auditSettings ] }
+              kind: { type: string, enum: [ upstream, virtualServer, identityBinding, team, project, toolGrant, auditSettings, invocationSecurity ] }
               slug: { $ref: "#/components/schemas/Slug" }
               action: { type: string, enum: [ create, update, delete, unchanged ] }
 

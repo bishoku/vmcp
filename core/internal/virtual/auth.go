@@ -12,6 +12,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/agentauth"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/invocation"
 	"github.com/bishoku/vmcp/core/internal/store"
 )
 
@@ -91,6 +92,7 @@ func (h *Handler) authenticateRuntime(w http.ResponseWriter, r *http.Request, vs
 		})
 		switch outcome {
 		case agentauth.Allowed:
+			*r = *r.WithContext(context.WithValue(r.Context(), assuranceKey{}, invocation.ClaimsIdentity("oauth", b.ID, h.JWT.Issuer(), id.Subject, id.Claims)))
 			return Owner{Mode: "oauth", Principal: b.Principal(), CredentialID: b.ID, Issuer: h.JWT.Issuer(), Subject: id.Subject}, true
 		case agentauth.NoMatch:
 			return deny(http.StatusForbidden, "no identity binding matches this token", id.Subject, false)

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 command -v python3 >/dev/null 2>&1 || { echo 'quickstart requires Python 3.9+.' >&2; exit 1; }
+if [[ "${1:-}" == --security-demo ]]; then
+  shift
+  exec python3 "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/quickstart/security/run.py" "$@"
+fi
 if [[ "${1:-}" == help ]]; then
   shift
   set -- --help "$@"

@@ -108,7 +108,6 @@ idempotency. Caller cancellation and IdP failures do not trip upstream breakers.
 | `VMCP_KEY_ID` | `primary` | Primary encryption key ID |
 | `VMCP_DECRYPT_KEYS` | unset | JSON recovery-key map for reader-first rotation |
 | `VMCP_CIPHERTEXT_WRITE_VERSION` | `v1` | `v1` bound envelope, or transitional `legacy` during reader-first rollout |
-| `VMCP_APPROVAL_URL` | unset | Optional HTTPS metadata/digest request-approval service |
 | `VMCP_AUDIT_EXPORT_DATABASE_URL`, `VMCP_AUDIT_EXPORT_CONSUMER`, `VMCP_AUDIT_EXPORT_URL` | required by exporter | Separate exporter pool, stable consumer name and HTTPS sink |
 
 See [observability](OBSERVABILITY.md) for pool/tracing constraints and OTel variables,

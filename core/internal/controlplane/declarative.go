@@ -13,6 +13,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/invocation"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
@@ -28,13 +29,14 @@ const apiVersion = "vmcp/v1"
 const everything = 1_000_000
 
 type desiredWire struct {
-	Teams          []store.Team        `json:"teams,omitempty"`
-	Projects       []store.Project     `json:"projects,omitempty"`
-	ToolGrants     []store.ToolGrant   `json:"toolGrants,omitempty"`
-	AuditSettings  *audit.Settings     `json:"auditSettings"`
-	APIVersion     string              `json:"apiVersion"`
-	Upstreams      []upstreamWire      `json:"upstreams"`
-	VirtualServers []virtualServerWire `json:"virtualServers"`
+	InvocationSecurity *invocation.Settings `json:"invocationSecurity,omitempty"`
+	Teams              []store.Team         `json:"teams,omitempty"`
+	Projects           []store.Project      `json:"projects,omitempty"`
+	ToolGrants         []store.ToolGrant    `json:"toolGrants,omitempty"`
+	AuditSettings      *audit.Settings      `json:"auditSettings"`
+	APIVersion         string               `json:"apiVersion"`
+	Upstreams          []upstreamWire       `json:"upstreams"`
+	VirtualServers     []virtualServerWire  `json:"virtualServers"`
 	// Bindings nil means "not managed by this document": nothing is applied or pruned.
 	Bindings *[]bindingWire `json:"bindings"`
 }
@@ -94,14 +96,15 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		doc := struct {
-			Teams          []store.Team          `json:"teams,omitempty"`
-			Projects       []store.Project       `json:"projects,omitempty"`
-			ToolGrants     []store.ToolGrant     `json:"toolGrants,omitempty"`
-			AuditSettings  audit.Settings        `json:"auditSettings"`
-			APIVersion     string                `json:"apiVersion"`
-			Upstreams      []exportUpstream      `json:"upstreams"`
-			VirtualServers []exportVirtualServer `json:"virtualServers"`
-			Bindings       []bindingWire         `json:"bindings"`
+			InvocationSecurity *invocation.Settings  `json:"invocationSecurity,omitempty"`
+			Teams              []store.Team          `json:"teams,omitempty"`
+			Projects           []store.Project       `json:"projects,omitempty"`
+			ToolGrants         []store.ToolGrant     `json:"toolGrants,omitempty"`
+			AuditSettings      audit.Settings        `json:"auditSettings"`
+			APIVersion         string                `json:"apiVersion"`
+			Upstreams          []exportUpstream      `json:"upstreams"`
+			VirtualServers     []exportVirtualServer `json:"virtualServers"`
+			Bindings           []bindingWire         `json:"bindings"`
 		}{APIVersion: apiVersion, Upstreams: []exportUpstream{}, VirtualServers: []exportVirtualServer{}, Bindings: []bindingWire{}}
 		doc.Teams, err = rd.ListTeams(r.Context())
 		if err != nil {
@@ -112,6 +115,10 @@ func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		doc.ToolGrants, err = rd.ListToolGrants(r.Context())
+		if err != nil {
+			return err
+		}
+		doc.InvocationSecurity, err = rd.ExportInvocationSecurity(r.Context())
 		if err != nil {
 			return err
 		}
@@ -191,6 +198,11 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 
 	// 1. Validate the whole document up front, reporting every problem.
 	var errs []apierror.FieldError
+	if doc.InvocationSecurity != nil {
+		if err := doc.InvocationSecurity.Validate(); err != nil {
+			return apierror.New(422, "invalid_invocation_security", "Invalid invocation security", err.Error())
+		}
+	}
 	if doc.AuditSettings != nil {
 		normalized := doc.AuditSettings.Normalize()
 		doc.AuditSettings = &normalized
@@ -353,6 +365,12 @@ func (s *Server) applyConfig(w http.ResponseWriter, r *http.Request) error {
 					return err
 				}
 			}
+		}
+		if doc.InvocationSecurity != nil {
+			if err := tx.ApplyInvocationSecurity(ctx, *doc.InvocationSecurity); err != nil {
+				return err
+			}
+			changes = append(changes, change{"invocationSecurity", "global", store.Updated})
 		}
 		for j, v := range doc.VirtualServers {
 			_, outcome, err := tx.PutVirtualServer(ctx, v.Slug, vsIn[j], nil, false)

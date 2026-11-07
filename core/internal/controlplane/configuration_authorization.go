@@ -141,6 +141,16 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 		}
 		op.Action = "revoke"
 		return op, method == "POST"
+	case "invocation-security":
+		op.Family = "invocation_security"
+		if method == "GET" {
+			op.Action = "read"
+		} else if method == "PUT" {
+			op.Action = "manage"
+		} else {
+			return op, false
+		}
+		return op, len(parts) == 1
 	case "audit-settings":
 		op.Family = "audit"
 		if method == "GET" {

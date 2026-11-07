@@ -572,6 +572,13 @@ func (t *Tx) DeleteUpstream(ctx context.Context, slug string, force bool, ifMatc
 	if ifMatch != nil && *ifMatch != cur.Version {
 		return apierror.PreconditionFailed()
 	}
+	security, err := t.InvocationSecurity(ctx)
+	if err != nil {
+		return err
+	}
+	if _, referenced := security.Upstreams[cur.id]; referenced {
+		return apierror.InUse("upstream has an invocation security policy; remove that policy before deleting the upstream")
+	}
 	rows, err := t.q.Query(ctx, `
 		SELECT DISTINCT vs.slug FROM virtual_servers vs
         WHERE vs.tenant_id=`+tenantSQL+` AND (EXISTS (SELECT 1 FROM (SELECT virtual_server_id,upstream_id FROM virtual_server_tools UNION SELECT virtual_server_id,upstream_id FROM virtual_catalog) vt WHERE vt.virtual_server_id=vs.id AND vt.upstream_id=$1::uuid)

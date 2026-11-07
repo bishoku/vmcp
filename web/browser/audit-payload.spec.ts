@@ -19,7 +19,7 @@ test('settings helper previews both payloads using unsaved global rules on mobil
  await page.getByRole('button',{name:'Add masking rule',exact:true}).click();await page.getByLabel('Audit rule 1 name').fill('email');await page.getByLabel('Audit rule 1 regex').fill('[A-Za-z]+@example\\.com')
  await page.getByText('Test request / response audit payload',{exact:true}).click();await page.getByRole('button',{name:'Preview audit payloads',exact:true}).click()
  await expect(page.getByText('global / email: 1',{exact:true})).toHaveCount(2);expect(previews).toHaveLength(2)
- expect(previews[0]).toMatchObject({settings:{rules:[{name:'email'}]},direction:'request'})
+ expect(previews).toEqual(expect.arrayContaining(['request','response'].map(direction=>expect.objectContaining({settings:expect.objectContaining({rules:[expect.objectContaining({name:'email'})]}),direction}))))
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  await page.screenshot({path:test.info().outputPath('audit-payload-mobile.png'),fullPage:true})
 })

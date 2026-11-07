@@ -1,5 +1,8 @@
 import {RoleContext} from '../interaction'
-import { render } from '../test-utils'
+import { render as renderWithProviders } from '../test-utils'
+import { MemoryRouter } from 'react-router-dom'
+import type { ReactNode } from 'react'
+const render=(ui:ReactNode)=>renderWithProviders(<MemoryRouter>{ui}</MemoryRouter>)
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { api, ApiError, type AdminToken } from '../api'

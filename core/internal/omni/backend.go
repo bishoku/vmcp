@@ -29,8 +29,13 @@ func NewBackend(raw, secret string) (*Backend, error) {
 }
 
 type HTTPError struct{ Status int }
+type challengeError struct {
+	*HTTPError
+	Challenge string
+}
 
-func (e *HTTPError) Error() string { return fmt.Sprintf("gateway request failed (%d)", e.Status) }
+func (e *challengeError) Unwrap() error { return e.HTTPError }
+func (e *HTTPError) Error() string      { return fmt.Sprintf("gateway request failed (%d)", e.Status) }
 func (b *Backend) Request(ctx context.Context, method, path, token, ip, trace string, body any, out any) error {
 	var data []byte
 	var err error
@@ -70,6 +75,9 @@ func (b *Backend) Request(ctx context.Context, method, path, token, ip, trace st
 	}
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		if res.StatusCode == 401 && strings.Contains(res.Header.Get("WWW-Authenticate"), "insufficient_user_authentication") {
+			return &challengeError{&HTTPError{401}, res.Header.Get("WWW-Authenticate")}
+		}
 		return &HTTPError{res.StatusCode}
 	}
 	if out == nil {

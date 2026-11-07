@@ -451,7 +451,13 @@ export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;
 export interface OmniStatus { configured:boolean; endpoint:string; index?:{rerankEnabled?:boolean;rerankNoMatchScore?:number;rerankConfidenceScore?:number;rerankCandidates?:number;rerankMinScore?:number;rerankFailurePolicy?:string;embeddedDocuments?:number;dimensions?:number;embeddingProfile?:string;ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
 export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
 export interface LocalAuditSettings {revision:number;rules:AuditRule[]}
+export interface InvocationRule { identity?: {source:'oauth_subject'|'caller_context';service?:string;fields?:string[]}; stepUp?: {acceptedAcrValues:string[];maxAgeSeconds:number}; approvalServices?:string[];shareFields?:string[] }
+export interface InvocationSettings {revision:number;services:Record<string,{url:string;approvalOrigin:string;token?:string;hasToken?:boolean;caPem?:string}>;upstreams:Record<string,InvocationRule & {tools?:Record<string,InvocationRule>}>}
 export const api = {
+ invocationSecurity:()=>request<InvocationSettings>('GET','/invocation-security'),
+ saveInvocationSecurity:(body:InvocationSettings)=>request<InvocationSettings>('PUT','/invocation-security',body),
+ invocationUpstreams:()=>request<{items:{id:string;slug:string}[]}>('GET','/access/scopes?kind=upstream&limit=200'),
+
  localAuditSettings:(path:string,signal?:AbortSignal)=>request<LocalAuditSettings>('GET',path,undefined,undefined,signal),
  saveLocalAuditSettings:(path:string,body:LocalAuditSettings)=>request<LocalAuditSettings>('PUT',path,body),
  previewLocalAudit:(path:string,body:LocalAuditSettings&{direction:string;payload:unknown})=>request<AuditPreview>('POST',path+'/preview',body),

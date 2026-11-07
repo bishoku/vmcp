@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"github.com/bishoku/vmcp/core/internal/correlation"
+	"github.com/bishoku/vmcp/core/internal/invocation"
 	"net/netip"
 	"time"
 
@@ -19,14 +20,15 @@ import (
 // Snapshot is the immutable, versioned configuration the data plane serves from.
 // The control plane produces it; the data plane swaps it in atomically.
 type Snapshot struct {
-	AuditTenant    string
-	Audit          audit.Settings
-	Revision       int64
-	Upstreams      map[string]Upstream      // keyed by upstream ID
-	VirtualServers map[string]VirtualServer // keyed by slug (single tenant for now)
-	AgentKeys      map[string]AgentKey      // keyed by string(SHA-256 of the key)
-	KeyLimits      map[string]int           // principal (agent key slug or "oauth:<binding>") -> calls per minute
-	Bindings       []Binding                // identity bindings of enabled bindings, ordered by slug
+	InvocationSecurity invocation.Settings
+	AuditTenant        string
+	Audit              audit.Settings
+	Revision           int64
+	Upstreams          map[string]Upstream      // keyed by upstream ID
+	VirtualServers     map[string]VirtualServer // keyed by slug (single tenant for now)
+	AgentKeys          map[string]AgentKey      // keyed by string(SHA-256 of the key)
+	KeyLimits          map[string]int           // principal (agent key slug or "oauth:<binding>") -> calls per minute
+	Bindings           []Binding                // identity bindings of enabled bindings, ordered by slug
 }
 
 // AgentKey authorizes an agent to use some virtual servers. Revoked keys are not loaded.
