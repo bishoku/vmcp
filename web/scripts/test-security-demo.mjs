@@ -12,6 +12,14 @@ function otp(seed){const b=Buffer.alloc(8);b.writeBigUInt64BE(BigInt(Math.floor(
 
 const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({ignoreHTTPSErrors:true});context.setDefaultTimeout(15000);
+async function openDemo(page){
+ for(let attempt=0;attempt<3;attempt++){
+  try{await page.goto(base);return}catch(error){
+   if(attempt===2||!String(error).includes('net::ERR_NETWORK_CHANGED'))throw error;
+   await page.waitForTimeout(1000);
+  }
+ }
+}
 async function signIn(page,user='alice'){
  for(let i=0;i<100;i++){
   if(new URL(page.url()).origin===base){await page.waitForTimeout(300);return}
@@ -37,7 +45,7 @@ async function review(page,decision='approve'){
 }
 try{
  for(const mode of ['oauth_subject','caller_context']){
-  const page=await context.newPage();await page.goto(base);if(mode==='caller_context'){await page.locator('#mode').selectOption(mode);await page.waitForFunction(()=>document.querySelector('#server').value==='security-context')}
+  const page=await context.newPage();await openDemo(page);if(mode==='caller_context'){await page.locator('#mode').selectOption(mode);await page.waitForFunction(()=>document.querySelector('#server').value==='security-context')}
   await login(page);await init(page);const prefix=mode==='caller_context'?'security-context__':'security-demo__';
   await page.locator('#tools').click();await response(page,'delete_records');
   await page.locator('#clear').click();await page.locator('#resources').click();await response(page,'"resources"');
