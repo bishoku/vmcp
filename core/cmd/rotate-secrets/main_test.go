@@ -35,6 +35,11 @@ func TestRestartableRotationPreservesBoundRecords(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE upstreams SET encrypted_rest_config=$2 WHERE id=$1`, id, restCiphertext); err != nil {
 		t.Fatal(err)
 	}
+	invocationSecret := []byte(`{"services":{"approval":{"token":"approval-private"}}}`)
+	invocationCiphertext, _ := legacy.SealBound(invocationSecret, "invocation-security", "configuration")
+	if _, err := pool.Exec(ctx, `UPDATE invocation_security SET ciphertext=$1 WHERE singleton`, invocationCiphertext); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("VMCP_DATABASE_URL", url)
 	t.Setenv("VMCP_MASTER_KEY", newKey)
 	t.Setenv("VMCP_KEY_ID", "new")
@@ -62,6 +67,15 @@ func TestRestartableRotationPreservesBoundRecords(t *testing.T) {
 	}
 	if _, err := restored.OpenBound(restCiphertext, "other", "upstream.rest_config"); err == nil {
 		t.Fatal("REST secret transplanted")
+	}
+	if err := pool.QueryRow(ctx, `SELECT ciphertext FROM invocation_security WHERE singleton`).Scan(&invocationCiphertext); err != nil {
+		t.Fatal(err)
+	}
+	if value, err := restored.OpenBound(invocationCiphertext, "invocation-security", "configuration"); err != nil || string(value) != string(invocationSecret) {
+		t.Fatal("invocation service secret rotation failed", err)
+	}
+	if _, err := restored.OpenBound(invocationCiphertext, "other", "configuration"); err == nil {
+		t.Fatal("invocation ciphertext transplanted")
 	}
 	if _, err := restored.OpenHeadersBound(ciphertext, "other"); err == nil {
 		t.Fatal("rotated ciphertext transplanted")
