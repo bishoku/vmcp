@@ -102,3 +102,12 @@ v2.0.0 requires explicit control-plane permissions and new browser sign-in.
 Before upgrading a v1 installation, follow the [v2 release migration checklist](../release-notes/v2.0.0.md#installation-and-upgrade), including migrations 36–42,
 bootstrap recovery, role assignments and the tested database restore plan.
 Do not assume coarse roles or a mixed-version rolling deployment remain compatible.
+
+## v2.0.1 invocation security transition
+
+Upgrading from v2.0.0 adds migrations 43–44. The removed `VMCP_APPROVAL_URL`
+setting prevents data-plane startup; removing it alone does not recreate approval
+protection. Follow the [v2.0.1 upgrade checklist](../release-notes/v2.0.1.md#upgrade-from-v200)
+to configure replacement policies before reopening protected traffic. Custom roles
+need explicit invocation-security permissions. The source-built security demo is
+separate from the packaged production release.

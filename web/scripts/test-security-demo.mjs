@@ -12,6 +12,10 @@ function otp(seed){const b=Buffer.alloc(8);b.writeBigUInt64BE(BigInt(Math.floor(
 
 const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({ignoreHTTPSErrors:true});context.setDefaultTimeout(15000);
+// Keep transport diagnostics free of OAuth codes, tokens and customer sessions.
+context.on('requestfailed',request=>console.log('TRANSPORT_DIAGNOSTIC',{
+ method:request.method(),path:new URL(request.url()).pathname,error:request.failure()?.errorText
+}));
 async function openDemo(page){
  for(let attempt=0;attempt<3;attempt++){
   try{await page.goto(base);return}catch(error){
