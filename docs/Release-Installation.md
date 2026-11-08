@@ -111,3 +111,10 @@ protection. Follow the [v2.0.1 upgrade checklist](../release-notes/v2.0.1.md#upg
 to configure replacement policies before reopening protected traffic. Custom roles
 need explicit invocation-security permissions. The source-built security demo is
 separate from the packaged production release.
+
+## v2.1.0 upstream-owned invocation security
+
+Migration 45 adds upstream policy revisions and scoped read/manage permissions.
+Existing verification and approval services are preserved as shared services.
+Review the [v2.1.0 upgrade checklist](../release-notes/v2.1.0.md#upgrade-from-v201)
+before assigning the new permissions to upstream owner teams.
