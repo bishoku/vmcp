@@ -49,17 +49,17 @@ func (d Document) Hash() string {
 	h := sha256.Sum256(b)
 	return fmt.Sprintf("%x", h)
 }
-func Ref(server, name string) string {
-	b, _ := json.Marshal([]string{server, name})
-	return base64.RawURLEncoding.EncodeToString(b)
-}
+
+// Ref identifies an exposed tool within a virtual server. Server slugs cannot
+// contain '/', while tool names are preserved verbatim, including any slashes.
+func Ref(server, name string) string { return server + "/" + name }
+
 func ParseRef(ref string) (string, string, error) {
-	b, e := base64.RawURLEncoding.DecodeString(ref)
-	var parts []string
-	if e != nil || json.Unmarshal(b, &parts) != nil || len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.Contains(parts[0], "/") {
+	server, name, ok := strings.Cut(ref, "/")
+	if !ok || server == "" || name == "" {
 		return "", "", fmt.Errorf("invalid tool_ref")
 	}
-	return parts[0], parts[1], nil
+	return server, name, nil
 }
 
 type Catalog struct {
@@ -75,4 +75,7 @@ type Schema struct {
 	Version string          `json:"schema_version"`
 }
 
-func SchemaVersion(b []byte) string { h := sha256.Sum256(b); return fmt.Sprintf("%x", h) }
+func SchemaVersion(b []byte) string {
+	h := sha256.Sum256(b)
+	return base64.RawURLEncoding.EncodeToString(h[:])
+}

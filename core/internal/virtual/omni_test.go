@@ -62,12 +62,42 @@ func TestOmniEndToEndPublicationInvocationAndRevocation(t *testing.T) {
 	if search.Code != 200 || !strings.Contains(search.Body.String(), "tables") {
 		t.Fatalf("search: %d %s", search.Code, search.Body)
 	}
-	ref := omni.Ref("support", "tables")
+	var discovered struct {
+		Result struct {
+			StructuredContent struct {
+				Tools []omni.Document `json:"tools"`
+			} `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(search.Body.Bytes(), &discovered); err != nil {
+		t.Fatal(err)
+	}
+	ref := ""
+	for _, tool := range discovered.Result.StructuredContent.Tools {
+		if tool.Server == "support" && tool.Name == "tables" {
+			ref = tool.Ref
+		}
+	}
+	if ref != "support/tables" {
+		t.Fatalf("unexpected discovered reference: %q", ref)
+	}
 	schema := call("get_tool_schema", map[string]any{"tool_ref": ref})
 	if schema.Code != 200 || !strings.Contains(schema.Body.String(), "schema_version") {
 		t.Fatalf("schema: %d %s", schema.Code, schema.Body)
 	}
-	result := call("invoke_tool", map[string]any{"tool_ref": ref, "arguments": map[string]any{}})
+	var schemaResponse struct {
+		Result struct {
+			StructuredContent omni.Schema `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(schema.Body.Bytes(), &schemaResponse); err != nil {
+		t.Fatal(err)
+	}
+	version := schemaResponse.Result.StructuredContent.Version
+	if len(version) != 43 || strings.ContainsAny(version, "+/=") {
+		t.Fatalf("expected 43-character unpadded Base64URL schema version, got %q", version)
+	}
+	result := call("invoke_tool", map[string]any{"tool_ref": ref, "arguments": map[string]any{}, "schema_version": version})
 	if result.Code != 200 || !strings.Contains(result.Body.String(), "pg:list_tables") {
 		t.Fatalf("invoke: %d %s", result.Code, result.Body)
 	}
@@ -76,9 +106,20 @@ func TestOmniEndToEndPublicationInvocationAndRevocation(t *testing.T) {
 	if response.ID.String() != "42" {
 		t.Fatal("caller request ID lost")
 	}
+	withoutVersion := call("invoke_tool", map[string]any{"tool_ref": ref, "arguments": map[string]any{}})
+	if withoutVersion.Code != 200 || !strings.Contains(withoutVersion.Body.String(), "pg:list_tables") {
+		t.Fatalf("invoke without optional schema version: %d %s", withoutVersion.Code, withoutVersion.Body)
+	}
 	stale := call("invoke_tool", map[string]any{"tool_ref": ref, "arguments": map[string]any{}, "schema_version": "old"})
 	if stale.Code != 409 {
 		t.Fatalf("stale schema %d", stale.Code)
+	}
+	for _, name := range []string{"get_tool_schema", "invoke_tool"} {
+		legacy := call(name, map[string]any{"tool_ref": "WyJzdXBwb3J0IiwidGFibGVzIl0", "arguments": map[string]any{}})
+		var response mcp.Message
+		if err := json.Unmarshal(legacy.Body.Bytes(), &response); err != nil || response.Error == nil || response.Error.Code != mcp.CodeInvalidParams {
+			t.Fatalf("%s accepted legacy reference: %s", name, legacy.Body)
+		}
 	}
 	if os.Getenv("VMCP_REQUIRE_SDK_INTEROP") == "1" {
 		server := httptest.NewServer(gateway)
