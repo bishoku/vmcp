@@ -1,0 +1,210 @@
+# PostgreSQL cost and optional Redis offload — Refs #55
+
+## Decision
+
+Do not optimize application semantics to compensate for this host's storage.
+The current evidence points to the PostgreSQL WAL flush path as a substantial
+latency contributor, rather than Go CPU/memory exhaustion or expensive delivery
+query execution. It does **not** establish a hard PostgreSQL throughput ceiling.
+The failed 1,000 TPS acceptance also contains a separate test-proxy availability
+failure. Neither finding proves the other caused it.
+
+No production implementation, durability setting, authorization cache, heartbeat
+interval or lease guarantee was changed for this review. Proposed settings below
+are designs, not settings implemented by this PR.
+
+## Evidence and limits
+
+Source application: `a69649ff72908f05f450b4a9b7d57ae4c03edf0f`.
+Raw run: `artifacts/benchmark-runs/readiness-55-reference-4g6g/`.
+Use `report.json`, `postgres-samples.jsonl`, `postgres-statements-latest.json`,
+`postgres-effective-settings.json`, `run.log` and the metrics/GC files together.
+The load is short MCP tools/call traffic to synthetic REST upstreams, distributed
+across 300 virtual servers, with strict metadata audit and durable MCP delivery.
+It is not a measurement of every supported MCP workload.
+
+* 600-second phase: 982.891 successful calls/s; 98.303% success; p95 181.406 ms,
+  p99 494.225 ms; 10,179 errors and 10 dropped scheduled calls. Acceptance failed.
+* Two NodePort connection refusals triggered the harness's passive 10-second
+  cooldown: 2 HTTP 502 and 10,008 HTTP 503 responses. A further 169 errors arrived
+  with HTTP 200 (MCP/application errors). Their timing coincides with the dedicated
+  revocation exercise; retained error examples do not identify their exact cause.
+  Do not silently exclude these errors or call the remaining interval a pass.
+* Go maximum CPU was 217.775% (about 2.18 cores, with an 8-core limit), maximum RSS
+  2,269,331,456 bytes, maximum container usage 2,286,415,872 bytes, no restart/OOM.
+  Pool maximum acquired 58/64 and cancelled acquisitions 0. These are samples,
+  not proof that every short-lived queue was absent.
+* In 107 PostgreSQL samples labelled `steady`, 83.17% of **active-backend sample
+  observations** were `WALWrite` or `WalSync`. This is not 83.17% of request time.
+  One sample had 63 active backends waiting on `WALWrite`. No blocking-session
+  records were captured; row/advisory lock contention is not the dominant
+  observed distributed-load wait.
+* Between the first/last steady samples (599.324 seconds), WAL grew by
+  4,029,043,982 bytes; 234,686 sync operations accumulated 571,252.321 ms,
+  averaging 2.434 ms/sync. This interval includes background work and is slightly
+  shorter than the load phase. WAL flush bandwidth and flush latency are distinct:
+  roughly 6.7 MB/s of WAL does not make the sync path inexpensive.
+* Core delivery statement mean execution times were 0.005 ms for advisory lock,
+  0.167 ms for active-operation counting, 0.193 ms for fenced event-bound checks,
+  0.147 ms for stream insert and 0.158 ms for event insert. These means are not
+  end-to-end transaction latencies or p99. Audit bulk inserts have larger means
+  but process many events in each statement; compare per event, not per statement.
+
+This PostgreSQL is a single pod, ephemeral emptyDir on the shared host filesystem,
+with no standby or dedicated storage acceptance. It already uses the historical
+OLTP tuning profile, including 1 GiB shared_buffers, 4 GiB effective_cache_size,
+32 MiB wal_buffers, 1/4 GiB min/max WAL and 256 max_connections. fsync,
+synchronous_commit and full_page_writes remain on. A production-like DB/storage
+comparison should precede application changes motivated only by this latency.
+
+## What one short tool call asks PostgreSQL to do
+
+This is a code-path accounting, corroborated by aggregate counts, **not an isolated
+single-request trace**. It assumes an initialized session, one terminal result,
+no progress/server requests/replay, and no lease tick during the operation.
+
+| Stage | Application SQL/protocol commands | Purpose |
+| --- | ---: | --- |
+| Session resolve | 1 SELECT | Authoritative termination/ownership check, even with warm local state |
+| Delivery Begin | 5 SQL + BEGIN/COMMIT = 7 | Per-server advisory lock; expire same request slot; check active budgets; insert operation and stream |
+| Stream Claim | 1 UPDATE | Fence the response-stream owner |
+| Terminal Append | 3 SQL + BEGIN/COMMIT = 5 | Lock/check operation fence and event bounds; insert encrypted event; mark operation done atomically |
+| Read Events | Typically 2 SELECTs in this run | Initial empty read plus notified terminal read; count varies with timing |
+| Stream Release | 1 UPDATE | Release the response-stream owner |
+| Subtotal | Approximately 17 client commands, including 4 transaction boundary commands | Excludes audit, background work and optional paths |
+| Strict audit | 2 durable logical events | Admission must persist before upstream execution; outcome persists separately; grouped with other calls |
+
+The run records about 1.00 Begin/Append/Claim/Release per successful call,
+2.04 event reads and 1.34 session reads. Failed attempts, setup, verification,
+longer-lived request checks and background work are included in these ratios.
+They must not be advertised as exact single-call counts.
+
+Audit already groups up to 64 events: event insert, access-context insert and
+access-domain insert share a transaction; dependent inserts use pgx batching.
+Payload capture adds a payload insert. Under low concurrency the single-event
+path applies, so a low-load trace can show **more audit commands per event** than
+the loaded grouped path. There is no fixed total SQL count valid for both cases.
+
+`pg_stat_statements.track=all` also counts trigger/function SQL and FK checks.
+For example the approximately two tenant identity/access-context checks per call
+are database-side checks, not two additional application network round trips.
+Do not sum nested and parent execution times, or label all recorded statements
+as application calls to PostgreSQL.
+
+Long operations add an operation renewal each second, stream owner/session checks
+approximately each second, and event polling every 250 ms when not locally woken.
+Progress adds audited, encrypted, fenced event persistence. Client requests add
+request rows and a 50 ms reply polling loop. These costs require their own profile.
+
+Code references: `core/internal/delivery/store.go` (`Begin`, `Append`, `Events`,
+`Renew`, `WaitReply`), `core/internal/virtual/streams.go` (`streamCall`,
+`serveStream`), `core/internal/virtual/session.go` (`Resolve`, `Touch`),
+`core/internal/audit/durable.go` (`Persist`, `persistBatch`).
+
+## Direct low-load measurement
+
+A fresh isolated fixture ran `TestSQLCostAcceptance` successfully in 9.21s:
+one warmup, one individually measured call and twenty serial calls, no load/fault
+phases. One initialized session, one server, two catalog tools, short REST
+upstream, PII enabled, strict metadata audit, 4GiB Go/6Gi container/8 CPU.
+All 22 calls have matching admission/outcome rows, no duplicate or incomplete
+operation. Evidence: `artifacts/benchmark-runs/readiness-55-sql-cost/`.
+
+The single-call window contained **34 top-level commands**, of which five were
+identifiable background subscription claims returning no rows. The request path
+therefore issued **29 commands: 8 BEGIN/COMMIT and 21 other SQL commands**.
+This equals the 17-command delivery/session path plus 12 strict-audit commands
+(two events, each BEGIN + SET LOCAL + three INSERTs + COMMIT). There were also
+18 nested trigger/FK statements, which do not add client network exchanges.
+
+The twenty-call interval contained 647 top-level commands and 360 nested
+statements. 580 top-level commands match 20 × 29 request commands. The other 67
+are background claims, cleanup, publication transactions and config revision
+checking. This separation uses query identities and the inspected call path,
+not subtraction of a hypothetical idle QPS. Individual pgx protocol exchanges
+may batch commands; a statement count is not a TCP packet count.
+
+The one-second idle baseline contained 41 top-level commands, including **32
+empty resource-subscription claim UPDATEs**. `RunSubscriptions` starts 32 workers
+per replica; each polls once per second even without subscriptions. A bounded
+claim dispatcher or optional Redis wakeup hints with equivalent fallback can
+reduce this fixed idle cost. At 1,000 tool calls/s this is small beside delivery
+and audit work, so it is not evidence of the main throughput bottleneck.
+
+The single-call measurement window is 0.143s **including an intentional 100ms
+settling delay and statistics collection**, not tool-call latency. No capacity
+conclusion is drawn. Statements remain database-scoped; shared stats were never
+reset. Source/binary/resource provenance is in the acceptance report and run
+`environment.json`, `images.json`, `manifest.json` and `profile.json`.
+
+Reproduce with the `--sql-cost` command in `benchmark/kubernetes/README.md`;
+`sql_cost.py` derives `sql-cost-deltas.json` from the six saved snapshots. The
+archive retains snapshots, and the derived file can be regenerated offline.
+
+## Prioritized proposals
+
+| Priority | Candidate | Expected benefit and required evidence | Guarantees to preserve |
+| --- | --- | --- | --- |
+| P0 | Separate routing failures from DB cost | Diagnose connection refusals and retain all failure outcomes. Attribute the 169 MCP errors with bounded error-class counters. | No automatic POST retry of uncertain tool executions |
+| P1 | Compare the same fixture on production-like PostgreSQL storage | A short low-concurrency trace and small concurrency sweep can compare commit/flush latency, pool wait and per-call WAL before another capacity test. Keep exact schema and durability settings. | fsync, synchronous commit, full-page writes, audit acknowledgement ordering |
+| P1 | Reduce sequential SQL exchanges inside existing transactions | Evaluate a bounded pgx batch or a carefully reviewed database function for Begin/Append. Fewer network exchanges could matter more with a remote DB. Current local sub-ms execution means alone do not predict the gain. | Capacity checked before insert; identical transaction/fence/lease checks and rollback behavior |
+| P1 | Combine the two event aggregates in Append | Count and total bytes currently scan the same stream twice. One aggregate can compute both. Impact is likely small for a single terminal event, larger for progress streams; verify EXPLAIN and event limits first. | Same operation row lock, encrypted byte accounting, reserved terminal slot and size bounds |
+| P1 | Review admission budget concurrency before changing locks | A per-server advisory lock serializes a hot server; global/principal counts also cover other servers. Different-server concurrent admissions warrant a targeted boundary test to establish whether global/principal caps can overshoot. This is a code-review risk, not a failure measured by this run. | Strict global/principal/server limits; deterministic lock ordering; no lease resurrection |
+| P2 | Reduce empty subscription claim polling | Measured 32 empty claims/s/replica. Evaluate one bounded dispatcher with the same 32 active workers and <=1s discovery fallback; measure wakeup/reclaim behavior. | Lease ownership, startup/reconnect discovery, cancellation and revocation checks |
+| P2 | Optional Redis delivery wakeup hints | Wake the owning replica after durable PostgreSQL commit; retain bounded fallback polling. Most useful for cross-replica streams and server requests, less for this short-call same-replica path. | PostgreSQL remains authoritative for payloads, fences, leases, replay and revocation |
+| P2 | Inspect audit trigger/index cost per event | Existing batching is valuable. Use per-event CPU/WAL and representative EXPLAIN before reducing indexes or rewriting validations. | Tenant provenance, immutable audit ownership, FK integrity, duplicate-ID semantics |
+
+No evidence justifies increasing the pool or adding indexes indiscriminately.
+A larger pool can deepen WAL contention. Existing partial running-operation,
+expiry, request-uniqueness, child FK and `(stream_id, seq)` replay indexes already
+cover important paths. The active-budget aggregate scans the currently running
+set; the scan becomes more relevant with long operations. Inspect representative
+cardinality and buffer counts before splitting it into multiple queries.
+
+## Redis as an operator-selected option
+
+The product already supports shared Redis rate limiting via `VMCP_REDIS_URL` and
+an explicit failure policy. That does not remove PostgreSQL delivery writes.
+The process-local circuit breaker also does not issue PostgreSQL queries, so
+moving it to Redis would add coordination rather than offload database work.
+
+The safest first additional option is **delivery notification only**, conceptually
+`poll` versus `redis-hints` (proposed names, not implemented). Publish only after
+PostgreSQL commit; use tenant-scoped opaque identifiers, no payloads/credentials;
+authorize reads in PostgreSQL as today. Reconnect and lost messages must recover
+through existing bounded polling, without extending authorization freshness or
+lease intervals. Validate dropped/duplicated/reordered hints and Redis outage.
+
+Redis Pub/Sub can lose messages. Keeping the existing fallback poll cadence
+protects behavior but limits the amount of idle polling it can remove. A material
+poll reduction needs a separately specified latency bound and failure-detection
+proof; do not promise large throughput gains from hints alone.
+
+Do not move authoritative session revocation, operation ownership/fencing,
+durable replay or strict audit into a Redis cache. Such a backend would require a
+new persistence, failover, atomicity and recovery contract. Similarly, Redis quota
+counters cannot be split from PostgreSQL admission with an unsafe dual write.
+An advisory prefilter may reject early, but PostgreSQL must still enforce the cap.
+
+## Remaining low-load follow-up protocol
+
+1. The serial short-REST baseline above is complete. For the remaining MCP/SSE/
+   payload cases, initialize one session and warm metadata; record a
+   no-request background baseline without resetting shared statistics.
+2. Record pg_stat_statements deltas with top-level identity retained; make exactly
+   one deterministic tool call with a unique request ID. Repeat serially for 10–20
+   calls. Count SQL commands, transactions, audit events and WAL separately.
+3. Capture representative EXPLAIN (ANALYZE, BUFFERS, WAL) only in disposable data,
+   for short/long stream sizes and near-limit active operations. Mutating plans
+   execute writes: use disposable transactions and never existing installations.
+4. Repeat for REST/MCP, progress, payload capture and PII modes; preserve identical
+   authorization and audit assertions. Add modest concurrency only after the
+   single-call path is understood.
+5. Compare a changed query or Redis-hint prototype against the unchanged baseline,
+   including cancellation, revocation, expired-owner rejection, duplicate delivery,
+   lost acknowledgement and audit reconciliation. Accept an optimization only if
+   it saves measured work without changing these outcomes.
+
+References: [PostgreSQL statistics](https://www.postgresql.org/docs/17/monitoring-stats.html),
+[pg_stat_statements top/all semantics](https://www.postgresql.org/docs/17/pgstatstatements.html),
+[Redis Pub/Sub delivery semantics](https://redis.io/docs/latest/develop/pubsub/).

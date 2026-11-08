@@ -73,6 +73,21 @@ class PublishEvidenceTest(unittest.TestCase):
         summary = json.loads((self.source/'summary.json').read_text())
         self.assertFalse(summary['ReportAvailable']); self.assertNotIn('Pass', summary)
 
+    def test_setup_failure_with_null_phases_preserves_failed_evidence(self):
+        report = {'Pass': False, 'Phases': None, 'Samples': None, 'Failures': None}
+        (self.source/'report.json').write_text(json.dumps(report))
+        original = (self.source/'run.log').read_bytes()
+        destination = self.root/'summary'
+        archive = publish.publish(self.source, destination, self.archives)
+        summary = json.loads((destination/'summary.json').read_text())
+        self.assertTrue(summary['ReportAvailable'])
+        self.assertFalse(summary['Pass'])
+        self.assertEqual(summary['Phases'], [])
+        self.assertIsNone(summary['Failures'])
+        self.assertEqual((self.source/'run.log').read_bytes(), original)
+        with tarfile.open(self.archives/archive['filename']) as tar:
+            self.assertEqual(tar.extractfile('run.log').read(), original)
+
     def test_symlink_is_rejected_before_archive_or_cleanup(self):
         (self.source/'link').symlink_to(self.source/'run.log')
         with self.assertRaises(ValueError):

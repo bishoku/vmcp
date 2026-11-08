@@ -267,3 +267,57 @@ For a reproducible real-Keycloak/two-control-plane recovery drill and separately
 declared granular configuration/audit HTTP diagnostics, see
 [Issue 31 server acceptance](AUTHORIZATION_ACCEPTANCE.md). Run these sequentially
 after MCP capacity measurements so they do not compete for host resources.
+
+## Isolated recovery checks
+
+`--recovery-checks` runs logical backup/restore and focused key, delivery,
+revocation and exporter regressions **after** the load phases, using the same
+owned PostgreSQL service. It does not create Docker containers or networks.
+Use matching PostgreSQL client binaries, for example:
+
+```sh
+VMCP_RECOVERY_PG_BIN=/usr/lib/postgresql/17/bin \
+python3 benchmark/kubernetes/run.py --smoke --recovery-checks
+```
+
+The recovery test creates two random disposable databases. It dumps the migrated
+source containing two encrypted fixture upstream configurations and restores to
+the separate target, then verifies old/new-key decryption and wrong-row/tenant
+rejection. The custom-format dump and aggregate timings remain in `recovery/`;
+random recovery keys remain separately under `local/readiness-recovery-keys-*`
+with restricted permissions. Do not commit either. Existing keys/backups are never
+used or removed. Database cleanup is limited to the generated test databases.
+The report does not claim application HTTP recovery, physical PITR, primary
+promotion, independent WORM or production RPO/RTO. Review the separate JSON test
+logs: a load-only `Pass` does not imply these supplemental checks passed.
+
+Keep runs sequential and all service fixtures inside the owned namespace.
+Docker build/save/import is the image preparation path; do not start parallel
+Compose fixture environments as part of this Kubernetes workflow.
+
+For the separate two-replica fault/soak run, set
+`VMCP_ACCEPTANCE_MEMORY_PROFILE=4g6g-ha`, `VMCP_ACCEPTANCE_NODES=2`,
+`VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB`, `--data-plane-cpus 8`,
+`--data-plane-memory-limit 6Gi` and `--postgres-tuned`, without `--database-focus`.
+This keeps the reference 5 GiB sampled RSS / 5.4 GiB container-usage budgets per
+replica, rather than applying the older 1.5 GiB baseline gate to a 4 GiB Go target.
+The existing fault, latency, audit and revocation gates remain in force. Expected
+pod withdrawal is not subject to the single-replica no-restart assertion. The
+midpoint dedicated-key probe belongs to the single-replica profile; the two-replica
+profile retains its post-load cross-node revocation checks.
+
+### Low-load SQL cost inspection
+
+```sh
+VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB VMCP_ACCEPTANCE_OWNERSHIP=1 \
+python3 benchmark/kubernetes/run.py --sql-cost --postgres-tuned \
+  --data-plane-cpus 8 --data-plane-memory-limit 6Gi --output <new-directory>
+python3 benchmark/kubernetes/sql_cost.py <new-directory>
+```
+
+This creates one synthetic server/session and makes one warmup call, one measured
+call and twenty serial measured calls. It keeps before/after statement snapshots
+and a one-second idle baseline, scoped to its disposable database; it never
+resets shared PostgreSQL statistics. Top-level commands and nested trigger/FK SQL
+are reported separately. There are no ramp, overload or fault phases, and these
+results do not establish capacity. Background SQL remains visible in the deltas.
