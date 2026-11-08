@@ -39,3 +39,10 @@ func TestLocalReferencesAndRecursiveBudget(t *testing.T) {
 		t.Fatal("recursive schema was not bounded")
 	}
 }
+
+func TestLargeIntegerSchemaPreservesPrecision(t *testing.T) {
+	c := Compile([]byte(`{"type":"object","properties":{"id":{"const":9007199254740993}},"required":["id"]}`))
+	if c.Validate([]byte(`{"id":9007199254740993}`)) != nil || c.Validate([]byte(`{"id":9007199254740992}`)) != ErrArguments {
+		t.Fatal("schema numeric precision changed the accepted value")
+	}
+}

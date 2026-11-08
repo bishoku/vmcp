@@ -51,7 +51,9 @@ func Compile(raw []byte) *Compiled {
 }
 func compile(raw []byte) *Compiled {
 	var value any
-	if json.Unmarshal(raw, &value) != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if !json.Valid(raw) || decoder.Decode(&value) != nil {
 		return &Compiled{err: ErrSchema}
 	}
 	object, ok := value.(map[string]any)

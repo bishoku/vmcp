@@ -569,9 +569,9 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			return
 		}
 		args, ev.Redactions = masked, n
-	}
-	if invalidArguments(args) {
-		return
+		if invalidArguments(args) {
+			return
+		}
 	}
 	if !h.enforceInvocation(ctx, w, msg, snap, vs, sess.owner, up.ID, vt.UpstreamName, args, p.Meta, selectedMeta, dynamicHeaders) {
 		return
