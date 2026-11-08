@@ -1,9 +1,9 @@
 # vMCP ürün hazırlık raporu: doğrulama ve uygulanabilir iyileştirme planı
 
-**Tarih:** 8 Kasım 2026  
-**Takip:** [#53](https://github.com/bishoku/vmcp/issues/53)  
-**İncelenen kaynak:** Yerel `docs/PRODUCT_READINESS_REPORT.md`, sürüm 1.0.0; SHA-256 `b21f42ca5d1980a5435b9e26d5fece364d9f7dd179b7144a3ef7f48ed509d339`. Kaynak dosya kullanıcıya ait, Git tarafından izlenmeyen girdidir; değiştirilmedi ve bu raporun commitine alınmadı.  
-**Kod tabanı:** İnceleme başlangıcı `3aa02a119f947985b3b55a852e7fe0d5ae500d92`; rapor dalının main tabanı `94bcccf93a80a193a066137f4153bb6e290d31a2`. İki commit arasındaki altı dosyalık fark sürüm metadata/API sürüm alanları ve release belgeleridir; burada değerlendirilen çalışma zamanı kodu aynıdır.  
+**Tarih:** 8 Kasım 2026
+**Takip:** [#53](https://github.com/bishoku/vmcp/issues/53)
+**İncelenen kaynak:** Yerel `docs/PRODUCT_READINESS_REPORT.md`, sürüm 1.0.0; SHA-256 `b21f42ca5d1980a5435b9e26d5fece364d9f7dd179b7144a3ef7f48ed509d339`. Kaynak dosya kullanıcıya ait, Git tarafından izlenmeyen girdidir; değiştirilmedi ve bu raporun commitine alınmadı.
+**Kod tabanı:** İnceleme başlangıcı `3aa02a119f947985b3b55a852e7fe0d5ae500d92`; rapor dalının main tabanı `94bcccf93a80a193a066137f4153bb6e290d31a2`. İki commit arasındaki altı dosyalık fark sürüm metadata/API sürüm alanları ve release belgeleridir; burada değerlendirilen çalışma zamanı kodu aynıdır.
 **Kapsam dışı:** SAML 2.0 ve SCIM 2.0; bu özellikler puan, öncelik veya üretime geçiş koşulu olarak kullanılmadı.
 
 ## 1. Yönetici değerlendirmesi
@@ -62,7 +62,7 @@ Bu incelemede uzaktan tetiklenebilir bir süreç çökmesi, SQL injection istism
 | SEC-02 Omni egress koruması | Embedder/reranker ham transport kullanıyor; yönlendirme reddediliyor ama netpolicy uygulanmıyor. Default transport klonu proxy ayarlarını da devralabilir. | P1: allowlist/CIDR/DNS/metadata/proxy politikası; özel CA desteği. Özel VPC, TLS doğrulamasını kapatmayı gerektirmez. |
 | SEC-03 legacy ciphertext | AAD'siz eski format okunabiliyor. Üstelik `FromEnv` yalnızca açık `false` ile kapatıyor; boş env de izin veriyor. Yeni v1 ciphertext'in AAD denetimi kapatılmıyor. | P1: eski veri envanteri, kontrollü rotasyon, ardından `false`; geri dönüş anahtarlarını güvenli tut. |
 | KMS/HSM/Vault yok | Uygulama yerel keyring kullanıyor; cloud wrapping/transit arayüzü yok. Helm existing Secret destekliyor: secret dağıtımı ile KMS kripto entegrasyonu ayrı konular. | P2, müşteri şartı varsa P1: tek sağlayıcıyla aşamalı KeyProvider tasarımı. |
-| SEC-09 web güvenlik başlıkları | `web/nginx.conf` CSP/frame/nosniff içermiyor; chart'ın `templates/web-config.yaml` kopyası da ele alınmalı. Ingress ekliyor olabilir; bu incelemede canlı yanıt ölçülmedi. | P1 düşük maliyet: iki konfigürasyonu birlikte düzelt, gerçek browser/HTTP testleri. |
+| SEC-09 web güvenlik başlıkları | `web/nginx.conf` CSP/frame/nosniff içermiyor; Helm `templates/web-config.yaml` yalnız runtime JS üretir, nginx kopyası değildir. Ingress ekliyor olabilir; bu incelemede canlı yanıt ölçülmedi. | P1 düşük maliyet: image nginx ve Helm/Ingress üzerinden gerçek browser/HTTP testleri. |
 | Multi-IdP yok, B2B imkânsız | Console başına tek OIDC issuer doğru; agent OIDC ayrı ayarlanıyor. Identity broker veya tenant başına issuer ile B2B mümkün. | P2 koşullu: ihtiyaç varsa issuer registry, issuer+subject kimliği, session/JWKS izolasyonu. |
 | Gelen mTLS / RFC 8705 yok | Native agent sertifika kimliği/token binding görülmedi. Edge mTLS yapılabilir; bu uygulamanın RFC 8705 doğruladığı anlamına gelmez. | P2 koşullu: önce ingress güven sınırı, sonra gerekiyorsa certificate-bound token doğrulaması. |
 | Yerel TLS yok | Ana servislerde edge termination tasarımı var; tenant-router HTTPS dinleyicisi mevcut. Bütün Go servisleri TLS'siz genellemesi yanlış. | Güvenilir ingress, private plane, ağ izolasyonu; zorunlu uçtan uca TLS varsa ayrı karar. |
@@ -123,7 +123,7 @@ HTTP recovery eklenecekse SSE başlamış yanıtı JSON 500'e çevirmemeli. Flus
 
 **Omni:** Endpoint değişikliğine yetkili kullanıcıları ve verinin hangi sağlayıcıya çıktığını belgelemek öncelikli. Netpolicy entegrasyonu private endpoint'leri açık izinle desteklemeli; metadata ve DNS rebinding koruması, redirect yasağı ve proxy politikası tutarlı olmalı. Özel CA için trust store sunulmalı. `InsecureSkipVerify` iç ağ gerekliliği gibi normalleştirilmemeli.
 
-**Browser:** CSP'yi report-only ile keşfet, ardından uygun `default-src`, `script-src`, `connect-src`, `frame-ancestors` politikalarını uygula; `nosniff`, frame koruması ve TLS edge'de HSTS değerlendir. Docker nginx ve Helm nginx şablonu aynı davranmalı. Nginx location `add_header` kalıtımı nedeniyle runtime-config dahil bütün yollar test edilmeli. OIDC redirect/logout, API bağlantısı, fontlar ve SPA route refresh bozulmamalı.
+**Browser:** CSP'yi report-only ile keşfet, ardından uygun `default-src`, `script-src`, `connect-src`, `frame-ancestors` politikalarını uygula; `nosniff`, frame koruması ve TLS edge'de HSTS değerlendir. Web image nginx ayarları Helm dağıtımı ve ingress üzerinden de doğrulanmalı. Nginx location `add_header` kalıtımı nedeniyle runtime-config dahil bütün yollar test edilmeli. OIDC redirect/logout, API bağlantısı, fontlar ve SPA route refresh bozulmamalı.
 
 ### 4.6 Anahtarlar ve audit bütünlüğü
 
