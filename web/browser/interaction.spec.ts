@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 async function login(page: Page, role: 'viewer'|'editor'|'admin'='admin') {
  await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
  await page.route('**/api/v1/**',route=>{
- const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator'); if (capability) return capability
+ const capability = configurationFixture(route, role === 'viewer' ? 'reader' : role === 'editor' ? 'operator' : 'administrator'); if (capability) return capability
 
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
@@ -37,7 +37,15 @@ for(const role of ['viewer','editor','admin'] as const) {
    await expect(page.getByRole('button',{name:'New virtual server',exact:true})).toBeDisabled()
   } else await expect(page.getByRole('link',{name:'New virtual server',exact:true})).toHaveAttribute('href','/virtual-servers/new')
   await expect(page.getByRole('button',{name:'Refresh list',exact:true})).toBeEnabled()
+  const tokenPermissions = page.waitForResponse(response => {
+   if (!response.url().endsWith('/api/v1/configuration-access')) return false
+   const body = response.request().postDataJSON() as {checks:{permission?:string}[]}
+   return body.checks.some(check => check.permission === 'control_tokens.create')
+  })
   await page.getByRole('link',{name:'Settings',exact:true}).click()
+  const permissionResponse = await tokenPermissions
+  const checks = permissionResponse.request().postDataJSON().checks as {permission?:string}[]
+  expect((await permissionResponse.json()).allowed[checks.findIndex(check => check.permission === 'control_tokens.create')]).toBe(role==='admin')
   await expect(page.getByRole('button',{name:'New token',exact:true})).toHaveCount(role==='admin'?1:0)
  })
 }
