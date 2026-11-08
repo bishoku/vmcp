@@ -69,3 +69,35 @@ func TestDisabledRegistry(t *testing.T) {
 		t.Fatal("threshold 0 disables breaking")
 	}
 }
+
+func TestAcquireReleasesIgnoredAndFencesLateProbe(t *testing.T) {
+	b, clock := newTest(1)
+	b.Failure()
+	*clock = clock.Add(11 * time.Second)
+	first, ok := b.Acquire()
+	if !ok {
+		t.Fatal("probe")
+	}
+	if _, ok = b.Acquire(); ok {
+		t.Fatal("concurrent probe")
+	}
+	first(Ignore)
+	second, ok := b.Acquire()
+	if !ok {
+		t.Fatal("ignored probe wedged")
+	}
+	first(Reached) // duplicate/late completion cannot close second probe
+	if _, ok = b.Acquire(); ok {
+		t.Fatal("old completion released current probe")
+	}
+	*clock = clock.Add(11 * time.Second)
+	third, ok := b.Acquire()
+	if !ok {
+		t.Fatal("replacement")
+	}
+	second(Failed)
+	third(Reached)
+	if b.State() != Closed {
+		t.Fatal("stale failure changed current state")
+	}
+}

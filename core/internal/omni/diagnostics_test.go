@@ -16,6 +16,7 @@ import (
 )
 
 func TestEmbeddingDiagnosticsAndRedaction(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	for _, tc := range []struct {
 		name, body, reason string
 		status             int
@@ -59,6 +60,7 @@ func TestEmbeddingDiagnosticsAndRedaction(t *testing.T) {
 }
 
 func TestEmbeddingTransportDiagnostics(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer srv.Close()
 	e, _ := NewHTTPEmbedder(srv.URL, "model", "", false)
@@ -83,6 +85,7 @@ func TestEmbeddingTransportDiagnostics(t *testing.T) {
 }
 
 func TestIndexLogsFallbackThrottleAndRecovery(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	var buf bytes.Buffer
 	old := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))

@@ -5508,6 +5508,18 @@
       "InvocationRule": {
         "type": "object",
         "properties": {
+          "retry": {
+            "type": "string",
+            "enum": [
+              "never",
+              "once"
+            ],
+            "description": "Operator-controlled transport replay. Absent inherits the upstream setting, default never. Tool override is explicit; upstream annotations never authorize retry. Only MCP calls without approval or caller-context verification are eligible."
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Operator classification for read-only tool filters, independent of retry. Absent inherits the upstream setting, default false. Does not prevent an upstream from writing; constrain its credentials."
+          },
           "identity": {
             "type": "object",
             "required": [

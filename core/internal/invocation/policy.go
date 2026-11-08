@@ -23,6 +23,8 @@ type IdentityPolicy struct {
 	Fields  []string `json:"fields,omitempty"`
 }
 type Rule struct {
+	Retry            string          `json:"retry,omitempty"`    // empty inherits; never or once
+	ReadOnly         *bool           `json:"readOnly,omitempty"` // operator classification, independent of retry
 	Identity         *IdentityPolicy `json:"identity,omitempty"`
 	StepUp           *StepUp         `json:"stepUp,omitempty"`
 	ApprovalServices []string        `json:"approvalServices,omitempty"`
@@ -78,7 +80,7 @@ func hideServiceCredentials(services map[string]Service, includeStatus bool) {
 }
 
 func (p UpstreamPolicy) Empty() bool {
-	return p.Identity == nil && p.StepUp == nil && len(p.ApprovalServices) == 0 &&
+	return p.Retry == "" && p.ReadOnly == nil && p.Identity == nil && p.StepUp == nil && len(p.ApprovalServices) == 0 &&
 		len(p.ShareFields) == 0 && len(p.Tools) == 0 && len(p.Services) == 0
 }
 
@@ -117,6 +119,9 @@ func (s Settings) Validate() error {
 		return err
 	}
 	validate := func(upstream string, r Rule) error {
+		if r.Retry != "" && r.Retry != "never" && r.Retry != "once" {
+			return errors.New("retry must be never or once")
+		}
 		if r.Identity != nil {
 			switch r.Identity.Source {
 			case "oauth_subject":
@@ -208,6 +213,12 @@ func (s Settings) Validate() error {
 // Shared fields intersect when both levels define an allowlist.
 func Merge(a, b Rule) (Rule, error) {
 	out := a
+	if b.Retry != "" {
+		out.Retry = b.Retry
+	}
+	if b.ReadOnly != nil {
+		out.ReadOnly = b.ReadOnly
+	}
 	if a.Identity == nil {
 		out.Identity = b.Identity
 	} else if b.Identity != nil && !reflect.DeepEqual(a.Identity, b.Identity) {

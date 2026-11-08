@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"io"
 	"net/http"
 	"strings"
@@ -77,12 +78,14 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 	h.workerOnce.Do(func() { h.workerCtx, h.workerCancel = context.WithCancel(context.Background()) })
 	launched = true
 	go func() {
+		defer lifecycle.Guard(ctx, "stream operation")
 		defer h.workerWG.Done()
 		stopWorker := context.AfterFunc(h.workerCtx, cancel)
 		defer stopWorker()
 		defer cancel()
 		heartbeatDone := make(chan struct{})
 		go func() {
+			defer lifecycle.Guard(ctx, "delivery heartbeat")
 			defer close(heartbeatDone)
 			tick := time.NewTicker(time.Second)
 			defer tick.Stop()
@@ -93,6 +96,13 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 				case <-tick.C:
 					renewCtx, renewCancel := context.WithTimeout(ctx, time.Second)
 					cancelled, err := h.Delivery.Renew(renewCtx, op)
+					outcome := "ok"
+					if err != nil {
+						outcome = "error"
+					} else if cancelled {
+						outcome = "cancelled"
+					}
+					h.Metrics.Background("delivery_renew", outcome)
 					renewCancel()
 					if err == nil && !cancelled {
 						rootsCtx, rootsCancel := context.WithTimeout(ctx, time.Second)

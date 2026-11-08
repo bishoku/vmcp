@@ -9,7 +9,7 @@ import { Checkbox } from '../SelectionControls'
 import Select from '../Select'
 import { input } from '../styles'
 import { Modal } from '../ui'
-import { effectivePolicy, ruleSummary, splitFields } from './policy'
+import { effectivePolicy, ruleSummary, splitFields, retrySummary } from './policy'
 
 const validAcr=/^[A-Za-z0-9:._/-]{1,200}$/
 const toggle=(values:string[],value:string,checked:boolean)=>checked?[...values,value]:values.filter(item=>item!==value)
@@ -17,6 +17,7 @@ const toggle=(values:string[],value:string,checked:boolean)=>checked?[...values,
 export default function RuleEditor({doc,tool,onClose,onStage}:{doc:UpstreamInvocationSecurity;tool:string|null;onClose:()=>void;onStage:(rule:InvocationRule)=>void}) {
   const current=tool?doc.policy.tools?.[tool]:doc.policy
   const [draft,setDraft,,,dirty]=useDraft({
+    retry:current?.retry??('' as ''|'never'|'once'),readOnly:current?.readOnly===undefined?'':String(current.readOnly),
     identity:current?.identity?.source??('' as ''|NonNullable<InvocationRule['identity']>['source']),service:current?.identity?.service??'',context:current?.identity?.fields??[],
     acr:current?.stepUp?.acceptedAcrValues.join(', ')??'',age:String(current?.stepUp?.maxAgeSeconds??300),
     approvals:current?.approvalServices??[],share:current?.shareFields?.join(', ')??'',
@@ -44,6 +45,7 @@ export default function RuleEditor({doc,tool,onClose,onStage}:{doc:UpstreamInvoc
   const acr=splitFields(draft.acr)
   const shareFields=splitFields(draft.share)
   const rule:InvocationRule={
+    retry:draft.retry||undefined,readOnly:draft.readOnly===''?undefined:draft.readOnly==='true',
     identity,stepUp:acr.length?{acceptedAcrValues:acr,maxAgeSeconds:Number(draft.age)}:undefined,
     approvalServices:draft.approvals.length?draft.approvals:undefined,
     shareFields:shareFields.length?shareFields:undefined,
@@ -69,9 +71,21 @@ export default function RuleEditor({doc,tool,onClose,onStage}:{doc:UpstreamInvoc
     }))return
     onStage(rule)
   }
-  return <Modal title={tool?`Invocation policy for ${tool}`:'Upstream default invocation policy'} description={tool?'Add requirements to this tool’s inherited policy.':'These requirements apply to operations routed to this upstream.'} size="wide" onClose={()=>void close()} footer={<><Button onClick={()=>void close()}>Cancel</Button><Button variant="primary" onClick={stage}>Stage policy</Button></>}>
+  return <Modal title={tool?`Invocation policy for ${tool}`:'Upstream default invocation policy'} description={tool?'Review inherited requirements and tool-specific execution settings.':'These requirements apply to operations routed to this upstream.'} size="wide" onClose={()=>void close()} footer={<><Button onClick={()=>void close()}>Cancel</Button><Button variant="primary" onClick={stage}>Stage policy</Button></>}>
     <FormScope validation={validation}><FormErrors validation={validation}/><div className="layout-stack">
       {tool&&<p className="surface-inset p-3 text-xs text-ink-muted">Upstream default · {ruleSummary(doc.policy)}</p>}
+      <FormField name="retry" label="Automatic retry" hint="A lost response may hide a completed operation. Enable only when repeating the operation is safe. REST and approval-bound calls are never automatically retried.">
+        <Select className={input} value={draft.retry} onChange={event=>setDraft({...draft,retry:event.target.value as typeof draft.retry})}>
+          <option value="">{tool?'Use upstream default':'Off (default)'}</option>
+          <option value="never">Off</option><option value="once">Allow one retry after a transport failure</option>
+        </Select>
+      </FormField>
+      <FormField name="readOnly" label="Read-only classification" hint="Independent of retry. This operator decision controls read-only tool filters; upstream hints alone do not grant access. Restrict upstream credentials accordingly.">
+        <Select className={input} value={draft.readOnly} onChange={event=>setDraft({...draft,readOnly:event.target.value})}>
+          <option value="">{tool?'Use upstream default':'Not classified (default)'}</option>
+          <option value="false">Not read-only</option><option value="true">Classify as read-only</option>
+        </Select>
+      </FormField>
       <FormField name="identity" label="User identity source" hint={inherited?`Inherits the upstream’s ${inherited.source==='caller_context'?'customer session':'OAuth user'} identity.`:undefined}>
         <Select className={input} value={draft.identity} disabled={identityLocked} onChange={event=>setDraft({...draft,identity:event.target.value as typeof draft.identity})}>
           <option value="">{tool?'Use upstream identity':'Select an identity source'}</option>
@@ -109,6 +123,7 @@ export default function RuleEditor({doc,tool,onClose,onStage}:{doc:UpstreamInvoc
       </FormField>
       <div className="surface-inset space-y-2 p-4">
         <p className="text-sm font-semibold">{tool?'Effective tool policy':'Effective upstream default'}</p>
+        <p className="text-xs text-ink-muted">Automatic retry: {retrySummary(preview.rule)}. Read-only classification: {preview.rule.readOnly?'yes':'no'}.</p>
         <p className="break-words text-xs text-ink-muted">{preview.error?.message??ruleSummary(preview.rule)}</p>
         {!!blockedTools.length&&<p className="text-xs text-red-700">{blockedTools.length} tool {blockedTools.length===1?'rule conflicts':'rules conflict'} with this default.</p>}
         {!!blockedTools.length&&<Button onClick={()=>setShowPreview(!showPreview)} aria-expanded={showPreview}>{showPreview?'Hide conflicts':'Show conflicts'}</Button>}

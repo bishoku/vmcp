@@ -329,7 +329,7 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
                   {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </Select>
               </label>
-              <p className="mt-1 text-xs text-ink-muted">Read-only lets through only tools whose upstream declares <code>readOnlyHint</code>. Set per-tool rules in the list above.</p>
+              <p className="mt-1 text-xs text-ink-muted">Read-only lets through only tools classified as read-only by an operator in the upstream invocation policy. Upstream hints alone do not grant access.</p>
             </div></ServerPanel></div>
 
             <ServerPanel title="PII masking" description="Mask sensitive data in tool results and optionally in upstream arguments" icon={ShieldCheck}><div className="panel-body">
@@ -384,7 +384,7 @@ function Row({ index, id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, d
         <FormField name={`tools.${index}.alias`} label="Exposed alias" error={dup?'Choose a unique exposed name. Another tool uses this name.':undefined} hint="Optional. Leave empty to use the default upstream tool name."><input className={`${input} mt-2`} aria-label={`Alias for ${t.upstream}/${t.tool}`} placeholder={`${t.upstream}__${t.tool}`} value={t.alias??''} onChange={e=>onAlias(e.target.value)}/></FormField>
         <DescriptionOverride name={`tools.${index}.description`} identity={`${t.upstream}/${t.tool}`} exposedName={t.alias || `${t.upstream}__${t.tool}`} value={t.description ?? ''} upstream={upstreamDesc} drift={drift} onChange={onDescription}/>
         <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs font-medium">Tool policy<Select disabled={!policyAllowed} aria-label="Policy" className={clsx(input,'mt-2',mode==='deny'&&'border-red-300 text-red-700')} value={mode} onChange={e=>onMode(e.target.value as PolicyMode)}>{MODES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</Select></label><span className="pb-2 text-xs text-ink-muted">{inherited?'Uses default':'Override'}</span></div>
-        {mode==='read_only'&&!readOnlyHint&&<p className="text-xs text-amber-700">Blocked: upstream does not declare readOnlyHint.</p>}
+        {mode==='read_only'&&<p className="text-xs text-ink-muted">Requires an operator read-only classification in the upstream invocation policy.{readOnlyHint?' The upstream also advertises a read-only hint.':''}</p>}
         {dup&&<p className="sr-only">Duplicate exposed name</p>}
       </div>
     </div>

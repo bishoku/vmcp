@@ -134,3 +134,33 @@ See [benchmark monitoring](../benchmark/README.md#monitoring) for provisioned
 Prometheus/Grafana, scrape targets, dashboards, alert evaluation and a repeatable
 real-stack check. Alerts are evaluated by Prometheus; no notification receiver is
 configured in the local sandbox.
+
+## Readiness hardening signals
+
+`VMCP_LOG_LEVEL` selects DEBUG, INFO (default), WARN or ERROR at startup for the
+control plane, data plane, Omni and audit exporters. Invalid values fail startup.
+Context-aware logs include trace/span IDs when present. Unknown error objects are
+logged by type instead of raw text; explicit safe diagnostic fields remain usable.
+Do not place credentials or payloads in arbitrary string log fields.
+
+Core `/metrics` additionally exposes `go_goroutines`, `go_memstats_heap_alloc_bytes`,
+`go_memstats_alloc_bytes_total` and `go_gc_cycles_total`. Delivery renew outcomes use
+`vmcp_background_operations_total{activity="delivery_renew",outcome="ok|error|cancelled"}`.
+Existing pool acquire/wait and breaker-state metrics remain available. Measure
+these with long-running operations and a single hot virtual server before changing
+lease intervals, admission locking or authorization caching.
+
+Each audit exporter optionally serves `/metrics` at
+`VMCP_AUDIT_EXPORT_METRICS_ADDR` (for example `:9091`; disabled when unset). Expose
+this listener only on a private monitoring network. It exports fixed-state receipt
+counts, oldest pending age (including unclaimed events), sample age and collection
+availability. Collection is bounded to five seconds and occurs once a minute;
+scrapes read cached data and never query PostgreSQL. Alert on dead receipts,
+growing pending age, unavailable samples and stale sample age. Broker delivery
+acknowledgement remains independent of monitoring.
+
+`vmcp_delivery_admission_lock_seconds_total`, `_calls_total` and `_errors_total`
+measure the admission advisory-lock SQL statement (including round-trip time,
+not pure PostgreSQL wait time). Compare with database wait events and pool
+metrics before changing lock semantics. `vmcp_breaker_oldest_probe_seconds`
+shows the oldest active half-open probe without per-upstream labels.

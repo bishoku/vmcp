@@ -88,14 +88,14 @@ func FromEnv(master string) (*Box, error) {
 	if allowLegacy != "" && allowLegacy != "true" && allowLegacy != "false" {
 		return nil, errors.New("VMCP_ALLOW_LEGACY_CIPHERTEXT must be true or false")
 	}
-	if allowLegacy == "false" && version == "legacy" {
-		return nil, errors.New("cannot combine VMCP_CIPHERTEXT_WRITE_VERSION=legacy with VMCP_ALLOW_LEGACY_CIPHERTEXT=false")
+	if allowLegacy != "true" && version == "legacy" {
+		return nil, errors.New("legacy writes require explicit VMCP_ALLOW_LEGACY_CIPHERTEXT=true")
 	}
 	box, err := NewKeyring(primary, keys, version == "legacy")
 	if err != nil {
 		return nil, err
 	}
-	box.disallowLegacy = allowLegacy == "false"
+	box.disallowLegacy = allowLegacy != "true"
 	tenant := os.Getenv("VMCP_TENANT_ID")
 	if tenant != "" && tenant != "default" {
 		box.namespace = tenant + "/"

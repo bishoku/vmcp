@@ -54,7 +54,7 @@ func TestOwnerGrantControlsExistingMCPSession(t *testing.T) {
 		if strings.Contains(string(raw), `"name":"say"`) != allowed {
 			t.Fatalf("list visibility: %s", raw)
 		}
-		_, err = c.Call(e.ctx, "tools/call", map[string]any{"name": "say", "arguments": map[string]any{"text": "hello"}})
+		_, err = c.Call(e.ctx, "tools/call", map[string]any{"name": "say", "arguments": map[string]any{"message": "hello"}})
 		if (err == nil) != allowed {
 			t.Fatalf("call allowed=%v: %v", allowed, err)
 		}

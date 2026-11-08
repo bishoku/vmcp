@@ -26,11 +26,12 @@ type Breaker struct {
 	Cooldown  time.Duration
 	now       func() time.Time
 
-	mu       sync.Mutex
-	state    State
-	failures int
-	since    time.Time // when the breaker opened or the current probe started
-	probing  bool
+	mu         sync.Mutex
+	state      State
+	failures   int
+	since      time.Time // when the breaker opened or the current probe started
+	probing    bool
+	generation uint64
 }
 
 // Allow reports whether a call may proceed. In half-open state only one probe is let through;
@@ -38,18 +39,24 @@ type Breaker struct {
 func (b *Breaker) Allow() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.allowLocked()
+}
+
+func (b *Breaker) allowLocked() bool {
 	now := b.now()
 	switch b.state {
 	case Open:
 		if now.Sub(b.since) < b.Cooldown {
 			return false
 		}
+		b.generation++
 		b.state, b.probing, b.since = HalfOpen, true, now
 		return true
 	case HalfOpen:
 		if b.probing && now.Sub(b.since) < b.Cooldown {
 			return false
 		}
+		b.generation++
 		b.probing, b.since = true, now
 		return true
 	}
@@ -59,6 +66,7 @@ func (b *Breaker) Allow() bool {
 // Success records a call that reached the upstream.
 func (b *Breaker) Success() {
 	b.mu.Lock()
+	b.generation++
 	b.state, b.failures, b.probing = Closed, 0, false
 	b.mu.Unlock()
 }
@@ -69,6 +77,7 @@ func (b *Breaker) Failure() {
 	defer b.mu.Unlock()
 	b.failures++
 	if b.state == HalfOpen || b.failures >= b.Threshold {
+		b.generation++
 		b.state, b.since, b.probing = Open, b.now(), false
 	}
 }
@@ -126,4 +135,63 @@ func (r *Registry) CountStates() map[State]int {
 		counts[b.State()]++
 	}
 	return counts
+}
+
+// Acquire returns an idempotent completion bound to this breaker generation.
+// Ignored probes release their slot; late results cannot finish a replacement.
+func (b *Breaker) Acquire() (func(Outcome), bool) {
+	if b == nil {
+		return func(Outcome) {}, true
+	}
+	b.mu.Lock()
+	if !b.allowLocked() {
+		b.mu.Unlock()
+		return nil, false
+	}
+	generation, probe := b.generation, b.state == HalfOpen
+	b.mu.Unlock()
+	var once sync.Once
+	return func(outcome Outcome) {
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			if generation != b.generation {
+				return
+			}
+			switch outcome {
+			case Ignore:
+				if probe {
+					b.probing = false
+					b.generation++
+				}
+			case Reached:
+				b.state, b.failures, b.probing = Closed, 0, false
+				b.generation++
+			case Failed:
+				b.failures++
+				if probe || b.failures >= b.Threshold {
+					b.state, b.since, b.probing = Open, b.now(), false
+					b.generation++
+				}
+			}
+		})
+	}, true
+}
+
+// OldestProbeAge exposes a bounded aggregate without upstream identifier labels.
+func (r *Registry) OldestProbeAge() time.Duration {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var age time.Duration
+	for _, b := range r.m {
+		b.mu.Lock()
+		if b.state == HalfOpen && b.probing {
+			age = max(age, b.now().Sub(b.since))
+		}
+		b.mu.Unlock()
+	}
+	return age
 }

@@ -311,3 +311,17 @@ For the separate model API contract, keyless/bearer configuration, TLS controls,
 score calibration and closed/fallback behavior, see
 [Omni reranking and no-match calibration](Omni-MCP-Reranking.md). This optional
 feature is available from v1.2.2 and does not require a vector database or a database migration.
+
+## Model endpoint network and certificate policy
+
+Embedding and reranking clients enforce `VMCP_EGRESS_ALLOW_HOSTS` and
+`VMCP_EGRESS_ALLOW_CIDRS`, including DNS-rebinding/metadata protection. Private and
+loopback endpoints need explicit CIDR grants. Redirects and environment proxies
+are disabled. Configure grants for existing internal model endpoints before upgrade.
+
+Mount a trusted CA PEM file and set `VMCP_OMNI_EMBEDDING_CA_FILE` or
+`VMCP_OMNI_RERANK_CA_FILE`. System roots remain trusted and TLS 1.2 is the minimum.
+CA files are limited to 64 KiB. CA configuration cannot be combined with the
+corresponding legacy `INSECURE_SKIP_VERIFY=true` option; private networks do not
+require disabling certificate verification. Use Helm `omni.env`, `extraVolumes` and `extraVolumeMounts`
+for deployment-specific CA paths. Compose users must mount the files separately.

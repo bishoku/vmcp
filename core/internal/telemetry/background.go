@@ -12,7 +12,7 @@ func (r *Registry) Background(activity, outcome string) {
 	if r == nil {
 		return
 	}
-	if activity != "discovery" && activity != "subscription" {
+	if activity != "discovery" && activity != "subscription" && activity != "delivery_renew" {
 		return
 	}
 	switch outcome {
@@ -33,7 +33,7 @@ func (r *Registry) backgroundMetrics(w http.ResponseWriter) {
 	r.mu.Unlock()
 	fmt.Fprintln(w, "# HELP vmcp_background_operations_total Background maintenance outcomes (no audit lifecycle).")
 	fmt.Fprintln(w, "# TYPE vmcp_background_operations_total counter")
-	for _, activity := range []string{"discovery", "subscription"} {
+	for _, activity := range []string{"discovery", "subscription", "delivery_renew"} {
 		for _, outcome := range []string{"changed", "unchanged", "ok", "error", "cancelled"} {
 			if count, ok := counts[activity+":"+outcome]; ok {
 				fmt.Fprintf(w, "vmcp_background_operations_total{activity=%q,outcome=%q} %d\n", activity, outcome, count)

@@ -45,9 +45,11 @@ func TestRestartableRotationPreservesBoundRecords(t *testing.T) {
 	t.Setenv("VMCP_KEY_ID", "new")
 	t.Setenv("VMCP_DECRYPT_KEYS", `{"old":"`+oldKey+`"}`)
 	t.Setenv("VMCP_CIPHERTEXT_WRITE_VERSION", "v1")
+	t.Setenv("VMCP_ALLOW_LEGACY_CIPHERTEXT", "true")
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("VMCP_ALLOW_LEGACY_CIPHERTEXT", "false")
 	if err := run(); err != nil {
 		t.Fatal("restart failed", err)
 	}

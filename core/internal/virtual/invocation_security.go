@@ -18,6 +18,7 @@ import (
 
 type assuranceKey struct{}
 type approvedInvocationKey struct{}
+type retryInvocationKey struct{}
 
 // InvocationOperationKey is client metadata, not an authorization credential.
 const InvocationOperationKey = "io.vmcp/operationId"

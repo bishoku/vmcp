@@ -19,6 +19,7 @@ func (f rerankFunc) Rerank(c context.Context, q string, d []Document) ([]float64
 	return f(c, q, d)
 }
 func TestHTTPRerankContractAndValidation(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	for _, tc := range []struct {
 		name, body string
 		valid      bool
@@ -64,6 +65,7 @@ func TestHTTPRerankContractAndValidation(t *testing.T) {
 	}
 }
 func TestRerankTLSRedirectAndRedaction(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"results":[{"index":0,"relevance_score":0.8}]}`))
 	}))
@@ -106,6 +108,7 @@ func TestRerankTLSRedirectAndRedaction(t *testing.T) {
 	}
 }
 func TestRerankFreshACLNoMatchAndFailurePolicy(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	docs := []Document{{Ref: Ref("chat", "read"), Server: "chat", Name: "read", Description: "customer orders"}, {Ref: Ref("chat", "cancel"), Server: "chat", Name: "cancel", Description: "customer orders"}, {Ref: Ref("private", "secret"), Server: "private", Name: "secret", Description: "customer orders"}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(Catalog{Documents: docs}) }))
 	defer srv.Close()
@@ -154,6 +157,7 @@ func TestRerankFreshACLNoMatchAndFailurePolicy(t *testing.T) {
 	}
 }
 func TestRerankServerGroupingAndCancellation(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	i := NewIndex(nil)
 	i.status.Ready = true
 	access := Access{Refs: map[string]string{}}
@@ -187,6 +191,7 @@ func TestRerankServerGroupingAndCancellation(t *testing.T) {
 }
 
 func TestRerankHTTPTimeout(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
@@ -203,6 +208,7 @@ func TestRerankHTTPTimeout(t *testing.T) {
 	}
 }
 func TestRerankHTTPServerChecksACLBeforeAndAfterProvider(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	for _, revokeAt := range []int{3, 4} {
 		t.Run(string(rune('0'+revokeAt)), func(t *testing.T) {
 			doc := Document{Ref: Ref("chat", "orders"), Server: "chat", Name: "orders", Description: "private order data"}
@@ -239,6 +245,7 @@ func TestRerankHTTPServerChecksACLBeforeAndAfterProvider(t *testing.T) {
 }
 
 func TestRerankQueryGateAndUncertainty(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	hits := []Hit{{Document: Document{Ref: Ref("chat", "read"), Name: "read"}, Score: 0.8}, {Document: Document{Ref: Ref("chat", "cancel"), Name: "cancel"}, Score: 0.7}}
 	scores := []float64{.00001, .00002}
 	i := NewIndex(nil)
@@ -267,6 +274,7 @@ func TestRerankQueryGateAndUncertainty(t *testing.T) {
 }
 
 func TestRerankServerDiscoveryBalancesCandidatePool(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	i := NewIndex(nil)
 	i.status.Ready = true
 	i.RerankCandidates = 20

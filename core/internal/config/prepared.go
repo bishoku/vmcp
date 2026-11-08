@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/toolschema"
 	"regexp"
 	"strings"
 
@@ -24,6 +25,7 @@ type preparedCatalog struct {
 	errors       map[string]error
 	tools        []mcp.Tool
 	toolErrors   []error
+	inputSchemas map[string]*toolschema.Compiled
 }
 
 // WithPreparedMetadata prepares only immutable snapshot data. Failures are retained
@@ -47,10 +49,12 @@ func (v VirtualServer) WithPreparedMetadata() VirtualServer {
 		}
 		p.lists[o.Kind] = append(p.lists[o.Kind], safe)
 	}
+	p.inputSchemas = map[string]*toolschema.Compiled{}
 	p.tools = make([]mcp.Tool, len(v.Tools))
 	p.toolErrors = make([]error, len(v.Tools))
 	for i, t := range v.Tools {
 		p.tools[i], p.toolErrors[i] = v.safeTool(t.Tool)
+		p.inputSchemas[t.Tool.Name] = toolschema.Compile(t.Tool.InputSchema)
 	}
 	p.capabilities = v.CatalogCapabilities()
 	v.prepared = p
@@ -189,4 +193,12 @@ func (v VirtualServer) ListedTools(start, end int) ([]mcp.Tool, error) {
 		out = append(out, tool)
 	}
 	return out, nil
+}
+
+// ValidateArguments checks the original schema, before and after argument masking.
+func (v VirtualServer) ValidateArguments(tool mcp.Tool, raw json.RawMessage) error {
+	if v.prepared != nil {
+		return v.prepared.inputSchemas[tool.Name].Validate(raw)
+	}
+	return toolschema.Compile(tool.InputSchema).Validate(raw)
 }

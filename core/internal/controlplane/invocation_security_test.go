@@ -116,7 +116,7 @@ SELECT id,'transfer','{"type":"object"}'::jsonb FROM upstreams WHERE slug IN ('c
 		t.Fatal("shared service unavailable", names)
 	}
 
-	rule := map[string]any{"approvalServices": []string{"local"}}
+	rule := map[string]any{"approvalServices": []string{"local"}, "retry": "once", "readOnly": false}
 	policy := map[string]any{
 		"identity": map[string]any{"source": "oauth_subject"}, "approvalServices": []string{"shared"},
 		"services": map[string]any{"local": newService("crm.example", "crm-local-secret")},
@@ -126,6 +126,10 @@ SELECT id,'transfer','{"type":"object"}'::jsonb FROM upstreams WHERE slug IN ('c
 	request(422, "PUT", ownPath, doc)
 	policy["tools"] = map[string]any{"transfer": rule}
 	saved := request(200, "PUT", ownPath, doc)
+	savedRule := saved["policy"].(map[string]any)["tools"].(map[string]any)["transfer"].(map[string]any)
+	if savedRule["retry"] != "once" || savedRule["readOnly"] != false {
+		t.Fatal("execution policy lost", savedRule)
+	}
 	if raw, _ := json.Marshal(saved); strings.Contains(string(raw), "crm-local-secret") || strings.Contains(string(raw), "shared-secret") {
 		t.Fatal("scoped response disclosed a credential")
 	}

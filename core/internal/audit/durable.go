@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"log/slog"
 	"regexp"
 	"runtime"
@@ -282,7 +283,7 @@ func (d *Durable) groupPersist(ctx context.Context, e Event) error {
 	d.flushing = true
 	d.batchMu.Unlock()
 
-	go d.flushPendingBatches()
+	go func() { defer lifecycle.Guard(ctx, "strict audit batch"); d.flushPendingBatches() }()
 
 	select {
 	case err := <-req.done:

@@ -11,16 +11,22 @@ and field purpose. Renaming an upstream preserves decryption. Legacy ciphertext
 has no context authentication; it remains readable only to support migration.
 
 1. Back up PostgreSQL and recovery keys in separately controlled storage.
-2. Deploy these readers to every plane with `VMCP_CIPHERTEXT_WRITE_VERSION=legacy`
+2. Deploy these readers to every plane with `VMCP_CIPHERTEXT_WRITE_VERSION=legacy` and explicit
+   `VMCP_ALLOW_LEGACY_CIPHERTEXT=true`
    while older readers remain. Keep the existing primary key during this step.
 3. After every reader supports envelopes, enable `v1` writes everywhere.
 4. Distribute the old/new keyring everywhere before changing the primary ID/key.
 5. Run `go run ./cmd/rotate-secrets` from `core/` with the database URL and keyring
-   injected through the environment. Batches scan 100 rows; individual updates
+   injected through the environment. Legacy input requires explicit
+   `VMCP_ALLOW_LEGACY_CIPHERTEXT=true` during rotation. Batches scan 100 rows; individual updates
    compare the old ciphertext to preserve concurrent changes. Committed rows are
    checkpoints: rerunning skips records already using the primary key.
 6. Repeat after writers converge, verify no legacy/old-key records remain, and
-   restore a backup with retained recovery keys before retiring any key.
+   restore a backup with retained recovery keys before retiring any key. Set
+   `VMCP_ALLOW_LEGACY_CIPHERTEXT=false` everywhere after rotation and verify all
+   readers. Unset now also means false; old installations must explicitly opt in
+   before upgrading if legacy ciphertext remains. Do not retire recovery keys
+   just because the runtime no longer accepts legacy records.
 
 Rotation covers upstream headers, client private keys, OAuth client secrets,
 MCP events and pending client replies. Rolling back to an old binary after v1

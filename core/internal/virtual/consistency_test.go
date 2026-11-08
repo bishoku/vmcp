@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/invocation"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -301,6 +302,7 @@ func TestAuthorizationChangeStopsIdempotentRetry(t *testing.T) {
 	original.Upstreams["u-gh"] = config.Upstream{ID: "u-gh", URL: server.URL}
 	vs := original.VirtualServers["support"]
 	vs.Tools[0].Tool.Annotations = json.RawMessage(`{"idempotentHint":true}`)
+	original.InvocationSecurity.Upstreams = map[string]invocation.UpstreamPolicy{"u-gh": {Rule: invocation.Rule{Retry: "once"}}}
 	original.VirtualServers["support"] = vs
 	sid := r.initialize(t)
 	resp, _ := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue", Arguments: json.RawMessage(`{}`)})

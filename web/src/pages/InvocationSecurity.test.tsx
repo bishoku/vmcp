@@ -68,3 +68,23 @@ test('failed shared-service save retains staged credentials and submits only sha
   expect(screen.getByText('Token pending save')).toBeTruthy()
   expect(Object.keys(save.mock.calls[0][0]).sort()).toEqual(['revision','services'])
 })
+
+test('retry and read-only decisions stage independently and save the effective tool override',async()=>{
+  const doc={...upstream,policy:{retry:'never' as const,readOnly:true}}
+  vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue(doc)
+  const save=vi.spyOn(api,'saveUpstreamInvocationSecurity').mockImplementation(async(_path,value)=>({...doc,...value,revision:2}))
+  render(<UpstreamSecurity slug="payments" version={1}><section aria-label="Discovered tool"><ToolInvocationPolicy name="transfer"/></section></UpstreamSecurity>)
+  const row=await screen.findByRole('region',{name:'Discovered tool'})
+  await waitFor(()=>expect(row.textContent).toContain('Retry: off'))
+  fireEvent.click(row.querySelector('button')!)
+  fireEvent.change(screen.getByLabelText('Automatic retry'),{target:{value:'once'}})
+  fireEvent.change(screen.getByLabelText('Read-only classification'),{target:{value:'false'}})
+  fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
+  expect(save).not.toHaveBeenCalled()
+  expect(row.textContent).toContain('Retry: once for eligible MCP calls')
+  expect(row.textContent).toContain('Read-only: not classified')
+  fireEvent.click(screen.getByRole('button',{name:'Save invocation security'}))
+  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1))
+  expect(save.mock.calls[0][1].policy.tools?.transfer).toMatchObject({retry:'once',readOnly:false})
+  expect(save.mock.calls[0][1].policy.retry).toBe('never')
+})

@@ -4,6 +4,7 @@ package snapshot
 import (
 	"context"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -136,8 +137,8 @@ func (s *Syncer) Start(ctx context.Context) error {
 	if s.OnChange != nil {
 		s.OnChange(snap)
 	}
-	go s.listen(ctx)
-	go s.loop(ctx)
+	go func() { defer lifecycle.Guard(ctx, "snapshot listener"); s.listen(ctx) }()
+	go func() { defer lifecycle.Guard(ctx, "snapshot refresh"); s.loop(ctx) }()
 	return nil
 }
 

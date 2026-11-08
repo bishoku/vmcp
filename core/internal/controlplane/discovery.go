@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"sync"
 	"time"
 
@@ -19,6 +20,7 @@ func (s *Server) RunDiscovery(ctx context.Context) {
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func() {
+			defer lifecycle.Guard(ctx, "discovery worker")
 			defer wg.Done()
 			s.discoveryWorker(ctx)
 		}()

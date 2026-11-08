@@ -50,6 +50,17 @@ func Run(ctx context.Context, log *slog.Logger, factory func() (audit.Publisher,
 	if err := exporter.Register(ctx); err != nil {
 		return errors.New("exporter registration failed")
 	}
+	metrics := &exportMetrics{}
+	stopMetrics, err := startMetrics(metrics)
+	if err != nil {
+		return err
+	}
+	defer stopMetrics()
+	initial, initialCancel := context.WithTimeout(ctx, 5*time.Second)
+	if os.Getenv("VMCP_AUDIT_EXPORT_METRICS_ADDR") != "" {
+		metrics.collect(initial, exporter)
+	}
+	initialCancel()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	stats := time.NewTicker(time.Minute)
@@ -60,6 +71,9 @@ func Run(ctx context.Context, log *slog.Logger, factory func() (audit.Publisher,
 			return nil
 		case <-stats.C:
 			bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if os.Getenv("VMCP_AUDIT_EXPORT_METRICS_ADDR") != "" {
+				metrics.collect(bounded, exporter)
+			}
 			counts, err := exporter.Stats(bounded)
 			cancel()
 			if err == nil {

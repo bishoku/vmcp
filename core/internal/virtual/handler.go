@@ -540,6 +540,23 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
+	invalidArguments := func(raw json.RawMessage) bool {
+		if up.REST != nil {
+			return false
+		}
+		if err := vs.ValidateArguments(vt.Tool, raw); err != nil {
+			if !finish("denied", "invalid tool arguments") {
+				http.Error(w, "audit outcome unavailable", 503)
+				return true
+			}
+			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, err.Error()))
+			return true
+		}
+		return false
+	}
+	if invalidArguments(p.Arguments) {
+		return
+	}
 	args := p.Arguments
 	if vs.PII != nil && vs.PII.MaskArguments {
 		masked, n, err := vs.PII.MaskJSON(args)
@@ -553,11 +570,15 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 		}
 		args, ev.Redactions = masked, n
 	}
+	if invalidArguments(args) {
+		return
+	}
 	if !h.enforceInvocation(ctx, w, msg, snap, vs, sess.owner, up.ID, vt.UpstreamName, args, p.Meta, selectedMeta, dynamicHeaders) {
 		return
 	}
 	rule, _ := snap.InvocationSecurity.Effective(up.ID, vt.UpstreamName)
 	ctx = invocationGuard(ctx, w, msg, rule)
+	ctx = context.WithValue(ctx, retryInvocationKey{}, rule.Retry)
 	if len(rule.ApprovalServices) > 0 || (rule.Identity != nil && rule.Identity.Source == "caller_context") {
 		ctx = context.WithValue(ctx, approvedInvocationKey{}, true)
 	}
@@ -694,23 +715,13 @@ func (h *Handler) rateLimited(ctx context.Context, vs config.VirtualServer, snap
 
 var errCircuitOpen = errors.New("circuit open")
 
-// idempotent reports whether the upstream declares the tool safe to repeat.
-func idempotent(annotations json.RawMessage) bool {
-	var a struct {
-		ReadOnly   bool `json:"readOnlyHint"`
-		Idempotent bool `json:"idempotentHint"`
-	}
-	return json.Unmarshal(annotations, &a) == nil && (a.ReadOnly || a.Idempotent)
-}
-
-// callResilient adds the circuit breaker and, for idempotent tools only, one retry with jitter
-// after a transport failure. Replies from the upstream (including JSON-RPC errors) prove it is
-// alive and never count as failures.
+// callResilient retries only when the operator explicitly permits replay.
+// Approval-bound calls and REST calls remain non-replayable.
 func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Upstream, vt config.VirtualTool, args json.RawMessage) (json.RawMessage, error) {
 	ctx = audit.WithProvider(ctx, up.Slug, up.AuditDomain)
 	br := h.Breakers.Get(up.ID)
 	attempts := 1
-	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && idempotent(vt.Tool.Annotations) {
+	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && ctx.Value(retryInvocationKey{}) == "once" {
 		attempts = 2
 		ctx = oauthtoken.WithReplaySafe(ctx)
 	}
@@ -727,7 +738,8 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 		if err := checkAuthorization(ctx); err != nil {
 			return nil, err
 		}
-		if br != nil && !br.Allow() {
+		complete, allowed := br.Acquire()
+		if !allowed {
 			return nil, errCircuitOpen
 		}
 		if up.REST != nil {
@@ -737,25 +749,15 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 		} else {
 			res, err = h.callUpstream(ctx, sess, up, vt.UpstreamName, args)
 		}
-		if errors.Is(err, errAuthorizationChanged) {
-			return res, err
+		outcome := resilience.Classify(ctx, err)
+		if errors.Is(err, errAuthorizationChanged) || errors.Is(err, audit.ErrUnavailable) {
+			outcome = resilience.Ignore
 		}
-		if errors.Is(err, audit.ErrUnavailable) {
-			return res, err
-		}
-		switch resilience.Classify(ctx, err) {
-		case resilience.Reached:
-			if br != nil {
-				br.Success()
-			}
-			return res, err
-		case resilience.Ignore:
+		complete(outcome)
+		if outcome != resilience.Failed {
 			return res, err
 		}
 
-		if br != nil {
-			br.Failure()
-		}
 	}
 	return res, err
 }

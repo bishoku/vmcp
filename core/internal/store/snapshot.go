@@ -269,6 +269,11 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		return nil, err
 	}
 
+	snap.InvocationSecurity, err = loadInvocationSecurity(ctx, tx, box)
+	if err != nil {
+		return nil, err
+	}
+
 	// Tools of a virtual server whose upstream is disabled are skipped.
 	rows, err = tx.Query(ctx, `
 		SELECT vt.virtual_server_id::text, vt.upstream_id::text, vt.tool_name, COALESCE(vt.alias, ''),
@@ -304,7 +309,14 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		}
 		tool = mcp.MergeToolMetadata(tool, definition)
 		vs := snap.VirtualServers[slug]
-		if ok, reason := policies[slug].Decide(tool.Name, tool.Annotations); !ok {
+		// Operator classification controls read-only filtering, never untrusted hints.
+		rule, ruleErr := snap.InvocationSecurity.Effective(upID, name)
+		if ruleErr != nil {
+			rows.Close()
+			return nil, ruleErr
+		}
+		trusted, _ := json.Marshal(map[string]bool{"readOnlyHint": rule.ReadOnly != nil && *rule.ReadOnly})
+		if ok, reason := policies[slug].Decide(tool.Name, trusted); !ok {
 			if vs.Blocked == nil {
 				vs.Blocked = map[string]string{}
 			}
@@ -340,10 +352,7 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 	if err := loadBindings(ctx, tx, snap, idToSlug); err != nil {
 		return nil, err
 	}
-	snap.InvocationSecurity, err = loadInvocationSecurity(ctx, tx, box)
-	if err != nil {
-		return nil, err
-	}
+
 	snap.Audit, err = loadAuditSettings(ctx, tx)
 	if err != nil {
 		return nil, err

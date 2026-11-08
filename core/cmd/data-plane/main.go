@@ -34,7 +34,12 @@ import (
 const sessionIdleTTL = 30 * time.Minute
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "data-plane")
+	log, err := telemetry.NewLogger("data-plane")
+	if err != nil {
+		slog.Error("invalid logging configuration")
+		os.Exit(1)
+	}
+	slog.SetDefault(log)
 	if err := run(log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
@@ -51,7 +56,11 @@ func run(log *slog.Logger) error {
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	ctx, cancelBackground := context.WithCancel(context.Background())
 	defer cancelBackground()
-	auditCtx, cancelAudit := context.WithCancel(context.Background())
+	gate := &lifecycle.Gate{}
+	supervisor := lifecycle.NewSupervisor(log, gate.Stop)
+	gate.Supervisor = supervisor
+	ctx = lifecycle.WithSupervisor(ctx, supervisor)
+	auditCtx, cancelAudit := context.WithCancel(lifecycle.WithSupervisor(context.Background(), supervisor))
 	defer cancelAudit()
 	defer stop()
 
@@ -120,7 +129,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	go sessions.RunReaper(ctx, sessionIdleTTL)
+	go func() { defer lifecycle.Guard(ctx, "session reaper"); sessions.RunReaper(ctx, sessionIdleTTL) }()
 
 	// Consecutive failures before an upstream is cut off, and how long it stays cut off. 0 disables.
 	threshold, err := strconv.Atoi(config.Env("VMCP_BREAKER_THRESHOLD", "5"))
@@ -157,9 +166,11 @@ func run(log *slog.Logger) error {
 	if node == "" {
 		node, _ = os.Hostname()
 	}
-	go (&health.Checker{Pool: pool, Snap: syncer, Breakers: breakers, Node: node, Interval: interval, Log: log}).Run(ctx)
+	go func() {
+		defer lifecycle.Guard(ctx, "upstream health")
+		(&health.Checker{Pool: pool, Snap: syncer, Breakers: breakers, Node: node, Interval: interval, Log: log}).Run(ctx)
+	}()
 
-	gate := &lifecycle.Gate{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
@@ -222,7 +233,10 @@ func run(log *slog.Logger) error {
 		log.Info("accepting access tokens from an identity provider", "issuer", issuer)
 	}
 	deliveryStore := &delivery.Store{Pool: pool, Box: box}
-	go deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
+	go func() {
+		defer lifecycle.Guard(ctx, "delivery maintenance")
+		deliveryStore.Run(ctx, func() int64 { return syncer.Status().Revision })
+	}()
 	if config.Env("VMCP_APPROVAL_URL", "") != "" {
 		return fmt.Errorf("VMCP_APPROVAL_URL was removed; configure invocation-security policies")
 	}
@@ -269,6 +283,10 @@ func run(log *slog.Logger) error {
 				gauges["redis_degraded"] = 0
 			}
 		}
+		for name, value := range deliveryStore.AdmissionMetrics() {
+			gauges[name] = value
+		}
+		gauges["breaker_oldest_probe_seconds"] = breakers.OldestProbeAge().Seconds()
 		states := breakers.CountStates()
 		gauges["breakers_open"] = float64(states[resilience.Open])
 		gauges["breakers_half_open"] = float64(states[resilience.HalfOpen])
@@ -302,6 +320,7 @@ func run(log *slog.Logger) error {
 	case err := <-errCh:
 		return err
 	case <-signalCtx.Done():
+	case <-supervisor.Done():
 	}
 
 	gate.Stop()
@@ -325,5 +344,5 @@ func run(log *slog.Logger) error {
 	}
 
 	log.Info("stopped")
-	return nil
+	return supervisor.Err()
 }

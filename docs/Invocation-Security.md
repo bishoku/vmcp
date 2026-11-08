@@ -303,3 +303,58 @@ VMCP_DEMO_OTP_FILE=/tmp/vmcp-demo-otp.json node web/scripts/test-security-demo.m
 The test enrolls real OTP for the demo users. The optional file stores test-only
 OTP seeds with mode 0600 so tests can run again; delete it when recreating the
 Keycloak realm. This file is never needed by the demo application itself.
+
+## Operator execution settings
+
+The upstream detail page's **Invocation security** panel and tool rule editor also
+manage execution settings. Existing `upstreams.invocation_security.read/manage`
+permissions apply within the same resource scope. Runtime agents cannot change them.
+The editor shows inherited values, effective behavior and affected catalog tools
+before saving. Read-only access has no mutation controls; stale revisions retain
+the draft and require explicit reconciliation.
+
+- `retry`: `never` or `once`. Absent inherits the upstream value, then defaults to
+  `never`. An explicit tool setting overrides the upstream default. Only eligible
+  MCP calls can repeat once after a transport failure; REST and approval/session
+  verification bound calls remain non-replayable. A hint from the upstream is not
+  authorization. No idempotency-key guarantee is implied.
+- `readOnly`: boolean operator classification for virtual-server `read_only`
+  filters. Absent inherits, then defaults to false. An explicit tool false removes
+  an inherited classification. This setting never enables retry by itself.
+
+The existing upstream-scoped PUT document, global admin configuration and GitOps
+`invocationSecurity.upstreams` section all carry these fields. Export uses upstream
+slugs; persisted policies remain keyed by stable upstream IDs. No SQL migration is
+needed for these additive encrypted JSON fields. An example GitOps fragment:
+
+```yaml
+invocationSecurity:
+  upstreams:
+    orders:
+      retry: never
+      readOnly: false
+      tools:
+        get_order_status:
+          retry: once
+          readOnly: true
+        create_payment:
+          retry: never
+          readOnly: false
+```
+
+Identity, step-up and approval requirements still compose monotonically. Changing
+retry/classification cannot remove an inherited identity or approval requirement.
+
+## MCP argument validation
+
+Virtual and Omni MCP dispatch validate the original tool InputSchema before
+approval consumption and again after argument masking. Invalid calls are rejected
+with generic invalid-params errors without argument values or schema diagnostics.
+REST retains its existing validator and tool-error response contract.
+
+Schemas must declare an object root and fit 64 KiB, 4,096 expanded nodes and depth
+32. Acyclic local JSON-pointer `$ref` is supported; external, recursive and dynamic
+references are rejected without network/filesystem resolution. Arguments are
+bounded at 4 MiB, 100,000 nodes and depth 64. Invalid/unsupported schemas fail closed
+at invocation. Snapshot-owned compiled validators and a bounded 256-entry shared
+cache avoid per-call compilation. Upstream schema changes produce a new validator.

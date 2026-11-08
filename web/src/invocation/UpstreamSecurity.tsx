@@ -9,7 +9,7 @@ import { EmptyState, LoadingState } from '../Feedback'
 import { useDraft, useOperation } from '../interaction'
 import { SearchField } from '../SearchControls'
 import { ErrorBox } from '../ui'
-import { effectivePolicy, referencedServices, ruleSummary } from './policy'
+import { effectivePolicy, referencedServices, ruleSummary, retrySummary } from './policy'
 import RuleEditor from './RuleEditor'
 import Services from './Services'
 
@@ -107,6 +107,7 @@ function Editor({path,version,readable,writable,children}:{path:string;version:n
     const effective=effectivePolicy(policy,specific)
     return <div className="space-y-2">
       <p className="break-words text-xs text-ink-muted"><strong>Effective invocation policy</strong> · {effective.error?.message??ruleSummary(effective.rule)}</p>
+      <p className="text-xs text-ink-muted">Retry: {retrySummary(effective.rule)} · Read-only: {effective.rule.readOnly?'operator classified':'not classified'}</p>
       <p className="break-words text-xs text-ink-muted">{specific?`Tool rule · ${ruleSummary(specific)}`:'Uses upstream default'}{!inCatalog?' · Missing from saved catalog':''}</p>
       {writable&&<div className="flex flex-wrap gap-2">
         {inCatalog&&<Button disabled={busy||loading} aria-label={`${specific?'Edit':'Add'} invocation rule for ${name}`} onClick={()=>setTarget(name)}>{specific?'Edit invocation rule':'Add invocation rule'}</Button>}
@@ -114,7 +115,7 @@ function Editor({path,version,readable,writable,children}:{path:string;version:n
       </div>}
     </div>
   }
-  const defaultConfigured=!!(policy.identity||policy.stepUp||policy.approvalServices?.length||policy.shareFields?.length)
+  const defaultConfigured=!!(policy.retry||policy.readOnly!==undefined||policy.identity||policy.stepUp||policy.approvalServices?.length||policy.shareFields?.length)
   const changedServices=Object.keys(policy.services??{}).filter(name=>JSON.stringify(saved?.policy.services?.[name])!==JSON.stringify(policy.services?.[name]))
   const affected=saved&&dirty?saved.tools.flatMap(name=>{
     const before=effectivePolicy(saved.policy,toolRule(saved.policy,name)).rule
@@ -131,7 +132,7 @@ function Editor({path,version,readable,writable,children}:{path:string;version:n
       {error&&<ErrorBox title="Invocation security could not be loaded or saved" onRetry={reload} retryLabel="Reload invocation security" busy={busy||loading}>{error}</ErrorBox>}
       {loading&&<LoadingState label="Loading upstream invocation security…"/>}
       {saved&&<>
-        <ServerPanel title="Invocation security" description="Set requirements for operations routed to this upstream. Individual tools can add stricter requirements." icon={ShieldCheck} actions={writable&&<Button disabled={busy||loading} onClick={()=>setTarget(null)}>{defaultConfigured?'Edit default':'Configure default'}</Button>}>
+        <ServerPanel title="Invocation security" description="Set requirements for operations routed to this upstream. Tools can add stricter identity requirements and override retry or read-only settings." icon={ShieldCheck} actions={writable&&<Button disabled={busy||loading} onClick={()=>setTarget(null)}>{defaultConfigured?'Edit default':'Configure default'}</Button>}>
           <div className="panel-body space-y-3">
             <h3 className="text-sm font-semibold">Upstream default</h3>
             <p className="break-words text-sm text-ink-muted">{ruleSummary(policy)}</p>
