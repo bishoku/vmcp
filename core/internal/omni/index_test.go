@@ -60,12 +60,24 @@ func TestEmbeddingResponseValidation(t *testing.T) {
 	}
 }
 func TestReferenceRoundTrip(t *testing.T) {
-	s, n, e := ParseRef(Ref("chat", "客户/lookup"))
-	if e != nil || s != "chat" || n != "客户/lookup" {
-		t.Fatal(s, n, e)
+	for _, tc := range []struct{ server, name, ref string }{
+		{"support", "github__create_issue", "support/github__create_issue"},
+		{"chat", "客户/lookup", "chat/客户/lookup"},
+		{"chat", "/lookup", "chat//lookup"},
+		{"chat", "Mixed_Case%2Flookup", "chat/Mixed_Case%2Flookup"},
+	} {
+		if got := Ref(tc.server, tc.name); got != tc.ref {
+			t.Fatalf("Ref(%q, %q) = %q, want %q", tc.server, tc.name, got, tc.ref)
+		}
+		s, n, e := ParseRef(tc.ref)
+		if e != nil || s != tc.server || n != tc.name {
+			t.Fatalf("ParseRef(%q) = %q, %q, %v", tc.ref, s, n, e)
+		}
 	}
-	if _, _, e := ParseRef("invalid"); e == nil {
-		t.Fatal("invalid reference accepted")
+	for _, ref := range []string{"", "invalid", "/tables", "support/", "/", "WyJzdXBwb3J0IiwidGFibGVzIl0"} {
+		if _, _, e := ParseRef(ref); e == nil {
+			t.Fatalf("invalid reference %q accepted", ref)
+		}
 	}
 }
 

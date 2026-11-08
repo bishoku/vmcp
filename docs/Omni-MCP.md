@@ -156,10 +156,20 @@ Example tool arguments:
 {"name":"discover_tools","arguments":{"query":"find a customer's open orders","limit":5}}
 ```
 
+Tool references use `server_slug/tool_name`, for example
+`support/github__create_issue`. The first slash separates the server slug from
+the complete exposed tool name; slashes within tool names are preserved.
+References are deterministic for that pair and change when either name changes.
+Legacy Base64 references are not accepted. Copy the returned reference exactly;
+do not construct it or normalize its case or characters.
+
 Use a returned `tool_ref` with `get_tool_schema`. Pass its `schema_version` with
 `invoke_tool` to reject an outdated schema before execution. Successful invocation
 returns the original MCP tool result, including `isError` and structured content;
 it is not nested inside another tool result. The reference alone grants no access.
+`schema_version` is the full SHA-256 digest encoded as unpadded Base64URL
+(43 characters). It remains optional on invocation; omitting it skips the
+schema-version check.
 
 This first version implements stateless Streamable HTTP JSON request/response and
 synchronous tools. It does not advertise sampling, elicitation, resources, prompts,
