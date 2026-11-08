@@ -31,7 +31,8 @@ type Rule struct {
 }
 type UpstreamPolicy struct {
 	Rule
-	Tools map[string]Rule `json:"tools,omitempty"`
+	Tools    map[string]Rule    `json:"tools,omitempty"`
+	Services map[string]Service `json:"services,omitempty"`
 }
 type Service struct {
 	URL            string `json:"url"`
@@ -47,15 +48,49 @@ type Settings struct {
 	Upstreams map[string]UpstreamPolicy `json:"upstreams"`
 }
 
+// Service resolves a verifier or approval service in the upstream's scope.
+func (s Settings) Service(upstream, name string) (Service, bool) {
+	if service, ok := s.Upstreams[upstream].Services[name]; ok {
+		return service, true
+	}
+	service, ok := s.Services[name]
+	return service, ok
+}
+
+// HideCredentials redacts secrets from management responses and GitOps exports.
+func (s Settings) HideCredentials(includeStatus bool) {
+	hideServiceCredentials(s.Services, includeStatus)
+	for _, policy := range s.Upstreams {
+		hideServiceCredentials(policy.Services, includeStatus)
+	}
+}
+
+func (p UpstreamPolicy) HideCredentials() {
+	hideServiceCredentials(p.Services, true)
+}
+
+func hideServiceCredentials(services map[string]Service, includeStatus bool) {
+	for name, service := range services {
+		service.HasToken = includeStatus && service.Token != ""
+		service.Token = ""
+		services[name] = service
+	}
+}
+
+func (p UpstreamPolicy) Empty() bool {
+	return p.Identity == nil && p.StepUp == nil && len(p.ApprovalServices) == 0 &&
+		len(p.ShareFields) == 0 && len(p.Tools) == 0 && len(p.Services) == 0
+}
+
 var contextFieldPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 var acrPattern = regexp.MustCompile(`^[A-Za-z0-9:._/-]{1,200}$`)
 
-func (s Settings) Validate() error {
-	if len(s.Services) > 100 || len(s.Upstreams) > 10000 {
-		return errors.New("too many invocation policies")
+func validateServices(services map[string]Service) error {
+	if len(services) > 100 {
+		return errors.New("too many invocation services")
 	}
-	for name, svc := range s.Services {
+	for name, svc := range services {
 		if !acrPattern.MatchString(name) {
 			return errors.New("invalid service name")
 		}
@@ -71,7 +106,17 @@ func (s Settings) Validate() error {
 			return errors.New("service credentials too large")
 		}
 	}
-	validate := func(r Rule) error {
+	return nil
+}
+
+func (s Settings) Validate() error {
+	if len(s.Upstreams) > 10000 {
+		return errors.New("too many invocation policies")
+	}
+	if err := validateServices(s.Services); err != nil {
+		return err
+	}
+	validate := func(upstream string, r Rule) error {
 		if r.Identity != nil {
 			switch r.Identity.Source {
 			case "oauth_subject":
@@ -79,7 +124,7 @@ func (s Settings) Validate() error {
 					return errors.New("oauth_subject cannot configure caller context")
 				}
 			case "caller_context":
-				if _, ok := s.Services[r.Identity.Service]; !ok {
+				if _, ok := s.Service(upstream, r.Identity.Service); !ok {
 					return errors.New("caller_context requires a configured identity service")
 				}
 				if len(r.Identity.Fields) == 0 || len(r.Identity.Fields) > 16 {
@@ -109,9 +154,9 @@ func (s Settings) Validate() error {
 		if len(r.ApprovalServices) > 8 || len(r.ShareFields) > 64 {
 			return errors.New("too many services or shared fields")
 		}
-		for _, id := range r.ApprovalServices {
-			if _, ok := s.Services[id]; !ok {
-				return fmt.Errorf("unknown approval service %s", id)
+		for _, name := range r.ApprovalServices {
+			if _, ok := s.Service(upstream, name); !ok {
+				return fmt.Errorf("unknown approval service %s", name)
 			}
 		}
 		for _, f := range r.ShareFields {
@@ -125,8 +170,16 @@ func (s Settings) Validate() error {
 		if id == "" {
 			return errors.New("upstream ID required")
 		}
-		if e := validate(p.Rule); e != nil {
-			return e
+		if err := validateServices(p.Services); err != nil {
+			return fmt.Errorf("upstream %s: %w", id, err)
+		}
+		for name := range p.Services {
+			if _, exists := s.Services[name]; exists {
+				return fmt.Errorf("upstream %s service %s conflicts with a shared service", id, name)
+			}
+		}
+		if e := validate(id, p.Rule); e != nil {
+			return fmt.Errorf("upstream %s: %w", id, e)
 		}
 		if (p.StepUp != nil || len(p.ApprovalServices) > 0) && p.Identity == nil {
 			return errors.New("protected upstream requires an explicit identity source")
@@ -138,8 +191,8 @@ func (s Settings) Validate() error {
 			if tool == "" {
 				return errors.New("tool name required")
 			}
-			if e := validate(r); e != nil {
-				return e
+			if e := validate(id, r); e != nil {
+				return fmt.Errorf("tool %s: %w", tool, e)
 			}
 			if effective, e := Merge(p.Rule, r); e != nil {
 				return fmt.Errorf("tool %s: %w", tool, e)

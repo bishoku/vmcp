@@ -1,60 +1,70 @@
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, afterEach, expect, test, vi } from 'vitest'
 import { render } from '../test-utils'
-import { api, type InvocationSettings } from '../api'
+import { api, type UpstreamInvocationSecurity } from '../api'
 import { RoleContext } from '../interaction'
 import { MemoryRouter } from 'react-router-dom'
+import UpstreamSecurity, { ToolInvocationPolicy } from '../invocation/UpstreamSecurity'
 import InvocationSecurity from './InvocationSecurity'
+
 beforeEach(()=>{
- Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true}})
- Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false}})
+  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true}})
+  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false}})
 })
 afterEach(()=>{cleanup();vi.restoreAllMocks();Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');Reflect.deleteProperty(HTMLDialogElement.prototype,'close')})
-test.each(['oauth_subject','caller_context'] as const)('stages explicit %s identity without changing inherited tool rules',async source=>{
- const initial:InvocationSettings={revision:1,services:{session:{url:'https://session.test/check',approvalOrigin:'https://session.test',hasToken:true}},upstreams:{up:{tools:{transfer:{approvalServices:['session']}}}}}
- vi.spyOn(api,'invocationSecurity').mockResolvedValue(initial)
- vi.spyOn(api,'invocationUpstreams').mockResolvedValue({items:[{id:'up',slug:'bank'}]})
- const save=vi.spyOn(api,'saveInvocationSecurity').mockImplementation(async s=>({...s,revision:2}))
- render(<MemoryRouter><InvocationSecurity/></MemoryRouter>);await screen.findByText('Upstream and tool policies');await waitFor(()=>expect((screen.getByRole('button',{name:'Edit upstream policy bank'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Edit upstream policy bank'}))
- fireEvent.change(screen.getByLabelText('User identity source'),{target:{value:source}})
- if(source==='caller_context'){
-  fireEvent.change(screen.getByLabelText('Session verification service'),{target:{value:'session'}})
-  fireEvent.change(screen.getByLabelText('Caller context fields sent for verification'),{target:{value:'customerId, sessionId'}})
- }
- fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
- fireEvent.click(screen.getByRole('button',{name:'Save security configuration'}))
- await waitFor(()=>expect(save).toHaveBeenCalledTimes(1))
- expect(save.mock.calls[0][0].upstreams.up).toEqual({identity:source==='oauth_subject'?{source}:{source,service:'session',fields:['customerId','sessionId']},tools:initial.upstreams.up.tools})
+
+const upstream:UpstreamInvocationSecurity={
+  revision:0,upstreamId:'payments',sharedServices:['shared'],tools:['transfer'],callerContextFields:['sessionId'],
+  policy:{identity:{source:'oauth_subject'},stepUp:{acceptedAcrValues:['mfa','hardware'],maxAgeSeconds:300}},
+}
+
+test('tool editor previews inherited policy and rejects disjoint step-up requirements before staging',async()=>{
+  vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue(upstream)
+  const save=vi.spyOn(api,'saveUpstreamInvocationSecurity').mockImplementation(async(_path,doc)=>({...upstream,...doc,revision:2}))
+  render(<UpstreamSecurity slug="payments" version={1}><section aria-label="Discovered tool"><ToolInvocationPolicy name="transfer"/></section></UpstreamSecurity>)
+  const row=await screen.findByRole('region',{name:'Discovered tool'})
+  await waitFor(()=>expect(row.textContent).toContain('Step-up: mfa, hardware'))
+  fireEvent.click(row.querySelector('button')!)
+  fireEvent.change(screen.getByLabelText('Accepted ACR values'),{target:{value:'password'}})
+  fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
+  expect(screen.getByRole('dialog')).toBeTruthy()
+  expect(screen.getByText(/Choose at least one ACR accepted by the upstream policy/,{selector:'div[data-validation-summary] li button'})).toBeTruthy()
+  fireEvent.change(screen.getByLabelText('Accepted ACR values'),{target:{value:'hardware'}})
+  fireEvent.change(screen.getByLabelText('Maximum authentication age (seconds)'),{target:{value:'60'}})
+  fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
+  expect(row.textContent).toContain('Step-up: hardware · max 60s')
+  expect(save).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'Save invocation security'}))
+  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1))
+  expect(save.mock.calls[0][1].policy.tools?.transfer).toEqual({stepUp:{acceptedAcrValues:['hardware'],maxAgeSeconds:60}})
 })
 
-test('service errors retain entered secrets and only staged changes are saved',async()=>{
- vi.spyOn(api,'invocationSecurity').mockResolvedValue({revision:1,services:{},upstreams:{}})
- vi.spyOn(api,'invocationUpstreams').mockResolvedValue({items:[]})
- const save=vi.spyOn(api,'saveInvocationSecurity').mockRejectedValue(new Error('Revision changed. Reload and review.'))
- render(<MemoryRouter><InvocationSecurity/></MemoryRouter>)
- fireEvent.click(await screen.findByRole('button',{name:'Add service'}))
- fireEvent.change(screen.getByLabelText('Service name'),{target:{value:'approval'}})
- fireEvent.change(screen.getByLabelText('Service token'),{target:{value:'private-service-token'}})
- fireEvent.change(screen.getByLabelText('HTTPS decision endpoint'),{target:{value:'http://invalid.test'}})
- fireEvent.click(screen.getByRole('button',{name:'Stage service'}))
- expect(await screen.findByText('Use an HTTPS URL without embedded credentials.')).toBeTruthy()
- expect((screen.getByLabelText('Service token') as HTMLInputElement).value).toBe('private-service-token')
- expect(save).not.toHaveBeenCalled()
- fireEvent.change(screen.getByLabelText('HTTPS decision endpoint'),{target:{value:'https://approval.test/check'}})
- fireEvent.change(screen.getByLabelText('Trusted approval screen origin'),{target:{value:'https://approval.test'}})
- fireEvent.click(screen.getByRole('button',{name:'Stage service'}))
- expect(screen.queryByLabelText('Service token')).toBeNull()
- fireEvent.click(screen.getByRole('button',{name:'Save security configuration'}))
- expect(await screen.findByText('Revision changed. Reload and review.')).toBeTruthy()
- expect(screen.getByText('approval',{exact:true})).toBeTruthy()
- expect((screen.getByRole('button',{name:'Save security configuration'}) as HTMLButtonElement).disabled).toBe(false)
+test('read-only upstream access shows the effective rule without mutation controls',async()=>{
+  vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue(upstream)
+  render(<RoleContext.Provider value="viewer"><UpstreamSecurity slug="payments" version={1}><p>Upstream details</p></UpstreamSecurity></RoleContext.Provider>)
+  await screen.findByRole('heading',{name:'Tool invocation policies'})
+  expect(screen.getByText('Uses upstream default')).toBeTruthy()
+  expect(screen.queryByRole('button',{name:'Edit default'})).toBeNull()
+  expect(screen.queryByRole('button',{name:'Save invocation security'})).toBeNull()
 })
 
-test('read-only access exposes summaries without mutation controls',async()=>{
- vi.spyOn(api,'invocationSecurity').mockResolvedValue({revision:1,services:{},upstreams:{}})
- vi.spyOn(api,'invocationUpstreams').mockResolvedValue({items:[]})
- render(<MemoryRouter><RoleContext.Provider value="viewer"><InvocationSecurity/></RoleContext.Provider></MemoryRouter>)
- await screen.findByText('You can view this configuration. Changes require invocation security management permission.')
- expect(screen.queryByRole('button',{name:'Add service'})).toBeNull()
- expect((screen.getByRole('button',{name:'Save security configuration'}) as HTMLButtonElement).disabled).toBe(true)
+test('failed shared-service save retains staged credentials and submits only shared service settings',async()=>{
+  const settings={revision:1,services:{},inUse:[]}
+  vi.spyOn(api,'sharedInvocationServices').mockResolvedValue(settings)
+  const save=vi.spyOn(api,'saveSharedInvocationServices').mockRejectedValue(new Error('Revision changed. Reload and review.'))
+  render(<MemoryRouter><InvocationSecurity/></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button',{name:'Add service'}))
+  fireEvent.change(screen.getByLabelText('Service name'),{target:{value:'approval'}})
+  fireEvent.change(screen.getByLabelText('Service token'),{target:{value:'private-service-token'}})
+  fireEvent.change(screen.getByLabelText('HTTPS decision endpoint'),{target:{value:'http://invalid.test'}})
+  fireEvent.click(screen.getByRole('button',{name:'Stage service'}))
+  expect(await screen.findByText('Enter an HTTPS URL without embedded credentials or a fragment.')).toBeTruthy()
+  expect((screen.getByLabelText('Service token') as HTMLInputElement).value).toBe('private-service-token')
+  fireEvent.change(screen.getByLabelText('HTTPS decision endpoint'),{target:{value:'https://approval.test/check'}})
+  fireEvent.change(screen.getByLabelText('Trusted approval screen origin'),{target:{value:'https://approval.test'}})
+  fireEvent.click(screen.getByRole('button',{name:'Stage service'}))
+  fireEvent.click(screen.getByRole('button',{name:'Save shared services'}))
+  expect(await screen.findByText(/Revision changed/)).toBeTruthy()
+  expect(screen.getByText('Token pending save')).toBeTruthy()
+  expect(Object.keys(save.mock.calls[0][0]).sort()).toEqual(['revision','services'])
 })

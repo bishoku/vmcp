@@ -452,11 +452,18 @@ export interface OmniStatus { configured:boolean; endpoint:string; index?:{reran
 export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
 export interface LocalAuditSettings {revision:number;rules:AuditRule[]}
 export interface InvocationRule { identity?: {source:'oauth_subject'|'caller_context';service?:string;fields?:string[]}; stepUp?: {acceptedAcrValues:string[];maxAgeSeconds:number}; approvalServices?:string[];shareFields?:string[] }
-export interface InvocationSettings {revision:number;services:Record<string,{url:string;approvalOrigin:string;token?:string;hasToken?:boolean;caPem?:string}>;upstreams:Record<string,InvocationRule & {tools?:Record<string,InvocationRule>}>}
+export interface InvocationService {url:string;approvalOrigin:string;token?:string;hasToken?:boolean;caPem?:string}
+export type InvocationServices = Record<string,InvocationService>
+export interface UpstreamInvocationPolicy extends InvocationRule {tools?:Record<string,InvocationRule>;services?:InvocationServices}
+export interface SharedInvocationUpdate {revision:number;services:InvocationServices}
+export interface SharedInvocationServices extends SharedInvocationUpdate {inUse:string[]}
+export interface UpstreamInvocationUpdate {upstreamId:string;revision:number;policy:UpstreamInvocationPolicy}
+export interface UpstreamInvocationSecurity extends UpstreamInvocationUpdate {sharedServices:string[];tools:string[];callerContextFields:string[]}
 export const api = {
- invocationSecurity:()=>request<InvocationSettings>('GET','/invocation-security'),
- saveInvocationSecurity:(body:InvocationSettings)=>request<InvocationSettings>('PUT','/invocation-security',body),
- invocationUpstreams:()=>request<{items:{id:string;slug:string}[]}>('GET','/access/scopes?kind=upstream&limit=200'),
+ sharedInvocationServices:(signal?:AbortSignal)=>request<SharedInvocationServices>('GET','/invocation-security/shared-services',undefined,undefined,signal),
+ saveSharedInvocationServices:(body:SharedInvocationUpdate)=>request<SharedInvocationServices>('PUT','/invocation-security/shared-services',body),
+ upstreamInvocationSecurity:(path:string,signal?:AbortSignal)=>request<UpstreamInvocationSecurity>('GET',path,undefined,undefined,signal),
+ saveUpstreamInvocationSecurity:(path:string,body:UpstreamInvocationUpdate)=>request<UpstreamInvocationSecurity>('PUT',path,body),
 
  localAuditSettings:(path:string,signal?:AbortSignal)=>request<LocalAuditSettings>('GET',path,undefined,undefined,signal),
  saveLocalAuditSettings:(path:string,body:LocalAuditSettings)=>request<LocalAuditSettings>('PUT',path,body),

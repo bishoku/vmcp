@@ -66,6 +66,14 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 			}
 			if family == "upstreams" {
 				switch parts[2] {
+				case "invocation-security":
+					if len(parts) != 3 || (method != "GET" && method != "PUT") {
+						return op, false
+					}
+					op.Action = "invocation_security.read"
+					if method == "PUT" {
+						op.Action = "invocation_security.manage"
+					}
 				case "tools", "catalog":
 					op.Action = "catalog.read"
 				case "refresh-tools":
@@ -150,7 +158,7 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 		} else {
 			return op, false
 		}
-		return op, len(parts) == 1
+		return op, len(parts) == 1 || (len(parts) == 2 && parts[1] == "shared-services")
 	case "audit-settings":
 		op.Family = "audit"
 		if method == "GET" {

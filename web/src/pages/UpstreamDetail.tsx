@@ -6,6 +6,7 @@ import { api,ApiError,type Upstream } from '../api'
 import { source,useSources } from '../requests'
 import { ErrorBox } from '../ui'
 import { btn } from '../styles'
+import UpstreamSecurity from '../invocation/UpstreamSecurity'
 import UpstreamDetailForm from './UpstreamDetailForm'
 
 export default function UpstreamDetail({create = false}: {create?: boolean}) {
@@ -19,8 +20,9 @@ export default function UpstreamDetail({create = false}: {create?: boolean}) {
   const upstream = (replacement?.slug === slug ? replacement : null) ?? items.find(item => item.slug === slug)
   if (!create && !upstream) return <div className="page-layout"><h1 className="page-title">Upstream</h1>{loading?<LoadingState label="Loading saved configuration…" detail="Reading the saved upstream inventory."/>:readError?<ErrorBox title="Upstream configuration is unavailable." onRetry={load} retryLabel="Retry" busy={loading}>{readError}</ErrorBox>:<div className="surface-card"><EmptyState title={`Upstream “${slug}” was not found.`} description="Check the identifier or return to the upstream inventory."/></div>}<div className="flex flex-wrap gap-3"><Link className={btn} to="/upstreams">Back to upstreams</Link>{!loading&&!readError&&<button className={btn} onClick={()=>void load()}>Retry</button>}</div></div>
 
-  return <>{readError && <ErrorBox title="Saved configuration could not be loaded" onRetry={load} busy={loading}>{readError}</ErrorBox>}<UpstreamDetailForm key={`${slug}:${revision}`} upstream={create ? null : upstream!} onClose={()=>navigate('/upstreams')} onReload={latest=>{setReplacement(latest);setRevision(v=>v+1)}} onSaved={saved=>{
+  const form=<>{readError && <ErrorBox title="Saved configuration could not be loaded" onRetry={load} busy={loading}>{readError}</ErrorBox>}<UpstreamDetailForm key={`${slug}:${revision}`} upstream={create ? null : upstream!} onClose={()=>navigate('/upstreams')} onReload={latest=>{setReplacement(latest);setRevision(v=>v+1)}} onSaved={saved=>{
     setReplacement(saved);setRevision(v=>v+1)
     if(create) navigate(`/upstreams/${encodeURIComponent(saved.slug)}`)
-  }}/>{!create&&<AuditSettingsPanel scope="upstream" slug={slug}/>}</>
+  }}/></>
+  return create?form:<><UpstreamSecurity key={slug} slug={slug} version={upstream!.version}>{form}</UpstreamSecurity><AuditSettingsPanel scope="upstream" slug={slug}/></>
 }
