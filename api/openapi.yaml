@@ -89,6 +89,64 @@ paths:
           description: Revision conflict
         "422":
           description: Invalid policy
+  /invocation-security/shared-services:
+    get:
+      operationId: getSharedInvocationServices
+      summary: Read tenant-managed invocation services
+      description: Requires tenant invocation_security.read.
+      responses:
+        "200": &sharedInvocationResponse
+          description: Shared services and names referenced by upstream or tool policies. Service tokens are omitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedInvocationServices"
+    put:
+      operationId: putSharedInvocationServices
+      summary: Replace tenant-managed invocation services
+      description: Requires tenant invocation_security.manage. The document revision must match. Upstream policies and local services stay outside this operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SharedInvocationUpdate"
+      responses:
+        "200": *sharedInvocationResponse
+        "412":
+          description: Revision conflict.
+        "422":
+          description: Invalid or referenced service.
+  /upstreams/{slug}/invocation-security:
+    parameters:
+      - $ref: "#/components/parameters/Slug"
+    get:
+      operationId: getUpstreamInvocationSecurity
+      summary: Read an upstream's invocation policy and available services
+      description: Requires upstream-scoped upstreams.invocation_security.read.
+      responses:
+        "200": &upstreamInvocationResponse
+          description: Scoped policy and editor options. Service tokens are omitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpstreamInvocationSecurity"
+    put:
+      operationId: putUpstreamInvocationSecurity
+      summary: Replace an upstream's invocation policy and local services
+      description: Requires upstream-scoped upstreams.invocation_security.manage. The upstream ID and revision must match. Omitted tokens retain their current value at the same endpoint. New tool rules must use names from this upstream's catalog.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpstreamInvocationUpdate"
+      responses:
+        "200": *upstreamInvocationResponse
+        "412":
+          description: The upstream or policy revision changed.
+        "422":
+          description: Invalid policy or service.
   /teams:
     get:
       operationId: listTeams
@@ -3027,14 +3085,62 @@ components:
           type: object
           description: Stable upstream UUID to policy. Resolve IDs using /access/scopes?kind=upstream.
           additionalProperties:
-            allOf:
-              - $ref: "#/components/schemas/InvocationRule"
-              - type: object
-                properties:
-                  tools:
-                    type: object
-                    additionalProperties:
-                      $ref: "#/components/schemas/InvocationRule"
+            $ref: "#/components/schemas/UpstreamInvocationPolicy"
+    SharedInvocationUpdate:
+      type: object
+      required: [revision, services]
+      properties:
+        revision: {type: integer, minimum: 1}
+        services:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/InvocationApprovalService"
+    SharedInvocationServices:
+      allOf:
+        - $ref: "#/components/schemas/SharedInvocationUpdate"
+        - type: object
+          required: [inUse]
+          properties:
+            inUse:
+              type: array
+              items: {type: string}
+    UpstreamInvocationPolicy:
+      allOf:
+        - $ref: "#/components/schemas/InvocationRule"
+        - type: object
+          properties:
+            tools:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/InvocationRule"
+            services:
+              type: object
+              description: Local services usable only by this upstream. Names must be distinct from shared service names.
+              additionalProperties:
+                $ref: "#/components/schemas/InvocationApprovalService"
+    UpstreamInvocationUpdate:
+      type: object
+      required: [upstreamId, revision, policy]
+      properties:
+        upstreamId: {type: string, format: uuid}
+        revision: {type: integer, minimum: 0}
+        policy:
+          $ref: "#/components/schemas/UpstreamInvocationPolicy"
+    UpstreamInvocationSecurity:
+      allOf:
+        - $ref: "#/components/schemas/UpstreamInvocationUpdate"
+        - type: object
+          required: [sharedServices, tools, callerContextFields]
+          properties:
+            sharedServices:
+              type: array
+              items: {type: string}
+            tools:
+              type: array
+              items: {type: string}
+            callerContextFields:
+              type: array
+              items: {type: string}
     InvocationRule:
       type: object
       properties:

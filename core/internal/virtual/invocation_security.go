@@ -113,7 +113,7 @@ func (h *Handler) enforceInvocation(ctx context.Context, w http.ResponseWriter, 
 	}
 	for _, name := range services {
 
-		svc, ok := snap.InvocationSecurity.Services[name]
+		svc, ok := snap.InvocationSecurity.Service(upstream, name)
 		if !ok {
 			return deny(503, "approval service unavailable", nil)
 		}
@@ -159,7 +159,8 @@ func (h *Handler) enforceInvocation(ctx context.Context, w http.ResponseWriter, 
 		if external && name != rule.Identity.Service {
 			serviceRequest.CallerContext = nil
 		}
-		d, e := invocation.Call(ctx, snap.InvocationSecurity.Services[name], serviceRequest)
+		svc, _ := snap.InvocationSecurity.Service(upstream, name) // All services were resolved during check.
+		d, e := invocation.Call(ctx, svc, serviceRequest)
 		if e != nil || d.Status != "allowed" {
 			return deny(403, "approval consumption failed", nil)
 		}

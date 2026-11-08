@@ -165,6 +165,8 @@ func (g *guarded) RoundTrip(r *http.Request) (*http.Response, error) {
 	return g.base.RoundTrip(r)
 }
 
+func (g *guarded) CloseIdleConnections() { g.base.CloseIdleConnections() }
+
 type reject struct{ err error }
 
 func (r reject) RoundTrip(*http.Request) (*http.Response, error) { return nil, r.err }
@@ -177,7 +179,13 @@ var cache = struct {
 // Client clones caller settings, preserving TLS verification and connection pools.
 // Environment proxies and all redirects are deliberately disabled. Custom
 // transports are rejected because their dialing/proxy behavior cannot be enforced.
-func Client(base *http.Client) *http.Client {
+func Client(base *http.Client) *http.Client { return guardClient(base, true) }
+
+// DedicatedClient applies the same policy without retaining the transport in the
+// shared cache. Use it when the caller owns the transport's cache lifecycle.
+func DedicatedClient(base *http.Client) *http.Client { return guardClient(base, false) }
+
+func guardClient(base *http.Client, shared bool) *http.Client {
 	var client http.Client
 	if base != nil {
 		client = *base
@@ -199,6 +207,10 @@ func Client(base *http.Client) *http.Client {
 		client.Transport = reject{ErrUnsupportedTransport}
 		return &client
 	}
+	if !shared {
+		client.Transport = guardTransport(tr, p)
+		return &client
+	}
 	key := os.Getenv("VMCP_EGRESS_ALLOW_CIDRS") + "\x00" + os.Getenv("VMCP_EGRESS_ALLOW_HOSTS")
 	cache.Lock()
 	byBase := cache.transports[key]
@@ -208,27 +220,31 @@ func Client(base *http.Client) *http.Client {
 	}
 	g := byBase[tr]
 	if g == nil {
-		clone := tr.Clone()
-		if clone.MaxIdleConns < 2048 {
-			clone.MaxIdleConns = 2048
-		}
-		if clone.MaxIdleConnsPerHost < 128 {
-			clone.MaxIdleConnsPerHost = 128
-		}
-		if clone.IdleConnTimeout == 0 {
-			clone.IdleConnTimeout = 90 * time.Second
-		}
-		clone.Proxy = nil
-		clone.DialContext = p.DialContext
-		clone.DialTLSContext = nil
-		clone.DialTLS = nil
-		g = &guarded{clone, p}
+		g = guardTransport(tr, p)
 		byBase[tr] = g
 	}
 	cache.Unlock()
 	client.Transport = g
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("egress redirects are disabled") }
 	return &client
+}
+
+func guardTransport(tr *http.Transport, p *Policy) *guarded {
+	clone := tr.Clone()
+	if clone.MaxIdleConns < 2048 {
+		clone.MaxIdleConns = 2048
+	}
+	if clone.MaxIdleConnsPerHost < 128 {
+		clone.MaxIdleConnsPerHost = 128
+	}
+	if clone.IdleConnTimeout == 0 {
+		clone.IdleConnTimeout = 90 * time.Second
+	}
+	clone.Proxy = nil
+	clone.DialContext = p.DialContext
+	clone.DialTLSContext = nil
+	clone.DialTLS = nil
+	return &guarded{clone, p}
 }
 
 // Transition ranges can route embedded IPv4 destinations around address checks.

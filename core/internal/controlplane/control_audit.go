@@ -16,6 +16,8 @@ import (
 // tenant-wide documents must never inherit a scope from a client-supplied body.
 func controlAuditTarget(r *http.Request) (kind string) {
 	switch r.Pattern {
+	case "GET /api/v1/upstreams/{slug}/invocation-security", "PUT /api/v1/upstreams/{slug}/invocation-security":
+		return "upstream"
 	case "GET /api/v1/upstreams/{slug}/audit-settings", "PUT /api/v1/upstreams/{slug}/audit-settings", "POST /api/v1/upstreams/{slug}/audit-settings/preview":
 		return "upstream"
 	case "GET /api/v1/virtual-servers/{slug}/audit-settings", "PUT /api/v1/virtual-servers/{slug}/audit-settings", "POST /api/v1/virtual-servers/{slug}/audit-settings/preview":

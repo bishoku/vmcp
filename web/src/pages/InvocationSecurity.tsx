@@ -1,83 +1,45 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, Fingerprint, KeyRound, Pencil, Plus, RefreshCw, Save, ShieldCheck, Trash2 } from 'lucide-react'
-import { api, type InvocationSettings, type InvocationRule } from '../api'
-import { useConfigurationChecks } from '../configuration-access'
-import { useDraft, useOperation } from '../interaction'
-import { useConfirm } from '../confirmation'
-import { useNotifications } from '../notifications'
-import { FormField, FormErrors, FormScope } from '../FormField'
-import { useFormValidation, requiredText } from '../form-validation'
-import { ServerPanel, SummaryTile } from '../connections/ServerPanels'
-import { EmptyState, LoadingState } from '../Feedback'
-import { ErrorBox, Modal } from '../ui'
+import { ArrowLeft, Save } from 'lucide-react'
+import { api, type SharedInvocationServices } from '../api'
 import Button from '../Button'
-import Select from '../Select'
-import { input } from '../styles'
-
-type ServiceDraft = { original:string; name:string; url:string; origin:string; token:string; ca:string }
-type RuleDraft = { upstream:string; tool:string; originalTool:string; editing:boolean; identity:string; identityService:string; identityFields:string; acr:string; age:string; approvals:string; fields:string }
-const split = (value:string) => [...new Set(value.split(',').map(s=>s.trim()).filter(Boolean))]
-const httpsError = (value:string, origin=false) => { try { const u=new URL(value); return u.protocol==='https:'&&!u.username&&!u.password&&(!origin||u.origin===value)?undefined:origin?'Use an HTTPS origin without a path.':'Use an HTTPS URL without embedded credentials.' } catch { return 'Enter a valid HTTPS URL.' } }
+import { useConfigurationChecks } from '../configuration-access'
+import { LoadingState } from '../Feedback'
+import { useDraft, useOperation } from '../interaction'
+import Services from '../invocation/Services'
+import { ErrorBox } from '../ui'
 
 export default function InvocationSecurity() {
- const access=useConfigurationChecks([{method:'GET',path:'/invocation-security'},{method:'PUT',path:'/invocation-security'}])
- const writable=access.allowed[1]===true
- const [settings,setSettings,resetSettings,openSettings,dirty]=useDraft<InvocationSettings|null>(null,()=> 'security')
- const [service,setService,resetService]=useDraft<ServiceDraft|null>(null,s=>s?.original??null)
- const [rule,setRule,resetRule]=useDraft<RuleDraft|null>(null,r=>r?'policy':null)
- const [upstreams,setUpstreams]=useState<{id:string;slug:string}[]>([])
- const [error,setError]=useState(''),[loading,setLoading]=useState(true)
- const validation=useFormValidation(),confirm=useConfirm(),{notify}=useNotifications(),{busy,run}=useOperation()
- const load=async()=>{setLoading(true);setError('');try{const [s,u]=await Promise.all([api.invocationSecurity(),api.invocationUpstreams()]);openSettings(s);setUpstreams(u.items)}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}}
- useEffect(()=>{let live=true;Promise.all([api.invocationSecurity(),api.invocationUpstreams()]).then(([s,u])=>{if(live){resetSettings(s);setUpstreams(u.items)}}).catch(e=>{if(live)setError(e instanceof Error?e.message:String(e))}).finally(()=>{if(live)setLoading(false)});return()=>{live=false}
- // The initial request must not overwrite subsequent drafts.
- // eslint-disable-next-line react-hooks/exhaustive-deps
- },[])
- const change=(next:InvocationSettings)=>{setSettings(next);setError('')}
- const editService=(name='')=>{const s=settings?.services[name];validation.reset();resetService({original:name,name,url:s?.url??'',origin:s?.approvalOrigin??'',token:'',ca:s?.caPem??''})}
- const editRule=(upstream='',tool='',editing=false)=>{const p=settings?.upstreams[upstream],r=tool?p?.tools?.[tool]:p;validation.reset();resetRule({upstream,tool,originalTool:tool,editing,identity:r?.identity?.source??'',identityService:r?.identity?.service??'',identityFields:r?.identity?.fields?.join(', ')??'',acr:r?.stepUp?.acceptedAcrValues.join(', ')??'',age:String(r?.stepUp?.maxAgeSeconds??300),approvals:r?.approvalServices?.join(', ')??'',fields:r?.shareFields?.join(', ')??''})}
- const stageService=()=>{
-  if(!settings||!service||!writable)return
-  if(!validation.check({name:requiredText(service.name,'Service name')||(!service.original&&settings.services[service.name]?'This service already exists. Edit it from the service list.':undefined),url:httpsError(service.url),origin:httpsError(service.origin,true),token:(!settings.services[service.name]?.hasToken&&!settings.services[service.name]?.token)||(!!service.original&&settings.services[service.original]?.url!==service.url)?requiredText(service.token,'Service token'):undefined}))return
-  change({...settings,services:{...settings.services,[service.name]:{url:service.url,approvalOrigin:service.origin,token:service.token||settings.services[service.name]?.token,hasToken:settings.services[service.name]?.hasToken,caPem:service.ca}}});resetService(null)
- }
- const stageRule=()=>{
-  if(!settings||!rule||!writable)return
-  const inherited=rule.tool?settings.upstreams[rule.upstream]?.identity:undefined
-  if(!validation.check({upstream:requiredText(rule.upstream,'Upstream')||(!rule.editing&&!rule.tool&&settings.upstreams[rule.upstream]?'This upstream already has a policy. Edit its default from the policy list.':undefined),identity:!rule.identity&&!inherited&&(rule.acr.trim()||rule.approvals.trim())?'Select a user identity source for this policy.':undefined,identityService:rule.identity==='caller_context'?requiredText(rule.identityService,'Session verification service'):undefined,identityFields:rule.identity==='caller_context'?requiredText(rule.identityFields,'Caller context fields'):undefined,age:rule.acr.trim()&&(!Number.isInteger(Number(rule.age))||Number(rule.age)<1||Number(rule.age)>86400)?'Use a whole number from 1 to 86,400.':undefined,approvals:split(rule.approvals).some(s=>!settings.services[s])?'Choose configured approval services.':undefined,tool:!rule.editing&&rule.tool&&settings.upstreams[rule.upstream]?.tools?.[rule.tool]?'This tool already has a policy. Edit it from the policy list.':undefined}))return
-  const next:InvocationRule={}
-  if(rule.identity==='oauth_subject')next.identity={source:'oauth_subject'}
-  if(rule.identity==='caller_context')next.identity={source:'caller_context',service:rule.identityService,fields:split(rule.identityFields)}
-  if(rule.acr.trim())next.stepUp={acceptedAcrValues:split(rule.acr),maxAgeSeconds:Number(rule.age)}
-  if(rule.approvals.trim())next.approvalServices=split(rule.approvals)
-  if(rule.fields.trim())next.shareFields=split(rule.fields)
-  const old=settings.upstreams[rule.upstream]??{}
-  change({...settings,upstreams:{...settings.upstreams,[rule.upstream]:rule.tool?{...old,tools:{...old.tools,[rule.tool]:next}}:{...next,tools:old.tools}}});resetRule(null)
- }
- const save=()=>run(async()=>{if(!settings||!writable)return;setError('');try{resetSettings(await api.saveInvocationSecurity(settings));notify({title:'Invocation policies saved'})}catch(e){setError(e instanceof Error?e.message:String(e))}})
- const describe=(r:InvocationRule)=>[r.identity?.source==='caller_context'?'Customer session':r.identity?.source==='oauth_subject'?'OAuth user':'Inherited identity',r.stepUp?`Step-up · ${r.stepUp.maxAgeSeconds}s`:'No additional step-up',r.approvalServices?.length?`${r.approvalServices.length} approval service(s)`:'No additional approval'].join(' · ')
- return <div className="page-layout">
-  <Link to="/settings" className="inline-flex w-fit items-center gap-2 text-sm text-ink-muted hover:text-accent-700"><ArrowLeft className="icon-inline" aria-hidden="true"/>Settings</Link>
-  <header className="flex flex-wrap items-start justify-between gap-4"><div className="flex items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><ShieldCheck className="icon-feature" aria-hidden="true"/></span><div><h1 className="page-title">Invocation security</h1><p className="page-description mt-1">Verify the user and require stronger authentication or approval before execution.</p></div></div><Button disabled={busy||loading} onClick={()=>void load()}><RefreshCw className="icon-inline" aria-hidden="true"/>Refresh</Button></header>
-  {loading&&<LoadingState label="Loading security policies…"/>}{error&&<ErrorBox onRetry={()=>load()} busy={loading} title="Security configuration could not be loaded or saved">{error}</ErrorBox>}
-  {settings&&<>
-   <div className="grid gap-3 sm:grid-cols-3"><SummaryTile label="Services" value={Object.keys(settings.services).length} detail="Session verification and operation approval" icon={KeyRound}/><SummaryTile label="Upstream policies" value={Object.keys(settings.upstreams).length} detail="Defaults and tool-specific requirements" icon={ShieldCheck}/><SummaryTile label="Configuration revision" value={settings.revision} detail={dirty?'Changes have not been saved':'Last saved security configuration'} icon={Check}/></div>
-   {access.ready&&!writable&&<p className="surface-inset panel-body text-sm text-ink-muted">You can view this configuration. Changes require invocation security management permission.</p>}
-   <ServerPanel title="Verification & approval services" description="Trusted services that verify customer sessions or collect approval for an operation." icon={KeyRound} actions={writable?<Button disabled={busy} onClick={()=>editService()}><Plus className="icon-inline" aria-hidden="true"/>Add service</Button>:undefined}>
-    {Object.keys(settings.services).length?<ul className="divide-y divide-line">{Object.entries(settings.services).map(([name,s])=><li key={name} className="flex flex-wrap items-start justify-between gap-3 panel-body"><div className="min-w-0 flex-1"><h3 className="text-sm font-semibold break-all">{name}</h3><p className="mt-1 break-all text-xs text-ink-muted">{s.url}</p><p className="mt-2 text-xs text-ink-muted">{s.token?'Token pending save':s.hasToken?'Token stored':'Token required'} · Review origin: {s.approvalOrigin}</p></div>{writable&&<Button disabled={busy} aria-label={`Edit service ${name}`} onClick={()=>editService(name)}><Pencil className="icon-inline" aria-hidden="true"/>Edit</Button>}</li>)}</ul>:<EmptyState icon={KeyRound} title="No verification services" description="Add a trusted service for customer-session verification or human approval. OAuth step-up can be configured without one."/>}
-   </ServerPanel>
-   <ServerPanel title="Upstream and tool policies" description="Upstream defaults apply to all routed operations. Tool policies can only strengthen inherited requirements." icon={ShieldCheck} actions={writable?<Button disabled={busy||!upstreams.length} onClick={()=>editRule()}><Plus className="icon-inline" aria-hidden="true"/>Add policy</Button>:undefined} footer="Approval services accumulate; accepted ACR values intersect and the shortest authentication age wins. Empty tool requirements retain upstream requirements.">
-    {Object.entries(settings.upstreams).length?<div className="divide-y divide-line">{Object.entries(settings.upstreams).map(([id,p])=><div key={id} className="panel-body space-y-3"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold break-all">{upstreams.find(u=>u.id===id)?.slug??id}</h3><p className="mt-1 text-xs text-ink-muted">Upstream default · {describe(p)}</p></div>{writable&&<div className="flex flex-wrap gap-2"><Button disabled={busy} aria-label={`Edit upstream policy ${upstreams.find(u=>u.id===id)?.slug??id}`} onClick={()=>editRule(id,'',true)}>Edit default</Button><Button disabled={busy} variant="danger-outline" aria-label={`Remove upstream policy ${id}`} onClick={async()=>{if(await confirm('Remove this upstream policy and all its tool rules? Save configuration to apply the removal.')){const next={...settings.upstreams};delete next[id];change({...settings,upstreams:next})}}}><Trash2 className="icon-inline" aria-hidden="true"/>Remove</Button></div>}</div>{Object.entries(p.tools??{}).map(([name,r])=><div key={name} className="surface-inset flex flex-wrap items-center justify-between gap-3 p-3"><div className="min-w-0"><p className="text-sm font-medium break-all">{name}</p><p className="mt-1 text-xs text-ink-muted">{describe(r)}</p></div>{writable&&<Button disabled={busy} aria-label={`Edit tool policy ${name}`} onClick={()=>editRule(id,name,true)}>Edit tool</Button>}</div>)}</div>)}</div>:<EmptyState icon={ShieldCheck} title="No invocation policies" description={upstreams.length?'Add a policy to require verified identity, step-up or approval. Existing gateway access bindings still apply.':'Configure an upstream first, then add its invocation policy.'}/>}
-   </ServerPanel>
-   <div className="surface-card panel-body flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-sm text-ink-muted">{dirty?'Unsaved changes. Review your services and policies before saving.':'All changes saved.'}</p><Button variant="primary" disabled={!dirty||!writable} loading={busy} loadingLabel="Saving…" onClick={save}><Save className="icon-inline" aria-hidden="true"/>Save security configuration</Button></div>
-  </>}
-  {service&&settings&&<Modal title={service.original?'Edit verification service':'Add verification service'} size="wide" busy={busy} onClose={()=>setService(null)}><FormScope validation={validation}><FormErrors validation={validation}/><div className="layout-stack"><p className="text-sm text-ink-muted">Stage this service, then save the security configuration to apply it.</p><div className="grid gap-4 md:grid-cols-2"><FormField name="name" label="Service name" required hint="Stable name referenced by policies."><input className={input} disabled={!!service.original} value={service.name} onChange={e=>setService({...service,name:e.target.value})}/></FormField><FormField name="token" label="Service token" required={!settings.services[service.name]?.hasToken} hint={settings.services[service.name]?.hasToken?'Stored securely. Leave blank to retain the current token.':'Write-only credential used to authenticate service requests.'}><input className={input} type="password" autoComplete="new-password" value={service.token} onChange={e=>setService({...service,token:e.target.value})}/></FormField><FormField name="url" label="HTTPS decision endpoint" required><input className={input} value={service.url} placeholder="https://approval.example.com/check" onChange={e=>setService({...service,url:e.target.value})}/></FormField><FormField name="origin" label="Trusted approval screen origin" required hint="Only review links on this HTTPS origin are accepted."><input className={input} value={service.origin} placeholder="https://approval.example.com" onChange={e=>setService({...service,origin:e.target.value})}/></FormField></div><details className="surface-inset p-4"><summary className="cursor-pointer text-sm font-medium">Private certificate authority</summary><FormField className="mt-4" name="ca" label="Custom CA certificate" hint="Optional PEM certificate for a private service CA."><textarea className={`${input} min-h-32 font-mono`} value={service.ca} onChange={e=>setService({...service,ca:e.target.value})}/></FormField></details></div><div className="mt-6 flex justify-end gap-2 border-t border-line pt-4"><Button onClick={()=>setService(null)}>Cancel</Button><Button variant="primary" onClick={stageService}>Stage service</Button></div></FormScope></Modal>}
-  {rule&&settings&&<Modal title={rule.editing?'Edit invocation policy':'Add invocation policy'} size="wide" busy={busy} onClose={()=>setRule(null)}><FormScope validation={validation}><FormErrors validation={validation}/><div className="layout-stack">
-   <ServerPanel headingLevel={3} title="Policy target" description="Select an upstream default or one original tool name." icon={ShieldCheck}><div className="grid gap-4 panel-body md:grid-cols-2"><FormField name="upstream" label="Upstream" required><Select className={input} disabled={rule.editing} value={rule.upstream} onChange={e=>setRule({...rule,upstream:e.target.value})}><option value="">Select upstream</option>{upstreams.map(u=><option key={u.id} value={u.id}>{u.slug}</option>)}</Select></FormField><FormField name="tool" label="Original tool name" hint="Leave empty to configure the upstream default. Use the original name, not a virtual-server alias."><input className={input} disabled={rule.editing} value={rule.tool} onChange={e=>setRule({...rule,tool:e.target.value})}/></FormField></div></ServerPanel>
-   <ServerPanel headingLevel={3} title="User identity" description="Choose where the verified end-user identity comes from." icon={Fingerprint}><div className="panel-body space-y-4"><FormField name="identity" label="User identity source" hint="There is no fallback between sources. A tool cannot replace an inherited source."><Select className={input} value={rule.identity} onChange={e=>setRule({...rule,identity:e.target.value})}><option value="">Inherit / unspecified</option><option value="oauth_subject">OAuth subject is the user</option><option value="caller_context">Application identity + caller context user</option></Select></FormField>{rule.identity==='caller_context'&&<><FormField name="identityService" label="Session verification service" required><Select className={input} value={rule.identityService} onChange={e=>setRule({...rule,identityService:e.target.value})}><option value="">Select service</option>{Object.keys(settings.services).map(s=><option key={s}>{s}</option>)}</Select></FormField><FormField name="identityFields" label="Caller context fields sent for verification" required hint="Comma-separated fields enabled in the upstream caller context configuration. The service verifies these values; gateway credentials still identify the application."><input className={input} placeholder="customerId, sessionId" value={rule.identityFields} onChange={e=>setRule({...rule,identityFields:e.target.value})}/></FormField></>}</div></ServerPanel>
-   <ServerPanel headingLevel={3} title="Authentication & approval" description="Configure stronger authentication and human approval independently." icon={KeyRound}><div className="grid gap-4 panel-body md:grid-cols-2"><FormField name="acr" label="Accepted ACR values" hint="Comma-separated values. Leave empty for no additional step-up requirement."><input className={input} placeholder="2" value={rule.acr} onChange={e=>setRule({...rule,acr:e.target.value})}/></FormField><FormField name="age" label="Maximum authentication age (seconds)"><input className={input} type="number" min={1} max={86400} disabled={!rule.acr.trim()} value={rule.age} onChange={e=>setRule({...rule,age:e.target.value})}/></FormField><FormField name="approvals" label="Required approval services" hint={`Comma-separated names. Available: ${Object.keys(settings.services).join(', ')||'add a service first'}.`}><input className={input} value={rule.approvals} onChange={e=>setRule({...rule,approvals:e.target.value})}/></FormField><FormField name="fields" label="Argument fields shared with approval services" hint="Comma-separated allowlist. No cleartext arguments are shared when empty."><input className={input} value={rule.fields} onChange={e=>setRule({...rule,fields:e.target.value})}/></FormField></div></ServerPanel>
-   {rule.tool&&<p className="surface-inset p-4 text-xs text-ink-muted">Inherited upstream requirements: {describe(settings.upstreams[rule.upstream]??{})}. Tool rules cannot weaken these requirements.</p>}
-  </div><div className="mt-6 flex justify-end gap-2 border-t border-line pt-4"><Button onClick={()=>setRule(null)}>Cancel</Button><Button variant="primary" onClick={stageRule}>Stage policy</Button></div></FormScope></Modal>}
- </div>
+  const {ready,allowed}=useConfigurationChecks([{method:'GET',path:'/invocation-security/shared-services'},{method:'PUT',path:'/invocation-security/shared-services'}])
+  const [draft,setDraft,reset,open,dirty]=useDraft<SharedInvocationServices|null>(null,()=> 'shared-invocation')
+  const [error,setError]=useState('')
+  const {busy,run}=useOperation()
+  const readable=allowed[0]===true
+  const writable=allowed[1]===true
+  useEffect(()=>{
+    if(!readable)return
+    const controller=new AbortController()
+    void api.sharedInvocationServices(controller.signal).then(value=>{if(!controller.signal.aborted)reset(value)}).catch(reason=>{if(!controller.signal.aborted)setError(String(reason))})
+    return ()=>controller.abort()
+    // Load the initial snapshot when read permission is granted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[readable])
+
+  return <div className="page-layout">
+    <Link to="/settings" className="inline-flex w-fit items-center gap-2 text-sm text-ink-muted"><ArrowLeft className="icon-inline" aria-hidden="true"/>Settings</Link>
+    <header><h1 className="page-title">Shared invocation services</h1><p className="page-description mt-1">Manage trusted services available to upstreams. Configure policies and local services from <Link className="underline" to="/upstreams">Upstreams</Link>.</p></header>
+    {error&&<ErrorBox>{error}<Button disabled={busy} onClick={()=>void api.sharedInvocationServices().then(value=>{open(value);setError('')}).catch(reason=>setError(String(reason)))}>Reload shared services</Button></ErrorBox>}
+    {(!ready||(readable&&!draft&&!error))&&<LoadingState label="Loading shared services…"/>}
+    {ready&&!readable&&<p className="surface-inset panel-body text-sm text-ink-muted">Reading shared services requires tenant invocation security permission.</p>}
+    {readable&&draft&&<>
+      <Services scope="shared" services={draft.services} writable={writable} busy={busy} used={new Set(draft.inUse)} onChange={services=>setDraft({...draft,services})}/>
+      <div className="surface-card panel-body flex flex-wrap items-center justify-between gap-3">
+        <p role="status" className="text-sm text-ink-muted">{dirty?'Unsaved changes.':'All changes saved.'}</p>
+        {writable&&<Button variant="primary" disabled={!dirty} loading={busy} onClick={()=>void run(async()=>{
+          setError('')
+          try{reset(await api.saveSharedInvocationServices({revision:draft.revision,services:draft.services}))}catch(reason){setError(String(reason))}
+        })}><Save className="icon-inline" aria-hidden="true"/>Save shared services</Button>}
+      </div>
+    </>}
+  </div>
 }

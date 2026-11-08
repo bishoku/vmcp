@@ -6,12 +6,31 @@ approval before a protected operation can execute.
 
 ## Configuration
 
-Use **Settings → Invocation security**, or `GET` / `PUT
-/api/v1/invocation-security`. Tenant permissions are `invocation_security.read`
-and `invocation_security.manage`. Writes require the current document `revision`.
-Service tokens are encrypted at rest, omitted from responses and retained when
-omitted from a subsequent write. Changing an endpoint requires an explicit token.
-The API returns `hasToken` for configured credentials.
+Open an upstream and select **Invocation security** to configure its default
+policy and local services. Tool rows show the effective policy and allow a
+stricter tool rule. In **Settings → Shared invocation services**, platform
+operators manage services available to every upstream. The corresponding API
+is `GET` or `PUT /api/v1/invocation-security/shared-services`.
+
+For upstream automation, use `GET` or `PUT /api/v1/upstreams/{slug}/invocation-security`.
+Grant `upstreams.invocation_security.read` and `upstreams.invocation_security.manage`
+at the appropriate team or upstream scope. A scoped write sends `upstreamId`,
+`revision` and `policy` from the upstream editor, and replaces only that upstream's
+policy and local services. Read the new revision after a successful write.
+New or changed tool rules must use a name from the saved upstream catalog.
+Existing rules whose tools are no longer in the catalog can be removed.
+
+A local service can only be used by its upstream, and its name must differ
+from shared service names. Endpoint traffic still obeys the gateway's egress
+policy. Service tokens are encrypted at rest, omitted from responses and
+retained when omitted from a subsequent write. Changing an endpoint requires
+an explicit token. Management responses include `hasToken`.
+
+The existing tenant endpoint `/api/v1/invocation-security` remains available
+for whole-document automation. It requires `invocation_security.read` or
+`invocation_security.manage` and uses the tenant document revision. Local
+services are nested under their upstream's `services` key. Services defined
+in v2.0.1 remain shared after upgrade.
 
 ```json
 {
@@ -39,7 +58,7 @@ The API returns `hasToken` for configured credentials.
 }
 ```
 
-Resolve stable upstream IDs using `/api/v1/access/scopes?kind=upstream`. Tools
+Read the stable upstream ID from the scoped endpoint. Tools
 use their **original upstream name**, not a virtual-server alias. Policies also
 apply to Omni invocation. Upstream defaults apply to resource/prompt/completion
 operations routed to that upstream; tool overrides apply only to tools. Local

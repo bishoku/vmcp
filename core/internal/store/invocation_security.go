@@ -3,9 +3,14 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"github.com/bishoku/vmcp/core/internal/callercontext"
+	"maps"
+	"reflect"
+	"slices"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/callercontext"
 	"github.com/bishoku/vmcp/core/internal/invocation"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 )
@@ -27,6 +32,12 @@ func loadInvocationSecurity(ctx context.Context, q dbtx, box *secrets.Box) (invo
 		}
 		s.Revision = rev
 	}
+	if s.Services == nil {
+		s.Services = map[string]invocation.Service{}
+	}
+	if s.Upstreams == nil {
+		s.Upstreams = map[string]invocation.UpstreamPolicy{}
+	}
 	return s, s.Validate()
 }
 func (t *Tx) InvocationSecurity(ctx context.Context) (invocation.Settings, error) {
@@ -40,59 +51,36 @@ func (t *Tx) SaveInvocationSecurity(ctx context.Context, s invocation.Settings) 
 	if old.Revision != s.Revision {
 		return apierror.PreconditionFailed()
 	}
-	for name, svc := range s.Services {
-		if svc.Token == "" {
-			if previous, ok := old.Services[name]; ok && previous.URL != svc.URL {
-				return apierror.New(422, "credentials_required", "Credentials required", "Changing an approval endpoint requires an explicit service token")
-			}
-			svc.Token = old.Services[name].Token
-		}
-		svc.HasToken = false
-		if svc.Token == "" {
-			return apierror.New(422, "credentials_required", "Credentials required", "Approval service token required")
-		}
-		s.Services[name] = svc
-	}
-	if err = s.Validate(); err != nil {
+	if err := retainInvocationCredentials(s.Services, old.Services); err != nil {
 		return err
 	}
-	for id := range s.Upstreams {
-		var exists bool
-		if err = t.q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM upstreams WHERE id::text=$1 AND tenant_id=`+tenantSQL+`)`, id).Scan(&exists); err != nil {
+	for id, policy := range s.Upstreams {
+		if err := retainInvocationCredentials(policy.Services, old.Upstreams[id].Services); err != nil {
 			return err
 		}
-		if !exists {
-			return apierror.NotFound("upstream", id)
+	}
+	if err = s.Validate(); err != nil {
+		return apierror.New(422, "invalid_invocation_security", "Invalid invocation security", err.Error())
+	}
+	changed := make([]string, 0)
+	for id, policy := range s.Upstreams {
+		if previous, exists := old.Upstreams[id]; exists && reflect.DeepEqual(previous, policy) {
+			continue
 		}
-		var caller *callercontext.Config
-		if err = t.q.QueryRow(ctx, `SELECT caller_context FROM upstreams WHERE id::text=$1`, id).Scan(&caller); err != nil {
+		if err := t.validateInvocationContext(ctx, id, policy); err != nil {
 			return err
 		}
-		policies := []invocation.Rule{s.Upstreams[id].Rule}
-		for _, tool := range s.Upstreams[id].Tools {
-			effective, e := invocation.Merge(s.Upstreams[id].Rule, tool)
-			if e != nil {
-				return e
-			}
-			policies = append(policies, effective)
+		changed = append(changed, id)
+	}
+	for id := range old.Upstreams {
+		if _, exists := s.Upstreams[id]; !exists {
+			changed = append(changed, id)
 		}
-		for _, rule := range policies {
-			if rule.Identity != nil && rule.Identity.Source == "caller_context" {
-				if caller == nil || !caller.Enabled {
-					return apierror.New(422, "invalid_identity_context", "Invalid identity context", "Enable caller context on the upstream first")
-				}
-				allowed := map[string]bool{}
-				for _, f := range caller.Fields {
-					allowed[f.Name] = true
-				}
-				for _, field := range rule.Identity.Fields {
-					if !allowed[field] {
-						return apierror.New(422, "invalid_identity_context", "Invalid identity context", "Identity fields must be selected by the upstream caller context configuration")
-					}
-				}
-			}
+	}
+	if len(changed) > 0 {
+		if _, err := t.q.Exec(ctx, `UPDATE upstreams SET invocation_security_revision=$1 WHERE id::text=ANY($2) AND tenant_id=`+tenantSQL, s.Revision+1, changed); err != nil {
+			return err
 		}
-
 	}
 	raw, err := json.Marshal(s)
 	if err != nil {
@@ -113,6 +101,100 @@ func (t *Tx) SaveInvocationSecurity(ctx context.Context, s invocation.Settings) 
 	return nil
 }
 
+func retainInvocationCredentials(services, previousServices map[string]invocation.Service) error {
+	for name, svc := range services {
+		if svc.Token == "" {
+			if previous, ok := previousServices[name]; ok && previous.URL != svc.URL {
+				return apierror.New(422, "credentials_required", "Credentials required", "Changing an approval endpoint requires an explicit service token")
+			}
+			svc.Token = previousServices[name].Token
+		}
+		svc.HasToken = false
+		if svc.Token == "" {
+			return apierror.New(422, "credentials_required", "Credentials required", "Approval service token required")
+		}
+		services[name] = svc
+	}
+	return nil
+}
+
+func (t *Tx) validateInvocationContext(ctx context.Context, id string, policy invocation.UpstreamPolicy) error {
+	var caller *callercontext.Config
+	err := t.q.QueryRow(ctx, `SELECT caller_context FROM upstreams WHERE id::text=$1 AND tenant_id=`+tenantSQL, id).Scan(&caller)
+	if err == pgx.ErrNoRows {
+		return apierror.NotFound("upstream", id)
+	}
+	if err != nil {
+		return err
+	}
+	// An inherited caller context is covered by the default rule. Validate
+	// explicitly configured tool identities as well.
+	rules := []invocation.Rule{policy.Rule}
+	for _, rule := range policy.Tools {
+		rules = append(rules, rule)
+	}
+	for _, rule := range rules {
+		if rule.Identity == nil || rule.Identity.Source != "caller_context" {
+			continue
+		}
+		if caller == nil || !caller.Enabled {
+			return apierror.New(422, "invalid_identity_context", "Invalid identity context", "Enable caller context on the upstream first")
+		}
+		for _, field := range rule.Identity.Fields {
+			if !slices.ContainsFunc(caller.Fields, func(f callercontext.Field) bool { return f.Name == field }) {
+				return apierror.New(422, "invalid_identity_context", "Invalid identity context", "Identity fields must be selected by the upstream caller context configuration")
+			}
+		}
+	}
+	return nil
+}
+
+type SharedInvocationServices struct {
+	Revision int64                         `json:"revision"`
+	Services map[string]invocation.Service `json:"services"`
+	InUse    []string                      `json:"inUse"`
+}
+
+func (t *Tx) SharedInvocationServices(ctx context.Context) (SharedInvocationServices, error) {
+	settings, err := t.InvocationSecurity(ctx)
+	if err != nil {
+		return SharedInvocationServices{}, err
+	}
+	settings.HideCredentials(true)
+	used := map[string]struct{}{}
+	add := func(name string) {
+		if _, exists := settings.Services[name]; exists {
+			used[name] = struct{}{}
+		}
+	}
+	collect := func(rule invocation.Rule) {
+		if rule.Identity != nil {
+			add(rule.Identity.Service)
+		}
+		for _, name := range rule.ApprovalServices {
+			add(name)
+		}
+	}
+	for _, policy := range settings.Upstreams {
+		collect(policy.Rule)
+		for _, tool := range policy.Tools {
+			collect(tool)
+		}
+	}
+	return SharedInvocationServices{
+		Revision: settings.Revision, Services: settings.Services, InUse: append([]string{}, slices.Sorted(maps.Keys(used))...),
+	}, nil
+}
+
+func (t *Tx) SaveSharedInvocationServices(ctx context.Context, revision int64, services map[string]invocation.Service) error {
+	settings, err := t.InvocationSecurity(ctx)
+	if err != nil {
+		return err
+	}
+	settings.Revision, settings.Services = revision, services
+	return t.SaveInvocationSecurity(ctx, settings)
+}
+
 // Export uses slugs so declarative policies can be applied to another deployment.
 func (t *Tx) ExportInvocationSecurity(ctx context.Context) (*invocation.Settings, error) {
 	s, err := t.InvocationSecurity(ctx)
@@ -131,11 +213,7 @@ func (t *Tx) ExportInvocationSecurity(ctx context.Context) (*invocation.Settings
 		portable[slug] = p
 	}
 	s.Upstreams = portable
-	for name, svc := range s.Services {
-		svc.Token = ""
-		svc.HasToken = false
-		s.Services[name] = svc
-	}
+	s.HideCredentials(false)
 	return &s, nil
 }
 func (t *Tx) ApplyInvocationSecurity(ctx context.Context, s invocation.Settings) error {
