@@ -353,3 +353,93 @@ Raw evidence includes `environment.json`, `images.json`, `manifest.json`,
 `delivery-tests.jsonl`. All four owned namespaces were deleted normally; evidence,
 existing backups and recovery keys were retained. No production deployment,
 merge/release, paid resource or retention-policy change was performed.
+
+## 1,000 TPS repeat after SQL/polling changes (2026-11-08)
+
+**Passed the existing scoped harness gates**, with errors retained below. Tested
+source `df74a3bd229dc4bbc4dba5c227f2d61994d441fe`, clean tracked source;
+data-plane binary SHA256
+`6f0bf4373f51f4413d71438637d3500a271b2cbd84cbe765d1526b7c794d31ff`,
+image `sha256:93f27e5981b7b6c62ce241cc237f1531e5f9d435cad62ed9208dfd7cdc9ec4fc`.
+Started 2026-11-08 20:05:58 UTC; Go acceptance test duration 709.53 seconds.
+
+Same reference topology: one data-plane replica, 8 CPU/GOMAXPROCS=8,
+GOMEMLIMIT=4GiB, container limit 6Gi, pool 64; 300 servers × 200 tools,
+600 sessions, 1,024 load workers, team ownership, short MCP calls to REST upstreams,
+PII enabled and strict metadata audit. Fresh namespace `vmcp-load-20261108-230520`,
+PostgreSQL 17 tuned profile on the same host emptyDir/NVMe filesystem, durability
+on, dedicated NodePort routing, no fault injection or POST retry. The separate
+backup/restore tests were not repeated. Existing deployments were not modified.
+
+```sh
+VMCP_ACCEPTANCE_SERVERS=300 VMCP_ACCEPTANCE_TOOLS=200 \
+VMCP_ACCEPTANCE_NODES=1 VMCP_ACCEPTANCE_ROUTING=nodeport \
+VMCP_ACCEPTANCE_RPS=1000 VMCP_ACCEPTANCE_STEADY_SECONDS=600 \
+VMCP_ACCEPTANCE_WORKERS=1024 VMCP_ACCEPTANCE_OWNERSHIP=1 \
+VMCP_ACCEPTANCE_DIAGNOSTICS=1 VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB \
+VMCP_ACCEPTANCE_MEMORY_PROFILE=4g6g \
+python3 benchmark/kubernetes/run.py --database-focus --data-plane-cpus 8 \
+  --data-plane-memory-limit 6Gi --postgres-tuned --output <new-directory>
+```
+
+| Measurement | Existing target | Actual |
+| --- | --- | --- |
+| Steady duration | 600s at 1,000 offered TPS | 600.074s |
+| Completed successful throughput | ≥99% of target | 999.267/s |
+| Success | ≥99.9% | 99.945496% |
+| p95 / p99 | ≤250 / ≤1,000ms | 173.030 / 522.429ms |
+| Scheduled / offered / successful | Preserve all counts | 600,000 / 599,961 / 599,634 |
+| Errors / dropped demand | Retain in evidence | 327 / 39 |
+| Invalid results | 0 | 0 |
+| Maximum RSS / container use | ≤5 / ≤5.4GiB | 2,251,149,312 / 2,267,402,240 bytes |
+| Steady RSS growth | ≤20% | 17.096% |
+| Loaded key revocation | ≤5s, healthy/stable | 4.040s, healthy/stable |
+| Duplicate / incomplete operations | 0 / 0 | 0 / 0 |
+
+Warmup: 750 calls, 100% success, no errors/drops. Including warmup, all 600,384
+successful client calls match synthetic upstream executions, admissions and OK
+outcomes exactly. No restart/OOM. Maximum application CPU 221.868% (2.22 cores),
+median 182.161%; pool reached 64/64, with zero cancelled acquisitions and 136.723s
+aggregate observed acquisition time. Full-pool samples therefore remain visible;
+low average CPU is not proof that no request waited.
+
+All 327 errors occurred in steady seconds 303–304: one HTTP 409
+`configuration changed; retry`, followed by 326 HTTP-200 MCP errors. Retained
+examples report JSON-RPC -32603 `operation failed; consult correlated audit evidence`.
+Their timing overlaps the dedicated loaded-revocation/config-refresh exercise,
+but the retained examples do not establish each underlying cause. They remain
+failed calls in the success ratio; no automatic retry or exclusion was used.
+No HTTP 502/503 occurred in this repeat. Prior NodePort cooldown errors did not
+recur, so the higher success rate cannot be attributed solely to SQL optimization.
+
+PostgreSQL peak CPU 507.606%, peak RSS 1,661,652,992 bytes. Across 106 steady
+samples, 2,043 of 2,493 active-backend observations (81.949%) waited on
+WALWrite/WalSync; this is a sample share, not request-time attribution. No blocked
+session samples or deadlocks were recorded. First/last steady sample interval:
+593.735s, WAL +4,066,145,792 bytes, 232,184 sync operations, 576,258.310ms total
+sync time (2.482ms/sync). The WAL flush path remains a substantial observed wait;
+there is no evidence here for speculative lease/cache changes or a proven DB
+throughput ceiling. Observer error log was empty.
+
+Compared with the earlier failed run: success 98.303% → 99.945%, successful TPS
+982.891 → 999.267, p95 181.406 → 173.030ms, p99 494.225 → 522.429ms. p99 did not
+improve. This is one repeat on shared host/storage, not a controlled causal A/B.
+This pass covers only the measured short-call, distributed-server profile; hot
+server, long/SSE, payload-capture variants, independent storage, physical HA,
+PostgreSQL failover/PITR, WORM and production RPO/RTO remain separate open gates.
+The earlier failed result remains failed.
+
+Raw evidence: `artifacts/benchmark-runs/readiness-55-1000tps-df74a3b/`, including
+`report.json`, `run.log`, resource/GC metrics, PostgreSQL samples/statements,
+`postgres-effective-settings.json`, `environment.json`, `images.json` and
+`manifest.json`. Derived WAL summary: `database-cost-derived.json` (generated
+from retained samples after archiving). Curated export:
+`artifacts/benchmark-summaries/microk8s-20261108-230520/`.
+Archive: `artifacts/benchmark-archives/readiness-55-1000tps-df74a3b-7342e07979ad.tar.gz`,
+SHA256 `62bb0239c73e8eb1e11bcb4d0497ba433fe0fe9adb0c55dff4809a169e8cf68f`.
+
+The fixture namespace was deleted normally. Post-test read-only health check
+found the node Ready, all existing deployments at desired ready replica counts,
+and no remaining test namespace (`final-health.json`, saved after archiving).
+Only owned fixture resources were removed; evidence and earlier backups/keys
+remain retained. No merge, release or production deployment was performed.

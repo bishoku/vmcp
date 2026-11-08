@@ -268,3 +268,26 @@ No Redis offload is introduced. It remains a separate opt-in design requiring
 lost/duplicate hint, outage and tenant-isolation tests. Production-like storage,
 concurrent workload sweeps and the remaining capacity/HA acceptance matrix remain
 open; these low-load changes do not convert earlier failed capacity gates to passes.
+
+## Requested 1,000 TPS repeat on df74a3b
+
+The subsequent 600-second repeat passed the existing short-call gates: 999.267
+successful calls/s, 99.945496% success, p95 173.030ms and p99 522.429ms. There were
+327 failed calls and 39 dropped scheduled calls, all retained. All 600,384
+successful calls including warmup matched admission/outcome records, with zero
+duplicates/incomplete operations. See the environment acceptance report for
+source/image digests, exact configuration, thresholds and archived evidence.
+
+This result does not establish a causal performance improvement from the two
+SQL changes: previous NodePort cooldown errors did not recur, and p99 increased
+from 494.225ms. PostgreSQL WAL waits still represent 81.949% of sampled active
+backend observations, with 2.482ms average WAL sync and no sampled blocking or
+deadlock. Application peak CPU is 2.22 cores of 8 and peak RSS 2.25GB; pool usage
+reached 64/64 but no acquisition was cancelled. Keep the independent storage
+comparison open and preserve the present durability/fencing behavior.
+
+The 327 errors cluster in seconds 303–304 around loaded revocation/config refresh
+(one HTTP 409 and 326 HTTP-200 MCP errors). A follow-up should retain bounded
+error-class/correlation evidence to establish their exact causes; no failed
+calls were reclassified as successes. No further implementation change was made
+for this repeat, and the wider workload/HA/recovery acceptance remains open.
