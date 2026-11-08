@@ -9,6 +9,7 @@ import { RoleContext } from '../interaction'
 
 beforeEach(()=>{
  vi.spyOn(api,'getUpstream').mockResolvedValue(upstream)
+ vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue({upstreamId:'alpha',revision:0,policy:{},sharedServices:[],tools:[],callerContextFields:[]})
  vi.spyOn(api,'localAuditSettings').mockResolvedValue({revision:1,rules:[]})
  vi.spyOn(api,"teams").mockResolvedValue({items:[]})
  vi.spyOn(api,'auditSettings').mockResolvedValue({mode:'',retentionDays:7,maxPayloadBytes:65536,revision:1,scopes:{},rules:[],virtualServers:{},upstreams:{},exportPayloads:{}})

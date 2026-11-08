@@ -1,3 +1,4 @@
+import { InvocationSecurityLink } from '../invocation/UpstreamSecurity'
 import { useConfigurationPermissions,ConfigurationFields,configurationPatch,configurationCreate } from '../configuration-access'
 import { TeamSelect } from '../OwnershipSelect'
 import ConfigurationGroup from '../connections/ConfigurationGroup'
@@ -197,7 +198,7 @@ export default function UpstreamDetailForm({
     <header className="layout-stack">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight aria-hidden="true" className="icon-inline"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
       <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 aria-hidden="true" className="icon-hero"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream service for your virtual endpoints.'}</p></div></div>
-      <div className="flex flex-wrap gap-2">{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
+      <div className="flex flex-wrap gap-2"><InvocationSecurityLink/>{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
     {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={kind==='rest'&&restBlocked?'Finish or cancel the import, and resolve editor errors before saving.':newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||((!upstream)&&!access.can('create'))||(kind==='rest'&&restBlocked)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
@@ -382,7 +383,7 @@ export default function UpstreamDetailForm({
     </ServerPanel>
     </div></ConfigurationGroup>
     <ConfigurationGroup title="Per-call context" description={`${requestHeaderMappings.length} HTTP header mappings · Caller metadata ${callerContext.enabled?'enabled':'disabled'}`} defaultOpen={callerContext.enabled||requestHeaderMappings.length>0}>
-      <fieldset disabled={!editable||busy||!access.can('identity_forwarding.update')} className="m-0 min-w-0 border-0 p-0"><RequestHeaderMappings value={requestHeaderMappings} onChange={editable&&!busy?setRequestHeaderMappings:undefined}/>
+      <fieldset id="upstream-call-context" disabled={!editable||busy||!access.can('identity_forwarding.update')} className="m-0 min-w-0 border-0 p-0"><RequestHeaderMappings value={requestHeaderMappings} onChange={editable&&!busy?setRequestHeaderMappings:undefined}/>
       <CallerContextEditor value={callerContext} kind={kind} onChange={editable&&!busy?setCallerContext:undefined}/></fieldset>
     </ConfigurationGroup>
     {kind==='rest'&&<ConfigurationGroup title="REST operations" description={`${rest.operations.length} operations · Define requests and preview their MCP tools`} defaultOpen><RESTUpstreamEditor value={rest} onChange={editable&&!busy&&access.can('rest.manage')&&access.can('credentials.update')?setRest:undefined} upstream={upstream} onInvalidChange={setRestBlocked}/></ConfigurationGroup>}

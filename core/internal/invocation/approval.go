@@ -2,6 +2,7 @@ package invocation
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -137,16 +138,21 @@ func Call(ctx context.Context, svc Service, req Request) (Decision, error) {
 }
 
 var clientsMu sync.Mutex
-var approvalClients = map[string]*http.Client{}
+
+type cachedApprovalClient struct {
+	ca     string
+	client *http.Client
+}
+
+var approvalClients = map[string]*list.Element{}
+var approvalClientOrder list.List
 
 func approvalClient(ca string) (*http.Client, error) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
-	if c := approvalClients[ca]; c != nil {
-		return c, nil
-	}
-	if len(approvalClients) >= 256 {
-		return nil, errors.New("approval client capacity exceeded")
+	if entry := approvalClients[ca]; entry != nil {
+		approvalClientOrder.MoveToFront(entry)
+		return entry.Value.(cachedApprovalClient).client, nil
 	}
 	svc := Service{CAPEM: ca}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -160,10 +166,16 @@ func approvalClient(ca string) (*http.Client, error) {
 		}
 		transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
 	}
-	client := netpolicy.Client(&http.Client{Transport: transport, Timeout: 2 * time.Second})
+	client := netpolicy.DedicatedClient(&http.Client{Transport: transport, Timeout: 2 * time.Second})
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
-	approvalClients[ca] = client
+	if len(approvalClients) >= 256 {
+		entry := approvalClientOrder.Back()
+		old := approvalClientOrder.Remove(entry).(cachedApprovalClient)
+		delete(approvalClients, old.ca)
+		old.client.CloseIdleConnections()
+	}
+	approvalClients[ca] = approvalClientOrder.PushFront(cachedApprovalClient{ca, client})
 	return client, nil
 }
 

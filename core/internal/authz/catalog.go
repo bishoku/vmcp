@@ -23,7 +23,7 @@ func buildCatalog() []Permission {
 	add("teams", "read manage", []string{"tenant", "team"})
 	add("projects", "read manage", []string{"tenant", "team", "project", "unmanaged"})
 	add("ownership", "transfer", append(append([]string{}, upstream...), "project", "virtual_server"))
-	add("upstreams", "read create update delete connection.update activation.update credentials.update tls.update identity_forwarding.update rest.manage catalog.read catalog.refresh test rest.preview rest.execute mock.read mock.sync", upstream)
+	add("upstreams", "read create update delete connection.update activation.update credentials.update tls.update identity_forwarding.update invocation_security.read invocation_security.manage rest.manage catalog.read catalog.refresh test rest.preview rest.execute mock.read mock.sync", upstream)
 	add("virtual_servers", "read create update delete publication.update policy.update client_features.update", server)
 	add("agent_keys", "read create update delete access.update rotate revoke constraints.update audit_correlation.update", server)
 	add("identity_bindings", "read create update delete rules.update access.update constraints.update evaluate", server)
