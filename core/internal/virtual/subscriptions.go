@@ -18,32 +18,48 @@ func (h *Handler) RunSubscriptions(ctx context.Context) {
 	if h.Delivery == nil {
 		return
 	}
-	for i := 0; i < 32; i++ {
-		delay := time.Duration(i) * (time.Second / 32)
-		go func() {
-			if delay > 0 {
-				timer := time.NewTimer(delay)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				case <-timer.C:
-				}
+	go func() {
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		dispatchSubscriptions(ctx, tick.C, h.claimSubscription)
+	}()
+}
+
+// One dispatcher per replica searches for available work. Workers keep their own
+// authorization checks and lease heartbeats. Empty replicas issue one claim per
+// tick instead of one claim per idle worker.
+func dispatchSubscriptions(ctx context.Context, ticks <-chan time.Time, claim func(context.Context) func()) {
+	const capacity = 32
+	completed := make(chan struct{}, capacity)
+	active := 0
+	fill := func() {
+		for active < capacity && ctx.Err() == nil {
+			work := claim(ctx)
+			if work == nil {
+				return
 			}
-			h.runSubscription(ctx)
-			tick := time.NewTicker(time.Second)
-			defer tick.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-tick.C:
-					h.runSubscription(ctx)
-				}
-			}
-		}()
+			active++
+			go func() {
+				defer func() { completed <- struct{}{} }()
+				work()
+			}()
+		}
+	}
+	fill()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-completed:
+			active--
+		case <-ticks:
+			// Retry on the bounded tick, not immediately after a worker exits:
+			// an upstream outage must not create a claim/release busy loop.
+			fill()
+		}
 	}
 }
+
 func (h *Handler) subscription(ctx context.Context, sess *Session, object config.VirtualCatalogObject, exposed, original string, revision int64, subscribe bool) error {
 	if h.Delivery == nil || !object.Subscribe {
 		return errors.New("resource subscriptions unavailable")
@@ -102,9 +118,9 @@ func (h *Handler) subscription(ctx context.Context, sess *Session, object config
 		}
 	}
 }
-func (h *Handler) runSubscription(parent context.Context) {
+func (h *Handler) claimSubscription(parent context.Context) func() {
 	if parent.Err() != nil {
-		return
+		return nil
 	}
 	owner := delivery.UUID()
 	var sid, uri, upID, original string
@@ -117,8 +133,12 @@ func (h *Handler) runSubscription(parent context.Context) {
 			_, _ = h.Delivery.Pool.Exec(bounded, `UPDATE mcp_resource_subscriptions SET owner=NULL,lease_until=NULL,ready=false WHERE owner=$1`, owner)
 			cleanupCancel()
 		}
-		return
+		return nil
 	}
+	return func() { h.runClaimedSubscription(parent, owner, sid, uri, upID, original) }
+}
+
+func (h *Handler) runClaimedSubscription(parent context.Context, owner, sid, uri, upID, original string) {
 	ctx, stop := context.WithTimeout(parent, 15*time.Minute)
 	defer stop()
 	var stopHeartbeat func()

@@ -277,5 +277,79 @@ ready replica counts, and no `vmcp-load-*` namespace remaining. Only newly creat
 fixture databases/namespaces and temporary build directories were removed;
 backups, recovery keyrings, raw evidence and archives remain local. No merge,
 release, production deployment, paid resource or immutable retention change was
-performed. The separate research report proposes changes; it does not implement
-Redis offload or modify production SQL/lease/audit semantics.
+performed. The initial research campaign did not change application behavior. The follow-up
+below records SQL and polling changes; Redis offload remains unimplemented.
+
+## Follow-up SQL/polling validation — Refs #55
+
+Scope and outcomes: independent storage comparison **not run** (no allocated target);
+SQL command reduction **passed**; idle subscription poll reduction **passed** under
+these low-load conditions. The original failed capacity run remains failed. See
+`READINESS_DATABASE_COST_REVIEW.md` for measured counts, latency limits and safety
+checks. No new capacity or recovery claim is made.
+
+All four runs used fresh owned namespaces on the same single-node test cluster,
+PostgreSQL 17 with durability enabled, one server/session, short REST tool calls,
+PII enabled and strict metadata audit. Data plane: 8 CPU, GOMEMLIMIT=4GiB, container
+limit=6Gi. Base Git SHA: `fa098e96c48c8aeb5cec808021d2461456388d45`; uncommitted
+source variants are identified below by the runner's SHA256 and image digest.
+The final variant includes both product changes and expanded byte-budget tests.
+
+Reproduce each version with:
+
+```sh
+VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB VMCP_ACCEPTANCE_OWNERSHIP=1 \
+python3 benchmark/kubernetes/run.py --sql-cost --delivery-checks --postgres-tuned \
+  --data-plane-cpus 8 --data-plane-memory-limit 6Gi --output <new-directory>
+```
+
+The baseline omitted `--delivery-checks`. Final idle observation is five seconds;
+earlier observations were one second. Each SQL fixture performs 22 validated calls,
+including warmup. The correctness goal is no invalid admission, duplicate outcome,
+fence/lease bypass or failed regression; no latency threshold is invented. Final
+14 race tests passed with no skips; all fixtures reconciled 22 admission/outcome
+pairs and no duplicates or incomplete operations. SQL fixture durations and actual
+command/latency measurements are tabulated in the cost review.
+
+### baseline
+
+- Raw evidence: `artifacts/benchmark-runs/readiness-55-cost-baseline-v2/`.
+- Source tree SHA256: `e1edd7104c7c4667932cfc5a2b578f147c4f41000553987ba43faa567e83700e`.
+- Data-plane image: `sha256:973c3d3f2747e94eaf251b19769bd7166786ee4c9f694ca799b66c807d2e8851`.
+- SQL fixture duration: 9.24s; result: **passed**.
+- Archive: `artifacts/benchmark-archives/readiness-55-cost-baseline-v2-f82bea10de11.tar.gz`.
+- Archive SHA256: `fda419eddbc19060d0e6f209b82b370332ce582ede5b0552d53d5c09b667cef3`.
+
+### sql
+
+- Raw evidence: `artifacts/benchmark-runs/readiness-55-cost-sql-v2/`.
+- Source tree SHA256: `8dbcc91867dada9198a4c4f17ead727761303b945a7c083c080be45865baa0d4`.
+- Data-plane image: `sha256:cc8ad3fe3450225ba38aae1bbaafc6cb3eaa533fbcc357dde5af252cefcc17c8`.
+- SQL fixture duration: 9.31s; result: **passed**.
+- Archive: `artifacts/benchmark-archives/readiness-55-cost-sql-v2-8f7ccd423566.tar.gz`.
+- Archive SHA256: `b159d2af59668a68dc869755be0e32b8f94ddd44a8d9266d3bf29fc72ad88fbf`.
+
+### dispatch
+
+- Raw evidence: `artifacts/benchmark-runs/readiness-55-cost-dispatch-v2/`.
+- Source tree SHA256: `56577949834db8c2975b7967c301e4fa65a430f8c7a8750573ae1be8eb5a9576`.
+- Data-plane image: `sha256:a9ba13d8da97803faf7d4571a68b950ddde78b6c1f2415d29178074306345395`.
+- SQL fixture duration: 8.65s; result: **passed**.
+- Archive: `artifacts/benchmark-archives/readiness-55-cost-dispatch-v2-814ce3b1e5bd.tar.gz`.
+- Archive SHA256: `4c03a2aa6991704d980e2d93ba38e7490164a9bd9515379ac02100bdaa413756`.
+
+### final
+
+- Raw evidence: `artifacts/benchmark-runs/readiness-55-cost-final-v2/`.
+- Source tree SHA256: `f3111ef86fac7d15fe34b5fd37d834700ea649d6bf9943427f0aa8a453209322`.
+- Data-plane image: `sha256:495d4ecbf906099b5157fe00ad9ae1d77d8805431e4c15aed054c31d034923eb`.
+- SQL fixture duration: 11.84s; result: **passed**.
+- Archive: `artifacts/benchmark-archives/readiness-55-cost-final-v2-8602044c842a.tar.gz`.
+- Archive SHA256: `0d371f36a6686c718b966a58854cc70c6095190f89c7a4ffe908b1712291c6f1`.
+
+Raw evidence includes `environment.json`, `images.json`, `manifest.json`,
+`profile.json`, `sql-cost.json`, the six statement snapshots and `run.log`.
+`sql-cost-deltas.json` is reproducible offline. Changed runs also retain
+`delivery-tests.jsonl`. All four owned namespaces were deleted normally; evidence,
+existing backups and recovery keys were retained. No production deployment,
+merge/release, paid resource or retention-policy change was performed.

@@ -321,3 +321,10 @@ and a one-second idle baseline, scoped to its disposable database; it never
 resets shared PostgreSQL statistics. Top-level commands and nested trigger/FK SQL
 are reported separately. There are no ramp, overload or fault phases, and these
 results do not establish capacity. Background SQL remains visible in the deltas.
+
+Append `--delivery-checks` to an isolated run to execute the delivery, subscription,
+revocation and cross-node correctness tests with Go's race detector before fixture
+cleanup. The runner sets `VMCP_REQUIRE_INTEGRATION=1`, retains JSON test events in
+`delivery-tests.jsonl`, and returns nonzero on failure. `--sql-cost` also records
+per-call wall time in `sql-cost.json` (`call_latency_ms`, first entry is warmup).
+These tiny samples measure command costs, not capacity or a percentile SLO.

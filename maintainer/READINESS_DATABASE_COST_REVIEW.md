@@ -9,9 +9,10 @@ query execution. It does **not** establish a hard PostgreSQL throughput ceiling.
 The failed 1,000 TPS acceptance also contains a separate test-proxy availability
 failure. Neither finding proves the other caused it.
 
-No production implementation, durability setting, authorization cache, heartbeat
-interval or lease guarantee was changed for this review. Proposed settings below
-are designs, not settings implemented by this PR.
+The initial review below describes the unmodified baseline. The follow-up section
+records implemented SQL and idle-poll reductions. Durability settings, authorization
+freshness, heartbeat intervals and lease guarantees remain unchanged. Redis options
+remain proposals, not implemented settings.
 
 ## Evidence and limits
 
@@ -208,3 +209,62 @@ An advisory prefilter may reject early, but PostgreSQL must still enforce the ca
 References: [PostgreSQL statistics](https://www.postgresql.org/docs/17/monitoring-stats.html),
 [pg_stat_statements top/all semantics](https://www.postgresql.org/docs/17/pgstatstatements.html),
 [Redis Pub/Sub delivery semantics](https://redis.io/docs/latest/develop/pubsub/).
+
+## Follow-up: measured SQL and idle-poll reductions (2026-11-08)
+
+The initial baseline above remains historical evidence. Follow-up source builds
+start from PR head `fa098e96c48c8aeb5cec808021d2461456388d45` plus the identified
+working-tree changes; full source hashes and images appear in the environment
+acceptance report. Four sequential, fresh Kubernetes fixtures used the same
+PostgreSQL 17 OLTP/durability profile, 8 CPU / 4GiB Go target / 6Gi container limit,
+one initialized session and strict metadata audit. No existing deployment changed.
+
+1. **Independent DB/storage comparison — not run.** Root PostgreSQL fixture storage
+   is the host's ext4 NVMe filesystem. Other discovered disks contain existing NTFS
+   partitions; none is verified as allocated test DB storage. No existing partition
+   was mounted, formatted or repurposed. A separately authorized test DB/storage
+   target remains necessary; same-disk directories do not satisfy this comparison.
+2. **SQL reduction — passed functional/command-count validation.** Admission now
+   creates its stream from the inserted operation using a dependent CTE, and terminal
+   event insertion/completion use a dependent CTE within the existing transaction.
+   A zero-row admission fails closed. The event bound query computes count and
+   encrypted bytes in one aggregate scan. The operation row lock, fence, lease,
+   reserved terminal budget and transaction boundaries are preserved. In the twenty
+   serial calls, request commands fell from 580 to 540 (29 to 27 per call, 6.9%).
+   Eight BEGIN/COMMIT commands and all durable audit writes remain per short call
+   in this low-concurrency path. This does not reduce the number of commits.
+3. **Empty subscription discovery — passed functional/command-count validation.**
+   One dispatcher searches per replica, with 32 active worker slots and a one-second
+   discovery tick. Existing worker renewal, authorization and cleanup are unchanged.
+   Empty claims fell from 32 in a one-second baseline to 1 in the first changed
+   one-second sample, then 5 in a five-second confirmation. This is 32 to 1 claims/s
+   in these idle samples, not a claim about active subscriptions or total DB traffic.
+   Completed workers are retried on a tick, avoiding immediate retry loops.
+
+| Variant | SQL fixture duration | Request commands/call | Idle subscription claims | Median call ms (21 calls, warmup excluded) |
+| --- | ---: | ---: | ---: | ---: |
+| baseline | 9.24s | 29 | 32 / 1s | 21.955 |
+| sql | 9.31s | 27 | 32 / 1s | 21.258 |
+| dispatch | 8.65s | 27 | 1 / 1s | 21.328 |
+| final | 11.84s | 27 | 5 / 5s | 21.473 |
+
+The first changed SQL run had 608 total commands in the serial window (540 request
+commands plus background work); the dispatcher run had 558 and the confirmation
+had 552. Background variation must not be attributed to the request. Nested FK
+checks remain 18 per call. Tiny samples on shared hardware show no established
+latency improvement and provide no p95/p99, throughput, RPO or RTO acceptance.
+No high-load run was launched during this follow-up.
+
+The final fixture passed 14 selected tests with the race detector, zero failures
+or skips: delivery limits, encrypted byte accounting, terminal rollback,
+fencing/replay/isolation, expired workers, dispatcher capacity/cancellation,
+subscription failover/disconnect/initialization cancellation, cross-node catalog,
+audit maintenance and two-node revocation. The SQL fixture separately reconciled
+22 admissions/outcomes with zero duplicates, failures or incomplete operations.
+Python benchmark tooling: 17 tests passed. Required GitHub checks must also pass
+on the final PR head before integration.
+
+No Redis offload is introduced. It remains a separate opt-in design requiring
+lost/duplicate hint, outage and tenant-isolation tests. Production-like storage,
+concurrent workload sweeps and the remaining capacity/HA acceptance matrix remain
+open; these low-load changes do not convert earlier failed capacity gates to passes.

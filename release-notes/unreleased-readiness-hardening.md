@@ -49,3 +49,17 @@ and retry remain distinct decisions.
 The v2.0.1 invocation-security history is unchanged: the legacy global
 `VMCP_APPROVAL_URL` hook was removed, and deployments retaining it fail startup.
 See `v2.0.1.md`; this work does not restore that hook.
+
+## Database work reduction
+
+- Durable MCP admission inserts the operation and its stream in one dependent SQL
+  statement; terminal delivery inserts its event and completes the operation in
+  one statement within the existing transaction. Missing/terminated sessions fail
+  admission. Event count and encrypted byte bounds share one aggregate scan.
+- Resource subscription discovery uses one dispatcher per replica, with up to 32
+  active workers and a one-second discovery tick. Active authorization checks,
+  ownership fencing, lease renewal and retry cleanup retain their existing behavior.
+  No Redis dependency, database migration or durability setting change is required.
+- Low-load command counts and limitations are documented in
+  `maintainer/READINESS_DATABASE_COST_REVIEW.md`; these changes do not establish
+  a new 1,000 TPS capacity acceptance result.

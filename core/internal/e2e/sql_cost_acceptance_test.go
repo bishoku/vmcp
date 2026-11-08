@@ -53,9 +53,12 @@ func TestSQLCostAcceptance(t *testing.T) {
 		}
 	}
 	tracker := &acceptanceTracker{}
+	var callMS []float64
 	call := func() {
 		t.Helper()
+		began := time.Now()
 		r, valid := tracker.call(ctx, client, 0)
+		callMS = append(callMS, float64(time.Since(began).Nanoseconds())/1e6)
 		if r.err != nil || !valid {
 			t.Fatalf("serial call failed: %v valid=%v", r.err, valid)
 		}
@@ -73,7 +76,7 @@ func TestSQLCostAcceptance(t *testing.T) {
 		}
 	}
 	snapshot("sql-idle-before")
-	time.Sleep(time.Second)
+	time.Sleep(5 * time.Second)
 	snapshot("sql-idle-after")
 	start := time.Now()
 	snapshot("sql-single-before")
@@ -92,7 +95,7 @@ func TestSQLCostAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := map[string]any{"serial_calls": 20, "single_calls": 1, "warmup_calls": 1, "single_window_seconds": singleSeconds, "total_measurement_seconds": time.Since(start).Seconds(), "consistency": consistency, "scope": "one initialized session, short REST tool, PII enabled, strict metadata audit, direct dedicated NodePort; includes background SQL; no capacity claim"}
+	result := map[string]any{"idle_window_seconds": 5, "call_latency_ms": callMS, "serial_calls": 20, "single_calls": 1, "warmup_calls": 1, "single_window_seconds": singleSeconds, "total_measurement_seconds": time.Since(start).Seconds(), "consistency": consistency, "scope": "one initialized session, short REST tool, PII enabled, strict metadata audit, direct dedicated NodePort; includes background SQL; no capacity claim"}
 	raw, _ := json.MarshalIndent(result, "", "  ")
 	if err = os.WriteFile(filepath.Join(output, "sql-cost.json"), raw, 0600); err != nil {
 		t.Fatal(err)

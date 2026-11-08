@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--sql-cost', action='store_true', help='Measure one and twenty serial tool calls with PostgreSQL statement deltas; no load phases')
     parser.add_argument('--omni', action='store_true', help='1000-tool Omni acceptance, direct/Omni/discovery comparisons')
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--delivery-checks', action='store_true', help='Run delivery and subscription race checks in the isolated fixture')
     parser.add_argument('--recovery-checks', action='store_true', help='Run isolated logical restore and correctness checks after load; retain backup and recovery keys separately')
     parser.add_argument('--output')
     parser.add_argument('--data-plane-cpus', type=int, choices=(2,4,8), default=2, help='GOMAXPROCS and Kubernetes CPU request; limit at least 4')
@@ -153,6 +154,10 @@ def main():
             result=process.wait()
         if args.sql_cost and (output/'sql-cost.json').exists():
             command(['python3',str(ROOT/'benchmark/kubernetes/sql_cost.py'),str(output)])
+        if args.delivery_checks:
+            with (output/'delivery-tests.jsonl').open('w') as log:
+                check=subprocess.run(['go','test','-race','-count=1','-timeout=5m','-json','-run','TestDelivery|TestDurableRouting|TestExpiredWorker|TestSubscription|TestCuratedCatalogProtocol|TestTwoWarmNodes|TestResourceHints','./internal/delivery','./internal/virtual','./internal/e2e'],cwd=ROOT/'core',env=dict(run_env,VMCP_REQUIRE_INTEGRATION='1'),stdout=log,stderr=subprocess.STDOUT)
+                if check.returncode: result=check.returncode
         if args.recovery_checks:
             recovery_output=output/'recovery'
             recovery_output.mkdir()
