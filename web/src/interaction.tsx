@@ -18,9 +18,10 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
   const [value, rawSet] = useState(initial)
   const [baseline, setBaseline] = useState(() => JSON.stringify(initial))
   const current = useRef(value)
-  useEffect(() => {
-    current.current = value
-  }, [value])
+  const savedBaseline = useRef(baseline)
+  const savedValue = useRef(initial)
+  // Imperative save/retry decisions must see resets before React effects settle.
+  const isDirty = () => JSON.stringify(current.current) !== savedBaseline.current
   const dirty = JSON.stringify(value) !== baseline
   const registry = useContext(Drafts)
   const [id] = useState(() => Symbol())
@@ -41,7 +42,9 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
   }, [dirty, registry, id])
   const reset = (next: T) => {
     registry?.delete(id)
-    setBaseline(JSON.stringify(next))
+    savedValue.current = next
+    savedBaseline.current = JSON.stringify(next)
+    setBaseline(savedBaseline.current)
     current.current = next
     rawSet(next)
   }
@@ -49,7 +52,7 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
     const resolved = typeof next === 'function' ? (next as (v: T) => T)(current.current) : next
     if (registry && [...registry.values()].includes('busy')) return
     if (identity(resolved) !== identity(current.current)) {
-      if (JSON.stringify(current.current) !== baseline) {
+      if (isDirty()) {
         const before = JSON.stringify(current.current),
           answer = confirm(discardConfirmation)
         const apply = (accepted: boolean) => {
@@ -72,7 +75,7 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
   }
   const open = (next: T) => {
     if (registry && [...registry.values()].includes('busy')) return
-    if (JSON.stringify(current.current) !== baseline) {
+    if (isDirty()) {
       const before = JSON.stringify(current.current),
         answer = confirm(discardConfirmation)
       const apply = (accepted: boolean) => {
@@ -89,7 +92,8 @@ export function useDraft<T>(initial: T, identity: (value: T) => unknown) {
     }
     reset(next)
   }
-  return [value, set, reset, open, dirty] as const
+  const discard = () => reset(savedValue.current)
+  return [value, set, reset, open, dirty, isDirty, discard] as const
 }
 
 /** A synchronous latch also catches two clicks before React renders disabled controls. */
