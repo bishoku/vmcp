@@ -536,3 +536,65 @@ Archive `readiness-55-upstream-latency-100-c57071c7829d.tar.gz`, SHA256
 Post-cleanup `final-health.json` records node Ready, no unready existing deployment
 and no test namespace; it was generated after archiving. Existing data/backups and
 recovery keys were preserved. No merge/release/production deployment occurred.
+
+## Pod-local admission implementation — 2026-11-09 (Refs #55)
+
+Scope: operator-approved removal of distributed capacity enforcement. This is an
+application correctness and SQL-cost check, **not a new 1,000 TPS capacity run**.
+Migration 46 adds versioned Settings limits and tenant operator permissions. Defaults
+remain 1024 total / 128 per server / 16 per principal, now independently per pod.
+No Redis admission feature or request-path settings query is introduced. Detached
+workers retain one local reservation after HTTP disconnect. Revocation, durable audit,
+operation fencing, lease renewal and duplicate-request rejection remain enforced.
+
+Source: working tree based on `db38808b503016a3ab0c884e587642e9f888db17`, with exact
+Go/SQL/runtime source-tree SHA-256
+`f2deea0b2b49696268322554f6f89710c4fa6545ed48fe171978e0a65d5ae0f1`.
+Data-plane image config digest:
+`sha256:89b8809a834189bf8a304d48508eb03d2faeec00b95a2cef8356c1cdcd4dfa6f`;
+control-plane image config digest:
+`sha256:147b03ac07511c7bfa33805cdc1c7d0e8fa64a267885a2066d7dfd1f32e2326a`.
+These are Docker image config IDs, not registry manifest digests. Raw source status,
+image IDs, resource limits and topology are retained in `environment.json`,
+`images.json`, `profile.json`, `postgres-profile.json` and `manifest.json` under
+`artifacts/benchmark-runs/microk8s-20261109-074115/` (local, excluded from Git).
+
+Environment: disposable namespace `vmcp-load-20261109-074115` on the single existing
+Ready MicroK8s node. Dedicated PostgreSQL 17 and Redis fixtures; emptyDir storage on
+this host, durable PostgreSQL settings retained. SQL probe uses one data-plane pod,
+one session/principal and a short REST-backed MCP tool with PII enabled and strict
+metadata audit. Go memory target 4GiB, container limit 6Gi, GOMAXPROCS/CPU request 8.
+Other installations were not changed. This is not a production-grade DB/storage
+comparison or physical-node HA test.
+
+Reproduction:
+
+```sh
+VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB python benchmark/kubernetes/run.py \
+  --sql-cost --delivery-checks --postgres-tuned \
+  --data-plane-cpus 8 --data-plane-memory-limit 6Gi
+npm --prefix web test -- --run
+npm --prefix web run test:browser -- browser/settings-design.spec.ts
+npm --prefix web run build
+npm --prefix web run lint
+npm --prefix web run validate:api
+```
+
+| Scenario | Target / measured result | Duration | Result | Raw evidence (relative to run directory) |
+|---|---|---|---|---|
+| Short-call DB cost | Remove capacity count/lock without new request queries: single call 25 top-level commands, 18 nested trigger statements; 20 serial calls 510 commands including 10 background commands = 25/call. Both removed statements absent. Previous comparable path: 27/call. | 0.143s single window; 1.689s total measurement; 5s idle baseline | Passed | `sql-cost.json`, `sql-cost-deltas.json`, `sql-*-before.json`, `sql-*-after.json` |
+| Audit/outcome reconciliation | 22 calls including warmup, 22 upstream executions, 22 matching admissions and successful outcomes; zero errors, duplicates or incomplete operations | Same SQL probe | Passed | `sql-cost.json` |
+| Local lifecycle and security | 22 top-level race integration tests, no skips/failures. Includes actual HTTP disconnect retaining worker slot, dynamic lowering/raising, independent pod budgets, concurrent releases, old advisory lock held while 20 same-principal admissions proceed, duplicate rejection, rollback, fencing, revoked credentials and strict audit failures | Packages 6.382–23.813s, concurrently | Passed | `delivery-tests.jsonl` |
+| Operator settings and propagation | Unassigned caller denied, operator saves, stale revision 409, invalid limits rejected, permission revocation denied; saved limit appears in newer snapshot | Included above | Passed | `delivery-tests.jsonl`, `TestAdmissionSettingsOperatorAndRevision` |
+| Settings UI | 331 unit tests; 7 Settings browser tests including 390px/1280px save flow; build, lint and 109 OpenAPI operations validated | 9.59s unit; 34.1s browser | Passed | `web-unit.log`, `settings-browser.log`, `runtime-protection-*.png`, `web-build.log`, `web-lint.log`, `openapi-validation.log` |
+| New capacity/RPO/RTO, physical failover/PITR/WORM acceptance | Not part of this bounded change validation; prior measurements remain tied to their original binaries | Not run | Not run | Prior sections retain their scope and outstanding work |
+
+Cleanup: runner deleted only its namespace; before/after deployment state and runner
+logs are retained. No existing data, backup or recovery keys were removed.
+
+Operational impact: replica count and rolling surge multiply the effective allowance;
+limits are overload protection, not global tenant quotas. Old pods retain the old DB
+capacity gate during a mixed-version rollout. Complete the rollout before comparing
+SQL costs. On rollback retain migration 46 while any new binary remains. Reducing a
+limit does not cancel running work. Total command reduction is 2/27 (~7.4%) for this
+short serial profile; no throughput or latency gain is claimed from this small sample.

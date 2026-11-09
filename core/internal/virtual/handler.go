@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/admission"
 	"io"
 	"log/slog"
 	"math"
@@ -145,12 +146,13 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	authAt := time.Now()
 	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))
 
-	release, admitted := h.acquire(owner, slug, h.ipString(r))
+	release, admitted := h.acquire(owner, slug, h.ipString(r), snap.Admission)
 	if !admitted {
 		http.Error(w, "request concurrency limit exceeded", 429)
 		return
 	}
-	defer release()
+	slot := newAdmissionSlot(release)
+	defer slot.releaseOnce()()
 	controller := http.NewResponseController(w)
 	_ = controller.SetReadDeadline(time.Now().Add(10 * time.Second))
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
@@ -340,13 +342,13 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		h.listCatalog(w, msg, vs, snap.Revision, "prompt", "prompts")
 	case "resources/read", "resources/subscribe", "resources/unsubscribe", "prompts/get", "completion/complete":
 		if h.Delivery != nil {
-			h.streamCall(ctx, w, r, msg, vs, sess, snap)
+			h.streamCall(ctx, w, r, msg, vs, sess, snap, slot)
 			return
 		}
 		h.catalogCall(ctx, w, msg, vs, sess, snap, h.ipString(r))
 	case mcp.MethodToolsCall:
 		if h.Delivery != nil {
-			h.streamCall(ctx, w, r, msg, vs, sess, snap)
+			h.streamCall(ctx, w, r, msg, vs, sess, snap, slot)
 			return
 		}
 		h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r), r.Header)
@@ -877,7 +879,7 @@ func checkAuthorization(ctx context.Context) error {
 }
 
 // Admission counters are removed on release, so arbitrary identities cannot grow the map.
-func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
+func (h *Handler) acquire(owner Owner, server, clientIP string, settings ...admission.Settings) (func(), bool) {
 	h.budgetMu.Lock()
 	defer h.budgetMu.Unlock()
 	if h.budgets == nil {
@@ -888,7 +890,14 @@ func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
 		principalKey = "principal:anonymous:" + clientIP
 	}
 	keys := []string{"all", "server:" + server, principalKey}
-	limits := []int{1024, 128, 16}
+	cfg := admission.DefaultSettings()
+	if len(settings) > 0 && settings[0] != (admission.Settings{}) {
+		cfg = settings[0]
+	}
+	if cfg.Validate() != nil {
+		return nil, false
+	}
+	limits := []int{cfg.Total, cfg.PerServer, cfg.PerPrincipal}
 	for i, key := range keys {
 		if h.budgets[key] >= limits[i] {
 			return nil, false
@@ -897,14 +906,17 @@ func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
 	for _, key := range keys {
 		h.budgets[key]++
 	}
+	var once sync.Once
 	return func() {
-		h.budgetMu.Lock()
-		defer h.budgetMu.Unlock()
-		for _, key := range keys {
-			h.budgets[key]--
-			if h.budgets[key] == 0 {
-				delete(h.budgets, key)
+		once.Do(func() {
+			h.budgetMu.Lock()
+			defer h.budgetMu.Unlock()
+			for _, key := range keys {
+				h.budgets[key]--
+				if h.budgets[key] == 0 {
+					delete(h.budgets, key)
+				}
 			}
-		}
+		})
 	}, true
 }

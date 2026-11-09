@@ -22,7 +22,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/upstream"
 )
 
-func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, r *http.Request, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot) {
+func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, r *http.Request, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, slots ...*admissionSlot) {
 	if !h.preflightInvocation(requestCtx, w, msg, vs, snap) {
 		return
 	}
@@ -59,9 +59,14 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 	}
 	h.workerWG.Add(1)
 	h.workerMu.Unlock()
+	releaseWorker := func() {}
+	if len(slots) > 0 {
+		releaseWorker = slots[0].retain()
+	}
 	launched := false
 	defer func() {
 		if !launched {
+			releaseWorker()
 			h.workerWG.Done()
 		}
 	}()
@@ -80,6 +85,7 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 	go func() {
 		defer lifecycle.Guard(ctx, "stream operation")
 		defer h.workerWG.Done()
+		defer releaseWorker()
 		stopWorker := context.AfterFunc(h.workerCtx, cancel)
 		defer stopWorker()
 		defer cancel()
@@ -283,7 +289,7 @@ func (h *Handler) getStream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	release, admitted := h.acquire(owner, vs.Slug, h.ipString(r))
+	release, admitted := h.acquire(owner, vs.Slug, h.ipString(r), snap.Admission)
 	if !admitted {
 		http.Error(w, "stream concurrency limit exceeded", 429)
 		return

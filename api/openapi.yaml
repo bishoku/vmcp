@@ -471,6 +471,38 @@ paths:
               schema: { $ref: '#/components/schemas/AuditPreview' }
         "403": { $ref: '#/components/responses/Forbidden' }
         "409": { $ref: '#/components/responses/Conflict' }
+  /api/v1/admission-settings:
+    get:
+      operationId: getAdmissionSettings
+      summary: Read pod-local concurrency protection
+      description: Requires tenant admission.read. Defaults are 1024 total, 128 per virtual server and 16 per principal per data-plane pod.
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdmissionSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: putAdmissionSettings
+      summary: Update pod-local concurrency protection
+      description: Requires tenant admission.update, granted to the platform-operator template. Supply the current revision. Changes propagate through configuration snapshots and apply to new admissions without cancelling running work. Limits are per pod, not distributed quotas. Server and principal limits must not exceed total.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdmissionSettings" }
+      responses:
+        "200":
+          description: Saved settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdmissionSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Revision conflict; reload before saving }
+        "422": { description: Invalid settings }
   /api/v1/audit-settings:
     get:
       tags:
@@ -3797,6 +3829,15 @@ components:
           maxLength: 500
           description: Go RE2 expression; must not match empty strings. Matches are
             replaced with [REDACTED].
+    AdmissionSettings:
+      type: object
+      additionalProperties: false
+      required: [revision, total, perServer, perPrincipal]
+      properties:
+        revision: { type: integer, format: int64, minimum: 1 }
+        total: { type: integer, minimum: 1, maximum: 65536, default: 1024 }
+        perServer: { type: integer, minimum: 1, maximum: 65536, default: 128 }
+        perPrincipal: { type: integer, minimum: 1, maximum: 65536, default: 16 }
     AuditSettings:
       type: object
       additionalProperties: false

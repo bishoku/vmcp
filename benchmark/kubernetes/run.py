@@ -163,7 +163,7 @@ def main():
             command(['python3',str(ROOT/'benchmark/kubernetes/sql_cost.py'),str(output)])
         if args.delivery_checks:
             with (output/'delivery-tests.jsonl').open('w') as log:
-                check=subprocess.run(['go','test','-race','-count=1','-timeout=5m','-json','-run','TestDelivery|TestDurableRouting|TestExpiredWorker|TestSubscription|TestCuratedCatalogProtocol|TestTwoWarmNodes|TestResourceHints','./internal/delivery','./internal/virtual','./internal/e2e'],cwd=ROOT/'core',env=dict(run_env,VMCP_REQUIRE_INTEGRATION='1'),stdout=log,stderr=subprocess.STDOUT)
+                check=subprocess.run(['go','test','-race','-count=1','-timeout=5m','-json','-run','TestAdmission|TestDelivery|TestDurableRouting|TestExpiredWorker|TestSubscription|TestCuratedCatalogProtocol|TestTwoWarmNodes|TestResourceHints|TestPlatformOperatorIsNotAdministrator|TestStrictAuditAdmission','./internal/delivery','./internal/virtual','./internal/e2e','./internal/controlplane'],cwd=ROOT/'core',env=dict(run_env,VMCP_REQUIRE_INTEGRATION='1'),stdout=log,stderr=subprocess.STDOUT)
                 if check.returncode: result=check.returncode
         if args.recovery_checks:
             recovery_output=output/'recovery'

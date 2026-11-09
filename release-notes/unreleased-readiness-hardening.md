@@ -36,7 +36,8 @@ allows HTTP(S) connections for deployment-configured gateway origins; deployment
 with fixed origins can narrow connect-src at their edge.
 
 Startup log-level selection, trace-aware safe error logging, runtime/GC metrics,
-renew outcomes, admission-lock statement timing and probe age improve diagnosis.
+renew outcomes and probe age improve diagnosis. Legacy admission-lock counters
+remain zero after removal of the DB capacity gate.
 Exporters can expose cached receipt/backlog/age metrics on a private optional
 listener. No revocation cache, lease relaxation, try-lock-only capacity change or
 stream pass-through is introduced.
@@ -63,3 +64,20 @@ See `v2.0.1.md`; this work does not restore that hook.
 - Low-load command counts and limitations are documented in
   `maintainer/READINESS_DATABASE_COST_REVIEW.md`; these changes do not establish
   a new 1,000 TPS capacity acceptance result.
+
+## Pod-local runtime protection (Refs #55)
+
+- Remove PostgreSQL capacity counts and their per-server advisory lock. Defaults
+  remain 1,024 total / 128 per virtual server / 16 per principal, now **per pod**.
+  Replica count and rolling surge increase the combined allowance; this is not a
+  distributed quota. No Redis admission dependency is added.
+- Platform operators can edit limits in Settings → Security & audit → Runtime
+  protection. Migration 46 adds versioned settings and tenant `admission.read` /
+  `admission.update` permissions to the built-in platform-operator template.
+  Snapshot refresh distributes settings without per-call settings queries.
+- Detached workers retain the local request slot after HTTP disconnect until work
+  finishes. Lowering a limit affects new admissions, not running work. Ownership
+  fencing, lease expiry, revocation, duplicate-request rejection and strict audit
+  are retained. Existing sessions and backups are not removed by this migration.
+- Finish a mixed-version rollout before assessing SQL reductions. A rollback
+  restores the old DB gate; do not down-migrate while new binaries are running.

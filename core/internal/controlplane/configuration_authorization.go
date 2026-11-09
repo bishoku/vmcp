@@ -159,6 +159,16 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 			return op, false
 		}
 		return op, len(parts) == 1 || (len(parts) == 2 && parts[1] == "shared-services")
+	case "admission-settings":
+		op.Family = "admission"
+		if method == "GET" {
+			op.Action = "read"
+		} else if method == "PUT" {
+			op.Action = "update"
+		} else {
+			return op, false
+		}
+		return op, len(parts) == 1
 	case "audit-settings":
 		op.Family = "audit"
 		if method == "GET" {

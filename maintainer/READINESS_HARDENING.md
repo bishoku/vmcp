@@ -23,7 +23,7 @@ Scope: the priority fixes from the readiness validation, excluding SAML/SCIM.
   controlled shutdown. It logs function names, not panic values or stack arguments.
   Unsupervised fatal/runtime/OOM failures still use process restart; this is not
   universal recovery or a promise to complete an ambiguous side effect.
-- Logging, exporter backlog, runtime/GC, delivery renewal, admission lock and probe
+- Logging, exporter backlog, runtime/GC, delivery renewal and probe
   metrics supply evidence before invasive performance optimization.
 
 ## Intentionally preserved guarantees
@@ -73,3 +73,14 @@ merge, version bump or release is performed by the code change itself.
 Required GitHub checks must additionally pass on the PR's current head before
 merge. The source readiness report is an unrelated, untracked user file and is
 not included in this implementation.
+
+## Pod-local capacity protection
+
+Operator-approved overload guards now use only the existing in-memory pod budget.
+Settings exposes versioned total/server/principal limits (defaults 1024/128/16),
+distributed through snapshots. PostgreSQL capacity counting/advisory locking is
+removed; durable operation ownership, cancellation polling, fencing, revocation,
+replay and strict audit remain. A detached worker retains its slot until completion.
+Migration 46 grants admission settings permissions to the platform-operator template.
+See the environment report for serial-call SQL evidence; this does not replace the
+remaining capacity, HA, recovery or independent audit acceptance work.

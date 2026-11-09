@@ -74,12 +74,25 @@ Data-plane `/audit-status` and authenticated control-plane `/api/v1/audit-status
  A killed process can leave durable incomplete admissions; recovery evidence
  remains available. Shutdown does not revoke sessions stored for other nodes.
 
-Limits are currently fixed per process: 10,000 cached sessions, 1,024 concurrent
-MCP admissions, 128 per virtual server, and 16 per authenticated identity (all
-anonymous requests share the anonymous identity bucket). These counters include
-initialization and body reading and return 429 when saturated; shared sessions
-and replicas do not provide cluster-wide concurrency quotas. Request bodies have
-a ten-second read deadline, and JSON response writes have a ten-second deadline.
+Each data-plane pod defaults to 1,024 concurrent admissions, 128 per virtual server
+and 16 per principal. **Settings → Security & audit → Runtime protection** lets a
+platform operator change these values through `/api/v1/admission-settings` with
+`admission.read` / `admission.update` tenant permissions. The total must be 1–65,536;
+server/principal limits must be positive and no greater than total. Saving requires
+the current revision; conflicting edits return 409. Configuration snapshots carry
+changes to each pod without request-path settings queries. Lower limits reject new
+admissions until existing work drains; they do not cancel running work.
+
+Counters include initialization, body reading, GET streams and detached tool work;
+saturation returns 429. Anonymous identities are separated by the existing client-IP
+resolver when available. Each replica has an independent budget, so replicas and
+rolling surge increase aggregate capacity. These are overload guards, not global
+quotas. PostgreSQL retains operation IDs, fencing, leases, replay and durable audit,
+but no capacity count or capacity advisory lock. Redis is not required for admission.
+During a mixed-version rollout old pods retain the old DB gate; complete the rollout
+before comparing costs. Rolling back restores the old gate; retain migration 46
+while any new pods are running. Session cache capacity remains fixed at 10,000.
+Request bodies and JSON response writes have ten-second deadlines.
 Upstream JSON responses and assembled SSE data frames are limited to 10 MiB;
 discovery stops at 100 pages or 10,000 tools and rejects repeated/oversized
 cursors. Health probes run at most 16 concurrently. OAuth source caching retains

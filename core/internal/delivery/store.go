@@ -9,7 +9,7 @@ import (
 	"errors"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"sync"
-	"sync/atomic"
+
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -19,13 +19,10 @@ import (
 var ErrCapacity = errors.New("MCP delivery capacity or ownership unavailable")
 
 type Store struct {
-	admissionLockNanos  atomic.Int64
-	admissionLockCalls  atomic.Int64
-	admissionLockErrors atomic.Int64
-	Pool                *pgxpool.Pool
-	Box                 *secrets.Box
-	watchMu             sync.Mutex
-	watchers            map[string]map[string]chan struct{}
+	Pool     *pgxpool.Pool
+	Box      *secrets.Box
+	watchMu  sync.Mutex
+	watchers map[string]map[string]chan struct{}
 }
 type Operation struct{ ID, Fence, Stream, Session string }
 type Event struct {
@@ -58,25 +55,9 @@ func (s *Store) Begin(ctx context.Context, session, request, server string, prin
 		return op, err
 	}
 	defer tx.Rollback(ctx)
-	// Admission locks serialize capacity checks per virtual server across replicas.
-	lockStarted := time.Now()
-	_, lockErr := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(19840923, hashtext($1))`, server)
-	s.admissionLockNanos.Add(time.Since(lockStarted).Nanoseconds())
-	s.admissionLockCalls.Add(1)
-	if lockErr != nil {
-		s.admissionLockErrors.Add(1)
-		return op, lockErr
-	}
 	// Release any expired operation holding the same (session_id, client_request_id) slot.
 	if _, err := tx.Exec(ctx, `UPDATE mcp_operations SET state='abandoned' WHERE session_id=$1 AND client_request_id=$2 AND state='running' AND lease_until<now()`, session, request); err != nil {
 		return op, err
-	}
-	var all, perPrincipal, perServer int
-	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE principal_hash=$1),count(*) FILTER(WHERE virtual_server=$2) FROM mcp_operations WHERE state='running' AND lease_until>now()`, principal, server).Scan(&all, &perPrincipal, &perServer); err != nil {
-		return op, err
-	}
-	if all >= 1024 || perPrincipal >= 16 || perServer >= 128 {
-		return op, ErrCapacity
 	}
 	// The stream is created only from the operation admitted by this statement.
 	tag, err := tx.Exec(ctx, `WITH admitted AS (
@@ -366,12 +347,12 @@ func (s *Store) CancelPending(ctx context.Context, op Operation, id string, resp
 	return err
 }
 
-// AdmissionMetrics measures the lock statement including network/DB time, not
-// pure PostgreSQL lock-wait time. It never labels by session or principal.
+// AdmissionMetrics retains deprecated counters at zero for dashboard compatibility.
+// Capacity admission no longer accesses PostgreSQL or takes a distributed lock.
 func (s *Store) AdmissionMetrics() map[string]float64 {
 	return map[string]float64{
-		"delivery_admission_lock_seconds_total": float64(s.admissionLockNanos.Load()) / 1e9,
-		"delivery_admission_lock_calls_total":   float64(s.admissionLockCalls.Load()),
-		"delivery_admission_lock_errors_total":  float64(s.admissionLockErrors.Load()),
+		"delivery_admission_lock_seconds_total": 0,
+		"delivery_admission_lock_calls_total":   0,
+		"delivery_admission_lock_errors_total":  0,
 	}
 }

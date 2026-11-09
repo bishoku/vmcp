@@ -159,8 +159,14 @@ scrapes read cached data and never query PostgreSQL. Alert on dead receipts,
 growing pending age, unavailable samples and stale sample age. Broker delivery
 acknowledgement remains independent of monitoring.
 
-`vmcp_delivery_admission_lock_seconds_total`, `_calls_total` and `_errors_total`
-measure the admission advisory-lock SQL statement (including round-trip time,
-not pure PostgreSQL wait time). Compare with database wait events and pool
-metrics before changing lock semantics. `vmcp_breaker_oldest_probe_seconds`
-shows the oldest active half-open probe without per-upstream labels.
+`vmcp_breaker_oldest_probe_seconds` shows the oldest active half-open probe
+without per-upstream labels.
+
+### Pod-local admission protection
+
+`vmcp_delivery_admission_lock_seconds_total`, `vmcp_delivery_admission_lock_calls_total` and
+`vmcp_delivery_admission_lock_errors_total` are deprecated compatibility counters that
+remain zero: the DB capacity advisory lock and active-operation count have been
+removed. Historical values describe older binaries. Fencing and lease metrics
+remain meaningful. Monitor HTTP 429s, runtime memory/CPU and upstream waiters when
+tuning the per-pod Settings limits; replica count multiplies aggregate allowance.

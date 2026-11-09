@@ -9,6 +9,7 @@ import { api, ApiError, type AdminToken } from '../api'
 import Settings from './Settings'
 
 beforeEach(()=>{
+ vi.spyOn(api,'admissionSettings').mockResolvedValue({revision:1,total:1024,perServer:128,perPrincipal:16})
  vi.spyOn(api,'auditSettings').mockResolvedValue({mode:'',retentionDays:7,maxPayloadBytes:65536,revision:1,scopes:{},rules:[],virtualServers:{},upstreams:{},exportPayloads:{}})
 
  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true}})

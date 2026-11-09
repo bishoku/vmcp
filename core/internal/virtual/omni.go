@@ -241,7 +241,7 @@ func (h *Handler) omniInvoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "schema changed; fetch schema again", 409)
 		return
 	}
-	release, ok := h.acquire(owner, v.Slug, h.ipString(r))
+	release, ok := h.acquire(owner, v.Slug, h.ipString(r), snap.Admission)
 	if !ok {
 		http.Error(w, "request concurrency limit exceeded", 429)
 		return

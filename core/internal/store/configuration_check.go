@@ -207,6 +207,8 @@ func (t *Tx) checkConfiguration(ctx context.Context, c configurationPolicy) erro
 			}
 		}
 		return nil
+	case "admission":
+		return c.require("admission."+op.Action, tenant)
 	case "invocation_security":
 		return c.require("invocation_security."+op.Action, tenant)
 	case "config":

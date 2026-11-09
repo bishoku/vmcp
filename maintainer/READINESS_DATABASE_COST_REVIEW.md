@@ -345,11 +345,12 @@ one-second renewal interval. Above one second, ownership renewal, session/auth
 revalidation and stream lease checks add work. Longer-tail/multi-second/SSE
 workloads therefore cannot be inferred from a 500ms measurement.
 
-The distributed test uses 64 keys and 300 virtual servers. A single principal is
+The historical distributed test uses 64 keys and 300 virtual servers. In that version, a single principal is
 subject to 16 active operations, a server to 128 and the global budget to 1,024.
 At 500ms, a single-principal 100 TPS target demands roughly 50 concurrent operations
-and can encounter intentional admission limits. These protection limits must not
-be relaxed merely to reproduce the distributed test throughput.
+and can encounter intentional admission limits. Those limits were retained for that measurement. The later operator-approved
+pod-local protection change is documented below; its results do not retroactively
+change that measurement.
 
 ## Delayed-upstream measurement at 100 TPS
 
@@ -382,3 +383,16 @@ batching/consolidation and bounded event notification only when measured benefit
 justifies complexity. Do not redesign fencing/audit or cache authorization to
 chase a lower SQL counter. Remote database RTT and multi-second upstream tails are
 more useful next variables than another speculative heartbeat/lease optimization.
+
+## Operator-approved pod-local protection
+
+The distributed capacity gate is removed; Settings now controls independent pod
+budgets (defaults 1024/128/16). The final isolated serial probe measured **25 instead
+of 27 top-level SQL commands per short tool call**, excluding identified background
+work. The removed commands are the active-operation count and its advisory lock.
+Strict audit, ownership/fencing, renewal, replay and revocation remain. Detached
+workers retain their local slot after HTTP disconnect. No Redis offload or cache is
+introduced. See the 2026-11-09 pod-local section in
+[the environment report](READINESS_ENVIRONMENT_ACCEPTANCE.md) for source/image
+digests, exact commands, raw evidence, 22 race tests and measurement limitations.
+This is a 7.4% command-count reduction, not evidence of a throughput or latency gain.

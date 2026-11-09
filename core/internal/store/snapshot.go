@@ -353,6 +353,10 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 		return nil, err
 	}
 
+	snap.Admission, err = loadAdmissionSettings(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 	snap.Audit, err = loadAuditSettings(ctx, tx)
 	if err != nil {
 		return nil, err

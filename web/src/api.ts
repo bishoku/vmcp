@@ -236,6 +236,7 @@ export interface BindingEvaluation {
 }
 
 export interface AuditRule { name:string; pattern:string }
+export interface AdmissionSettings { revision:number; total:number; perServer:number; perPrincipal:number }
 export interface AuditSettings {
  omni?:{candidates?:boolean;includeDenied?:boolean;maxCandidates?:number}
  mode:''|'strict'|'relax'; retentionDays:number; maxPayloadBytes:number; revision:number
@@ -482,6 +483,8 @@ export const api = {
  bulkToolGrants:(items:ToolGrant[])=>request<BulkToolGrantResult>('POST','/tool-grants/bulk',{items}),
  saveToolGrant:(grant:ToolGrant)=>request('POST','/tool-grants',grant),
  toolCatalog:(signal?:AbortSignal)=>listAll<ToolCatalogEntry>('/tool-catalog',signal),
+ admissionSettings:(signal?:AbortSignal)=>request<AdmissionSettings>('GET','/admission-settings',undefined,undefined,signal),
+ saveAdmissionSettings:(settings:AdmissionSettings)=>request<AdmissionSettings>('PUT','/admission-settings',settings),
  auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),
  saveAuditSettings:(settings:AuditSettings)=>request<AuditSettings>('PUT','/audit-settings',settings),
  previewAudit:(body:{editScope?:'global'|'virtual'|'upstream';settings:AuditSettings;scope:string;direction:string;virtualServer:string;upstream:string;payload:unknown})=>request<AuditPreview>('POST','/audit-preview',body),
