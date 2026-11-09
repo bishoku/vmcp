@@ -1,4 +1,3 @@
-import AuditSettingsPanel from '../AuditSettingsPanel'
 import { EmptyState,LoadingState } from '../Feedback'
 import { useEffect,useState } from 'react'
 import { Link,useNavigate,useParams } from 'react-router-dom'
@@ -8,6 +7,7 @@ import { ErrorBox } from '../ui'
 import { btn } from '../styles'
 import UpstreamSecurity from '../invocation/UpstreamSecurity'
 import UpstreamDetailForm from './UpstreamDetailForm'
+import { UpstreamEditProvider } from './UpstreamEdit'
 
 export default function UpstreamDetail({create = false}: {create?: boolean}) {
   const { slug = '' } = useParams()
@@ -24,5 +24,5 @@ export default function UpstreamDetail({create = false}: {create?: boolean}) {
     setReplacement(saved);setRevision(v=>v+1)
     if(create) navigate(`/upstreams/${encodeURIComponent(saved.slug)}`)
   }}/></>
-  return create?form:<><UpstreamSecurity key={slug} slug={slug} version={upstream!.version}>{form}</UpstreamSecurity><AuditSettingsPanel scope="upstream" slug={slug}/></>
+  return create?form:<UpstreamEditProvider key={slug}><div className="page-layout"><UpstreamSecurity slug={slug} version={upstream!.version}>{form}</UpstreamSecurity></div></UpstreamEditProvider>
 }

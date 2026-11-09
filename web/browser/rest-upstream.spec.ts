@@ -22,7 +22,7 @@ for(const width of [1280,390])test(`REST operation and schema modal drafts at ${
  })
  await page.goto('/upstreams/new');await page.getByLabel('Admin token').fill('test');await page.getByRole('button',{name:'Continue',exact:true}).click()
  await page.getByLabel('Upstream type',{exact:true}).selectOption('rest');await page.getByLabel('Slug',{exact:true}).fill('orders');await page.getByLabel('Name',{exact:true}).fill('Orders');await page.getByLabel('URL',{exact:true}).fill('https://api.example.com')
- await page.locator('summary').filter({hasText:'Security & shared headers'}).click();await page.getByLabel('Authentication',{exact:true}).selectOption('basic');await page.getByLabel('Username',{exact:true}).fill('service');await page.getByLabel('Password',{exact:true}).fill('secret')
+ await page.locator('summary').filter({hasText:'Authentication, TLS & headers'}).click();await page.getByLabel('Authentication',{exact:true}).selectOption('basic');await page.getByLabel('Username',{exact:true}).fill('service');await page.getByLabel('Password',{exact:true}).fill('secret')
  await page.getByRole('button',{name:'Add operation',exact:true}).click()
  const operation=page.getByRole('dialog',{name:'Edit REST operation',exact:true})
  await operation.getByLabel('Tool name',{exact:true}).fill('list_orders');await operation.getByLabel('Operation path',{exact:true}).fill('/orders/{id}')
