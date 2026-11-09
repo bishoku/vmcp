@@ -29,7 +29,12 @@ import (
 const version = "1.0.2"
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "control-plane")
+	log, err := telemetry.NewLogger("control-plane")
+	if err != nil {
+		slog.Error("invalid logging configuration")
+		os.Exit(1)
+	}
+	slog.SetDefault(log)
 	if err := run(log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
@@ -47,6 +52,10 @@ func run(log *slog.Logger) error {
 	defer stop()
 	ctx, cancelBg := context.WithCancel(context.Background())
 	defer cancelBg()
+	gate := &lifecycle.Gate{}
+	supervisor := lifecycle.NewSupervisor(log, gate.Stop)
+	gate.Supervisor = supervisor
+	ctx = lifecycle.WithSupervisor(ctx, supervisor)
 
 	dbURL, err := config.MustEnv("VMCP_DATABASE_URL")
 	if err != nil {
@@ -93,6 +102,7 @@ func run(log *slog.Logger) error {
 	} else {
 		bgWg.Add(1)
 		go func(d int) {
+			defer lifecycle.Guard(ctx, "audit retention")
 			defer bgWg.Done()
 			purgeLoop(ctx, log, pool, time.Duration(d)*24*time.Hour)
 		}(days)
@@ -119,12 +129,17 @@ func run(log *slog.Logger) error {
 	api.Metrics = metrics
 	bgWg.Add(1)
 	go func() {
+		defer lifecycle.Guard(ctx, "discovery scheduler")
 		defer bgWg.Done()
 		api.RunDiscovery(ctx)
 	}()
 	if api.Store.WireMockURL != "" {
 		bgWg.Add(1)
-		go func() { defer bgWg.Done(); api.RunMockUpstreams(ctx) }()
+		go func() {
+			defer lifecycle.Guard(ctx, "mock upstream maintenance")
+			defer bgWg.Done()
+			api.RunMockUpstreams(ctx)
+		}()
 	}
 	metrics.Gauges = func(gctx context.Context) map[string]float64 {
 		stats := pool.Stat()
@@ -150,7 +165,7 @@ func run(log *slog.Logger) error {
 		defer cancel()
 		_ = shutdownTracing(traceCtx)
 	}()
-	gate := &lifecycle.Gate{}
+
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_CP_ADDR", ":8081"),
 		Handler:           gate.Handler(metrics.Handler(api.Handler())),
@@ -171,6 +186,7 @@ func run(log *slog.Logger) error {
 	case err := <-errCh:
 		return err
 	case <-signalCtx.Done():
+	case <-supervisor.Done():
 	}
 
 	gate.Stop()
@@ -184,7 +200,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	log.Info("stopped")
-	return nil
+	return supervisor.Err()
 }
 
 func purgeLoop(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool, retention time.Duration) {

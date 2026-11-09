@@ -267,3 +267,83 @@ For a reproducible real-Keycloak/two-control-plane recovery drill and separately
 declared granular configuration/audit HTTP diagnostics, see
 [Issue 31 server acceptance](AUTHORIZATION_ACCEPTANCE.md). Run these sequentially
 after MCP capacity measurements so they do not compete for host resources.
+
+## Isolated recovery checks
+
+`--recovery-checks` runs logical backup/restore and focused key, delivery,
+revocation and exporter regressions **after** the load phases, using the same
+owned PostgreSQL service. It does not create Docker containers or networks.
+Use matching PostgreSQL client binaries, for example:
+
+```sh
+VMCP_RECOVERY_PG_BIN=/usr/lib/postgresql/17/bin \
+python3 benchmark/kubernetes/run.py --smoke --recovery-checks
+```
+
+The recovery test creates two random disposable databases. It dumps the migrated
+source containing two encrypted fixture upstream configurations and restores to
+the separate target, then verifies old/new-key decryption and wrong-row/tenant
+rejection. The custom-format dump and aggregate timings remain in `recovery/`;
+random recovery keys remain separately under `local/readiness-recovery-keys-*`
+with restricted permissions. Do not commit either. Existing keys/backups are never
+used or removed. Database cleanup is limited to the generated test databases.
+The report does not claim application HTTP recovery, physical PITR, primary
+promotion, independent WORM or production RPO/RTO. Review the separate JSON test
+logs: a load-only `Pass` does not imply these supplemental checks passed.
+
+Keep runs sequential and all service fixtures inside the owned namespace.
+Docker build/save/import is the image preparation path; do not start parallel
+Compose fixture environments as part of this Kubernetes workflow.
+
+For the separate two-replica fault/soak run, set
+`VMCP_ACCEPTANCE_MEMORY_PROFILE=4g6g-ha`, `VMCP_ACCEPTANCE_NODES=2`,
+`VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB`, `--data-plane-cpus 8`,
+`--data-plane-memory-limit 6Gi` and `--postgres-tuned`, without `--database-focus`.
+This keeps the reference 5 GiB sampled RSS / 5.4 GiB container-usage budgets per
+replica, rather than applying the older 1.5 GiB baseline gate to a 4 GiB Go target.
+The existing fault, latency, audit and revocation gates remain in force. Expected
+pod withdrawal is not subject to the single-replica no-restart assertion. The
+midpoint dedicated-key probe belongs to the single-replica profile; the two-replica
+profile retains its post-load cross-node revocation checks.
+
+### Low-load SQL cost inspection
+
+```sh
+VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB VMCP_ACCEPTANCE_OWNERSHIP=1 \
+python3 benchmark/kubernetes/run.py --sql-cost --postgres-tuned \
+  --data-plane-cpus 8 --data-plane-memory-limit 6Gi --output <new-directory>
+python3 benchmark/kubernetes/sql_cost.py <new-directory>
+```
+
+This creates one synthetic server/session and makes one warmup call, one measured
+call and twenty serial measured calls. It keeps before/after statement snapshots
+and a one-second idle baseline, scoped to its disposable database; it never
+resets shared PostgreSQL statistics. Top-level commands and nested trigger/FK SQL
+are reported separately. There are no ramp, overload or fault phases, and these
+results do not establish capacity. Background SQL remains visible in the deltas.
+
+Append `--delivery-checks` to an isolated run to execute the delivery, subscription,
+revocation and cross-node correctness tests with Go's race detector before fixture
+cleanup. The runner sets `VMCP_REQUIRE_INTEGRATION=1`, retains JSON test events in
+`delivery-tests.jsonl`, and returns nonzero on failure. `--sql-cost` also records
+per-call wall time in `sql-cost.json` (`call_latency_ms`, first entry is warmup).
+These tiny samples measure command costs, not capacity or a percentile SLO.
+
+## Upstream latency observation
+
+`--upstream-latency` runs a separate observational experiment: one data plane,
+300 virtual servers × 200 tools, 600 sessions, 64 synthetic agent keys, 128 load
+workers and 100 offered TPS. It uses the real MCP entry point and a synthetic REST
+upstream with controlled waits: 5ms warmup (10s), 5ms reference (60s), 400ms (120s),
+500ms (120s), then 5ms recovery (60s). One host listener serves all synthetic routes.
+There is no concurrent configuration mutation, fault injection or capacity search.
+Use 8 CPU, GOMEMLIMIT=4GiB and `--data-plane-memory-limit 6Gi` for comparison with
+this campaign. `--postgres-tuned` preserves database durability.
+
+The diagnostic records `upstream-latency.json`, per-phase PostgreSQL statement
+snapshots and resource/DB samples. It validates responses and audit consistency;
+measurement completion is **not** a latency SLO pass. No 250ms short-upstream gate
+is applied to an intentionally 500ms upstream. Timed wait concurrency and mean wait
+are measured inside the fixture. End-to-end minus the fixed injected delay is an
+estimate of remaining path time (including harness/network/scheduling), not a
+pure gateway trace. No existing capacity profile or product runtime is changed.

@@ -64,7 +64,7 @@ func TestRESTAndMCPMixedToolsIdentityPolicyAndRevocation(t *testing.T) {
 	if len(toolNames(t, client)) != 2 {
 		t.Fatal("mixed tool catalog missing")
 	}
-	if result := call(t, client, "echo", `{"text":"hello"}`); result.IsError {
+	if result := call(t, client, "echo", `{"message":"hello"}`); result.IsError {
 		t.Fatal(result)
 	}
 	if result := call(t, client, "answer", `{}`); result.IsError || !strings.Contains(result.Content[0].Text, "42") || strings.Contains(result.Content[0].Text, "person@example.com") {

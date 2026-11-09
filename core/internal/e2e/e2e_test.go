@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/fixture"
+	"github.com/bishoku/vmcp/core/internal/invocation"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/secrets"
 	"github.com/bishoku/vmcp/core/internal/snapshot"
@@ -423,8 +424,18 @@ func TestToolPolicy(t *testing.T) {
 		WHERE name = 'add' AND upstream_id = (SELECT id FROM upstreams WHERE slug='alpha')`)
 	e.exec(t, `UPDATE virtual_servers SET tool_policy = '{"default":"read_only"}'`)
 	waitFor(func() bool { return !has("say") })
+	if got := toolNames(t, c); len(got) != 0 {
+		t.Fatal("untrusted hint granted read-only access", got)
+	}
+	policyBytes, _ := json.Marshal(invocation.Settings{Upstreams: map[string]invocation.UpstreamPolicy{"00000000-0000-4000-8000-000000000001": {Tools: map[string]invocation.Rule{"add": {ReadOnly: func() *bool { v := true; return &v }()}}}}})
+	sealed, sealErr := e.syncer.Box.SealBound(policyBytes, "invocation-security", "configuration")
+	if sealErr != nil {
+		t.Fatal(sealErr)
+	}
+	e.exec(t, `UPDATE invocation_security SET ciphertext=$1,version=version+1`, sealed)
+	waitFor(func() bool { return has("alpha__add") })
 	if got := toolNames(t, c); len(got) != 1 || got[0] != "alpha__add" {
-		t.Fatalf("read_only must expose only annotated tools, got %v", got)
+		t.Fatalf("read_only must expose only operator-classified tools, got %v", got)
 	}
 	if _, err := c.CallTool(ctx, "say", json.RawMessage(`{"message":"x"}`)); err == nil {
 		t.Fatal("blocked tool must not be callable")

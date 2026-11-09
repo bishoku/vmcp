@@ -51,6 +51,22 @@ class PublishEvidenceTest(unittest.TestCase):
         self.assertIn('](diagnostics.json)', markdown)
         self.assertIn('](throughput.svg)', markdown)
 
+    def test_latency_observation_has_no_invented_slo_result(self):
+        (self.source/'report.json').unlink()
+        (self.source/'upstream-latency.json').write_text(json.dumps({
+            'measurement_completed': True, 'samples': [1],
+            'phases': [{'upstream_delay_ms': 500, 'metrics': {'P95MS': 520, 'Errors': 0,
+                       'Seconds': [1], 'ErrorExamples': []}}]}))
+        destination = self.root/'latency-summary'
+        publish.publish(self.source, destination, self.archives)
+        summary = json.loads((destination/'summary.json').read_text())
+        self.assertEqual(summary['ReportType'], 'upstream-latency-observation')
+        self.assertTrue(summary['ReportAvailable'])
+        self.assertNotIn('Pass', summary)
+        self.assertNotIn('slo_pass', summary['Phases'][0]['metrics'])
+        self.assertNotIn('Seconds', summary['Phases'][0]['metrics'])
+        self.assertEqual(summary['Phases'][0]['metrics']['P95MS'], 520)
+
     def test_failed_archive_verification_never_removes_original_files(self):
         originals = {p.name: p.read_bytes() for p in self.source.iterdir()}
         with patch.object(publish, 'verify_archive', side_effect=ValueError('corrupted archive')):
@@ -72,6 +88,21 @@ class PublishEvidenceTest(unittest.TestCase):
         publish.publish(self.source, self.source, self.archives)
         summary = json.loads((self.source/'summary.json').read_text())
         self.assertFalse(summary['ReportAvailable']); self.assertNotIn('Pass', summary)
+
+    def test_setup_failure_with_null_phases_preserves_failed_evidence(self):
+        report = {'Pass': False, 'Phases': None, 'Samples': None, 'Failures': None}
+        (self.source/'report.json').write_text(json.dumps(report))
+        original = (self.source/'run.log').read_bytes()
+        destination = self.root/'summary'
+        archive = publish.publish(self.source, destination, self.archives)
+        summary = json.loads((destination/'summary.json').read_text())
+        self.assertTrue(summary['ReportAvailable'])
+        self.assertFalse(summary['Pass'])
+        self.assertEqual(summary['Phases'], [])
+        self.assertIsNone(summary['Failures'])
+        self.assertEqual((self.source/'run.log').read_bytes(), original)
+        with tarfile.open(self.archives/archive['filename']) as tar:
+            self.assertEqual(tar.extractfile('run.log').read(), original)
 
     def test_symlink_is_rejected_before_archive_or_cleanup(self):
         (self.source/'link').symlink_to(self.source/'run.log')

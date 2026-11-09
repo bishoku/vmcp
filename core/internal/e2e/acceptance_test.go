@@ -257,10 +257,17 @@ func TestScaleAcceptance(t *testing.T) {
 	started := time.Now()
 	report := acceptanceReport{StartedUTC: started.UTC().Format(time.RFC3339), Profile: profile, GoVersion: runtime.Version(), HostOS: runtime.GOOS, HostArch: runtime.GOARCH, Functional: map[string]any{}, DataPlaneConfiguration: map[string]any{"nodes": 2, "gomaxprocs_each": 2, "go_soft_memory_limit_each": "768MiB", "db_pool_max_each": 64, "db_acquire_timeout": "2s", "audit": "strict", "redis_failure_policy": "strict", "health_interval": "30s"}, ProxyPolicy: "test round-robin proxy; passive 10s failure cooldown; no request retries; not the production ingress", Thresholds: map[string]any{"steady_success_percent": 99.9, "steady_min_target_completion_percent": 95, "steady_p95_ms": 250, "steady_p99_ms": 1000, "burst_min_target_completion_percent": 80, "burst_min_success_percent": 80, "burst_max_p99_ms": 10000, "fault_phase_min_success_percent": 99, "fault_transition_grace_seconds": 10, "post_fault_max_errors_percent": 0.1, "per_node_max_rss_bytes": int64(1536 << 20), "soak_max_rss_growth_percent": 20}}
 	memoryProfile := os.Getenv("VMCP_ACCEPTANCE_MEMORY_PROFILE") == "4g6g"
+	haMemoryProfile := os.Getenv("VMCP_ACCEPTANCE_MEMORY_PROFILE") == "4g6g-ha"
+	boundedMemoryProfile := memoryProfile || haMemoryProfile
+	if haMemoryProfile && (!acceptanceKubernetes() || os.Getenv("VMCP_ACCEPTANCE_GOMEMLIMIT") != "4GiB" || os.Getenv("VMCP_ACCEPTANCE_MEMORY_LIMIT") != "6Gi" || nodeCount != 2 || os.Getenv("VMCP_ACCEPTANCE_DATABASE_FOCUS") == "1") {
+		t.Fatal("4g6g-ha requires Kubernetes, two nodes, 4GiB Go / 6Gi container and the fault/soak profile")
+	}
 	if memoryProfile {
 		if !acceptanceKubernetes() || os.Getenv("VMCP_ACCEPTANCE_GOMEMLIMIT") != "4GiB" || os.Getenv("VMCP_ACCEPTANCE_MEMORY_LIMIT") != "6Gi" || nodeCount != 1 || os.Getenv("VMCP_ACCEPTANCE_CAPACITY_RATES") != "" || os.Getenv("VMCP_ACCEPTANCE_DATABASE_FOCUS") != "1" {
 			t.Fatal("4g6g requires Kubernetes, one node, 4GiB Go / 6Gi container, fixed database-focus load")
 		}
+	}
+	if boundedMemoryProfile {
 		report.Thresholds["per_node_max_rss_bytes"] = int64(5 << 30)
 		report.Thresholds["per_node_max_container_usage_bytes"] = int64(6<<30) * 9 / 10
 		report.Thresholds["steady_min_target_completion_percent"] = 99
@@ -399,7 +406,7 @@ func TestScaleAcceptance(t *testing.T) {
 		t.Logf("Phase %s: %d req/s for %ds", name, rps, seconds)
 		result := acceptanceRunPhase(ctx, name, rps, time.Duration(seconds)*time.Second, clients, profile.Workers, profile.Tools, tracker, fault, time.Duration(faultSecond)*time.Second)
 		acceptanceSummarizeSLO(&result)
-		if memoryProfile && name == "steady" && result.CompletedRPS < float64(rps)*.99 {
+		if boundedMemoryProfile && name == "steady" && result.CompletedRPS < float64(rps)*.99 {
 			result.SLOPass = false
 		}
 		report.Phases = append(report.Phases, result)
@@ -697,7 +704,7 @@ ANALYZE mcp_operations; ANALYZE mcp_streams;`); err != nil {
 			if item["max_rss_bytes"].(float64) > float64(report.Thresholds["per_node_max_rss_bytes"].(int64)) {
 				report.Failures = append(report.Failures, "node RSS budget exceeded")
 			}
-			if memoryProfile {
+			if boundedMemoryProfile {
 				usage := item["max_container_usage_bytes"].(float64)
 				if usage <= 0 || usage > float64(report.Thresholds["per_node_max_container_usage_bytes"].(int64)) {
 					report.Failures = append(report.Failures, "container memory usage missing or budget exceeded")

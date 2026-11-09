@@ -236,6 +236,7 @@ export interface BindingEvaluation {
 }
 
 export interface AuditRule { name:string; pattern:string }
+export interface AdmissionSettings { revision:number; total:number; perServer:number; perPrincipal:number }
 export interface AuditSettings {
  omni?:{candidates?:boolean;includeDenied?:boolean;maxCandidates?:number}
  mode:''|'strict'|'relax'; retentionDays:number; maxPayloadBytes:number; revision:number
@@ -451,7 +452,7 @@ export interface ToolCatalogEntry {upstream:string;ownerTeam:string;name:string;
 export interface OmniStatus { configured:boolean; endpoint:string; index?:{rerankEnabled?:boolean;rerankNoMatchScore?:number;rerankConfidenceScore?:number;rerankCandidates?:number;rerankMinScore?:number;rerankFailurePolicy?:string;embeddedDocuments?:number;dimensions?:number;embeddingProfile?:string;ready:boolean;mode:string;documents:number;revision:number;updatedAt:string;error?:string;refreshing:boolean} }
 export interface OmniHit {tool_ref:string;server_id:string;server_name:string;name:string;description:string;project:string;score:number}
 export interface LocalAuditSettings {revision:number;rules:AuditRule[]}
-export interface InvocationRule { identity?: {source:'oauth_subject'|'caller_context';service?:string;fields?:string[]}; stepUp?: {acceptedAcrValues:string[];maxAgeSeconds:number}; approvalServices?:string[];shareFields?:string[] }
+export interface InvocationRule { retry?:'never'|'once'; readOnly?:boolean; identity?: {source:'oauth_subject'|'caller_context';service?:string;fields?:string[]}; stepUp?: {acceptedAcrValues:string[];maxAgeSeconds:number}; approvalServices?:string[];shareFields?:string[] }
 export interface InvocationService {url:string;approvalOrigin:string;token?:string;hasToken?:boolean;caPem?:string}
 export type InvocationServices = Record<string,InvocationService>
 export interface UpstreamInvocationPolicy extends InvocationRule {tools?:Record<string,InvocationRule>;services?:InvocationServices}
@@ -482,6 +483,8 @@ export const api = {
  bulkToolGrants:(items:ToolGrant[])=>request<BulkToolGrantResult>('POST','/tool-grants/bulk',{items}),
  saveToolGrant:(grant:ToolGrant)=>request('POST','/tool-grants',grant),
  toolCatalog:(signal?:AbortSignal)=>listAll<ToolCatalogEntry>('/tool-catalog',signal),
+ admissionSettings:(signal?:AbortSignal)=>request<AdmissionSettings>('GET','/admission-settings',undefined,undefined,signal),
+ saveAdmissionSettings:(settings:AdmissionSettings)=>request<AdmissionSettings>('PUT','/admission-settings',settings),
  auditSettings:(signal?:AbortSignal)=>request<AuditSettings>('GET','/audit-settings',undefined,undefined,signal),
  saveAuditSettings:(settings:AuditSettings)=>request<AuditSettings>('PUT','/audit-settings',settings),
  previewAudit:(body:{editScope?:'global'|'virtual'|'upstream';settings:AuditSettings;scope:string;direction:string;virtualServer:string;upstream:string;payload:unknown})=>request<AuditPreview>('POST','/audit-preview',body),

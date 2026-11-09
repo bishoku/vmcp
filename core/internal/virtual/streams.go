@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"io"
 	"net/http"
 	"strings"
@@ -21,7 +22,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/upstream"
 )
 
-func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, r *http.Request, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot) {
+func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, r *http.Request, msg *mcp.Message, vs config.VirtualServer, sess *Session, snap *config.Snapshot, slots ...*admissionSlot) {
 	if !h.preflightInvocation(requestCtx, w, msg, vs, snap) {
 		return
 	}
@@ -58,9 +59,14 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 	}
 	h.workerWG.Add(1)
 	h.workerMu.Unlock()
+	releaseWorker := func() {}
+	if len(slots) > 0 {
+		releaseWorker = slots[0].retain()
+	}
 	launched := false
 	defer func() {
 		if !launched {
+			releaseWorker()
 			h.workerWG.Done()
 		}
 	}()
@@ -77,12 +83,15 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 	h.workerOnce.Do(func() { h.workerCtx, h.workerCancel = context.WithCancel(context.Background()) })
 	launched = true
 	go func() {
+		defer lifecycle.Guard(ctx, "stream operation")
 		defer h.workerWG.Done()
+		defer releaseWorker()
 		stopWorker := context.AfterFunc(h.workerCtx, cancel)
 		defer stopWorker()
 		defer cancel()
 		heartbeatDone := make(chan struct{})
 		go func() {
+			defer lifecycle.Guard(ctx, "delivery heartbeat")
 			defer close(heartbeatDone)
 			tick := time.NewTicker(time.Second)
 			defer tick.Stop()
@@ -93,6 +102,13 @@ func (h *Handler) streamCall(requestCtx context.Context, w http.ResponseWriter, 
 				case <-tick.C:
 					renewCtx, renewCancel := context.WithTimeout(ctx, time.Second)
 					cancelled, err := h.Delivery.Renew(renewCtx, op)
+					outcome := "ok"
+					if err != nil {
+						outcome = "error"
+					} else if cancelled {
+						outcome = "cancelled"
+					}
+					h.Metrics.Background("delivery_renew", outcome)
 					renewCancel()
 					if err == nil && !cancelled {
 						rootsCtx, rootsCancel := context.WithTimeout(ctx, time.Second)
@@ -273,7 +289,7 @@ func (h *Handler) getStream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	release, admitted := h.acquire(owner, vs.Slug, h.ipString(r))
+	release, admitted := h.acquire(owner, vs.Slug, h.ipString(r), snap.Admission)
 	if !admitted {
 		http.Error(w, "stream concurrency limit exceeded", 429)
 		return

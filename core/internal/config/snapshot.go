@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"github.com/bishoku/vmcp/core/internal/admission"
 	"github.com/bishoku/vmcp/core/internal/correlation"
 	"github.com/bishoku/vmcp/core/internal/invocation"
 	"net/netip"
@@ -20,6 +21,7 @@ import (
 // Snapshot is the immutable, versioned configuration the data plane serves from.
 // The control plane produces it; the data plane swaps it in atomically.
 type Snapshot struct {
+	Admission          admission.Settings
 	InvocationSecurity invocation.Settings
 	AuditTenant        string
 	Audit              audit.Settings

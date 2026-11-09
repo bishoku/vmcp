@@ -6,6 +6,8 @@ export const identityLabels={oauth_subject:'OAuth user',caller_context:'Customer
 // Mirrors the gateway's policy composition for the unsaved preview.
 export function effectivePolicy(parent:InvocationRule,child:InvocationRule={}):{rule:InvocationRule;error?:{field:string;message:string}} {
   const rule:InvocationRule={
+    retry:child.retry??parent.retry,
+    readOnly:child.readOnly??parent.readOnly,
     identity:parent.identity??child.identity,
     stepUp:parent.stepUp??child.stepUp,
     approvalServices:[...new Set([...(parent.approvalServices??[]),...(child.approvalServices??[])])],
@@ -31,6 +33,8 @@ export function ruleSummary(rule:InvocationRule) {
   if(rule.stepUp)requirements.push(`Step-up: ${rule.stepUp.acceptedAcrValues.join(', ')} · max ${rule.stepUp.maxAgeSeconds}s`)
   if(rule.approvalServices?.length)requirements.push(`Approval: ${rule.approvalServices.join(', ')}`)
   if(rule.shareFields?.length||rule.approvalServices?.length||rule.identity?.service)requirements.push(rule.shareFields?.length?`Shared arguments: ${rule.shareFields.join(', ')}`:'No arguments shared')
+  if(rule.retry)requirements.push(`Retry: ${retrySummary(rule)}`)
+  if(rule.readOnly!==undefined)requirements.push(rule.readOnly?'Operator classified read-only':'Not classified read-only')
   return requirements.join(' · ')||'No invocation requirements'
 }
 
@@ -41,4 +45,10 @@ export function referencedServices(rules: Iterable<{identity?:{service?:string};
     for(const name of rule.approvalServices??[])names.add(name)
   }
   return names
+}
+
+export function retrySummary(rule:InvocationRule) {
+  if(rule.retry!=='once')return 'off'
+  if(rule.approvalServices?.length||rule.identity?.source==='caller_context')return 'off (approval or session verification prevents replay)'
+  return 'once for eligible MCP calls'
 }

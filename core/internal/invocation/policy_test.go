@@ -76,3 +76,21 @@ func TestIdentitySourceIsExplicitAndInherited(t *testing.T) {
 		t.Fatal("implicit identity source accepted")
 	}
 }
+
+func TestExecutionPolicyInheritance(t *testing.T) {
+	yes, no := true, false
+	parent := Rule{Retry: "never", ReadOnly: &yes}
+	child := Rule{Retry: "once", ReadOnly: &no}
+	r, err := Merge(parent, child)
+	if err != nil || r.Retry != "once" || r.ReadOnly == nil || *r.ReadOnly {
+		t.Fatal("explicit override lost", r, err)
+	}
+	r, err = Merge(parent, Rule{})
+	if err != nil || r.Retry != "never" || !*r.ReadOnly {
+		t.Fatal("inheritance lost")
+	}
+	s := Settings{Upstreams: map[string]UpstreamPolicy{"up": {Rule: Rule{Retry: "always"}}}}
+	if s.Validate() == nil {
+		t.Fatal("unknown replay mode accepted")
+	}
+}

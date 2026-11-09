@@ -18,6 +18,7 @@ func buildCatalog() []Permission {
 	tenant := []string{"tenant"}
 	upstream := []string{"tenant", "team", "upstream", "unmanaged"}
 	server := []string{"tenant", "team", "project", "virtual_server", "unmanaged"}
+	add("admission", "read update", tenant)
 	add("platform", "info.read", tenant)
 	add("invocation_security", "read manage", tenant)
 	add("teams", "read manage", []string{"tenant", "team"})

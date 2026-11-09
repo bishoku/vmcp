@@ -229,6 +229,8 @@ func (s *Server) Handler() http.Handler {
 	api("PUT /api/v1/invocation-security/shared-services", s.sharedInvocationServices)
 	api("GET /api/v1/invocation-security", s.invocationSecurity)
 	api("PUT /api/v1/invocation-security", s.invocationSecurity)
+	api("GET /api/v1/admission-settings", s.getAdmissionSettings)
+	api("PUT /api/v1/admission-settings", s.putAdmissionSettings)
 	api("GET /api/v1/audit-settings", s.getAuditSettings)
 	api("PUT /api/v1/audit-settings", s.putAuditSettings)
 	api("POST /api/v1/audit-preview", s.previewAuditPayload)

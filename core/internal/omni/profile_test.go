@@ -26,6 +26,7 @@ func (e *dimensionEmbedder) Embed(_ context.Context, texts []string) ([][]float3
 	return v, nil
 }
 func TestProfileDimensionDriftAndCoverage(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	docs := []Document{}
 	for n := 0; n < 33; n++ {
 		docs = append(docs, Document{Ref: Ref("chat", string(rune('A'+n))), Name: "orders", Description: "Read customer orders"})
@@ -76,6 +77,7 @@ func TestProfileDimensionDriftAndCoverage(t *testing.T) {
 	}
 }
 func TestEmbeddingPrefixesDimensionsAndKeylessProvider(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	var inputs []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "" {
@@ -115,6 +117,7 @@ func TestEmbeddingPrefixesDimensionsAndKeylessProvider(t *testing.T) {
 }
 
 func TestMinimumSimilarityAndAuthorizedCoverage(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	docs := []Document{{Ref: Ref("chat", "orders"), Name: "orders", Description: "Read orders"}, {Ref: Ref("private", "orders"), Name: "orders", Description: "Read private orders"}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode(Catalog{Documents: docs}) }))
 	defer srv.Close()
@@ -139,6 +142,7 @@ func TestMinimumSimilarityAndAuthorizedCoverage(t *testing.T) {
 }
 
 func TestToolFirstTextAndProfileIdentity(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	d := Document{Name: "get_order_status", Description: "Read the fulfillment state of an existing order.", ServerName: "Customer platform", ServerDescription: strings.Repeat("Shared customer platform context. ", 2000)}
 	structured := d.StructuredText()
 	if !strings.HasPrefix(structured, "Tool: get_order_status\nPurpose: Read the fulfillment") || len([]rune(structured)) > 2500 {

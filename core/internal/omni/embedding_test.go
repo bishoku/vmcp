@@ -8,6 +8,7 @@ import (
 )
 
 func TestEmbeddingSelfSignedTLSRequiresExplicitOptIn(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Error("missing provider credential")

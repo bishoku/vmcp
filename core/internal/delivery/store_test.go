@@ -232,3 +232,94 @@ func TestExpiredWorkerCannotResumeOrDuplicateExecution(t *testing.T) {
 		t.Fatalf("lost worker not explicitly abandoned: %s", state)
 	}
 }
+
+func TestDeliveryAdmissionAndTerminalRollback(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := store.Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := store.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	box, _ := secrets.NewBox(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	s := &Store{Pool: pool, Box: box}
+	if _, err := pool.Exec(ctx, `INSERT INTO sessions(id,virtual_server,key_slug,protocol_version,terminated_at) VALUES('ended','v','','2025-06-18',now()),('live','v','','2025-06-18',NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range []string{"missing", "ended"} {
+		if _, err := s.Begin(ctx, session, "1", "v", []byte("p")); err == nil {
+			t.Fatalf("admitted %s", session)
+		}
+	}
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM mcp_operations`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("orphan admission: %d %v", count, err)
+	}
+	op, err := s.Begin(ctx, "live", "1", "v", []byte("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A database rejection must roll back both the terminal event and completion.
+	if _, err := pool.Exec(ctx, `ALTER TABLE mcp_operations ADD CONSTRAINT reject_done CHECK(state <> 'done')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Append(ctx, op, []byte(`{}`), true); err == nil {
+		t.Fatal("expected completion rejection")
+	}
+	var state string
+	if err := pool.QueryRow(ctx, `SELECT state FROM mcp_operations WHERE id=$1`, op.ID).Scan(&state); err != nil || state != "running" {
+		t.Fatalf("state: %s %v", state, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM mcp_events WHERE stream_id=$1`, op.Stream).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("partial terminal: %d %v", count, err)
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE mcp_operations DROP CONSTRAINT reject_done`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Append(ctx, op, []byte(`{}`), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Append(ctx, op, []byte(`{}`), true); err == nil {
+		t.Fatal("duplicate terminal accepted")
+	}
+}
+
+func TestDeliveryEncryptedByteBudget(t *testing.T) {
+	ctx := context.Background()
+	url := testdb.New(t)
+	if err := store.Migrate(ctx, url); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := store.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	box, _ := secrets.NewBox(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	s := &Store{Pool: pool, Box: box}
+	if _, err := pool.Exec(ctx, `INSERT INTO sessions(id,virtual_server,key_slug,protocol_version) VALUES('s','v','','2025-06-18')`); err != nil {
+		t.Fatal(err)
+	}
+	op, err := s.Begin(ctx, "s", "1", "v", []byte("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := bytes.Repeat([]byte("x"), 1<<20)
+	if err := s.Append(ctx, op, payload, false); err != nil {
+		t.Fatal(err)
+	}
+	// Plaintext totals exactly 2 MiB; ciphertext overhead must make this fail.
+	if err := s.Append(ctx, op, payload, false); err != ErrCapacity {
+		t.Fatalf("encrypted byte budget bypassed: %v", err)
+	}
+	if err := s.Append(ctx, op, payload, true); err != nil {
+		t.Fatalf("reserved terminal budget: %v", err)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM mcp_events WHERE stream_id=$1`, op.Stream).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("events: %d %v", count, err)
+	}
+}

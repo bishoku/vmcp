@@ -24,6 +24,7 @@ func (meaningEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 	return v, nil
 }
 func TestHybridSearchFiltersBeforeRankingAndRejectsStaleMetadata(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	docs := []Document{{Ref: Ref("chat", "orders"), Server: "chat", Name: "orders", Description: "Open purchases"}, {Ref: Ref("hr", "salary"), Server: "hr", Name: "salary", Description: "orders orders sipariş"}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(Catalog{Revision: 1, Documents: docs})
@@ -49,6 +50,7 @@ func TestHybridSearchFiltersBeforeRankingAndRejectsStaleMetadata(t *testing.T) {
 	}
 }
 func TestEmbeddingResponseValidation(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	for _, body := range []string{`{"data":[{"index":0,"embedding":[1]},{"index":0,"embedding":[2]}]}`, `{"data":[{"index":0,"embedding":[]},{"index":1,"embedding":[]}]}`, `{"data":[{"index":0,"embedding":[1]},{"index":1,"embedding":[1,2]}]}`} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
 		e, _ := NewHTTPEmbedder(srv.URL, "test", "", false)
@@ -60,6 +62,7 @@ func TestEmbeddingResponseValidation(t *testing.T) {
 	}
 }
 func TestReferenceRoundTrip(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	for _, tc := range []struct{ server, name, ref string }{
 		{"support", "github__create_issue", "support/github__create_issue"},
 		{"chat", "客户/lookup", "chat/客户/lookup"},
@@ -106,6 +109,7 @@ func BenchmarkAuthorizedSearch(b *testing.B) {
 }
 
 func TestSearchTopKAndDistinctServers(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	docs := []Document{}
 	for n := 0; n < 30; n++ {
 		docs = append(docs, Document{Ref: Ref("chat", fmt.Sprint(n)), Server: "chat", Name: "orders", Description: "customer orders"})
@@ -135,6 +139,7 @@ func TestSearchTopKAndDistinctServers(t *testing.T) {
 }
 
 func TestDiscoveryRechecksAuthorizationAfterRanking(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	d := Document{Ref: Ref("chat", "orders"), Server: "chat", Name: "orders", Description: "private matching metadata"}
 	var calls int
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +168,7 @@ func TestDiscoveryRechecksAuthorizationAfterRanking(t *testing.T) {
 }
 
 func TestKeywordSearchDoesNotMatchInsideWords(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	d := Document{Ref: Ref("hr", "salary"), Server: "hr", Name: "salary", Description: "Monthly compensation"}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(Catalog{Documents: []Document{d}})

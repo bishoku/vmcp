@@ -169,3 +169,19 @@ func TestDisallowLegacyCiphertext(t *testing.T) {
 	}
 }
 
+func TestEnvironmentRequiresExplicitLegacyOptIn(t *testing.T) {
+	key := newKey(t)
+	legacy, _ := NewKeyring("primary", map[string]string{"primary": key}, true)
+	sealed, _ := legacy.SealBound([]byte("secret"), "a", "b")
+	for _, setting := range []string{"", "false", "true"} {
+		t.Setenv("VMCP_ALLOW_LEGACY_CIPHERTEXT", setting)
+		box, err := FromEnv(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = box.OpenBound(sealed, "a", "b")
+		if (err == nil) != (setting == "true") {
+			t.Fatal("legacy default", setting, err)
+		}
+	}
+}

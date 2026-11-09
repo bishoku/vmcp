@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http"
 	"net/url"
 	"sync"
 	"syscall"
@@ -29,9 +28,7 @@ func (e *HTTPEmbedder) failure(reason string, attrs ...slog.Attr) error {
 	u, _ := url.Parse(e.Endpoint)
 	// Do not log path/query: they may contain provider credentials.
 	attrs = append(attrs, slog.String("provider_origin", u.Scheme+"://"+u.Host))
-	if transport, ok := e.Client.Transport.(*http.Transport); ok && transport.TLSClientConfig != nil {
-		attrs = append(attrs, slog.Bool("tls_skip_verify", transport.TLSClientConfig.InsecureSkipVerify))
-	}
+	attrs = append(attrs, slog.Bool("tls_skip_verify", e.TLSInsecure))
 	return &embeddingError{reason: reason, attrs: attrs}
 }
 func transportReason(err error) string {

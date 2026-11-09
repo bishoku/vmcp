@@ -11,7 +11,7 @@ No. Redis only makes rate limits global across nodes ([Rate limits](Rate-Limits.
 
 ## A tool I selected does not show up
 Check, in order: the upstream is enabled and healthy; the tool still exists after a refresh (orphaned selections are not
-served); the [policy](Tool-Policies.md) does not block it (`read_only` needs `readOnlyHint` from the upstream); the exposed
+served); the [policy](Tool-Policies.md) does not block it (`read_only` needs an operator read-only classification); the exposed
 name is unique.
 
 ## 401/403 from the data plane

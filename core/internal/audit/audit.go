@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/bishoku/vmcp/core/internal/correlation"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"log/slog"
 	"strings"
 	"sync"
@@ -99,7 +100,7 @@ const (
 // NewWriter starts the background flusher; stop it by cancelling ctx, then wait on Done.
 func NewWriter(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) *Writer {
 	w := &Writer{pool: pool, log: log, ch: make(chan Event, bufferSize), done: make(chan struct{})}
-	go w.run(ctx)
+	go func() { defer lifecycle.Guard(ctx, "audit writer"); w.run(ctx) }()
 	return w
 }
 

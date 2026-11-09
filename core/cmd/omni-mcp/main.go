@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"log/slog"
 	"math"
 	"net/http"
@@ -23,8 +25,15 @@ func main() {
 	}
 }
 func run() error {
+	log, err := telemetry.NewLogger("omni")
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(log)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	supervisor := lifecycle.NewSupervisor(slog.Default(), stop)
+	ctx = lifecycle.WithSupervisor(ctx, supervisor)
 	backend, err := omni.NewBackend(config.Env("VMCP_OMNI_DATA_PLANE_URL", ""), config.Env("VMCP_OMNI_SECRET", ""))
 	if err != nil {
 		return err
@@ -105,7 +114,7 @@ func run() error {
 	} else {
 		slog.Info("omni reranker configuration", "enabled", false)
 	}
-	go index.Run(ctx, backend, interval)
+	go func() { defer lifecycle.Guard(ctx, "omni index"); index.Run(ctx, backend, interval) }()
 	limit, err := strconv.Atoi(config.Env("VMCP_OMNI_SEARCH_LIMIT", "120"))
 	if err != nil || limit < 1 {
 		return errors.New("VMCP_OMNI_SEARCH_LIMIT must be positive")
@@ -124,7 +133,7 @@ func run() error {
 	}()
 	err = server.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
-		return nil
+		return supervisor.Err()
 	}
 	return err
 }

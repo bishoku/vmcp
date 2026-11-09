@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bishoku/vmcp/core/internal/admission"
 	"io"
 	"log/slog"
 	"math"
@@ -145,12 +146,13 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	authAt := time.Now()
 	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))
 
-	release, admitted := h.acquire(owner, slug, h.ipString(r))
+	release, admitted := h.acquire(owner, slug, h.ipString(r), snap.Admission)
 	if !admitted {
 		http.Error(w, "request concurrency limit exceeded", 429)
 		return
 	}
-	defer release()
+	slot := newAdmissionSlot(release)
+	defer slot.releaseOnce()()
 	controller := http.NewResponseController(w)
 	_ = controller.SetReadDeadline(time.Now().Add(10 * time.Second))
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBytes))
@@ -340,13 +342,13 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		h.listCatalog(w, msg, vs, snap.Revision, "prompt", "prompts")
 	case "resources/read", "resources/subscribe", "resources/unsubscribe", "prompts/get", "completion/complete":
 		if h.Delivery != nil {
-			h.streamCall(ctx, w, r, msg, vs, sess, snap)
+			h.streamCall(ctx, w, r, msg, vs, sess, snap, slot)
 			return
 		}
 		h.catalogCall(ctx, w, msg, vs, sess, snap, h.ipString(r))
 	case mcp.MethodToolsCall:
 		if h.Delivery != nil {
-			h.streamCall(ctx, w, r, msg, vs, sess, snap)
+			h.streamCall(ctx, w, r, msg, vs, sess, snap, slot)
 			return
 		}
 		h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r), r.Header)
@@ -540,6 +542,23 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 
+	invalidArguments := func(raw json.RawMessage) bool {
+		if up.REST != nil {
+			return false
+		}
+		if err := vs.ValidateArguments(vt.Tool, raw); err != nil {
+			if !finish("denied", "invalid tool arguments") {
+				http.Error(w, "audit outcome unavailable", 503)
+				return true
+			}
+			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidParams, err.Error()))
+			return true
+		}
+		return false
+	}
+	if invalidArguments(p.Arguments) {
+		return
+	}
 	args := p.Arguments
 	if vs.PII != nil && vs.PII.MaskArguments {
 		masked, n, err := vs.PII.MaskJSON(args)
@@ -552,12 +571,16 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			return
 		}
 		args, ev.Redactions = masked, n
+		if invalidArguments(args) {
+			return
+		}
 	}
 	if !h.enforceInvocation(ctx, w, msg, snap, vs, sess.owner, up.ID, vt.UpstreamName, args, p.Meta, selectedMeta, dynamicHeaders) {
 		return
 	}
 	rule, _ := snap.InvocationSecurity.Effective(up.ID, vt.UpstreamName)
 	ctx = invocationGuard(ctx, w, msg, rule)
+	ctx = context.WithValue(ctx, retryInvocationKey{}, rule.Retry)
 	if len(rule.ApprovalServices) > 0 || (rule.Identity != nil && rule.Identity.Source == "caller_context") {
 		ctx = context.WithValue(ctx, approvedInvocationKey{}, true)
 	}
@@ -694,23 +717,13 @@ func (h *Handler) rateLimited(ctx context.Context, vs config.VirtualServer, snap
 
 var errCircuitOpen = errors.New("circuit open")
 
-// idempotent reports whether the upstream declares the tool safe to repeat.
-func idempotent(annotations json.RawMessage) bool {
-	var a struct {
-		ReadOnly   bool `json:"readOnlyHint"`
-		Idempotent bool `json:"idempotentHint"`
-	}
-	return json.Unmarshal(annotations, &a) == nil && (a.ReadOnly || a.Idempotent)
-}
-
-// callResilient adds the circuit breaker and, for idempotent tools only, one retry with jitter
-// after a transport failure. Replies from the upstream (including JSON-RPC errors) prove it is
-// alive and never count as failures.
+// callResilient retries only when the operator explicitly permits replay.
+// Approval-bound calls and REST calls remain non-replayable.
 func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Upstream, vt config.VirtualTool, args json.RawMessage) (json.RawMessage, error) {
 	ctx = audit.WithProvider(ctx, up.Slug, up.AuditDomain)
 	br := h.Breakers.Get(up.ID)
 	attempts := 1
-	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && idempotent(vt.Tool.Annotations) {
+	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && ctx.Value(retryInvocationKey{}) == "once" {
 		attempts = 2
 		ctx = oauthtoken.WithReplaySafe(ctx)
 	}
@@ -727,7 +740,8 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 		if err := checkAuthorization(ctx); err != nil {
 			return nil, err
 		}
-		if br != nil && !br.Allow() {
+		complete, allowed := br.Acquire()
+		if !allowed {
 			return nil, errCircuitOpen
 		}
 		if up.REST != nil {
@@ -737,25 +751,15 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 		} else {
 			res, err = h.callUpstream(ctx, sess, up, vt.UpstreamName, args)
 		}
-		if errors.Is(err, errAuthorizationChanged) {
-			return res, err
+		outcome := resilience.Classify(ctx, err)
+		if errors.Is(err, errAuthorizationChanged) || errors.Is(err, audit.ErrUnavailable) {
+			outcome = resilience.Ignore
 		}
-		if errors.Is(err, audit.ErrUnavailable) {
-			return res, err
-		}
-		switch resilience.Classify(ctx, err) {
-		case resilience.Reached:
-			if br != nil {
-				br.Success()
-			}
-			return res, err
-		case resilience.Ignore:
+		complete(outcome)
+		if outcome != resilience.Failed {
 			return res, err
 		}
 
-		if br != nil {
-			br.Failure()
-		}
 	}
 	return res, err
 }
@@ -875,7 +879,7 @@ func checkAuthorization(ctx context.Context) error {
 }
 
 // Admission counters are removed on release, so arbitrary identities cannot grow the map.
-func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
+func (h *Handler) acquire(owner Owner, server, clientIP string, settings ...admission.Settings) (func(), bool) {
 	h.budgetMu.Lock()
 	defer h.budgetMu.Unlock()
 	if h.budgets == nil {
@@ -886,7 +890,14 @@ func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
 		principalKey = "principal:anonymous:" + clientIP
 	}
 	keys := []string{"all", "server:" + server, principalKey}
-	limits := []int{1024, 128, 16}
+	cfg := admission.DefaultSettings()
+	if len(settings) > 0 && settings[0] != (admission.Settings{}) {
+		cfg = settings[0]
+	}
+	if cfg.Validate() != nil {
+		return nil, false
+	}
+	limits := []int{cfg.Total, cfg.PerServer, cfg.PerPrincipal}
 	for i, key := range keys {
 		if h.budgets[key] >= limits[i] {
 			return nil, false
@@ -895,14 +906,17 @@ func (h *Handler) acquire(owner Owner, server, clientIP string) (func(), bool) {
 	for _, key := range keys {
 		h.budgets[key]++
 	}
+	var once sync.Once
 	return func() {
-		h.budgetMu.Lock()
-		defer h.budgetMu.Unlock()
-		for _, key := range keys {
-			h.budgets[key]--
-			if h.budgets[key] == 0 {
-				delete(h.budgets, key)
+		once.Do(func() {
+			h.budgetMu.Lock()
+			defer h.budgetMu.Unlock()
+			for _, key := range keys {
+				h.budgets[key]--
+				if h.budgets[key] == 0 {
+					delete(h.budgets, key)
+				}
 			}
-		}
+		})
 	}, true
 }

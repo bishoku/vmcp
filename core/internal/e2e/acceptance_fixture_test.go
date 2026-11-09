@@ -27,6 +27,35 @@ type acceptanceFixture struct {
 	executions sync.Map
 	duplicate  atomic.Int64
 	count      atomic.Int64
+	delayMS    atomic.Int64
+	waiting    atomic.Int64
+	maxWaiting atomic.Int64
+	waitNanos  atomic.Int64
+	waitCalls  atomic.Int64
+}
+
+// Defaults to the historical 5ms fixture. Only diagnostic tests set delayMS.
+func (f *acceptanceFixture) waitUpstream(ctx context.Context) bool {
+	delay := f.delayMS.Load()
+	if delay == 0 {
+		delay = 5
+	}
+	active := f.waiting.Add(1)
+	for old := f.maxWaiting.Load(); active > old; old = f.maxWaiting.Load() {
+		if f.maxWaiting.CompareAndSwap(old, active) {
+			break
+		}
+	}
+	start := time.Now()
+	defer func() { f.waitNanos.Add(time.Since(start).Nanoseconds()); f.waitCalls.Add(1); f.waiting.Add(-1) }()
+	timer := time.NewTimer(time.Duration(delay) * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func (f *acceptanceFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -118,11 +147,10 @@ func (f *acceptanceFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.duplicate.Add(1)
 		}
 		f.count.Add(1)
-		select {
-		case <-time.After(5 * time.Millisecond):
-		case <-r.Context().Done():
+		if !f.waitUpstream(r.Context()) {
 			return
 		}
+
 		text, _ := json.Marshal(map[string]string{"route": r.URL.Path, "tool": p.Name, "call_id": args.CallID, "message": args.Message})
 		result = map[string]any{"content": []map[string]string{{"type": "text", "text": string(text)}}, "isError": false}
 	default:

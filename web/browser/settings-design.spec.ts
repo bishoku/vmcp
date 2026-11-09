@@ -12,6 +12,7 @@ async function login(page:Page,role:'admin'|'editor'|'viewer'='admin'){
  await page.route('**/api/v1/**',route=>{
  const capability = configurationFixture(route, role === 'viewer' ? 'reader' : role === 'admin' ? 'administrator' : 'operator'); if (capability) return capability
 
+ if(new URL(route.request().url()).pathname.endsWith('/admission-settings'))return route.fulfill({json:{revision:1,total:1024,perServer:128,perPrincipal:16}})
  if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
 
   const request=route.request(),url=new URL(request.url()),path=url.pathname
@@ -138,4 +139,23 @@ test('configuration preview preserves revision guards and invalidates on edits',
  await withConfirmation(page,true,()=>page.getByRole('button',{name:'Apply preview',exact:true}).click())
  await expect(page.getByRole('button',{name:'Apply preview',exact:true})).toHaveCount(0)
  await expect(source).toHaveValue(JSON.stringify(document,null,2))
+})
+
+for(const width of [1280,390])test(`runtime protection settings save at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:900})
+ await login(page)
+ await page.route('**/api/v1/admission-settings',async route=>{
+  if(route.request().method()==='PUT'){
+   const body=route.request().postDataJSON();expect(body).toEqual({revision:1,total:1024,perServer:128,perPrincipal:20})
+   return route.fulfill({json:{...body,revision:2}})
+  }
+  return route.fulfill({json:{revision:1,total:1024,perServer:128,perPrincipal:16}})
+ })
+ const panel=page.getByRole('region',{name:'Runtime protection'})
+ await panel.scrollIntoViewIfNeeded()
+ await panel.getByLabel('Concurrent requests per principal').fill('20')
+ await panel.getByRole('button',{name:'Save runtime protection'}).click()
+ await expect(panel.getByRole('status')).toContainText('Runtime protection saved')
+ await page.screenshot({path:test.info().outputPath('runtime-protection.png'),animations:'disabled'})
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
 })

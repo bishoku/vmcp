@@ -128,7 +128,7 @@ type problem struct {
 func Write(w http.ResponseWriter, r *http.Request, err error, log *slog.Logger) {
 	var e *Error
 	if !errors.As(err, &e) {
-		log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		log.ErrorContext(r.Context(), "request failed", "method", r.Method, "error_type", fmt.Sprintf("%T", err))
 		e = Internal()
 	}
 	if e.Status == http.StatusUnauthorized {

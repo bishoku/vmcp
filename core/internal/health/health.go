@@ -5,6 +5,7 @@ package health
 import (
 	"context"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"log/slog"
 	"sync"
 	"time"
@@ -66,6 +67,7 @@ func (c *Checker) CheckOnce(ctx context.Context) {
 		}
 		wg.Add(1)
 		go func() {
+			defer lifecycle.Guard(ctx, "health probe")
 			defer wg.Done()
 			defer func() { <-slots }()
 			c.check(ctx, up)

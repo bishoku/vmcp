@@ -3,7 +3,6 @@ package omni
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,6 +22,7 @@ type Reranker interface {
 type HTTPReranker struct {
 	Endpoint, Model, Key string
 	Client               *http.Client
+	TLSInsecure          bool
 }
 
 func NewHTTPReranker(endpoint, model, key string, insecure bool, timeout time.Duration) (*HTTPReranker, error) {
@@ -33,16 +33,16 @@ func NewHTTPReranker(endpoint, model, key string, insecure bool, timeout time.Du
 	if timeout <= 0 || timeout > 30*time.Second {
 		return nil, errors.New("rerank timeout must be positive and at most 30s")
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecure} // Explicit operator opt-in, isolated from all other clients.
-	return &HTTPReranker{Endpoint: endpoint, Model: model, Key: key, Client: &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	client, err := providerClient("VMCP_OMNI_RERANK_CA_FILE", insecure, timeout)
+	if err != nil {
+		return nil, err
+	}
+	return &HTTPReranker{Endpoint: endpoint, Model: model, Key: key, Client: client, TLSInsecure: insecure}, nil
 }
 func (e *HTTPReranker) failure(reason string, attrs ...slog.Attr) error {
 	u, _ := url.Parse(e.Endpoint)
 	attrs = append(attrs, slog.String("provider_origin", u.Scheme+"://"+u.Host))
-	if transport, ok := e.Client.Transport.(*http.Transport); ok && transport.TLSClientConfig != nil {
-		attrs = append(attrs, slog.Bool("tls_skip_verify", transport.TLSClientConfig.InsecureSkipVerify))
-	}
+	attrs = append(attrs, slog.Bool("tls_skip_verify", e.TLSInsecure))
 	return &embeddingError{reason: reason, attrs: attrs}
 }
 func (e *HTTPReranker) Rerank(ctx context.Context, query string, documents []Document) ([]float64, error) {

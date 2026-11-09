@@ -1,7 +1,7 @@
 import { createContext,useContext,useEffect,useState } from 'react'
 import { api,type ConfigurationCheck } from './api'
 
-export const configurationPath=(family:string,slug='')=>'/'+({virtual_servers:'virtual-servers',agent_keys:'agent-keys',identity_bindings:'identity-bindings',control_tokens:'admin-tokens',tool_grants:'tool-grants',audit:'audit-settings',config:'export',platform:'info'}[family]??family)+(slug?'/'+encodeURIComponent(slug):'')
+export const configurationPath=(family:string,slug='')=>'/'+({virtual_servers:'virtual-servers',agent_keys:'agent-keys',identity_bindings:'identity-bindings',control_tokens:'admin-tokens',tool_grants:'tool-grants',admission:'admission-settings',audit:'audit-settings',config:'export',platform:'info'}[family]??family)+(slug?'/'+encodeURIComponent(slug):'')
 /** No allow cache: policy changes are rechecked by the transport before each request. */
 export function useConfigurationChecks(checks:ConfigurationCheck[]){
  const key=JSON.stringify(checks)

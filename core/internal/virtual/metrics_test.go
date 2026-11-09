@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/bishoku/vmcp/core/internal/invocation"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/telemetry"
 )
@@ -60,29 +62,37 @@ func TestOperationOutcome(t *testing.T) {
 	}
 }
 func TestMetricsCountGatewayRetriesSeparately(t *testing.T) {
-	r := newRig(t)
-	metrics := telemetry.New()
-	r.handler.Metrics = metrics
-	failed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) }))
-	defer failed.Close()
-	snap := r.handler.Snap.Snapshot()
-	up := snap.Upstreams["u-gh"]
-	up.URL = failed.URL
-	snap.Upstreams["u-gh"] = up
-	vs := snap.VirtualServers["support"]
-	vs.Tools[0].Tool.Annotations = json.RawMessage(`{"readOnlyHint":true}`)
-	snap.VirtualServers["support"] = vs
-	sid := r.initialize(t)
-	_, reply := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue"})
-	if reply.Error == nil {
-		t.Fatal("failed upstream succeeded")
-	}
-	out := httptest.NewRecorder()
-	metrics.ServeHTTP(out, httptest.NewRequest("GET", "/metrics", nil))
-	body := out.Body.String()
-	for _, want := range []string{`vmcp_upstream_requests_total{upstream="github",method="tools/call",tool="create_issue",outcome="error"} 2`, `vmcp_virtual_tool_calls_total{virtual_server="support",tool="github__create_issue",outcome="error"} 1`} {
-		if !strings.Contains(body, want) {
-			t.Fatal(want, body)
-		}
+	for _, tc := range []struct {
+		policy   string
+		attempts int
+	}{{"", 1}, {"never", 1}, {"once", 2}} {
+		t.Run("policy="+tc.policy, func(t *testing.T) {
+			r := newRig(t)
+			metrics := telemetry.New()
+			r.handler.Metrics = metrics
+			failed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(503) }))
+			defer failed.Close()
+			snap := r.handler.Snap.Snapshot()
+			up := snap.Upstreams["u-gh"]
+			up.URL = failed.URL
+			snap.Upstreams["u-gh"] = up
+			vs := snap.VirtualServers["support"]
+			vs.Tools[0].Tool.Annotations = json.RawMessage(`{"readOnlyHint":true,"idempotentHint":true}`)
+			snap.InvocationSecurity.Upstreams = map[string]invocation.UpstreamPolicy{"u-gh": {Rule: invocation.Rule{Retry: tc.policy}}}
+			snap.VirtualServers["support"] = vs
+			sid := r.initialize(t)
+			_, reply := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "github__create_issue"})
+			if reply.Error == nil {
+				t.Fatal("failed upstream succeeded")
+			}
+			out := httptest.NewRecorder()
+			metrics.ServeHTTP(out, httptest.NewRequest("GET", "/metrics", nil))
+			body := out.Body.String()
+			for _, want := range []string{fmt.Sprintf(`vmcp_upstream_requests_total{upstream="github",method="tools/call",tool="create_issue",outcome="error"} %d`, tc.attempts), `vmcp_virtual_tool_calls_total{virtual_server="support",tool="github__create_issue",outcome="error"} 1`} {
+				if !strings.Contains(body, want) {
+					t.Fatal(want, body)
+				}
+			}
+		})
 	}
 }

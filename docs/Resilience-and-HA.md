@@ -16,8 +16,22 @@ error, counts as the upstream being alive and never trips the breaker.
 
 ## Retries
 
-Only for tools the upstream annotates with `readOnlyHint` or `idempotentHint`: one retry with jitter after a transport
-failure. Other tools are never retried, to avoid duplicate side effects.
+Retries are off by default. An operator with scoped upstream invocation-security
+management permission can set `retry: once` on the upstream or an individual tool.
+A tool override takes precedence; `never` disables an inherited retry. This permits
+one retry with 50–250 ms jitter after a transport failure, within the call deadline.
+Upstream `readOnlyHint` / `idempotentHint` annotations do not grant replay permission.
+REST calls and calls bound to approval or caller-context verification are never
+replayed automatically, even when `once` is configured. Review ambiguous outcomes
+before manually repeating a write. See [Invocation security](Invocation-Security.md).
+
+Ignored half-open probes release their slot immediately. Completion is tied to the
+probe generation so a late result cannot change a replacement probe's state.
+
+Critical supervised workers fail readiness and initiate graceful shutdown on panic.
+The gateway does not resume potentially damaged worker state or log panic values.
+Pending operations remain unknown until audit/replay reconciliation; no successful
+outcome is fabricated. This does not recover OOM, SIGKILL or runtime fatal errors.
 
 ## Failover URLs
 

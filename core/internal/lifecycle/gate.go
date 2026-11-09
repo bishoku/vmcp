@@ -8,15 +8,19 @@ import (
 )
 
 type Gate struct {
-	mu       sync.Mutex
-	draining bool
-	active   sync.WaitGroup
+	Supervisor *Supervisor
+	mu         sync.Mutex
+	draining   bool
+	active     sync.WaitGroup
 }
 
 func (g *Gate) Draining() bool { g.mu.Lock(); defer g.mu.Unlock(); return g.draining }
 func (g *Gate) Stop()          { g.mu.Lock(); g.draining = true; g.mu.Unlock() }
 func (g *Gate) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if g.Supervisor != nil {
+			r = r.WithContext(WithSupervisor(r.Context(), g.Supervisor))
+		}
 		g.mu.Lock()
 		if g.draining && r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
 			g.mu.Unlock()

@@ -123,6 +123,7 @@ func (r *Registry) Handler(next http.Handler) http.Handler {
 }
 func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	runtimeMetrics(w)
 	r.backgroundMetrics(w)
 	r.mu.Lock()
 	requests := make(map[string]series, len(r.requests))

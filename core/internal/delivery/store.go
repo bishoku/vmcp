@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"sync"
+
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/secrets"
@@ -54,27 +55,18 @@ func (s *Store) Begin(ctx context.Context, session, request, server string, prin
 		return op, err
 	}
 	defer tx.Rollback(ctx)
-	// Admission locks serialize capacity checks per virtual server across replicas.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(19840923, hashtext($1))`, server); err != nil {
-		return op, err
-	}
 	// Release any expired operation holding the same (session_id, client_request_id) slot.
 	if _, err := tx.Exec(ctx, `UPDATE mcp_operations SET state='abandoned' WHERE session_id=$1 AND client_request_id=$2 AND state='running' AND lease_until<now()`, session, request); err != nil {
 		return op, err
 	}
-	var all, perPrincipal, perServer int
-	if err := tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE principal_hash=$1),count(*) FILTER(WHERE virtual_server=$2) FROM mcp_operations WHERE state='running' AND lease_until>now()`, principal, server).Scan(&all, &perPrincipal, &perServer); err != nil {
-		return op, err
-	}
-	if all >= 1024 || perPrincipal >= 16 || perServer >= 128 {
+	// The stream is created only from the operation admitted by this statement.
+	tag, err := tx.Exec(ctx, `WITH admitted AS (
+        INSERT INTO mcp_operations(id,session_id,client_request_id,principal_hash,virtual_server,fence,lease_until)
+        SELECT $1,$2,$3,$4,$5,$6,now()+interval '15 seconds' FROM sessions WHERE id=$2 AND terminated_at IS NULL
+        RETURNING id,session_id
+    ) INSERT INTO mcp_streams(id,session_id,operation_id) SELECT $7,session_id,id FROM admitted`, op.ID, session, request, principal, server, op.Fence, op.Stream)
+	if err != nil || tag.RowsAffected() != 1 {
 		return op, ErrCapacity
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO mcp_operations(id,session_id,client_request_id,principal_hash,virtual_server,fence,lease_until) SELECT $1,$2,$3,$4,$5,$6,now()+interval '15 seconds' FROM sessions WHERE id=$2 AND terminated_at IS NULL`, op.ID, session, request, principal, server, op.Fence)
-	if err != nil {
-		return op, ErrCapacity
-	}
-	if _, err = tx.Exec(ctx, `INSERT INTO mcp_streams(id,session_id,operation_id) VALUES($1,$2,$3)`, op.Stream, session, op.ID); err != nil {
-		return op, err
 	}
 	return op, tx.Commit(ctx)
 }
@@ -100,19 +92,25 @@ func (s *Store) Append(ctx context.Context, op Operation, payload []byte, termin
 	defer tx.Rollback(ctx)
 	var count, totalBytes int
 	// Lock/fence the operation before accepting an event from a possibly superseded worker.
-	if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM mcp_events WHERE stream_id=$3),(SELECT COALESCE(sum(octet_length(payload)),0) FROM mcp_events WHERE stream_id=$3) FROM mcp_operations WHERE id=$1 AND fence=$2 AND state='running' AND lease_until>now() FOR UPDATE`, op.ID, op.Fence, op.Stream).Scan(&count, &totalBytes); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT bounds.count,bounds.bytes FROM mcp_operations o CROSS JOIN LATERAL (SELECT count(*) AS count,COALESCE(sum(octet_length(payload)),0) AS bytes FROM mcp_events WHERE stream_id=$3) bounds WHERE o.id=$1 AND o.fence=$2 AND o.state='running' AND o.lease_until>now() FOR UPDATE OF o`, op.ID, op.Fence, op.Stream).Scan(&count, &totalBytes); err != nil {
 		return err
 	}
 	if (terminal && count >= 256) || (!terminal && count >= 255) || (!terminal && totalBytes+len(sealed) > 2<<20) || totalBytes+len(sealed) > 12<<20 {
 		return ErrCapacity
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload,terminal) VALUES($1,$2,$3,$4)`, eventID, op.Stream, sealed, terminal); err != nil {
-		return err
-	}
 	if terminal {
-		if _, err := tx.Exec(ctx, `UPDATE mcp_operations SET state='done' WHERE id=$1 AND fence=$2`, op.ID, op.Fence); err != nil {
+		// A terminal event and its completion state remain one atomic durable write.
+		tag, err := tx.Exec(ctx, `WITH inserted AS (
+            INSERT INTO mcp_events(id,stream_id,payload,terminal) VALUES($1,$2,$3,true) RETURNING id
+        ) UPDATE mcp_operations SET state='done' WHERE id=$4 AND fence=$5 AND EXISTS(SELECT 1 FROM inserted)`, eventID, op.Stream, sealed, op.ID, op.Fence)
+		if err != nil {
 			return err
 		}
+		if tag.RowsAffected() != 1 {
+			return ErrCapacity
+		}
+	} else if _, err := tx.Exec(ctx, `INSERT INTO mcp_events(id,stream_id,payload,terminal) VALUES($1,$2,$3,false)`, eventID, op.Stream, sealed); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
@@ -347,4 +345,14 @@ func (s *Store) CancelPending(ctx context.Context, op Operation, id string, resp
 		s.NotifyLocal(op.Session)
 	}
 	return err
+}
+
+// AdmissionMetrics retains deprecated counters at zero for dashboard compatibility.
+// Capacity admission no longer accesses PostgreSQL or takes a distributed lock.
+func (s *Store) AdmissionMetrics() map[string]float64 {
+	return map[string]float64{
+		"delivery_admission_lock_seconds_total": 0,
+		"delivery_admission_lock_calls_total":   0,
+		"delivery_admission_lock_errors_total":  0,
+	}
 }

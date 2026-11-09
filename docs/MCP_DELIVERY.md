@@ -35,8 +35,12 @@ upstream side effect or guarantee that an upstream honors cancellation.
 
 ## Bounds and security
 
-Shared active operations are limited to 1024 globally, 128 per virtual server,
-and 16 per principal. Each operation allows 32 pending server requests and
+Concurrency protection is local to each data-plane pod, with defaults of 1024
+total, 128 per virtual server and 16 per principal. Platform operators configure
+these in Settings → Security & audit → Runtime protection. No distributed capacity
+count or admission advisory lock is taken in PostgreSQL. HTTP requests, GET streams
+and detached tool workers share the local budget; disconnecting HTTP does not
+release a running worker's slot. Each operation allows 32 pending server requests and
 256 events, reserving one terminal event; intermediate ciphertext totals are
 limited to 2MiB and all events to 12MiB per operation. Upstream frames remain
 limited to 10MiB. Capacity exhaustion fails closed. GET streams also use HTTP
