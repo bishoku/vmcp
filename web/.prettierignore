@@ -1,0 +1,12 @@
+# Dependencies, build output and local test artifacts.
+node_modules/
+dist/
+dist-ssr/
+coverage/
+test-results/
+test-results-live/
+playwright-report/
+*.tsbuildinfo
+
+# npm owns lockfile layout. Generated API assets live outside web/.
+package-lock.json

@@ -12,21 +12,29 @@
     "validate:api": "node scripts/generate-openapi.mjs --check && node scripts/validate-openapi.mjs",
     "test:browser": "playwright test",
     "test:live": "python3 scripts/test-live.py",
-    "generate:api": "node scripts/generate-openapi.mjs"
+    "generate:api": "node scripts/generate-openapi.mjs",
+    "format": "prettier --write . --log-level warn",
+    "format:check": "prettier --check .",
+    "format:staged": "node scripts/check-staged-format.mjs",
+    "predev": "npm run format",
+    "prebuild": "npm run format",
+    "prepreview": "npm run format",
+    "prepare": "node scripts/install-hooks.mjs",
+    "test:format": "node --test scripts/formatting.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/inter": "^5.3.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@tailwindcss/vite": "^4.3.3",
     "clsx": "^2.1.1",
     "lucide-react": "^1.54.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
-    "tailwindcss": "^4.3.3",
-    "@modelcontextprotocol/sdk": "1.32.1"
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
@@ -40,6 +48,7 @@
     "ajv-formats": "^3.0.1",
     "jsdom": "^30.1.2",
     "oxlint": "^1.81.0",
+    "prettier": "3.9.10",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.3",

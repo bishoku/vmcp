@@ -112,6 +112,10 @@ jobs:
       - name: Install web dependencies
         timeout-minutes: 5
         run: npm ci
+      - name: Check web formatting before any build can rewrite files
+        run: npm run format:check
+      - name: Test web formatting gates
+        run: npm run test:format
       - name: Audit web dependencies
         timeout-minutes: 3
         run: npm audit --audit-level=high

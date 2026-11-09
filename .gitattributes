@@ -1,0 +1,5 @@
+# Keep the shared web formatter and executable hooks consistent on Windows/macOS/Linux.
+/web/** text=auto eol=lf
+/.githooks/* text eol=lf
+/.editorconfig text eol=lf
+/.vscode/*.json text eol=lf
