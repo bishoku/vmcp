@@ -291,3 +291,94 @@ The 327 errors cluster in seconds 303–304 around loaded revocation/config refr
 error-class/correlation evidence to establish their exact causes; no failed
 calls were reclassified as successes. No further implementation change was made
 for this repeat, and the wider workload/HA/recovery acceptance remains open.
+
+## Interpreting more than twenty database commands per tool call
+
+The measured 27-command serial path is substantial for a gateway, but it is not
+27 independent data lookups or 27 disk flushes. Its accounting is:
+
+| Work | Commands in the measured short serial path |
+| --- | ---: |
+| Session resolution | 1 |
+| Delivery admission: lock, expire old slot, budget, operation+stream | 4 + BEGIN/COMMIT = 6 |
+| Stream claim | 1 |
+| Terminal delivery: fenced bounds and event+completion | 2 + BEGIN/COMMIT = 4 |
+| Initial/terminal event reads | 2 (timing-dependent) |
+| Stream release | 1 |
+| Admission/outcome audit: event, access context, access domains | 6 INSERT commands + 2 SET LOCAL + 4 BEGIN/COMMIT = 12 |
+| Total | 27 |
+
+Eight commands are transaction boundaries; two enforce audit synchronous commit.
+There are 17 other SQL statements. These are SQL/protocol command counts, not a
+network trace. The audit bulk path batches dependent inserts and groups up to 64
+events; the single-event fallback executes sequentially. Do not assume every
+call gets batching or that the 27-command serial count applies under load.
+FK/trigger statements are nested server work and are excluded from that count.
+Four explicit transactions plus stream claim/release writes also mean several
+commit points; WAL group commit means they do not imply six physical syncs/call.
+
+The cost comes mainly from durable orchestration around a tool execution: secure
+session validity, admission limits, cross-node ownership/fencing, encrypted replay,
+and durable admission/outcome audit with tenant-scoped provenance. These guarantees
+are valuable but their current implementation is not a theoretical SQL minimum.
+A transparent stateless proxy is a different workload. The observed 1,000 TPS and
+resource headroom make this a cost/latency improvement opportunity rather than
+evidence that the current implementation is unusable.
+
+Safe priorities are (1) measure per-path network waits/commit cost, (2) consolidate
+compatible statements within current transaction boundaries, especially audit
+context/domain persistence with identical duplicate-ID semantics, and (3) reduce
+redundant delivery reads using correctly bounded wakeups. Audit admission must
+remain durable before execution and outcome must retain its real completion
+meaning. Combining the two logical audit events, removing authoritative session
+checks, deferring strict admission audit, or moving authoritative fences/replay to
+Redis solely to lower a query counter is not justified. A larger cross-component
+transaction redesign would need crash-boundary and audit-reconciliation proofs.
+No such product change is made by the latency diagnostic.
+
+Upstream latency changes concurrency before it changes CPU: at 100 calls/s,
+400–500ms of upstream service implies about 40–50 concurrent upstream waits under
+stable throughput. Existing code releases DB transactions before the network call;
+it does not reserve one database connection for that entire wait. The stream still
+polls events every 250ms, so delayed calls can add event SELECTs even below the
+one-second renewal interval. Above one second, ownership renewal, session/auth
+revalidation and stream lease checks add work. Longer-tail/multi-second/SSE
+workloads therefore cannot be inferred from a 500ms measurement.
+
+The distributed test uses 64 keys and 300 virtual servers. A single principal is
+subject to 16 active operations, a server to 128 and the global budget to 1,024.
+At 500ms, a single-principal 100 TPS target demands roughly 50 concurrent operations
+and can encounter intentional admission limits. These protection limits must not
+be relaxed merely to reproduce the distributed test throughput.
+
+## Delayed-upstream measurement at 100 TPS
+
+The new observational diagnostic completed 37,000 calls with zero error/drop,
+zero duplicate/incomplete operation and exact audit reconciliation. Its 5/400/500ms
+upstream stages measured p95 22.77/441.22/543.57ms, application median CPU
+0.349/0.369/0.380 cores and sampled acquired pool maxima 2/5/5 (pool size 64).
+Peak upstream waiters were 3/48/60. This supports the code finding that slow
+upstreams hold logical operations/streams, not a database connection per wait.
+It does not show a CPU or connection-pool bottleneck at this offered load.
+
+Event SELECTs rose 2 → 3 → 4 per call. Total top-level commands including background
+were 27.162 → 26.822 → 27.087 per successful call, because audit batching reduced
+INSERT command frequency while retaining all logical events. The 27-command
+serial count therefore describes a path, not an immutable amount of work under
+all concurrency levels. Reducing command count is useful, but command count alone
+is an inadequate performance objective; measure duration, commits, bytes, pool
+wait and correctness together.
+
+The final 5ms stage returned to 2 event reads/call and low concurrency but p95 was
+48.35ms rather than the initial 22.77ms. WAL sync means rose from 0.889ms initially
+to 2.690ms at 500ms upstream and stayed 2.687ms in recovery. The ordered run is
+confounded by changing storage timing; no claim of complete latency recovery or
+pure gateway overhead is made. Full measurements, provenance, reproduction and
+scope are in `READINESS_ENVIRONMENT_ACCEPTANCE.md`.
+
+Current assessment: keep the robust path; the measured cost is acceptable at the
+operator's stated throughput, while still worth reducing deliberately. Prioritize
+batching/consolidation and bounded event notification only when measured benefit
+justifies complexity. Do not redesign fencing/audit or cache authorization to
+chase a lower SQL counter. Remote database RTT and multi-second upstream tails are
+more useful next variables than another speculative heartbeat/lease optimization.

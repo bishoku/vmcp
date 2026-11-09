@@ -51,6 +51,22 @@ class PublishEvidenceTest(unittest.TestCase):
         self.assertIn('](diagnostics.json)', markdown)
         self.assertIn('](throughput.svg)', markdown)
 
+    def test_latency_observation_has_no_invented_slo_result(self):
+        (self.source/'report.json').unlink()
+        (self.source/'upstream-latency.json').write_text(json.dumps({
+            'measurement_completed': True, 'samples': [1],
+            'phases': [{'upstream_delay_ms': 500, 'metrics': {'P95MS': 520, 'Errors': 0,
+                       'Seconds': [1], 'ErrorExamples': []}}]}))
+        destination = self.root/'latency-summary'
+        publish.publish(self.source, destination, self.archives)
+        summary = json.loads((destination/'summary.json').read_text())
+        self.assertEqual(summary['ReportType'], 'upstream-latency-observation')
+        self.assertTrue(summary['ReportAvailable'])
+        self.assertNotIn('Pass', summary)
+        self.assertNotIn('slo_pass', summary['Phases'][0]['metrics'])
+        self.assertNotIn('Seconds', summary['Phases'][0]['metrics'])
+        self.assertEqual(summary['Phases'][0]['metrics']['P95MS'], 520)
+
     def test_failed_archive_verification_never_removes_original_files(self):
         originals = {p.name: p.read_bytes() for p in self.source.iterdir()}
         with patch.object(publish, 'verify_archive', side_effect=ValueError('corrupted archive')):

@@ -328,3 +328,22 @@ cleanup. The runner sets `VMCP_REQUIRE_INTEGRATION=1`, retains JSON test events 
 `delivery-tests.jsonl`, and returns nonzero on failure. `--sql-cost` also records
 per-call wall time in `sql-cost.json` (`call_latency_ms`, first entry is warmup).
 These tiny samples measure command costs, not capacity or a percentile SLO.
+
+## Upstream latency observation
+
+`--upstream-latency` runs a separate observational experiment: one data plane,
+300 virtual servers × 200 tools, 600 sessions, 64 synthetic agent keys, 128 load
+workers and 100 offered TPS. It uses the real MCP entry point and a synthetic REST
+upstream with controlled waits: 5ms warmup (10s), 5ms reference (60s), 400ms (120s),
+500ms (120s), then 5ms recovery (60s). One host listener serves all synthetic routes.
+There is no concurrent configuration mutation, fault injection or capacity search.
+Use 8 CPU, GOMEMLIMIT=4GiB and `--data-plane-memory-limit 6Gi` for comparison with
+this campaign. `--postgres-tuned` preserves database durability.
+
+The diagnostic records `upstream-latency.json`, per-phase PostgreSQL statement
+snapshots and resource/DB samples. It validates responses and audit consistency;
+measurement completion is **not** a latency SLO pass. No 250ms short-upstream gate
+is applied to an intentionally 500ms upstream. Timed wait concurrency and mean wait
+are measured inside the fixture. End-to-end minus the fixed injected delay is an
+estimate of remaining path time (including harness/network/scheduling), not a
+pure gateway trace. No existing capacity profile or product runtime is changed.

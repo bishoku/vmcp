@@ -443,3 +443,96 @@ found the node Ready, all existing deployments at desired ready replica counts,
 and no remaining test namespace (`final-health.json`, saved after archiving).
 Only owned fixture resources were removed; evidence and earlier backups/keys
 remain retained. No merge, release or production deployment was performed.
+
+## 100 TPS with delayed upstreams (2026-11-09)
+
+**Measurement completed; response/audit correctness passed.** This is an
+observational experiment, not a pass/fail against the 250ms short-upstream SLO.
+No new latency target is invented. Source base
+`5e6758665bf1f5c65933dd63676d66e574004261` plus test-only fixture/harness changes;
+product runtime code unchanged. Source tree SHA256
+`87f30203dd683efc6ece068e08d17b21408da4ea6deca225a0ac790f8d6230a5`;
+data-plane binary SHA256
+`cacd4cd5c123ac320592965763d4ed6534a0c2db8439a199bc0edfe11b39c77c`;
+image `sha256:30fc6146b4830ae73cee0595b0d29441e55fcd5fe6906ad9c4cf1d44dfbab8a1`.
+Test duration 415.70 seconds, namespace `vmcp-load-20261109-065922`.
+
+Single replica, 8 CPU/GOMAXPROCS=8, Go target 4GiB, container limit 6Gi, pool 64;
+300 servers × 200 tools, 600 sessions/64 keys, 128 bounded load workers, strict
+metadata audit, team ownership and existing PII policy (every tenth server).
+Real MCP entry point through the unchanged test proxy/NodePort; upstream is a
+single host HTTP listener serving synthetic REST routes. PostgreSQL 17 tuned
+profile/durability, same host emptyDir storage. No configuration mutation,
+revocation exercise or fault runs concurrently. All stages use 100 offered TPS.
+This isolates the delay comparison better than the previous revocation-inclusive
+capacity run but is still one ordered experiment on shared hardware/storage.
+
+```sh
+VMCP_ACCEPTANCE_SERVERS=300 VMCP_ACCEPTANCE_TOOLS=200 \
+VMCP_ACCEPTANCE_NODES=1 VMCP_ACCEPTANCE_ROUTING=nodeport \
+VMCP_ACCEPTANCE_RPS=100 VMCP_ACCEPTANCE_WORKERS=128 \
+VMCP_ACCEPTANCE_OWNERSHIP=1 VMCP_ACCEPTANCE_DIAGNOSTICS=1 \
+VMCP_ACCEPTANCE_GOMEMLIMIT=4GiB \
+python3 benchmark/kubernetes/run.py --upstream-latency --data-plane-cpus 8 \
+  --data-plane-memory-limit 6Gi --postgres-tuned --output <new-directory>
+python3 benchmark/kubernetes/upstream_latency_summary.py <new-directory>
+```
+
+| Stage | Duration | Injected upstream wait | Completed/s | p95 / p99 ms | Peak upstream waiters | Median app CPU, cores | Max sampled pool acquired |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Warmup | 10s | 5ms | 99.92 | 25.19 / 32.41 | 3 | 1.28 (one startup sample) | 1 |
+| Reference | 60s | 5ms | 99.97 | 22.77 / 31.54 | 3 | 0.349 | 2 |
+| Delayed | 120s | 400ms | 99.65 | 441.22 / 451.96 | 48 | 0.369 | 5 |
+| Delayed | 120s | 500ms | 99.57 | 543.57 / 555.06 | 60 | 0.380 | 5 |
+| Return to fast upstream | 60s | 5ms | 99.96 | 48.35 / 58.47 | 4 | 0.367 | 5 |
+
+Every stage: 100% success, zero errors, zero dropped demand and zero invalid
+responses. The phase elapsed time includes draining final in-flight calls; this
+explains completed/s slightly below the offered 100/s. All 37,000 scheduled calls
+completed, and all 37,000 synthetic executions/admissions/OK outcomes match, with
+zero duplicate/incomplete operations. All 300 servers and 64 keys received traffic.
+Measured mean fixture waits: 5.429 / 400.486 / 500.476 / 5.384ms for the four main
+stages. Waiter peaks are instrumented in the fixture; DB pool peaks are five-second
+samples and can miss shorter peaks. No cancelled pool acquisitions; total observed
+acquisition time 0.319s. No deadlock/blocking samples or observer errors.
+
+Maximum RSS by main stage: 1,741,185,024 / 1,794,244,608 / 1,815,773,184 /
+1,815,937,024 bytes. Process memory was not reset between stages; these maxima
+are not isolated per-request allocations. Node/pods stayed healthy; no test node
+error was recorded. The increased upstream concurrency did not produce pool
+exhaustion or a material CPU increase in this profile.
+
+The remaining path at p95 (end-to-end minus fixed injected wait) was approximately
+17.8 / 41.2 / 43.6 / 43.3ms. This includes the harness, network, scheduling and
+storage; it is not a pure gateway span. **Recovery latency did not return to the
+initial reference.** Mean WAL sync over per-phase observer intervals was
+0.889 / 1.839 / 2.690 / 2.687ms (11/21/21/11 samples respectively). Storage timing
+drift is an observed confounder, not a proven causal explanation. Do not attribute
+all residual latency growth to upstream duration, or declare full latency recovery.
+A randomized/repeated comparison on independent storage would separate these.
+
+Per-call event reads: 2 / 3 / 4 / 2. Top-level SQL commands per successful call,
+**including background and monitoring work**, were 27.162 / 26.822 / 27.087 /
+25.570. Audit-event INSERT command counts per call fell from 1.992 to 1.770,
+1.649 and 1.727 as existing batching combined events; logical audit events remained
+two per successful call. Thus added polling was partly offset by batching. These
+counts do not make the exact 27-command serial path a universal invariant.
+
+The result applies to distributed principals/servers and sub-second REST upstreams.
+A single principal has a 16-active-operation admission bound; 100/s × 0.5s would
+need about 50 simultaneous operations and can hit that protection. Multi-second
+operations add renewal/auth/lease work; native MCP upstream streaming, progress,
+payload capture, cancellation and HA need separate profiles. None is inferred
+from this diagnostic. No application optimization or guarantee relaxation was made.
+
+Raw evidence: `artifacts/benchmark-runs/readiness-55-upstream-latency-100/`, including
+`upstream-latency.json`, `{phase}-sql-{before,after}.json`, DB/resource/GC samples,
+`run.log`, environment/images/manifest/profile. `upstream-latency-summary.json`
+is derived offline after this run's archive; future runner invocations generate it
+before archiving. Curated export:
+`artifacts/benchmark-summaries/microk8s-20261109-065922/`.
+Archive `readiness-55-upstream-latency-100-c57071c7829d.tar.gz`, SHA256
+`0d8ad1cc0a3bfe5fb4cb9f3e57bdf6468e9f94cc118f737e06cbda9a0c2417ca`.
+Post-cleanup `final-health.json` records node Ready, no unready existing deployment
+and no test namespace; it was generated after archiving. Existing data/backups and
+recovery keys were preserved. No merge/release/production deployment occurred.

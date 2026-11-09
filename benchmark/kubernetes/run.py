@@ -16,6 +16,7 @@ def capture(args):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--upstream-latency', action='store_true', help='Observe 100 TPS with 5/400/500ms upstream delays and recovery; no latency SLO claim')
     parser.add_argument('--sql-cost', action='store_true', help='Measure one and twenty serial tool calls with PostgreSQL statement deltas; no load phases')
     parser.add_argument('--omni', action='store_true', help='1000-tool Omni acceptance, direct/Omni/discovery comparisons')
     parser.add_argument('--smoke', action='store_true')
@@ -28,6 +29,8 @@ def main():
     parser.add_argument('--postgres-tuned', action='store_true', help='Explicit bounded OLTP cache/WAL/autovacuum profile; preserves durability')
     parser.add_argument('--database-focus', action='store_true', help='1000 TPS for five minutes, expired cleanup fixtures, PostgreSQL diagnostics')
     args = parser.parse_args()
+    if args.upstream_latency and (args.sql_cost or args.omni or args.smoke or args.database_focus):
+        parser.error('--upstream-latency cannot be combined with other load modes')
     if args.sql_cost and (args.omni or args.smoke or args.database_focus):
         parser.error('--sql-cost cannot be combined with load modes')
     if args.smoke and args.database_focus:
@@ -132,6 +135,7 @@ def main():
         else:raise RuntimeError('PostgreSQL port-forward not ready')
         run_env=dict(os.environ,VMCP_ACCEPTANCE_MEMORY_LIMIT=args.data_plane_memory_limit,VMCP_RUN_ACCEPTANCE='1',VMCP_ACCEPTANCE_KUBERNETES='1',VMCP_ACCEPTANCE_NAMESPACE=namespace,VMCP_ACCEPTANCE_NODE_IP=address,VMCP_ACCEPTANCE_KUBE_NODE=node['metadata']['name'],VMCP_ACCEPTANCE_BINARY=str(binary),VMCP_ACCEPTANCE_OUTPUT=str(output),VMCP_TEST_DATABASE_URL=f'postgres://acceptance:acceptance-only@127.0.0.1:{pg_port}/acceptance?sslmode=disable',VMCP_ACCEPTANCE_REDIS_URL='redis://redis:6379/0',VMCP_ACCEPTANCE_REST='1',GOMAXPROCS='8')
         if args.omni: run_env['VMCP_ACCEPTANCE_OMNI_SECRET']=omni_secret
+        if args.upstream_latency: run_env['VMCP_UPSTREAM_LATENCY_ACCEPTANCE']='1'
         if args.sql_cost: run_env['VMCP_SQL_COST_ACCEPTANCE']='1'
         defaults={'SERVERS':'300','TOOLS':'200','WORKERS':'512','RPS':'600','BURST_RPS':'2000','WARMUP_SECONDS':'30','STEADY_SECONDS':'300','SPIKE_SECONDS':'60','SOAK_RPS':'400','SOAK_SECONDS':'1800','AUDIT_CHECK_SECONDS':'180'}
         if args.database_focus:defaults.update(RPS='1000',BURST_RPS='1000')
@@ -146,12 +150,15 @@ def main():
         if args.database_focus:
             with (output/'migration-delivery-tests.log').open('w') as log:
                 command(['go','test','-count=1','-timeout=3m','-v','-run','TestDeliveryCleanupIndexesUpgradeAndRollback|TestDeliveryBackpressureReservesTerminalAndExpiresReplay|TestDurableRoutingFencingReplayAndIsolation|TestLocalWake|TestListChangePublication|TestDuplexReplay|TestNegotiatedClientRequests|TestCuratedCatalogProtocol|TestSubscriptionNotifications','./internal/store','./internal/delivery','./internal/virtual','./internal/e2e'],cwd=ROOT/'core',env=run_env,stdout=log,stderr=subprocess.STDOUT)
+        if args.database_focus or args.upstream_latency:
             observer = DatabaseObserver(kubectl, output, node['metadata']['name'])
             observer.start()
         with (output/'run.log').open('w') as log:
-            process=subprocess.Popen(['go','test','-tags=acceptance','-count=1','-timeout=75m','-run','^TestSQLCostAcceptance$' if args.sql_cost else ('^TestOmniAcceptance$' if args.omni else '^TestScaleAcceptance$'),'-v','./internal/e2e'],cwd=ROOT/'core',env=run_env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+            process=subprocess.Popen(['go','test','-tags=acceptance','-count=1','-timeout=75m','-run','^TestUpstreamLatencyAcceptance$' if args.upstream_latency else ('^TestSQLCostAcceptance$' if args.sql_cost else ('^TestOmniAcceptance$' if args.omni else '^TestScaleAcceptance$')),'-v','./internal/e2e'],cwd=ROOT/'core',env=run_env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
             print(f'Load test running in {namespace}; evidence: {output}',flush=True)
             result=process.wait()
+        if args.upstream_latency and (output/'upstream-latency.json').exists():
+            command(['python3',str(ROOT/'benchmark/kubernetes/upstream_latency_summary.py'),str(output)])
         if args.sql_cost and (output/'sql-cost.json').exists():
             command(['python3',str(ROOT/'benchmark/kubernetes/sql_cost.py'),str(output)])
         if args.delivery_checks:

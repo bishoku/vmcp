@@ -110,7 +110,13 @@ def publish(source, destination, archives):
         summary['Phases'] = [{key: value for key, value in phase.items() if key not in ('Seconds', 'ErrorExamples')}
                              for phase in (omni_report.get('phases') or [])]
         summary['ReportType'] = 'omni'
-    summary['ReportAvailable'] = bool(report or omni_report)
+    latency_report = read_json(source/'upstream-latency.json', {})
+    if latency_report:
+        summary = {key: value for key, value in latency_report.items() if key not in ('samples', 'phases')}
+        summary['Phases'] = [dict(phase, metrics={key: value for key, value in phase['metrics'].items()
+                            if key not in ('Seconds', 'ErrorExamples')}) for phase in latency_report.get('phases', [])]
+        summary['ReportType'] = 'upstream-latency-observation'
+    summary['ReportAvailable'] = bool(report or omni_report or latency_report)
     diagnostics = {}
     for name in sorted(DIAGNOSTICS):
         path = source/name

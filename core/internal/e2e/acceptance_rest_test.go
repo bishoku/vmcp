@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/bishoku/vmcp/core/internal/restapi"
 )
@@ -36,11 +35,10 @@ func (f *acceptanceFixture) serveREST(w http.ResponseWriter, r *http.Request) {
 		f.duplicate.Add(1)
 	}
 	f.count.Add(1)
-	select {
-	case <-time.After(5 * time.Millisecond):
-	case <-r.Context().Done():
+	if !f.waitUpstream(r.Context()) {
 		return
 	}
+
 	split := strings.LastIndex(r.URL.Path, "/")
 	if split < 1 {
 		http.Error(w, "invalid route", 400)
