@@ -27,7 +27,7 @@ export default function Services({services,sharedNames=[],used,writable,busy,sco
   return <ServerPanel title={scope==='shared'?'Shared verification & approval services':'Upstream verification & approval services'} description={scope==='shared'?'These services can be selected by any upstream.':'Only policies on this upstream can select these service definitions.'} icon={KeyRound}
     actions={writable&&<Button disabled={busy} onClick={()=>setTarget('')}><Plus className="icon-inline" aria-hidden="true"/>Add service</Button>}>
     {Object.keys(services).length>0?<ul className="divide-y divide-line">{Object.entries(services).sort(([a],[b])=>a.localeCompare(b)).map(([name,service])=><li key={name} className="flex flex-wrap items-center justify-between gap-3 panel-body">
-      <div className="min-w-0"><p className="break-all text-sm font-semibold">{name}</p><p className="break-all text-xs text-ink-muted">{service.url}</p><p className="text-xs text-ink-muted">{service.token?'Token pending save':service.hasToken?'Token stored':'Token required'}</p></div>
+      <div className="min-w-0"><p className="break-all text-sm font-semibold">{name}</p><p className="break-all text-xs text-ink-muted">{service.url}</p><p className="text-xs text-ink-muted">{service.token?'Token pending save':service.hasToken?'Token stored':'Token required'}</p>{used.has(name)&&<p className="text-xs text-ink-muted">Used by a policy</p>}</div>
       {writable&&<div className="flex flex-wrap items-center gap-2">
         <Button disabled={busy} aria-label={`Edit service ${name}`} onClick={()=>setTarget(name)}><Pencil className="icon-inline" aria-hidden="true"/>Edit</Button>
         <Button disabled={busy||used.has(name)} aria-label={`Remove service ${name}`} variant="danger-outline" onClick={async()=>{
@@ -37,7 +37,6 @@ export default function Services({services,sharedNames=[],used,writable,busy,sco
             onChange(next)
           }
         }}><Trash2 className="icon-inline" aria-hidden="true"/>Remove</Button>
-        {used.has(name)&&<span className="text-xs text-ink-muted">Used by a policy</span>}
       </div>}
     </li>)}</ul>:<EmptyState icon={KeyRound} title="No services configured" description="Add a service for caller-context verification or human approval."/>}
     {target!==null&&<ServiceEditor name={target} services={services} sharedNames={sharedNames} onClose={()=>setTarget(null)} onStage={next=>{onChange(next);setTarget(null)}}/>}

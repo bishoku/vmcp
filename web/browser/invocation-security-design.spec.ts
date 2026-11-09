@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { withConfirmation } from './confirmation'
 import { configurationFixture } from './configuration-fixtures'
+import { emptyREST } from '../src/connections/rest-config'
 import { upstream } from '../src/connections/fixtures'
 import type { UpstreamInvocationSecurity } from '../src/api'
 
-test('upstream tool rows expose inheritance, stage stricter rules and allow tool-only removal on mobile',async({page})=>{
+for(const kind of ['mcp','rest'] as const)test(`${kind} upstream read-only summaries open central policies and share the page edit session on mobile`,async({page})=>{
   let saves=0
   let doc:UpstreamInvocationSecurity={
     upstreamId:'payments-id',revision:1,tools:['transfer'],sharedServices:['corporate'],callerContextFields:[],
@@ -15,7 +16,7 @@ test('upstream tool rows expose inheritance, stage stricter rules and allow tool
     const capability=configurationFixture(route,'operator',true);if(capability)return capability
     const path=new URL(route.request().url()).pathname
     if(path.endsWith('/me'))return route.fulfill({status:route.request().headers().authorization?200:401,json:{name:'Payments owner',role:'team'}})
-    if(path.endsWith('/upstreams/payments'))return route.fulfill({json:{...upstream,slug:'payments',name:'Payments',ownerTeam:'payments'}})
+    if(path.endsWith('/upstreams/payments'))return route.fulfill({json:{...upstream,slug:'payments',name:'Payments',ownerTeam:'payments',kind,...(kind==='rest'?{rest:{...emptyREST(),operations:[{name:'transfer',description:'Transfer funds',method:'POST',path:'/transfer',enabled:true,readOnly:false,parameters:[]}]}}:{})}})
     if(path.endsWith('/upstreams/payments/invocation-security')){
       if(route.request().method()==='PUT'){
         saves++
@@ -32,10 +33,20 @@ test('upstream tool rows expose inheritance, stage stricter rules and allow tool
   await page.goto('/upstreams/payments')
   await page.getByLabel('Admin token').fill('test')
   await page.getByRole('button',{name:'Continue',exact:true}).click()
-  const discovery=page.getByRole('region',{name:'Upstream discovery'})
+  const discovery=page.getByRole('region',{name:kind==='rest'?'REST operations':'Upstream discovery'})
   const security=page.getByRole('region',{name:'Upstream invocation security'})
-  await expect(discovery.getByText(/Step-up: mfa, hardware/)).toBeVisible()
-  await discovery.getByRole('button',{name:'Add invocation rule for transfer'}).click()
+  await expect(discovery.getByText('Uses upstream invocation default')).toBeVisible()
+  await expect(discovery.getByRole('button',{name:'Add invocation rule for transfer'})).toHaveCount(0)
+  await discovery.getByRole('button',{name:'View invocation policy for transfer'}).click()
+  await expect(security.getByText('mfa, hardware · max 300s').last()).toBeVisible()
+  await expect(security.getByRole('button',{name:'Add invocation rule for transfer'})).toHaveCount(0)
+  await security.screenshot({path:test.info().outputPath('upstream-security-readonly-desktop.png')})
+  await page.setViewportSize({width:390,height:844})
+  await security.scrollIntoViewIfNeeded()
+  await page.screenshot({path:test.info().outputPath('upstream-security-readonly-mobile.png')})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+  await page.getByRole('button',{name:'Edit upstream',exact:true}).click()
+  await security.getByRole('button',{name:'Add invocation rule for transfer'}).click()
   const modal=page.getByRole('dialog',{name:'Invocation policy for transfer'})
   await modal.getByLabel('Automatic retry',{exact:true}).selectOption('once')
   await modal.getByLabel('Read-only classification',{exact:true}).selectOption('false')
@@ -55,13 +66,17 @@ test('upstream tool rows expose inheritance, stage stricter rules and allow tool
   await expect(modal.getByLabel('Accepted ACR values',{exact:true})).toHaveValue('hardware')
   await modal.getByRole('button',{name:'Stage policy'}).click()
   expect(saves).toBe(0)
-  await expect(security.getByText(/^Retry: off \(approval or session verification prevents replay\)/)).toBeVisible()
+  await expect(security.getByText(/^off \(approval or session verification prevents replay\)/)).toBeVisible()
   await expect(security.getByText('Review changes · 1 catalog tool affected')).toBeVisible()
-  await security.getByRole('button',{name:'Save invocation security'}).click()
-  await expect(security.getByText('All invocation changes saved.')).toBeVisible()
+  await security.getByText('Review changes · 1 catalog tool affected').scrollIntoViewIfNeeded()
+  await expect(page.getByRole('button',{name:'Save',exact:true})).toBeInViewport()
+  await page.screenshot({path:test.info().outputPath('upstream-security-draft-mobile.png')})
+  await page.getByRole('button',{name:'Save',exact:true}).click()
+  await expect(page.getByRole('button',{name:'Edit upstream',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Edit upstream',exact:true}).click()
   await withConfirmation(page,true,()=>security.getByRole('button',{name:'Remove invocation rule for transfer'}).click())
-  await security.getByRole('button',{name:'Save invocation security'}).click()
-  await expect(security.getByText('All invocation changes saved.')).toBeVisible()
+  await page.getByRole('button',{name:'Save',exact:true}).click()
+  await expect(page.getByRole('button',{name:'Edit upstream',exact:true})).toBeVisible()
   expect(saves).toBe(2)
   expect(doc.policy.tools?.transfer).toBeUndefined()
   expect(doc.policy.stepUp?.maxAgeSeconds).toBe(300)

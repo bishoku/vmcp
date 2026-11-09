@@ -74,5 +74,5 @@ export function useUnsaved(value: unknown) {
     window.addEventListener('beforeunload', unload)
     return () => { registry?.delete(id); window.removeEventListener('beforeunload', unload) }
   }, [dirty, registry, id])
-  return { guard: (action: () => void) => { if (!dirty)action();else {const answer=confirm(discardConfirmation);if(typeof answer==='boolean'){if(answer)action()}else void answer.then(accepted=>{if(accepted)action()})} }, clean: (next: unknown = value) => { setBaseline(JSON.stringify(next)); registry?.delete(id) } }
+  return { dirty, guard: (action: () => void, otherDirty = false) => { if (!dirty && !otherDirty)action();else {const answer=confirm(discardConfirmation);if(typeof answer==='boolean'){if(answer)action()}else void answer.then(accepted=>{if(accepted)action()})} }, clean: (next: unknown = value) => { setBaseline(JSON.stringify(next)); registry?.delete(id) } }
 }

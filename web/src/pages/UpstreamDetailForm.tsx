@@ -1,3 +1,4 @@
+import { useUpstreamEdit } from './upstream-edit-session'
 import { InvocationSecurityLink } from '../invocation/UpstreamSecurity'
 import { useConfigurationPermissions,ConfigurationFields,configurationPatch,configurationCreate } from '../configuration-access'
 import { TeamSelect } from '../OwnershipSelect'
@@ -43,11 +44,14 @@ export default function UpstreamDetailForm({
   onSaved: (saved: Upstream) => void
 }) {
 
-  const [editing, setEditing] = useState(!upstream)
+  const [localEditing, setLocalEditing] = useState(!upstream)
+  const session=useUpstreamEdit()
+  const editing=session?.editing??localEditing
+  const setEditing=session?.setEditing??setLocalEditing
   const [ownerTeam,setOwnerTeam]=useState(upstream?.ownerTeam??'')
   const creationAccess=useConfigurationPermissions('upstreams','',['create'])
   const access=useConfigurationPermissions('upstreams',upstream?.slug??'',['read','create','update','connection.update','activation.update','credentials.update','tls.update','identity_forwarding.update','rest.manage','catalog.read','catalog.refresh','test','ownership.transfer'],{ownerTeam})
-  const canEdit=(upstream?access.can('update'):creationAccess.can('create'))
+  const canEdit=(upstream?access.can('update')||session?.writable:creationAccess.can('create'))
   const editable=canEdit&&editing
   const fieldAllowed=(field:string)=>((!upstream&&field==='ownerTeam'))||(field.startsWith('tls.client')?access.can('tls.update')&&access.can('credentials.update'):field.startsWith('tls.')?access.can('tls.update'):field.startsWith('auth.')||['headers','headerValue'].includes(field)?access.can('credentials.update'):access.can(({ownerTeam:'ownership.transfer',url:'connection.update',fallbackUrls:'connection.update',transport:'connection.update',kind:'connection.update',enabled:'activation.update'} as Record<string,string>)[field]??(upstream?'update':'create')))
 
@@ -114,6 +118,8 @@ export default function UpstreamDetailForm({
   }
   const [err, setErr] = useState('')
   const { busy, run } = useOperation()
+  const setSaving=session?.setSaving
+  useEffect(()=>{setSaving?.(busy);return()=>setSaving?.(false)},[busy,setSaving])
   const unsaved = useUnsaved({ownerTeam,requestHeaderMappings,callerContext,kind,rest,restBlocked,slug,name,url,fallbacks,enabled,transport,replaced,removed,newName,newValue,headerReplacement,caPem,serverName,clientCert,clientKey,authType,tokenUrl,clientId,clientSecret,scopes,audience})
   const close = () => { if (!busy) onClose() }
   const [test, setTest] = useState<ConnectionTestResult | null>(null)
@@ -140,15 +146,17 @@ export default function UpstreamDetailForm({
   const validation=useFormValidation()
   const save = async () => {
     let saved: Upstream | undefined
+    let completed:string[]=[]
     await run(async () => {
-      if (!editable || (kind==='rest' && restBlocked)) return
+      if (!editable || session?.blocked || (kind==='rest' && restBlocked)) return
       setErr('')
       if(!validation.check({slug:upstream?undefined:slugError(slug),name:upstream?requiredText(name,'Name',120):name.length>120?'Use 120 characters or fewer.':undefined,url:urlError(url),fallbackUrls:kind==='rest'?undefined:fallbackUrls().length>5?'Use up to five fallback URLs.':fallbackUrls().some(value=>urlError(value))?'Each fallback must be an absolute HTTP or HTTPS URL without credentials or fragments.':undefined,'auth.tokenUrl':kind==='mcp'&&authType==='oauth_client_credentials'?urlError(tokenUrl):undefined,'auth.clientId':kind==='mcp'&&authType==='oauth_client_credentials'?requiredText(clientId,'Client ID'):undefined,headers:newName||newValue?'Add or clear the pending header before saving.':undefined}))return
       try {
+        completed=await session?.saveSections()??[]
         const headers: Record<string, string | null> = { ...replaced }
         removed.forEach((h) => (headers[h] = null))
         if (upstream) {
-          saved = await api.patchUpstream(upstream.slug, configurationPatch({ownerTeam,
+          saved = !unsaved.dirty?upstream:await api.patchUpstream(upstream.slug, configurationPatch({ownerTeam,
             requestHeaderMappings,
             callerContext,
             name,
@@ -178,9 +186,10 @@ export default function UpstreamDetailForm({
         unsaved.clean()
       } catch (e) {
         validation.fail(e)
+        if(completed.length)setErr(`Already saved: ${completed.join(', ')}. Upstream configuration was not saved. Its draft is retained; retry Save after resolving the error.`)
       }
     })
-    if (saved) { notify({title:upstream?'Upstream saved':'Upstream created',description:saved.name}); onSaved(saved) }
+    if (saved) { setEditing(false); notify({title:upstream?'Upstream saved':'Upstream created',description:saved.name}); onSaved(saved) }
   }
 
   const runTest = () => run(async () => {
@@ -194,14 +203,14 @@ export default function UpstreamDetailForm({
     }
   })
 
-  return <ConfigurationFields.Provider value={fieldAllowed}><FormScope validation={validation}><div className="page-layout">
+  return <ConfigurationFields.Provider value={fieldAllowed}><FormScope validation={validation}><div className={session?'contents layout-stack':'page-layout'}>
     <header className="layout-stack">
       <div className="flex items-center gap-2 text-xs text-ink-muted"><button className="hover:text-accent-700" onClick={close}>Back to upstreams</button><ChevronRight aria-hidden="true" className="icon-inline"/><span className="font-mono">{upstream?.slug || 'new'}</span></div>
       <div className="flex flex-wrap items-start justify-between gap-5"><div className="flex min-w-0 flex-[1_1_280px] items-start gap-4"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-accent-500/15 bg-accent-50 text-accent-700"><Layers3 aria-hidden="true" className="icon-hero"/></div><div className="min-w-0"><div className="flex flex-wrap items-center gap-3"><h1 className="page-title break-words">{upstream ? upstream.name : 'New upstream'}</h1><Pill status={enabled?'enabled':'disabled'}/>{upstream && <TagBadge label={`v${upstream.version}`}/>}</div><p className="page-description mt-1.5 max-w-2xl text-sm text-ink-muted">{upstream?.description || 'An upstream service for your virtual endpoints.'}</p></div></div>
       <div className="flex flex-wrap gap-2"><InvocationSecurityLink/>{!editing && canEdit && <button className={primary} onClick={()=>setEditing(true)}><Pencil aria-hidden="true" className="icon-inline"/>Edit upstream</button>}</div></div>
       <p role="status" className="text-xs text-ink-muted">{editing ? 'Editing configuration. Changes apply only after Save.' : canEdit ? 'Read-only configuration. Choose Edit to make changes.' : 'Read-only configuration. Editor access is required to make changes.'}</p>
     </header>
-    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={kind==='rest'&&restBlocked?'Finish or cancel the import, and resolve editor errors before saving.':newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||((!upstream)&&!access.can('create'))||(kind==='rest'&&restBlocked)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{unsaved.clean();setEditing(false);onReload(upstream)}):close()}/>}
+    {editing && <EditorSaveBar status={upstream?`Editing draft of saved version ${upstream.version}`:'New upstream draft'} detail={kind==='rest'&&restBlocked?'Finish or cancel the import, and resolve editor errors before saving.':newName||newValue?'Add or clear the pending header before saving.':!url||(!upstream&&!slug)?'Enter an identifier and connection URL before saving.':session?.blocked?'Invocation security or audit masking needs attention. Open these sections to resolve loading errors or policy conflicts before saving.':session?'Save applies all pending changes. Cancel discards unsaved changes.':'Changes apply only after Save. Stored secrets are kept unless explicitly replaced.'} busy={busy} busyLabel="Working…" disabled={!editable||!!session?.blocked||((!upstream)&&!access.can('create'))||(kind==='rest'&&restBlocked)} onSave={()=>void save()} onCancel={()=>upstream?unsaved.guard(()=>{session?.discardSections();unsaved.clean();setEditing(false);onReload(upstream)},session?.dirty):close()}/>}
     {err && <ErrorBox>{err}</ErrorBox>}
     <FormErrors validation={validation}/>
     <StaleRecovery message={[err,...validation.issues.map(issue=>issue.message)].join('; ')} reload={async()=>{
@@ -254,7 +263,7 @@ export default function UpstreamDetailForm({
       </div>}
     </div>
     </div></ConfigurationGroup>
-    <ConfigurationGroup title="Security & shared headers" description="Authentication, TLS certificates and static request headers">
+    <ConfigurationGroup title="Authentication, TLS & headers" description="Authentication, TLS certificates and static request headers">
     <div className="layout-stack mt-4">
     {kind==='rest'&&<RESTConnectionSettings value={rest} onChange={editable&&!busy&&access.can('rest.manage')&&access.can('credentials.update')?setRest:undefined}/>}
     <div><h2 className="section-title">Security & credentials</h2><p className="section-description mt-1 text-sm text-ink-muted">Transport trust, upstream authentication and write-only secrets.</p></div>

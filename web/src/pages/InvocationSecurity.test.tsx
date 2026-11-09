@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, afterEach, expect, test, vi } from 'vitest'
 import { render } from '../test-utils'
 import { api, type UpstreamInvocationSecurity } from '../api'
@@ -6,8 +6,20 @@ import { RoleContext } from '../interaction'
 import { MemoryRouter } from 'react-router-dom'
 import UpstreamSecurity, { ToolInvocationPolicy } from '../invocation/UpstreamSecurity'
 import InvocationSecurity from './InvocationSecurity'
+import { UpstreamEditProvider } from './UpstreamEdit'
+import { useUpstreamEdit } from './upstream-edit-session'
+
+function SessionControls(){
+ const session=useUpstreamEdit()!
+ return <><button onClick={()=>session.setEditing(true)}>Edit upstream</button><button disabled={session.blocked} onClick={()=>void session.saveSections()}>Save</button></>
+}
+function openPolicy(){
+ render(<UpstreamEditProvider><SessionControls/><UpstreamSecurity slug="payments" version={1}><section aria-label="Discovered tool"><ToolInvocationPolicy name="transfer"/></section></UpstreamSecurity></UpstreamEditProvider>)
+}
 
 beforeEach(()=>{
+  Element.prototype.scrollIntoView=vi.fn()
+  vi.spyOn(api,'localAuditSettings').mockResolvedValue({revision:1,rules:[]})
   Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true}})
   Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false}})
 })
@@ -21,10 +33,12 @@ const upstream:UpstreamInvocationSecurity={
 test('tool editor previews inherited policy and rejects disjoint step-up requirements before staging',async()=>{
   vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue(upstream)
   const save=vi.spyOn(api,'saveUpstreamInvocationSecurity').mockImplementation(async(_path,doc)=>({...upstream,...doc,revision:2}))
-  render(<UpstreamSecurity slug="payments" version={1}><section aria-label="Discovered tool"><ToolInvocationPolicy name="transfer"/></section></UpstreamSecurity>)
+  openPolicy()
   const row=await screen.findByRole('region',{name:'Discovered tool'})
-  await waitFor(()=>expect(row.textContent).toContain('Step-up: mfa, hardware'))
-  fireEvent.click(row.querySelector('button')!)
+  fireEvent.click(await screen.findByRole('button',{name:'View invocation policy for transfer'}))
+  expect(screen.queryByRole('button',{name:'Add invocation rule for transfer'})).toBeNull()
+  fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
+  fireEvent.click(screen.getByRole('button',{name:'Add invocation rule for transfer'}))
   fireEvent.change(screen.getByLabelText('Accepted ACR values'),{target:{value:'password'}})
   fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
   expect(screen.getByRole('dialog')).toBeTruthy()
@@ -32,9 +46,10 @@ test('tool editor previews inherited policy and rejects disjoint step-up require
   fireEvent.change(screen.getByLabelText('Accepted ACR values'),{target:{value:'hardware'}})
   fireEvent.change(screen.getByLabelText('Maximum authentication age (seconds)'),{target:{value:'60'}})
   fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
-  expect(row.textContent).toContain('Step-up: hardware · max 60s')
+  expect(row.textContent).toContain('Tool-specific invocation policy')
+  expect(screen.getByRole('region',{name:'Tool invocation policies'}).textContent).toContain('hardware · max 60s')
   expect(save).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button',{name:'Save invocation security'}))
+  fireEvent.click(screen.getByRole('button',{name:'Save'}))
   await waitFor(()=>expect(save).toHaveBeenCalledTimes(1))
   expect(save.mock.calls[0][1].policy.tools?.transfer).toEqual({stepUp:{acceptedAcrValues:['hardware'],maxAgeSeconds:60}})
 })
@@ -42,10 +57,11 @@ test('tool editor previews inherited policy and rejects disjoint step-up require
 test('read-only upstream access shows the effective rule without mutation controls',async()=>{
   vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue(upstream)
   render(<RoleContext.Provider value="viewer"><UpstreamSecurity slug="payments" version={1}><p>Upstream details</p></UpstreamSecurity></RoleContext.Provider>)
-  await screen.findByRole('heading',{name:'Tool invocation policies'})
-  expect(screen.getByText('Uses upstream default')).toBeTruthy()
+  await screen.findByRole('heading',{name:'Tool invocation policies',hidden:true})
+  fireEvent.click(screen.getByText('Invocation security',{selector:'summary span.font-semibold'}))
+  expect(screen.getByText('Uses upstream default',{selector:'summary span'})).toBeTruthy()
   expect(screen.queryByRole('button',{name:'Edit default'})).toBeNull()
-  expect(screen.queryByRole('button',{name:'Save invocation security'})).toBeNull()
+  expect(screen.queryByRole('button',{name:'Save'})).toBeNull()
 })
 
 test('failed shared-service save retains staged credentials and submits only shared service settings',async()=>{
@@ -73,17 +89,19 @@ test('retry and read-only decisions stage independently and save the effective t
   const doc={...upstream,policy:{retry:'never' as const,readOnly:true}}
   vi.spyOn(api,'upstreamInvocationSecurity').mockResolvedValue(doc)
   const save=vi.spyOn(api,'saveUpstreamInvocationSecurity').mockImplementation(async(_path,value)=>({...doc,...value,revision:2}))
-  render(<UpstreamSecurity slug="payments" version={1}><section aria-label="Discovered tool"><ToolInvocationPolicy name="transfer"/></section></UpstreamSecurity>)
+  openPolicy()
   const row=await screen.findByRole('region',{name:'Discovered tool'})
-  await waitFor(()=>expect(row.textContent).toContain('Retry: off'))
-  fireEvent.click(row.querySelector('button')!)
+  fireEvent.click(await screen.findByRole('button',{name:'View invocation policy for transfer'}))
+  fireEvent.click(screen.getByRole('button',{name:'Edit upstream'}))
+  fireEvent.click(screen.getByRole('button',{name:'Add invocation rule for transfer'}))
   fireEvent.change(screen.getByLabelText('Automatic retry'),{target:{value:'once'}})
   fireEvent.change(screen.getByLabelText('Read-only classification'),{target:{value:'false'}})
   fireEvent.click(screen.getByRole('button',{name:'Stage policy'}))
   expect(save).not.toHaveBeenCalled()
-  expect(row.textContent).toContain('Retry: once for eligible MCP calls')
-  expect(row.textContent).toContain('Read-only: not classified')
-  fireEvent.click(screen.getByRole('button',{name:'Save invocation security'}))
+  expect(row.textContent).toContain('Tool-specific invocation policy')
+  expect(within(screen.getByRole('region',{name:'Tool invocation policies'})).getByText('once for eligible MCP calls')).toBeTruthy()
+  expect(within(screen.getByRole('region',{name:'Tool invocation policies'})).getByText('Not classified read-only')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button',{name:'Save'}))
   await waitFor(()=>expect(save).toHaveBeenCalledTimes(1))
   expect(save.mock.calls[0][1].policy.tools?.transfer).toMatchObject({retry:'once',readOnly:false})
   expect(save.mock.calls[0][1].policy.retry).toBe('never')

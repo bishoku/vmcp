@@ -87,7 +87,7 @@ test('new upstream protects pending headers and saves connection settings withou
  await page.getByLabel('Name',{exact:true}).fill('Knowledge MCP')
  await page.getByLabel('URL',{exact:true}).fill('https://knowledge.example/mcp')
  await page.screenshot({path:test.info().outputPath('upstream-create.png'),animations:'disabled'})
- await page.locator('summary').filter({hasText:'Security & shared headers'}).click()
+ await page.locator('summary').filter({hasText:'Authentication, TLS & headers'}).click()
  await page.getByLabel('New header name',{exact:true}).fill('X-Workspace')
  await page.getByLabel('New header value',{exact:true}).fill('support')
  await page.getByRole('button',{name:'Save',exact:true}).click()
