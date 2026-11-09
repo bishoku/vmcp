@@ -94,10 +94,8 @@ function Editor({
   const editable = writable && !!session?.editing && !session.saving
   const section = useRef<HTMLElement>(null)
   const [saved, setSaved] = useState<Document | null>(null)
-  const [policy, setPolicy, resetPolicy, , dirty] = useDraft<UpstreamInvocationPolicy>(
-    {},
-    () => path,
-  )
+  const [policy, setPolicy, resetPolicy, , dirty, isDirty, discardPolicy] =
+    useDraft<UpstreamInvocationPolicy>({}, () => path)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [request, setRequest] = useState(0)
@@ -274,12 +272,13 @@ function Editor({
 
   useUpstreamSection('invocation', {
     label: 'Invocation security',
+    isDirty,
     writable: writable && readable,
     dirty,
     blocked: readable && (loading || !saved || invalid || target !== undefined),
     save,
     discard: () => {
-      if (saved) resetPolicy(saved.policy)
+      discardPolicy()
       setTarget(undefined)
       setError('')
     },

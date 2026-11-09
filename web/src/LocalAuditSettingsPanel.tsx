@@ -57,11 +57,8 @@ function LocalEditor({
   writable: boolean
   previewable: boolean
 }) {
-  const [draft, setDraft, resetDraft, , dirty] = useDraft<LocalAuditSettings | null>(
-    null,
-    () => path,
-  )
-  const [saved, setSaved] = useState<LocalAuditSettings | null>(null)
+  const [draft, setDraft, resetDraft, , dirty, isDirty, discardDraft] =
+    useDraft<LocalAuditSettings | null>(null, () => path)
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [generation, setGeneration] = useState(0)
@@ -75,7 +72,6 @@ function LocalEditor({
       .localAuditSettings(path, controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
-          setSaved(value)
           resetDraft(value)
           setError('')
           setPreviews(null)
@@ -93,7 +89,6 @@ function LocalEditor({
     setError('')
     try {
       const result = await api.saveLocalAuditSettings(path, draft)
-      setSaved(result)
       resetDraft(result)
       setPreviews(null)
       setNotice(
@@ -106,12 +101,13 @@ function LocalEditor({
   }
   const session = useUpstreamSection('audit', {
     label: 'Audit payload masking',
+    isDirty,
     writable,
     dirty,
     blocked: !draft || busy,
     save,
     discard: () => {
-      if (saved) resetDraft(saved)
+      discardDraft()
       setPreviews(null)
       setError('')
       setNotice('')

@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useRef } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef } from 'react'
 
 export interface Section {
   label: string
   writable: boolean
   dirty: boolean
+  isDirty: () => boolean
   blocked: boolean
   save: () => Promise<void>
   discard: () => void
@@ -27,7 +28,7 @@ export function useUpstreamSection(id: string, section: Section) {
   const session = useUpstreamEdit()
   const register = session?.register
   const current = useRef(section)
-  useEffect(() => {
+  useLayoutEffect(() => {
     current.current = section
   })
   const { label, writable, dirty, blocked } = section
@@ -38,6 +39,7 @@ export function useUpstreamSection(id: string, section: Section) {
         writable,
         dirty,
         blocked,
+        isDirty: () => current.current.isDirty(),
         save: () => current.current.save(),
         discard: () => current.current.discard(),
       }),

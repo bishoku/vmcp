@@ -77,3 +77,36 @@ test('copy success is announced and does not apply to a changed value', async ()
   expect(screen.getByRole('status').textContent).toBe('')
   vi.unstubAllGlobals()
 })
+
+test('dirty queries reflect edits and successful resets synchronously before another render', () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const { result } = renderHook(() => useDraft({ slug: 'a', text: 'saved' }, (draft) => draft.slug))
+  const [, set, reset, open, , isDirty] = result.current
+  act(() => {
+    set({ slug: 'a', text: 'draft' })
+    expect(isDirty()).toBe(true)
+    reset({ slug: 'a', text: 'draft' })
+    expect(isDirty()).toBe(false)
+    // Identity switching immediately after a reset must use the new baseline.
+    open({ slug: 'b', text: 'other' })
+    expect(isDirty()).toBe(false)
+    set({ slug: 'b', text: 'edited again' })
+    expect(isDirty()).toBe(true)
+  })
+  expect(confirm).not.toHaveBeenCalled()
+  expect(result.current[0]).toEqual({ slug: 'b', text: 'edited again' })
+})
+
+test('discard uses the last successful baseline before a render or passive effect', () => {
+  const { result } = renderHook(() => useDraft({ text: 'original' }, () => 'same'))
+  const [, set, reset, , , isDirty, discard] = result.current
+  act(() => {
+    set({ text: 'first edit' })
+    reset({ text: 'saved by server' })
+    set({ text: 'second edit' })
+    expect(isDirty()).toBe(true)
+    discard()
+    expect(isDirty()).toBe(false)
+  })
+  expect(result.current[0]).toEqual({ text: 'saved by server' })
+})

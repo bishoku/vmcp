@@ -33,7 +33,7 @@ export function UpstreamEditProvider({ children }: { children: ReactNode }) {
   const saveSections = async () => {
     const saved: string[] = []
     for (const section of [...sections.current.values()]) {
-      if (!section.dirty) continue
+      if (!section.isDirty()) continue
       try {
         await section.save()
         saved.push(section.label)
