@@ -6,113 +6,201 @@ import { descriptionLength } from './description'
 import { ConfirmationContext } from './confirmation'
 
 beforeEach(() => {
-  HTMLDialogElement.prototype.showModal = function() { this.open = true }
-  HTMLDialogElement.prototype.close = function() { this.open = false }
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true
+  }
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false
+  }
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal'); Reflect.deleteProperty(HTMLDialogElement.prototype, 'close') })
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal')
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'close')
+})
 const original = 'Instructions:\n  preserve spacing\n<literal> & text'
-function Field({change = vi.fn()}: {change?: (value: string) => void}) {
+function Field({ change = vi.fn() }: { change?: (value: string) => void }) {
   const [value, setValue] = useState('Saved override')
-  return <DescriptionOverride name="tools.0.description" identity="alpha/echo" exposedName="say" value={value} upstream={original} drift onChange={text => {setValue(text);change(text)}}/>
+  return (
+    <DescriptionOverride
+      name="tools.0.description"
+      identity="alpha/echo"
+      exposedName="say"
+      value={value}
+      upstream={original}
+      drift
+      onChange={(text) => {
+        setValue(text)
+        change(text)
+      }}
+    />
+  )
 }
-const open = () => fireEvent.click(screen.getByRole('button', {name: 'Edit description for alpha/echo'}))
+const open = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Edit description for alpha/echo' }))
 
 test('edits stay local across views, preserve whitespace, and apply only to the parent draft', () => {
-  const change = vi.fn();render(<Field change={change}/>);open()
+  const change = vi.fn()
+  render(<Field change={change} />)
+  open()
   const draft = 'New instructions\n\n  indentation\n<script>literal</script>'
-  fireEvent.change(screen.getByRole('textbox', {name:'Description override'}), {target:{value:draft}})
-  fireEvent.click(screen.getByRole('button', {name:'Upstream'}))
-  expect(screen.getByRole('region', {name:'Upstream description'}).textContent).toContain(original)
-  fireEvent.click(screen.getByRole('button', {name:'Agent view'}))
-  const preview=screen.getByRole('region', {name:'Agent description'})
+  fireEvent.change(screen.getByRole('textbox', { name: 'Description override' }), {
+    target: { value: draft },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Upstream' }))
+  expect(screen.getByRole('region', { name: 'Upstream description' }).textContent).toContain(
+    original,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Agent view' }))
+  const preview = screen.getByRole('region', { name: 'Agent description' })
   expect(within(preview).getByRole('heading').textContent).toBe('say')
   expect(preview.textContent).toContain(draft)
   expect(preview.querySelector('script')).toBeNull()
   expect(change).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', {name:'Apply to draft'}))
+  fireEvent.click(screen.getByRole('button', { name: 'Apply to draft' }))
   expect(change).toHaveBeenCalledExactlyOnceWith(draft)
   expect(screen.queryByRole('dialog')).toBeNull()
 })
 
 test('cancel confirms local changes and keeps both saved text and unapplied edits when declined', async () => {
-  const confirm=vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
-  const change=vi.fn();render(<ConfirmationContext.Provider value={confirm}><Field change={change}/></ConfirmationContext.Provider>);open()
-  fireEvent.change(screen.getByRole('textbox'), {target:{value:'Unapplied'}})
-  await act(async () => { fireEvent.click(screen.getByRole('button', {name:'Cancel'})) })
+  const confirm = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+  const change = vi.fn()
+  render(
+    <ConfirmationContext.Provider value={confirm}>
+      <Field change={change} />
+    </ConfirmationContext.Provider>,
+  )
+  open()
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Unapplied' } })
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  })
   await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1))
-  await vi.waitFor(() => expect((screen.getByRole('button', {name:'Cancel'}) as HTMLButtonElement).disabled).toBe(false))
+  await vi.waitFor(() =>
+    expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    ),
+  )
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Unapplied')
-  await act(async () => { fireEvent.click(screen.getByRole('button', {name:'Cancel'})) })
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  })
   await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-  expect(change).not.toHaveBeenCalled();open()
+  expect(change).not.toHaveBeenCalled()
+  open()
   expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Saved override')
 })
 
 test('Unicode boundary allows 20,000 characters and preserves excess text while blocking apply', () => {
-  render(<Field/>);open()
-  const boundary='🙂'.repeat(20_000)
+  render(<Field />)
+  open()
+  const boundary = '🙂'.repeat(20_000)
   expect(descriptionLength(boundary)).toBe(20_000)
-  fireEvent.change(screen.getByRole('textbox'), {target:{value:boundary}})
-  expect((screen.getByRole('button', {name:'Apply to draft'}) as HTMLButtonElement).disabled).toBe(false)
-  fireEvent.change(screen.getByRole('textbox'), {target:{value:boundary+'ş'}})
-  expect((screen.getByRole('button', {name:'Apply to draft'}) as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: boundary } })
+  expect(
+    (screen.getByRole('button', { name: 'Apply to draft' }) as HTMLButtonElement).disabled,
+  ).toBe(false)
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: boundary + 'ş' } })
+  expect(
+    (screen.getByRole('button', { name: 'Apply to draft' }) as HTMLButtonElement).disabled,
+  ).toBe(true)
   expect(screen.getByRole('alert').textContent).toContain('20,000')
-  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(boundary+'ş')
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(boundary + 'ş')
 })
 
 test('clearing override previews upstream text and applies an empty override', () => {
-  const change=vi.fn();render(<Field change={change}/>);open()
-  fireEvent.click(screen.getByRole('button', {name:'Use upstream description'}))
-  fireEvent.click(screen.getByRole('button', {name:'Agent view'}))
-  expect(screen.getByRole('region', {name:'Agent description'}).textContent).toContain(original)
-  fireEvent.click(screen.getByRole('button', {name:'Apply to draft'}))
+  const change = vi.fn()
+  render(<Field change={change} />)
+  open()
+  fireEvent.click(screen.getByRole('button', { name: 'Use upstream description' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Agent view' }))
+  expect(screen.getByRole('region', { name: 'Agent description' }).textContent).toContain(original)
+  fireEvent.click(screen.getByRole('button', { name: 'Apply to draft' }))
   expect(change).toHaveBeenCalledWith('')
 })
 
 test('read-only inspection shows the full long upstream source without applying override limits', () => {
-  const upstream='x'.repeat(21_000)
-  render(<DescriptionOverride name="catalog.0.description" identity="alpha/review" exposedName="alpha__review" value="" upstream={upstream}/>)
-  fireEvent.click(screen.getByRole('button', {name:'Inspect description for alpha/review'}))
-  expect(screen.getByRole('region', {name:'Agent description'}).textContent).toContain(upstream)
+  const upstream = 'x'.repeat(21_000)
+  render(
+    <DescriptionOverride
+      name="catalog.0.description"
+      identity="alpha/review"
+      exposedName="alpha__review"
+      value=""
+      upstream={upstream}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect description for alpha/review' }))
+  expect(screen.getByRole('region', { name: 'Agent description' }).textContent).toContain(upstream)
   expect(screen.queryByRole('textbox')).toBeNull()
   expect(screen.queryByRole('alert')).toBeNull()
-  expect(screen.queryByRole('button', {name:'Apply to draft'})).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Apply to draft' })).toBeNull()
 })
 
 test('desktop comparison uses unapplied edits and does not mutate the parent draft', () => {
-  vi.stubGlobal('matchMedia', () => ({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()}))
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
   try {
-    const change=vi.fn();render(<Field change={change}/>);open()
-    const text='Instructions:\n  changed spacing\n<literal> & text\nNew line'
-    fireEvent.change(screen.getByRole('textbox'), {target:{value:text}})
-    fireEvent.click(screen.getByRole('button', {name:'Compare'}))
-    const comparison=screen.getByRole('region', {name:'Description comparison'})
+    const change = vi.fn()
+    render(<Field change={change} />)
+    open()
+    const text = 'Instructions:\n  changed spacing\n<literal> & text\nNew line'
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: text } })
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }))
+    const comparison = screen.getByRole('region', { name: 'Description comparison' })
     expect(comparison.textContent).toContain('1 removed · 2 added lines')
     expect(comparison.textContent).toContain('changed spacing')
     expect(change).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', {name:'Edit override'}))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit override' }))
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(text)
-  } finally { vi.unstubAllGlobals() }
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })
 
 test('mobile description views do not offer comparison', () => {
-  vi.stubGlobal('matchMedia', () => ({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn()}))
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
   try {
-    render(<Field/>);open()
-    expect(screen.queryByRole('button', {name:'Compare'})).toBeNull()
-    expect(screen.getByRole('button', {name:'Agent view'})).toBeTruthy()
-  } finally { vi.unstubAllGlobals() }
+    render(<Field />)
+    open()
+    expect(screen.queryByRole('button', { name: 'Compare' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Agent view' })).toBeTruthy()
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })
 
 test('read-only comparison treats an empty override as inheritance rather than deleting the source', () => {
-  vi.stubGlobal('matchMedia', () => ({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()}))
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
   try {
-    render(<DescriptionOverride name="catalog.0.description" identity="alpha/review" exposedName="alpha__review" value="" upstream={original}/>)
-    fireEvent.click(screen.getByRole('button', {name:'Inspect description for alpha/review'}))
-    fireEvent.click(screen.getByRole('button', {name:'Compare'}))
-    const comparison=screen.getByRole('region', {name:'Description comparison'})
+    render(
+      <DescriptionOverride
+        name="catalog.0.description"
+        identity="alpha/review"
+        exposedName="alpha__review"
+        value=""
+        upstream={original}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect description for alpha/review' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }))
+    const comparison = screen.getByRole('region', { name: 'Description comparison' })
     expect(within(comparison).getByRole('status').textContent).toBe('No differences')
     expect(comparison.textContent).toContain('inherits the upstream description')
-    expect(screen.queryByRole('button', {name:'Apply to draft'})).toBeNull()
-  } finally { vi.unstubAllGlobals() }
+    expect(screen.queryByRole('button', { name: 'Apply to draft' })).toBeNull()
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })

@@ -1,13 +1,22 @@
 import type { AgentKey, CatalogSelection, IdentityBinding, Upstream, VirtualServer } from '../api'
 
-export const serverPath = (slug: string, view = 'overview') => `/virtual-servers/${encodeURIComponent(slug)}/${view}`
-export const editorPath = (page: string, slug: string) => page === 'upstreams' || page === 'virtual-servers' ? `/${page}/${encodeURIComponent(slug)}` : `/${page}?inspect=${encodeURIComponent(slug)}`
+export const serverPath = (slug: string, view = 'overview') =>
+  `/virtual-servers/${encodeURIComponent(slug)}/${view}`
+export const editorPath = (page: string, slug: string) =>
+  page === 'upstreams' || page === 'virtual-servers'
+    ? `/${page}/${encodeURIComponent(slug)}`
+    : `/${page}?inspect=${encodeURIComponent(slug)}`
 export function catalogExposedName(selection: CatalogSelection): string {
-  const {upstream, kind, name, alias} = selection
+  const { upstream, kind, name, alias } = selection
   if (kind === 'prompt') return alias || `${upstream}__${name}`
   if (kind === 'template') return `vmcp://${upstream}/template/${name}`
   if (alias) return `vmcp://${upstream}/alias/${alias}`
-  const encoded = btoa(Array.from(new TextEncoder().encode(name), byte => String.fromCharCode(byte)).join('')).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  const encoded = btoa(
+    Array.from(new TextEncoder().encode(name), (byte) => String.fromCharCode(byte)).join(''),
+  )
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
   return `vmcp://${upstream}/resource/${encoded}`
 }
 export interface Capability {
@@ -24,24 +33,48 @@ export interface Capability {
 }
 export function capabilitiesOf(server: VirtualServer): Capability[] {
   return [
-    ...server.tools.map(tool => ({ kind: 'tool' as const, original: tool.tool,
-      exposed: tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`, upstream: tool.upstream,
-      policy: server.policy?.tools?.[tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`] ?? server.policy?.default ?? 'allow', missing: tool.orphaned, description: tool.description, upstreamDescription: tool.upstreamDescription, descriptionDrift: tool.descriptionDrift })),
-    ...(server.catalog ?? []).map(object => ({kind: object.kind, original: object.name,
-      exposed: object.exposedName || object.alias || object.name, upstream: object.upstream,
-      policy: 'Selected catalog access', missing: object.orphaned, description: object.description, upstreamDescription: object.upstreamDescription, descriptionDrift: object.descriptionDrift})),
+    ...server.tools.map((tool) => ({
+      kind: 'tool' as const,
+      original: tool.tool,
+      exposed: tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`,
+      upstream: tool.upstream,
+      policy:
+        server.policy?.tools?.[
+          tool.exposedName || tool.alias || `${tool.upstream}__${tool.tool}`
+        ] ??
+        server.policy?.default ??
+        'allow',
+      missing: tool.orphaned,
+      description: tool.description,
+      upstreamDescription: tool.upstreamDescription,
+      descriptionDrift: tool.descriptionDrift,
+    })),
+    ...(server.catalog ?? []).map((object) => ({
+      kind: object.kind,
+      original: object.name,
+      exposed: object.exposedName || object.alias || object.name,
+      upstream: object.upstream,
+      policy: 'Selected catalog access',
+      missing: object.orphaned,
+      description: object.description,
+      upstreamDescription: object.upstreamDescription,
+      descriptionDrift: object.descriptionDrift,
+    })),
   ]
 }
 export function capabilityCounts(server: VirtualServer) {
   const objects = capabilitiesOf(server)
-  return (['tool', 'resource', 'template', 'prompt'] as const).map(kind => {
-    const count = objects.filter(o => o.kind === kind).length
-    return `${count} ${kind}${count === 1 ? '' : 's'}`
-  }).join(' · ')
+  return (['tool', 'resource', 'template', 'prompt'] as const)
+    .map((kind) => {
+      const count = objects.filter((o) => o.kind === kind).length
+      return `${count} ${kind}${count === 1 ? '' : 's'}`
+    })
+    .join(' · ')
 }
 export function keyState(key: AgentKey, now = Date.now()): string {
   if (key.revokedAt || key.status === 'revoked') return 'revoked'
-  if (key.status === 'expired' || (key.expiresAt && new Date(key.expiresAt).getTime() <= now)) return 'expired'
+  if (key.status === 'expired' || (key.expiresAt && new Date(key.expiresAt).getTime() <= now))
+    return 'expired'
   return key.status
 }
 export interface Relationship {
@@ -57,47 +90,131 @@ export interface Relationship {
   search?: string
 }
 /** Edges represent saved configuration, never active sessions or guaranteed authorization. */
-export function relationships(servers: VirtualServer[], upstreams: Upstream[], keys: AgentKey[], bindings: IdentityBinding[], now = Date.now()): Relationship[] {
-  const byServer = new Map(servers.map(s => [s.slug, s]))
-  const byUpstream = new Map(upstreams.map(u => [u.slug, u]))
+export function relationships(
+  servers: VirtualServer[],
+  upstreams: Upstream[],
+  keys: AgentKey[],
+  bindings: IdentityBinding[],
+  now = Date.now(),
+): Relationship[] {
+  const byServer = new Map(servers.map((s) => [s.slug, s]))
+  const byUpstream = new Map(upstreams.map((u) => [u.slug, u]))
   const edges: Relationship[] = []
-  const grant = (kind: 'agent-key' | 'binding', slug: string, targets: string[], state: string, detail: string) => {
+  const grant = (
+    kind: 'agent-key' | 'binding',
+    slug: string,
+    targets: string[],
+    state: string,
+    detail: string,
+  ) => {
     for (const target of new Set(targets)) {
       const server = byServer.get(target)
-      edges.push({id: JSON.stringify([kind, slug, target]), kind, from: slug, to: target, server: target,
-        state: !server ? 'missing virtual server' : !server.enabled ? `${state} · server disabled` : !server.authRequired ? `${state} · anonymous access bypasses credentials` : state,
-        detail, search:server?.name, href: editorPath(kind === 'agent-key' ? 'agent-keys' : 'identities', slug), capabilities: []})
+      edges.push({
+        id: JSON.stringify([kind, slug, target]),
+        kind,
+        from: slug,
+        to: target,
+        server: target,
+        state: !server
+          ? 'missing virtual server'
+          : !server.enabled
+            ? `${state} · server disabled`
+            : !server.authRequired
+              ? `${state} · anonymous access bypasses credentials`
+              : state,
+        detail,
+        search: server?.name,
+        href: editorPath(kind === 'agent-key' ? 'agent-keys' : 'identities', slug),
+        capabilities: [],
+      })
     }
   }
-  for (const key of keys) grant('agent-key', key.slug, key.virtualServers, keyState(key, now),
-    `IP allowlist: ${key.ipAllowlist.join(', ') || 'unrestricted'}; key limit: ${key.rateLimitPerMinute ?? 'unlimited'}/minute; expiry: ${key.expiresAt ?? 'none'}`)
-  for (const binding of bindings) grant('binding', binding.slug, binding.virtualServers, binding.enabled ? 'conditional' : 'disabled',
-    `Verified JWT and matching claims required: ${binding.conditions.map(c => `${c.claim} ${c.op} ${c.value ?? ''}`).join('; ')}. Binding precedence and IP restrictions also apply. IP allowlist: ${binding.ipAllowlist.join(', ') || 'unrestricted'}`)
+  for (const key of keys)
+    grant(
+      'agent-key',
+      key.slug,
+      key.virtualServers,
+      keyState(key, now),
+      `IP allowlist: ${key.ipAllowlist.join(', ') || 'unrestricted'}; key limit: ${key.rateLimitPerMinute ?? 'unlimited'}/minute; expiry: ${key.expiresAt ?? 'none'}`,
+    )
+  for (const binding of bindings)
+    grant(
+      'binding',
+      binding.slug,
+      binding.virtualServers,
+      binding.enabled ? 'conditional' : 'disabled',
+      `Verified JWT and matching claims required: ${binding.conditions.map((c) => `${c.claim} ${c.op} ${c.value ?? ''}`).join('; ')}. Binding precedence and IP restrictions also apply. IP allowlist: ${binding.ipAllowlist.join(', ') || 'unrestricted'}`,
+    )
   for (const server of servers) {
-    if (!server.authRequired) edges.push({id: JSON.stringify(['anonymous', server.slug]), kind:'anonymous',from:'Anonymous',to:server.slug,server:server.slug,
-      state:server.enabled ? 'public access' : 'server disabled', search:server.name,detail:'Any caller that can reach this endpoint; no credential required.',href:serverPath(server.slug,'access'),capabilities:[]})
+    if (!server.authRequired)
+      edges.push({
+        id: JSON.stringify(['anonymous', server.slug]),
+        kind: 'anonymous',
+        from: 'Anonymous',
+        to: server.slug,
+        server: server.slug,
+        state: server.enabled ? 'public access' : 'server disabled',
+        search: server.name,
+        detail: 'Any caller that can reach this endpoint; no credential required.',
+        href: serverPath(server.slug, 'access'),
+        capabilities: [],
+      })
     const groups = new Map<string, Capability[]>()
     for (const object of capabilitiesOf(server)) {
       const group = groups.get(object.upstream)
-      if(group) group.push(object)
-      else groups.set(object.upstream,[object])
+      if (group) group.push(object)
+      else groups.set(object.upstream, [object])
     }
     for (const [slug, objects] of groups) {
       const upstream = byUpstream.get(slug)
-      edges.push({id:JSON.stringify(['upstream',server.slug,slug]),kind:'upstream',from:server.slug,to:slug,server:server.slug,
-        state:!upstream ? 'missing upstream' : !upstream.enabled ? 'upstream disabled' : upstream.health?.state ?? 'unknown',
-        detail:objects.map(o=>`${o.kind}: ${o.original} → ${o.exposed} (${o.policy}${o.missing ? ', missing object' : ''})`).join('; '),
-        search:`${server.name} ${upstream?.name ?? ''}`,href:editorPath('upstreams',slug),capabilities:objects})
+      edges.push({
+        id: JSON.stringify(['upstream', server.slug, slug]),
+        kind: 'upstream',
+        from: server.slug,
+        to: slug,
+        server: server.slug,
+        state: !upstream
+          ? 'missing upstream'
+          : !upstream.enabled
+            ? 'upstream disabled'
+            : (upstream.health?.state ?? 'unknown'),
+        detail: objects
+          .map(
+            (o) =>
+              `${o.kind}: ${o.original} → ${o.exposed} (${o.policy}${o.missing ? ', missing object' : ''})`,
+          )
+          .join('; '),
+        search: `${server.name} ${upstream?.name ?? ''}`,
+        href: editorPath('upstreams', slug),
+        capabilities: objects,
+      })
     }
   }
   return edges
 }
 export function filterRelationships(edges: Relationship[], query: string, server = '') {
   const needle = query.trim().toLowerCase()
-  return edges.filter(edge => (!server || edge.server === server) &&
-    `${edge.kind} ${edge.from} ${edge.to} ${edge.state} ${edge.detail} ${edge.search ?? ''}`.toLowerCase().includes(needle))
+  return edges.filter(
+    (edge) =>
+      (!server || edge.server === server) &&
+      `${edge.kind} ${edge.from} ${edge.to} ${edge.state} ${edge.detail} ${edge.search ?? ''}`
+        .toLowerCase()
+        .includes(needle),
+  )
 }
 export function connectionSettings(server: VirtualServer, endpoint: string) {
-  return JSON.stringify({mcpServers:{[server.slug]:{url:endpoint,
-    ...(server.authRequired && {headers:{Authorization:'Bearer <VMCP_AGENT_KEY_OR_ACCESS_TOKEN>'}})}}}, null, 2)
+  return JSON.stringify(
+    {
+      mcpServers: {
+        [server.slug]: {
+          url: endpoint,
+          ...(server.authRequired && {
+            headers: { Authorization: 'Bearer <VMCP_AGENT_KEY_OR_ACCESS_TOKEN>' },
+          }),
+        },
+      },
+    },
+    null,
+    2,
+  )
 }

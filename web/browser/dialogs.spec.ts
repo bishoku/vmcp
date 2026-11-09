@@ -3,14 +3,21 @@ import { auditSettings } from './audit-fixtures'
 import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
-  await page.route('**/auth/config', r => r.fulfill({ json: { oidc: false } }))
-  await page.route('**/api/v1/**', route => {
- const capability = configurationFixture(route, 'administrator'); if (capability) return capability
+  await page.route('**/auth/config', (r) => r.fulfill({ json: { oidc: false } }))
+  await page.route('**/api/v1/**', (route) => {
+    const capability = configurationFixture(route, 'administrator')
+    if (capability) return capability
 
- if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+    if (new URL(route.request().url()).pathname.endsWith('/audit-settings'))
+      return route.fulfill({ json: auditSettings })
 
-    const request = route.request(), path = new URL(request.url()).pathname
-    if (path.endsWith('/me')) return route.fulfill({ status: request.headers().authorization ? 200 : 401, json: { name: 'Admin', role: 'admin', via: 'bootstrap-token' } })
+    const request = route.request(),
+      path = new URL(request.url()).pathname
+    if (path.endsWith('/me'))
+      return route.fulfill({
+        status: request.headers().authorization ? 200 : 401,
+        json: { name: 'Admin', role: 'admin', via: 'bootstrap-token' },
+      })
     if (path.endsWith('/agent-keys') && request.method() === 'POST') {
       return route.fulfill({ json: { slug: 'test', key: 'one-time-secret' } })
     }
@@ -26,9 +33,9 @@ test('new upstream opens a full page and Cancel returns to the list', async ({ p
   await page.getByRole('button', { name: 'Add upstream', exact: true }).click()
   await expect(page).toHaveURL(/upstreams\/new$/)
   await expect(page.getByRole('heading', { name: 'New upstream', exact: true })).toBeVisible()
-  await expect(page.getByLabel('Name', {exact:true})).toBeEnabled()
+  await expect(page.getByLabel('Name', { exact: true })).toBeEnabled()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('button', {name:'Cancel',exact:true}).click()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(page).toHaveURL(/upstreams$/)
 })
 
@@ -48,7 +55,9 @@ test('agent form supports Escape, focus restoration and backdrop dismissal', asy
   await expect(trigger).toBeFocused()
 })
 
-test('one-time secrets require explicit acknowledgement and cannot be lost to Escape/backdrop', async ({ page }) => {
+test('one-time secrets require explicit acknowledgement and cannot be lost to Escape/backdrop', async ({
+  page,
+}) => {
   await page.getByRole('link', { name: 'Agent Keys', exact: true }).click()
   await page.getByRole('button', { name: 'New key', exact: true }).click()
   await page.getByLabel('Name', { exact: true }).fill('test')

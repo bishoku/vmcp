@@ -6,8 +6,8 @@ import { NotificationContext, type Notification } from './notifications'
 
 type Entry = Notification & { id: number }
 function Toast({ notice, dismiss }: { notice: Entry; dismiss: (id: number) => void }) {
-  const ref=useRef<HTMLDivElement>(null)
-  const close=useMotionDismiss(ref,()=>dismiss(notice.id))
+  const ref = useRef<HTMLDivElement>(null)
+  const close = useMotionDismiss(ref, () => dismiss(notice.id))
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [hidden, setHidden] = useState(document.hidden)
@@ -21,16 +21,55 @@ function Toast({ notice, dismiss }: { notice: Entry; dismiss: (id: number) => vo
     if (hovered || focused || hidden || notice.duration === 0) return
     const start = Date.now()
     const timer = setTimeout(close, remaining.current)
-    return () => { clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (Date.now() - start)) }
+    return () => {
+      clearTimeout(timer)
+      remaining.current = Math.max(0, remaining.current - (Date.now() - start))
+    }
   }, [hovered, focused, hidden, notice.id, notice.duration, close])
   const tone = notice.tone ?? 'success'
   const Icon = tone === 'warning' ? AlertTriangle : tone === 'info' ? Info : Check
-  const color = tone === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-700' : tone === 'info' ? 'border-accent-100 bg-accent-50 text-accent-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-  return <div ref={ref} data-testid="toast" className="motion-popup pointer-events-auto flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-ink shadow-lg" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocusCapture={() => setFocused(true)} onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false) }}>
-    <span aria-hidden="true" className={`grid size-9 shrink-0 place-items-center rounded-xl border ${color}`}><Icon aria-hidden="true" className="icon-control"/></span>
-    <div role="status" aria-atomic="true" className="min-w-0 flex-1 pt-0.5"><p className="break-words text-sm font-semibold tracking-tight">{notice.title}</p>{notice.description && <p className="mt-1 break-words text-xs leading-relaxed text-ink-muted">{notice.description}</p>}</div>
-    <button type="button" aria-label={`Dismiss notification: ${notice.title}`} className="action-button action-ghost action-icon shrink-0" onClick={close}><X aria-hidden="true" className="icon-control"/></button>
-  </div>
+  const color =
+    tone === 'warning'
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : tone === 'info'
+        ? 'border-accent-100 bg-accent-50 text-accent-700'
+        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  return (
+    <div
+      ref={ref}
+      data-testid="toast"
+      className="motion-popup pointer-events-auto flex items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-ink shadow-lg"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)}
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setFocused(false)
+      }}
+    >
+      <span
+        aria-hidden="true"
+        className={`grid size-9 shrink-0 place-items-center rounded-xl border ${color}`}
+      >
+        <Icon aria-hidden="true" className="icon-control" />
+      </span>
+      <div role="status" aria-atomic="true" className="min-w-0 flex-1 pt-0.5">
+        <p className="break-words text-sm font-semibold tracking-tight">{notice.title}</p>
+        {notice.description && (
+          <p className="mt-1 break-words text-xs leading-relaxed text-ink-muted">
+            {notice.description}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        aria-label={`Dismiss notification: ${notice.title}`}
+        className="action-button action-ghost action-icon shrink-0"
+        onClick={close}
+      >
+        <X aria-hidden="true" className="icon-control" />
+      </button>
+    </div>
+  )
 }
 
 export default function NotificationsProvider({ children }: { children: ReactNode }) {
@@ -39,17 +78,45 @@ export default function NotificationsProvider({ children }: { children: ReactNod
   const sequence = useRef(0)
   const notify = useCallback((notice: Notification) => {
     const entry = { ...notice, id: ++sequence.current }
-    setNotices(current => [...current.filter(item => !notice.key || item.key !== notice.key), entry].slice(-3))
+    setNotices((current) =>
+      [...current.filter((item) => !notice.key || item.key !== notice.key), entry].slice(-3),
+    )
   }, [])
-  const dismiss = useCallback((id: number) => setNotices(current => current.filter(item => item.id !== id)), [])
+  const dismiss = useCallback(
+    (id: number) => setNotices((current) => current.filter((item) => item.id !== id)),
+    [],
+  )
   useEffect(() => {
     // Native modal dialogs make the rest of the document inert. Keep notifications in the active top layer.
-    const update = () => setHost(Array.from(document.querySelectorAll('dialog[open]')).at(-1) ?? document.body)
+    const update = () =>
+      setHost(Array.from(document.querySelectorAll('dialog[open]')).at(-1) ?? document.body)
     update()
     const observer = new MutationObserver(update)
-    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] })
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open'],
+    })
     return () => observer.disconnect()
   }, [])
   const value = useMemo(() => ({ available: true, notify }), [notify])
-  return <NotificationContext.Provider value={value}>{children}{notices.length>0&&createPortal(<div role="region" aria-label="Notifications" className="pointer-events-none fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[100] flex flex-col gap-3 sm:left-auto sm:right-6 sm:w-96">{notices.map(notice => <Toast key={notice.id} notice={notice} dismiss={dismiss}/>)}</div>, host)}</NotificationContext.Provider>
+  return (
+    <NotificationContext.Provider value={value}>
+      {children}
+      {notices.length > 0 &&
+        createPortal(
+          <div
+            role="region"
+            aria-label="Notifications"
+            className="pointer-events-none fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[100] flex flex-col gap-3 sm:left-auto sm:right-6 sm:w-96"
+          >
+            {notices.map((notice) => (
+              <Toast key={notice.id} notice={notice} dismiss={dismiss} />
+            ))}
+          </div>,
+          host,
+        )}
+    </NotificationContext.Provider>
+  )
 }

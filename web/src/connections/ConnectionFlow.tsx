@@ -6,179 +6,862 @@ import Select from '../Select'
 import { EmptyState, LoadingState } from '../Feedback'
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ArrowUpRight, ChevronRight, Layers3, Maximize2, Network, SlidersHorizontal, Waypoints } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  ChevronRight,
+  Layers3,
+  Maximize2,
+  Network,
+  SlidersHorizontal,
+  Waypoints,
+} from 'lucide-react'
 import type { AgentKey, IdentityBinding, Upstream, VirtualServer } from '../api'
 import { btn, input } from '../styles'
-import { connectionGraph, highlightedEdges, nodeId, scopedGraph, type FlowNode, type FlowScope, type ToolFocus } from './flow'
+import {
+  connectionGraph,
+  highlightedEdges,
+  nodeId,
+  scopedGraph,
+  type FlowNode,
+  type FlowScope,
+  type ToolFocus,
+} from './flow'
 import type { Relationship } from './model'
 
-interface Props { servers:VirtualServer[]; upstreams:Upstream[]; keys:AgentKey[]; bindings:IdentityBinding[]; relationships:Relationship[]; onInspect?:(relationship:Relationship)=>void;loading?:boolean;error?:string }
-interface DiagramNode { id:string; column:number; label:string; status:string; href?:string; base?:FlowNode; tool?:ToolFocus; alias?:boolean }
-interface DiagramEdge { id:string; from:string; to:string; tools:number; relationship:string; tool?:ToolFocus }
-interface ToolScope { column:number; ids:string[]; label:string }
+interface Props {
+  servers: VirtualServer[]
+  upstreams: Upstream[]
+  keys: AgentKey[]
+  bindings: IdentityBinding[]
+  relationships: Relationship[]
+  onInspect?: (relationship: Relationship) => void
+  loading?: boolean
+  error?: string
+}
+interface DiagramNode {
+  id: string
+  column: number
+  label: string
+  status: string
+  href?: string
+  base?: FlowNode
+  tool?: ToolFocus
+  alias?: boolean
+}
+interface DiagramEdge {
+  id: string
+  from: string
+  to: string
+  tools: number
+  relationship: string
+  tool?: ToolFocus
+}
+interface ToolScope {
+  column: number
+  ids: string[]
+  label: string
+}
 const colors = ['#6366f1', '#0891b2', '#8b5cf6', '#059669', '#059669']
-const aliasId = (server:string,upstream:string,original:string,exposed:string)=>JSON.stringify(['alias',server,upstream,original,exposed])
-const originalId = (upstream:string,original:string)=>JSON.stringify(['tool',upstream,original])
-const matchesTool = (mapping:ToolFocus,focus:ToolFocus) => mapping.upstream===focus.upstream && mapping.original===focus.original && (!focus.server || mapping.server===focus.server)
+const aliasId = (server: string, upstream: string, original: string, exposed: string) =>
+  JSON.stringify(['alias', server, upstream, original, exposed])
+const originalId = (upstream: string, original: string) =>
+  JSON.stringify(['tool', upstream, original])
+const matchesTool = (mapping: ToolFocus, focus: ToolFocus) =>
+  mapping.upstream === focus.upstream &&
+  mapping.original === focus.original &&
+  (!focus.server || mapping.server === focus.server)
 
-export default function ConnectionFlow(props:Props) {
-  const canvas=useRef<HTMLDivElement>(null)
-  const focusedNode=useRef<HTMLElement|null>(null)
-  const instructions=useId()
-  useLayoutEffect(()=>{
-    if(focusedNode.current && !focusedNode.current.isConnected && document.activeElement===document.body) {
-      canvas.current?.focus({preventScroll:true})
-      focusedNode.current=null
+export default function ConnectionFlow(props: Props) {
+  const canvas = useRef<HTMLDivElement>(null)
+  const focusedNode = useRef<HTMLElement | null>(null)
+  const instructions = useId()
+  useLayoutEffect(() => {
+    if (
+      focusedNode.current &&
+      !focusedNode.current.isConnected &&
+      document.activeElement === document.body
+    ) {
+      canvas.current?.focus({ preventScroll: true })
+      focusedNode.current = null
     }
   })
-  const graph = useMemo(()=>connectionGraph(props.servers,props.upstreams,props.keys,props.bindings,props.relationships),[props.servers,props.upstreams,props.keys,props.bindings,props.relationships])
-  const [scopes,setScopes] = useState<FlowScope[]>([])
-  const [toolScopes,setToolScopes] = useState<ToolScope[]>([])
-  const [expanded,setExpanded] = useState<string>()
-  const [selected,setSelected] = useState<string>()
-  const [preview,setPreview] = useState<string>()
-  const [tool,setTool] = useState<ToolFocus>()
-  const [previewTool,setPreviewTool] = useState<ToolFocus>()
-  const [toolQuery,setToolQuery] = useState('')
-  const [largeCanvas,setLargeCanvas] = useState(false)
-  const scoped = scopedGraph(graph.nodes,graph.edges,scopes)
-  const focusTool=previewTool ?? tool
-  const active = highlightedEdges(graph.edges,props.relationships,preview ?? selected,focusTool)
+  const graph = useMemo(
+    () =>
+      connectionGraph(
+        props.servers,
+        props.upstreams,
+        props.keys,
+        props.bindings,
+        props.relationships,
+      ),
+    [props.servers, props.upstreams, props.keys, props.bindings, props.relationships],
+  )
+  const [scopes, setScopes] = useState<FlowScope[]>([])
+  const [toolScopes, setToolScopes] = useState<ToolScope[]>([])
+  const [expanded, setExpanded] = useState<string>()
+  const [selected, setSelected] = useState<string>()
+  const [preview, setPreview] = useState<string>()
+  const [tool, setTool] = useState<ToolFocus>()
+  const [previewTool, setPreviewTool] = useState<ToolFocus>()
+  const [toolQuery, setToolQuery] = useState('')
+  const [largeCanvas, setLargeCanvas] = useState(false)
+  const scoped = scopedGraph(graph.nodes, graph.edges, scopes)
+  const focusTool = previewTool ?? tool
+  const active = highlightedEdges(graph.edges, props.relationships, preview ?? selected, focusTool)
   const focusing = !!(preview || selected || focusTool)
-  const headings=expanded?['Configured identities','Virtual MCP servers','Exposed tools','Upstream definitions','Upstream MCP servers']:['Configured identities','Virtual MCP servers','Upstream MCP servers']
-  const nodes:DiagramNode[]=scoped.nodes.map(n=>({...n,column:expanded && n.column===2?4:n.column,base:n}))
-  const edges:DiagramEdge[]=scoped.edges.filter(e=>!expanded || e.to===nodeId('server',e.server)).map(e=>({...e,relationship:e.id}))
-  const visibleRelationships=new Set(scoped.edges.map(e=>e.id))
-  const mappings=props.relationships.filter(r=>expanded && r.kind==='upstream' && visibleRelationships.has(r.id)).flatMap(r=>r.capabilities.filter(c=>c.kind==='tool').map(c=>({...c,server:r.server,relationship:r.id})))
-  const visibleMappings=mappings.filter(c=>`${c.original} ${c.exposed} ${c.upstream} ${c.server} ${c.policy}`.toLowerCase().includes(toolQuery.trim().toLowerCase()) && toolScopes.every(s=>s.ids.includes(s.column===2?aliasId(c.server,c.upstream,c.original,c.exposed):originalId(c.upstream,c.original))))
-  const seen=new Set(nodes.map(n=>n.id))
+  const headings = expanded
+    ? [
+        'Configured identities',
+        'Virtual MCP servers',
+        'Exposed tools',
+        'Upstream definitions',
+        'Upstream MCP servers',
+      ]
+    : ['Configured identities', 'Virtual MCP servers', 'Upstream MCP servers']
+  const nodes: DiagramNode[] = scoped.nodes.map((n) => ({
+    ...n,
+    column: expanded && n.column === 2 ? 4 : n.column,
+    base: n,
+  }))
+  const edges: DiagramEdge[] = scoped.edges
+    .filter((e) => !expanded || e.to === nodeId('server', e.server))
+    .map((e) => ({ ...e, relationship: e.id }))
+  const visibleRelationships = new Set(scoped.edges.map((e) => e.id))
+  const mappings = props.relationships
+    .filter((r) => expanded && r.kind === 'upstream' && visibleRelationships.has(r.id))
+    .flatMap((r) =>
+      r.capabilities
+        .filter((c) => c.kind === 'tool')
+        .map((c) => ({ ...c, server: r.server, relationship: r.id })),
+    )
+  const visibleMappings = mappings.filter(
+    (c) =>
+      `${c.original} ${c.exposed} ${c.upstream} ${c.server} ${c.policy}`
+        .toLowerCase()
+        .includes(toolQuery.trim().toLowerCase()) &&
+      toolScopes.every((s) =>
+        s.ids.includes(
+          s.column === 2
+            ? aliasId(c.server, c.upstream, c.original, c.exposed)
+            : originalId(c.upstream, c.original),
+        ),
+      ),
+  )
+  const seen = new Set(nodes.map((n) => n.id))
   for (const c of visibleMappings) {
-    const alias=aliasId(c.server,c.upstream,c.original,c.exposed),original=originalId(c.upstream,c.original)
-    const mapping={upstream:c.upstream,original:c.original,server:c.server}
-    if(!seen.has(alias)){nodes.push({id:alias,column:2,label:c.exposed,status:`${c.server} · ${c.missing?'missing':c.policy}`,tool:mapping,alias:true});seen.add(alias)}
-    if(!seen.has(original)){nodes.push({id:original,column:3,label:c.original,status:c.upstream,tool:{upstream:c.upstream,original:c.original}});seen.add(original)}
-    for(const [from,to,stage] of [[nodeId('server',c.server),alias,'exposed'],[alias,original,'mapping'],[original,nodeId('upstream',c.upstream),'upstream']]) {
-      edges.push({id:JSON.stringify([c.relationship,alias,stage]),from,to,tools:1,relationship:c.relationship,tool:mapping})
+    const alias = aliasId(c.server, c.upstream, c.original, c.exposed),
+      original = originalId(c.upstream, c.original)
+    const mapping = { upstream: c.upstream, original: c.original, server: c.server }
+    if (!seen.has(alias)) {
+      nodes.push({
+        id: alias,
+        column: 2,
+        label: c.exposed,
+        status: `${c.server} · ${c.missing ? 'missing' : c.policy}`,
+        tool: mapping,
+        alias: true,
+      })
+      seen.add(alias)
+    }
+    if (!seen.has(original)) {
+      nodes.push({
+        id: original,
+        column: 3,
+        label: c.original,
+        status: c.upstream,
+        tool: { upstream: c.upstream, original: c.original },
+      })
+      seen.add(original)
+    }
+    for (const [from, to, stage] of [
+      [nodeId('server', c.server), alias, 'exposed'],
+      [alias, original, 'mapping'],
+      [original, nodeId('upstream', c.upstream), 'upstream'],
+    ]) {
+      edges.push({
+        id: JSON.stringify([c.relationship, alias, stage]),
+        from,
+        to,
+        tools: 1,
+        relationship: c.relationship,
+        tool: mapping,
+      })
     }
   }
   // Catalog-only routes still cross the canvas, without inventing tool nodes.
-  if(expanded) for(const e of scoped.edges.filter(e=>e.tools===0 && e.from===nodeId('server',e.server)))edges.push({...e,relationship:e.id})
+  if (expanded)
+    for (const e of scoped.edges.filter(
+      (e) => e.tools === 0 && e.from === nodeId('server', e.server),
+    ))
+      edges.push({ ...e, relationship: e.id })
 
-  const edgeHighlighted=(e:DiagramEdge)=>active.has(e.relationship) && (!focusTool || !e.tool || matchesTool(e.tool,focusTool))
-  const activeNodes=new Set(edges.filter(edgeHighlighted).flatMap(e=>[e.from,e.to]))
-  if(selected)activeNodes.add(selected)
-  const columns=headings.map((_,column)=>{
-    const members=nodes.filter(n=>n.column===column).sort((a,b)=>a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
-    const size=Math.max(1,Math.ceil(members.length/12))
-    return Array.from({length:Math.ceil(members.length/size)},(_,i)=>{
-      const group=members.slice(i*size,(i+1)*size)
-      return {id:group[0].id,column,members:group,label:group.length===1?group[0].label:`${group.length} ${column===0?'identities':expanded && (column===2 || column===3)?'tools':'servers'}`,status:group.length===1?group[0].status:`${group[0].label} … ${group.at(-1)!.label}`}
+  const edgeHighlighted = (e: DiagramEdge) =>
+    active.has(e.relationship) && (!focusTool || !e.tool || matchesTool(e.tool, focusTool))
+  const activeNodes = new Set(edges.filter(edgeHighlighted).flatMap((e) => [e.from, e.to]))
+  if (selected) activeNodes.add(selected)
+  const columns = headings.map((_, column) => {
+    const members = nodes
+      .filter((n) => n.column === column)
+      .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
+    const size = Math.max(1, Math.ceil(members.length / 12))
+    return Array.from({ length: Math.ceil(members.length / size) }, (_, i) => {
+      const group = members.slice(i * size, (i + 1) * size)
+      return {
+        id: group[0].id,
+        column,
+        members: group,
+        label:
+          group.length === 1
+            ? group[0].label
+            : `${group.length} ${column === 0 ? 'identities' : expanded && (column === 2 || column === 3) ? 'tools' : 'servers'}`,
+        status: group.length === 1 ? group[0].status : `${group[0].label} … ${group.at(-1)!.label}`,
+      }
     })
   })
-  const owner=new Map(columns.flatMap(col=>col.flatMap(n=>n.members.map(m=>[m.id,n.id] as const))))
-  const bundles=new Map<string,{from:string;to:string;tools:number;edges:DiagramEdge[]}>()
-  for(const e of edges){
-    const from=owner.get(e.from)!,to=owner.get(e.to)!,id=JSON.stringify([from,to]),existing=bundles.get(id)
-    if(existing){existing.tools+=e.tools;existing.edges.push(e)}else bundles.set(id,{from,to,tools:e.tools,edges:[e]})
+  const owner = new Map(
+    columns.flatMap((col) => col.flatMap((n) => n.members.map((m) => [m.id, n.id] as const))),
+  )
+  const bundles = new Map<
+    string,
+    { from: string; to: string; tools: number; edges: DiagramEdge[] }
+  >()
+  for (const e of edges) {
+    const from = owner.get(e.from)!,
+      to = owner.get(e.to)!,
+      id = JSON.stringify([from, to]),
+      existing = bundles.get(id)
+    if (existing) {
+      existing.tools += e.tools
+      existing.edges.push(e)
+    } else bundles.set(id, { from, to, tools: e.tools, edges: [e] })
   }
-  const links=[...bundles.values()]
-  const total=Math.max(1,...columns.map(col=>col.reduce((sum,n)=>sum+Math.max(links.filter(e=>e.from===n.id).reduce((s,e)=>s+e.tools,0),links.filter(e=>e.to===n.id).reduce((s,e)=>s+e.tools,0)),0)))
-  const ribbonWidth=(count:number)=>Math.max(2,count*Math.min(14,240/total))
-  const canvasWidth=1180,nodeWidth=expanded?180:245,spacing=expanded?240:390
-  const columnHeights=columns.map(col=>col.map(n=>Math.max(94,...(['from','to'] as const).map(side=>links.filter(e=>e[side]===n.id).reduce((sum,e)=>sum+ribbonWidth(e.tools),0)+24))))
-  const contentHeight=Math.max(180,...columnHeights.map(heights=>heights.reduce((sum,h)=>sum+h+20,0)))
-  const layout=columns.map((col,i)=>{
-    let y=66+(contentHeight-columnHeights[i].reduce((sum,h)=>sum+h+20,0))/2
-    return col.map((n,j)=>{const height=columnHeights[i][j],node={...n,x:20+i*spacing,y,height};y+=height+20;return node})
+  const links = [...bundles.values()]
+  const total = Math.max(
+    1,
+    ...columns.map((col) =>
+      col.reduce(
+        (sum, n) =>
+          sum +
+          Math.max(
+            links.filter((e) => e.from === n.id).reduce((s, e) => s + e.tools, 0),
+            links.filter((e) => e.to === n.id).reduce((s, e) => s + e.tools, 0),
+          ),
+        0,
+      ),
+    ),
+  )
+  const ribbonWidth = (count: number) => Math.max(2, count * Math.min(14, 240 / total))
+  const canvasWidth = 1180,
+    nodeWidth = expanded ? 180 : 245,
+    spacing = expanded ? 240 : 390
+  const columnHeights = columns.map((col) =>
+    col.map((n) =>
+      Math.max(
+        94,
+        ...(['from', 'to'] as const).map(
+          (side) =>
+            links
+              .filter((e) => e[side] === n.id)
+              .reduce((sum, e) => sum + ribbonWidth(e.tools), 0) + 24,
+        ),
+      ),
+    ),
+  )
+  const contentHeight = Math.max(
+    180,
+    ...columnHeights.map((heights) => heights.reduce((sum, h) => sum + h + 20, 0)),
+  )
+  const layout = columns.map((col, i) => {
+    let y = 66 + (contentHeight - columnHeights[i].reduce((sum, h) => sum + h + 20, 0)) / 2
+    return col.map((n, j) => {
+      const height = columnHeights[i][j],
+        node = { ...n, x: 20 + i * spacing, y, height }
+      y += height + 20
+      return node
+    })
   })
-  const positions=new Map(layout.flat().map(n=>[n.id,n]))
-  const ports=new Map<string,{from:number;to:number}>()
-  for(const n of layout.flat())for(const side of ['from','to'] as const){
-    const ordered=links.filter(e=>e[side]===n.id).sort((a,b)=>positions.get(a[side==='from'?'to':'from'])!.y-positions.get(b[side==='from'?'to':'from'])!.y)
-    let port=n.y+(n.height-ordered.reduce((sum,e)=>sum+ribbonWidth(e.tools),0))/2
-    for(const e of ordered){const id=JSON.stringify([e.from,e.to]),entry=ports.get(id) ?? {from:0,to:0};entry[side]=port+ribbonWidth(e.tools)/2;ports.set(id,entry);port+=ribbonWidth(e.tools)}
+  const positions = new Map(layout.flat().map((n) => [n.id, n]))
+  const ports = new Map<string, { from: number; to: number }>()
+  for (const n of layout.flat())
+    for (const side of ['from', 'to'] as const) {
+      const ordered = links
+        .filter((e) => e[side] === n.id)
+        .sort(
+          (a, b) =>
+            positions.get(a[side === 'from' ? 'to' : 'from'])!.y -
+            positions.get(b[side === 'from' ? 'to' : 'from'])!.y,
+        )
+      let port = n.y + (n.height - ordered.reduce((sum, e) => sum + ribbonWidth(e.tools), 0)) / 2
+      for (const e of ordered) {
+        const id = JSON.stringify([e.from, e.to]),
+          entry = ports.get(id) ?? { from: 0, to: 0 }
+        entry[side] = port + ribbonWidth(e.tools) / 2
+        ports.set(id, entry)
+        port += ribbonWidth(e.tools)
+      }
+    }
+  const inspect = graph.nodes.find((n) => n.id === expanded)
+  const reset = () => {
+    setScopes([])
+    setToolScopes([])
+    setExpanded(undefined)
+    setSelected(undefined)
+    setPreview(undefined)
+    setPreviewTool(undefined)
+    setTool(undefined)
+    setToolQuery('')
   }
-  const inspect=graph.nodes.find(n=>n.id===expanded)
-  const reset=()=>{setScopes([]);setToolScopes([]);setExpanded(undefined);setSelected(undefined);setPreview(undefined);setPreviewTool(undefined);setTool(undefined);setToolQuery('')}
-  const clearHighlight=()=>{setTool(undefined);setPreviewTool(undefined);setPreview(undefined)}
-  const expand=(n:DiagramNode)=>{
+  const clearHighlight = () => {
+    setTool(undefined)
+    setPreviewTool(undefined)
+    setPreview(undefined)
+  }
+  const expand = (n: DiagramNode) => {
     clearHighlight()
-    if(n.tool){setTool(n.tool);return}
-    if(!n.base)return
+    if (n.tool) {
+      setTool(n.tool)
+      return
+    }
+    if (!n.base) return
     setSelected(n.id)
-    if(n.base.column!==0){
-      const next=n.id===expanded?scopes.slice(0,-1):[...scopes,{column:n.base.column,ids:[n.id],label:n.label}]
-      setScopes(next);setExpanded(n.id===expanded?undefined:n.id);setToolScopes([]);setToolQuery('')
+    if (n.base.column !== 0) {
+      const next =
+        n.id === expanded
+          ? scopes.slice(0, -1)
+          : [...scopes, { column: n.base.column, ids: [n.id], label: n.label }]
+      setScopes(next)
+      setExpanded(n.id === expanded ? undefined : n.id)
+      setToolScopes([])
+      setToolQuery('')
     }
   }
-  const back=()=>{
+  const back = () => {
     clearHighlight()
-    if(toolScopes.length){setToolScopes(toolScopes.slice(0,-1));return}
-    if(expanded){
-      const next=scopes.slice(0,-1),previous=next.at(-1)
-      setExpanded(previous && previous.column!==0 && previous.ids.length===1?previous.ids[0]:undefined);setScopes(next);setSelected(undefined);setToolQuery('');return
+    if (toolScopes.length) {
+      setToolScopes(toolScopes.slice(0, -1))
+      return
     }
-    setScopes(scopes.slice(0,-1));setSelected(undefined)
+    if (expanded) {
+      const next = scopes.slice(0, -1),
+        previous = next.at(-1)
+      setExpanded(
+        previous && previous.column !== 0 && previous.ids.length === 1
+          ? previous.ids[0]
+          : undefined,
+      )
+      setScopes(next)
+      setSelected(undefined)
+      setToolQuery('')
+      return
+    }
+    setScopes(scopes.slice(0, -1))
+    setSelected(undefined)
   }
 
-  const exploreServer=(id:string)=>{
-    if(!id){reset();return}
-    const node=graph.nodes.find(n=>n.id===id)
-    if(!node)return
-    clearHighlight();setScopes([{column:node.column,ids:[node.id],label:node.label}]);setToolScopes([]);setToolQuery('');setExpanded(node.id);setSelected(node.id)
+  const exploreServer = (id: string) => {
+    if (!id) {
+      reset()
+      return
+    }
+    const node = graph.nodes.find((n) => n.id === id)
+    if (!node) return
+    clearHighlight()
+    setScopes([{ column: node.column, ids: [node.id], label: node.label }])
+    setToolScopes([])
+    setToolQuery('')
+    setExpanded(node.id)
+    setSelected(node.id)
   }
-  const routes=props.relationships.filter(r=>r.kind==='upstream'&&visibleRelationships.has(r.id)&&(!tool||r.capabilities.some(c=>c.kind==='tool'&&matchesTool({server:r.server,upstream:r.to,original:c.original},tool))))
+  const routes = props.relationships.filter(
+    (r) =>
+      r.kind === 'upstream' &&
+      visibleRelationships.has(r.id) &&
+      (!tool ||
+        r.capabilities.some(
+          (c) =>
+            c.kind === 'tool' &&
+            matchesTool({ server: r.server, upstream: r.to, original: c.original }, tool),
+        )),
+  )
 
-  return <section aria-label="Connection flow" className="overflow-hidden surface-card">
-    <div className="flex flex-wrap justify-between items-start gap-4 border-b border-line panel-body sm:px-6">
-      <div className="flex min-w-0 gap-3"><div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700"><Network aria-hidden="true" className="icon-feature"/></div><div><h2 className="panel-title">{expanded?'Tool routing':'Configuration flow'}</h2><p className="panel-description mt-1 text-xs text-ink-muted">{graph.nodes.length} nodes · {graph.edges.length} connections. {scopes.length?'Focused neighborhood':'All configured connections'}.</p></div></div>
-      <div className="flex flex-wrap gap-2"><ToggleButton aria-pressed={largeCanvas} onClick={()=>setLargeCanvas(value=>!value)}><Maximize2 aria-hidden="true" className="icon-inline"/>{largeCanvas?'Standard canvas':'Expand canvas'}</ToggleButton><button className={btn} onClick={reset}><Maximize2 aria-hidden="true" className="icon-inline"/>Reset to overview</button></div>
-    </div>
-    <div className="grid items-end gap-4 border-b border-line bg-canvas/50 panel-inset py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-      <div><p className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium"><SlidersHorizontal aria-hidden="true" className="icon-inline"/>Explore configuration</p><p className="text-xs leading-relaxed text-ink-muted">Select a virtual or upstream server to unfold tool mappings. Grouped nodes expand in place; breadcrumbs keep your position.</p></div>
-      <label className="min-w-0 text-xs font-medium">Explore server<Select className={`${input} mt-2`} value={expanded??''} onChange={e=>exploreServer(e.target.value)}><option value="">All configured connections</option><optgroup label="Virtual MCP servers">{graph.nodes.filter(n=>n.column===1).map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</optgroup><optgroup label="Upstream MCP servers">{graph.nodes.filter(n=>n.column===2).map(n=><option key={n.id} value={n.id}>{n.label}</option>)}</optgroup></Select></label>
-    </div>
-    <div className="flex flex-wrap items-center justify-between gap-3 panel-inset py-3 sm:px-6 bg-canvas/50">
-      <nav aria-label="Flow drill-down" className="flex flex-wrap items-center gap-2 text-xs"><button className="rounded-md border border-line bg-surface px-2 py-1 font-medium text-accent-700" onClick={reset}>All connections</button>{scopes.map((s,i)=><span className="inline-flex items-center gap-2" key={i}><ChevronRight aria-hidden="true" className="icon-inline text-ink-muted"/><button className="max-w-64 truncate rounded-md border border-line bg-surface px-2 py-1 text-accent-700" data-tooltip={s.label} onClick={()=>{clearHighlight();setScopes(scopes.slice(0,i+1));setExpanded(s.column!==0 && s.ids.length===1?s.ids[0]:undefined);setToolQuery('');setToolScopes([]);setSelected(undefined)}}>{s.label}</button></span>)}{toolScopes.map((s,i)=><span className="inline-flex items-center gap-2" key={`tool-${i}`}><ChevronRight aria-hidden="true" className="icon-inline text-ink-muted"/><button className="max-w-64 truncate rounded-md border border-line bg-surface px-2 py-1 text-accent-700" data-tooltip={s.label} onClick={()=>{clearHighlight();setToolScopes(toolScopes.slice(0,i+1))}}>{s.label}</button></span>)}</nav>
-      {(scopes.length>0 || expanded) && <button className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted" onClick={back}><ArrowLeft aria-hidden="true" className="icon-inline"/>Back one level</button>}
-    </div>
-    {expanded && <div className="flex flex-wrap justify-between items-center gap-3 border-b border-line panel-inset py-4 sm:px-6">
-      <div><p className="text-sm font-medium">{inspect?.label} <span className="text-ink-muted font-normal">/ tool mappings</span></p><p className="mt-1 text-xs text-ink-muted">Select a tool to pin its path.</p></div>
-      <SearchField label="Find tool mapping" value={toolQuery} onChange={value=>{setToolQuery(value);clearHighlight()}} placeholder="Search tool, alias or policy" className="relative w-full sm:w-72"/>
-    </div>}
-    {expanded && <ActiveFilters className="border-b border-line panel-inset py-3 sm:px-6" label="Active tool mapping filters" items={[filterItem('Search',toolQuery,()=>{setToolQuery('');clearHighlight()})]} onReset={()=>{setToolQuery('');clearHighlight()}}><ResultCount matched={visibleMappings.length} total={mappings.length} noun="mappings"/></ActiveFilters>}
-    <div className="panel-inset pt-4 sm:px-6 flex flex-wrap items-center justify-between gap-3">
-      <p id={instructions} className="text-xs text-ink-muted inline-flex items-center gap-2"><Waypoints aria-hidden="true" className="icon-inline"/>{expanded?'Follow exposed aliases to their original upstream tools. Hover or focus to preview paths.':'Select a server to unfold its tools inside the flow. Expand groups to explore larger inventories.'}</p>
-      {inspect && <Link className="inline-flex items-center gap-1 text-xs font-medium text-accent-700" to={inspect.href}>Open configuration<ArrowUpRight aria-hidden="true" className="icon-inline"/></Link>}
-    </div>
-    {tool && <div role="status" aria-label="Highlighted tool path" className="mx-5 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-accent-500/20 bg-accent-50 px-3 py-2 text-xs sm:mx-6"><span className="font-medium">Tracing {tool.upstream} / {tool.original}{tool.server?` through ${tool.server}`:' through all virtual servers'}</span><button className="text-accent-700 underline" onClick={clearHighlight}>Clear tool highlight</button></div>}
-    {graph.nodes.length>0 && <div ref={canvas} onFocusCapture={event=>{focusedNode.current=event.target}} role="region" aria-describedby={instructions} className="m-4 overflow-auto surface-inset p-3 sm:m-5" style={{maxHeight:largeCanvas?960:680}} tabIndex={0} aria-label="Scrollable configuration diagram">
-      <svg width="100%" viewBox={`0 0 ${canvasWidth} ${contentHeight+80}`} style={{minWidth:880}} role="group" aria-label={expanded?'Identities through exposed tools to upstream definitions':'Identities to virtual servers to upstreams'}>
-        <defs><pattern id="flow-grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".7" fill="currentColor" opacity=".08"/></pattern>{links.map((e,i)=><linearGradient key={i} id={`ribbon-${i}`} gradientUnits="userSpaceOnUse" x1={positions.get(e.from)!.x+nodeWidth} x2={positions.get(e.to)!.x} y1={ports.get(JSON.stringify([e.from,e.to]))!.from} y2={ports.get(JSON.stringify([e.from,e.to]))!.to}><stop offset="0%" stopColor={colors[positions.get(e.from)!.column]}/><stop offset="100%" stopColor={colors[positions.get(e.to)!.column]}/></linearGradient>)}</defs>
-        <rect width={canvasWidth} height={contentHeight+80} fill="url(#flow-grid)" rx="12"/>
-        {headings.map((h,i)=><g key={h}><circle cx={25+i*spacing} cy={27} r="4" fill={colors[i]}/><text x={37+i*spacing} y={32} fill="currentColor" fontSize={13} fontWeight={600}>{h}</text></g>)}
-        {links.map((e,i)=>{
-          const source=positions.get(e.from)!,target=positions.get(e.to)!,port=ports.get(JSON.stringify([e.from,e.to]))!,highlighted=e.edges.some(edgeHighlighted)
-          return <path key={JSON.stringify([e.from,e.to])} data-testid="flow-ribbon" data-tooltip={`${source.label} → ${target.label}: ${e.tools} configured tool selections`} data-highlighted={focusing?String(highlighted):undefined} d={`M ${source.x+nodeWidth} ${port.from} C ${source.x+nodeWidth+55} ${port.from}, ${target.x-55} ${port.to}, ${target.x} ${port.to}`} fill="none" stroke={`url(#ribbon-${i})`} strokeWidth={ribbonWidth(e.tools)} strokeDasharray={e.tools===0?'4 4':undefined} opacity={focusing?(highlighted ? .85 : .05):.36} className="motion-flow"/>
-        })}
-        {layout.flat().map(n=>{
-          const grouped=n.members.length>1,first=n.members[0],highlighted=n.members.some(m=>activeNodes.has(m.id)),toolCount=links.filter(e=>n.column===headings.length-1?e.to===n.id:e.from===n.id).reduce((s,e)=>s+e.tools,0)
-          return <foreignObject key={n.id} x={n.x} y={n.y} width={nodeWidth} height={n.height} opacity={focusing && !highlighted ? .3 : 1} className="motion-flow">
-            <div className={`h-full surface-node overflow-hidden ${highlighted?'border-accent-500 ring-1 ring-accent-500/20':'border-line'}`} style={{borderLeftWidth:3,borderLeftColor:colors[n.column]}}>
-              <button className="group block w-full px-3 pt-3 text-left focus-visible:outline-2 focus-visible:outline-accent-500" aria-label={grouped?`Expand ${n.label}`:first.tool?`Trace ${first.alias?'alias':'upstream tool'} ${first.tool.server && first.alias?first.tool.server:first.tool.upstream} / ${first.alias?first.label:first.tool.original}`:n.label} data-tooltip={`${n.label} · ${n.status}`} aria-pressed={!grouped && (selected===n.id || (!!tool && !!first.tool && matchesTool(first.tool,tool)))} onMouseEnter={()=>{if(!grouped){if(first.tool)setPreviewTool(first.tool);else setPreview(n.id)}}} onMouseLeave={()=>{setPreview(undefined);setPreviewTool(undefined)}} onFocus={()=>{if(!grouped){if(first.tool)setPreviewTool(first.tool);else setPreview(n.id)}}} onBlur={()=>{setPreview(undefined);setPreviewTool(undefined)}} onClick={()=>{
-                setPreview(undefined);setPreviewTool(undefined)
-                if(grouped){clearHighlight();if(first.base){setScopes([...scopes,{column:first.base.column,ids:n.members.map(m=>m.id),label:n.status}]);setSelected(undefined)}else setToolScopes([...toolScopes,{column:n.column,ids:n.members.map(m=>m.id),label:n.status}])}
-                else expand(first)
-              }}><span className="flex items-center justify-between gap-2"><span className="truncate text-base font-semibold">{grouped?'Expand ':''}{n.label}</span>{grouped?<Layers3 aria-hidden="true" className="icon-inline shrink-0 text-ink-muted"/>:first.base && first.base.column!==0?<ChevronRight aria-hidden="true" className="icon-inline shrink-0 text-ink-muted group-hover:text-accent-700"/>:null}</span><span className="mt-1 block">{grouped||(first.tool&&!first.alias)?<TagBadge label={n.status} className="badge-inline"/>:<StatusBadge status={first.alias?n.status.split(' · ').slice(1).join(' · '):n.status} label={n.status} variant="inline"/>}</span></button>
-              <div className="flex items-center justify-between gap-2 px-3 pb-3 pt-2 text-[11px] text-ink-muted"><span>{first.tool&&!grouped?(first.alias?'Exposed alias':'Original definition'):`${toolCount} tool ${toolCount===1?'selection':'selections'}`}</span>{!grouped && first.href && <Link to={first.href} aria-label={`Open ${n.label} configuration`} className="text-accent-700"><ArrowUpRight aria-hidden="true" className="icon-inline"/></Link>}</div>
-            </div>
-          </foreignObject>
-        })}
-      </svg>
-    </div>}
-    {expanded && props.onInspect && routes.length>0 && <details className="mx-5 mb-5 surface-inset sm:mx-6"><summary className="cursor-pointer px-4 py-3 text-xs font-medium">Connection details · {routes.length} upstream {routes.length===1?'route':'routes'}</summary><div className="flex flex-wrap gap-2 border-t border-line p-4">{routes.map(r=><button key={r.id} className={btn} aria-label={`View connection ${r.from} to ${r.to}`} onClick={()=>props.onInspect?.(r)}><span className="min-w-0 break-all text-xs">{r.from} → {r.to}</span><ArrowUpRight aria-hidden="true" className="icon-inline shrink-0"/></button>)}</div></details>}
-    {expanded && visibleMappings.length===0 && <EmptyState title="No matching configured tool mappings. Catalog-only routes remain visible." description="Try another tool, alias or policy search." compact/>}
-    {graph.nodes.length===0 && <div className="panel-body">{props.loading?<LoadingState label="Loading connection flow…" detail="Reading saved identities, servers and relationships."/>:<EmptyState title={props.error?'Configuration flow unavailable':'No configured identities or servers.'} description={props.error?'Retry loading the configuration using the message above.':'Start with an upstream and a virtual server to build your connection flow.'} actions={!props.error?<Link className={btn} to="/setup">Open setup guide</Link>:undefined}/>}</div>}
-    <div className="border-t border-line panel-inset py-3 sm:px-6 text-[11px] text-ink-muted flex flex-wrap gap-x-5 gap-y-1"><span className="font-medium">Width = configured tool selections</span><span>Dashed = zero tools / catalog access</span><span>Conditional, disabled, denied and missing mappings remain visible.</span><span>Configuration only · counts repeat across identity grants</span></div>
-  </section>
+  return (
+    <section aria-label="Connection flow" className="overflow-hidden surface-card">
+      <div className="flex flex-wrap justify-between items-start gap-4 border-b border-line panel-body sm:px-6">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700">
+            <Network aria-hidden="true" className="icon-feature" />
+          </div>
+          <div>
+            <h2 className="panel-title">{expanded ? 'Tool routing' : 'Configuration flow'}</h2>
+            <p className="panel-description mt-1 text-xs text-ink-muted">
+              {graph.nodes.length} nodes · {graph.edges.length} connections.{' '}
+              {scopes.length ? 'Focused neighborhood' : 'All configured connections'}.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <ToggleButton
+            aria-pressed={largeCanvas}
+            onClick={() => setLargeCanvas((value) => !value)}
+          >
+            <Maximize2 aria-hidden="true" className="icon-inline" />
+            {largeCanvas ? 'Standard canvas' : 'Expand canvas'}
+          </ToggleButton>
+          <button className={btn} onClick={reset}>
+            <Maximize2 aria-hidden="true" className="icon-inline" />
+            Reset to overview
+          </button>
+        </div>
+      </div>
+      <div className="grid items-end gap-4 border-b border-line bg-canvas/50 panel-inset py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div>
+          <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium">
+            <SlidersHorizontal aria-hidden="true" className="icon-inline" />
+            Explore configuration
+          </p>
+          <p className="text-xs leading-relaxed text-ink-muted">
+            Select a virtual or upstream server to unfold tool mappings. Grouped nodes expand in
+            place; breadcrumbs keep your position.
+          </p>
+        </div>
+        <label className="min-w-0 text-xs font-medium">
+          Explore server
+          <Select
+            className={`${input} mt-2`}
+            value={expanded ?? ''}
+            onChange={(e) => exploreServer(e.target.value)}
+          >
+            <option value="">All configured connections</option>
+            <optgroup label="Virtual MCP servers">
+              {graph.nodes
+                .filter((n) => n.column === 1)
+                .map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.label}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Upstream MCP servers">
+              {graph.nodes
+                .filter((n) => n.column === 2)
+                .map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.label}
+                  </option>
+                ))}
+            </optgroup>
+          </Select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 panel-inset py-3 sm:px-6 bg-canvas/50">
+        <nav aria-label="Flow drill-down" className="flex flex-wrap items-center gap-2 text-xs">
+          <button
+            className="rounded-md border border-line bg-surface px-2 py-1 font-medium text-accent-700"
+            onClick={reset}
+          >
+            All connections
+          </button>
+          {scopes.map((s, i) => (
+            <span className="inline-flex items-center gap-2" key={i}>
+              <ChevronRight aria-hidden="true" className="icon-inline text-ink-muted" />
+              <button
+                className="max-w-64 truncate rounded-md border border-line bg-surface px-2 py-1 text-accent-700"
+                data-tooltip={s.label}
+                onClick={() => {
+                  clearHighlight()
+                  setScopes(scopes.slice(0, i + 1))
+                  setExpanded(s.column !== 0 && s.ids.length === 1 ? s.ids[0] : undefined)
+                  setToolQuery('')
+                  setToolScopes([])
+                  setSelected(undefined)
+                }}
+              >
+                {s.label}
+              </button>
+            </span>
+          ))}
+          {toolScopes.map((s, i) => (
+            <span className="inline-flex items-center gap-2" key={`tool-${i}`}>
+              <ChevronRight aria-hidden="true" className="icon-inline text-ink-muted" />
+              <button
+                className="max-w-64 truncate rounded-md border border-line bg-surface px-2 py-1 text-accent-700"
+                data-tooltip={s.label}
+                onClick={() => {
+                  clearHighlight()
+                  setToolScopes(toolScopes.slice(0, i + 1))
+                }}
+              >
+                {s.label}
+              </button>
+            </span>
+          ))}
+        </nav>
+        {(scopes.length > 0 || expanded) && (
+          <button
+            className="inline-flex items-center gap-1 text-xs font-medium text-ink-muted"
+            onClick={back}
+          >
+            <ArrowLeft aria-hidden="true" className="icon-inline" />
+            Back one level
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <div className="flex flex-wrap justify-between items-center gap-3 border-b border-line panel-inset py-4 sm:px-6">
+          <div>
+            <p className="text-sm font-medium">
+              {inspect?.label} <span className="text-ink-muted font-normal">/ tool mappings</span>
+            </p>
+            <p className="mt-1 text-xs text-ink-muted">Select a tool to pin its path.</p>
+          </div>
+          <SearchField
+            label="Find tool mapping"
+            value={toolQuery}
+            onChange={(value) => {
+              setToolQuery(value)
+              clearHighlight()
+            }}
+            placeholder="Search tool, alias or policy"
+            className="relative w-full sm:w-72"
+          />
+        </div>
+      )}
+      {expanded && (
+        <ActiveFilters
+          className="border-b border-line panel-inset py-3 sm:px-6"
+          label="Active tool mapping filters"
+          items={[
+            filterItem('Search', toolQuery, () => {
+              setToolQuery('')
+              clearHighlight()
+            }),
+          ]}
+          onReset={() => {
+            setToolQuery('')
+            clearHighlight()
+          }}
+        >
+          <ResultCount matched={visibleMappings.length} total={mappings.length} noun="mappings" />
+        </ActiveFilters>
+      )}
+      <div className="panel-inset pt-4 sm:px-6 flex flex-wrap items-center justify-between gap-3">
+        <p id={instructions} className="text-xs text-ink-muted inline-flex items-center gap-2">
+          <Waypoints aria-hidden="true" className="icon-inline" />
+          {expanded
+            ? 'Follow exposed aliases to their original upstream tools. Hover or focus to preview paths.'
+            : 'Select a server to unfold its tools inside the flow. Expand groups to explore larger inventories.'}
+        </p>
+        {inspect && (
+          <Link
+            className="inline-flex items-center gap-1 text-xs font-medium text-accent-700"
+            to={inspect.href}
+          >
+            Open configuration
+            <ArrowUpRight aria-hidden="true" className="icon-inline" />
+          </Link>
+        )}
+      </div>
+      {tool && (
+        <div
+          role="status"
+          aria-label="Highlighted tool path"
+          className="mx-5 mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-accent-500/20 bg-accent-50 px-3 py-2 text-xs sm:mx-6"
+        >
+          <span className="font-medium">
+            Tracing {tool.upstream} / {tool.original}
+            {tool.server ? ` through ${tool.server}` : ' through all virtual servers'}
+          </span>
+          <button className="text-accent-700 underline" onClick={clearHighlight}>
+            Clear tool highlight
+          </button>
+        </div>
+      )}
+      {graph.nodes.length > 0 && (
+        <div
+          ref={canvas}
+          onFocusCapture={(event) => {
+            focusedNode.current = event.target
+          }}
+          role="region"
+          aria-describedby={instructions}
+          className="m-4 overflow-auto surface-inset p-3 sm:m-5"
+          style={{ maxHeight: largeCanvas ? 960 : 680 }}
+          tabIndex={0}
+          aria-label="Scrollable configuration diagram"
+        >
+          <svg
+            width="100%"
+            viewBox={`0 0 ${canvasWidth} ${contentHeight + 80}`}
+            style={{ minWidth: 880 }}
+            role="group"
+            aria-label={
+              expanded
+                ? 'Identities through exposed tools to upstream definitions'
+                : 'Identities to virtual servers to upstreams'
+            }
+          >
+            <defs>
+              <pattern id="flow-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r=".7" fill="currentColor" opacity=".08" />
+              </pattern>
+              {links.map((e, i) => (
+                <linearGradient
+                  key={i}
+                  id={`ribbon-${i}`}
+                  gradientUnits="userSpaceOnUse"
+                  x1={positions.get(e.from)!.x + nodeWidth}
+                  x2={positions.get(e.to)!.x}
+                  y1={ports.get(JSON.stringify([e.from, e.to]))!.from}
+                  y2={ports.get(JSON.stringify([e.from, e.to]))!.to}
+                >
+                  <stop offset="0%" stopColor={colors[positions.get(e.from)!.column]} />
+                  <stop offset="100%" stopColor={colors[positions.get(e.to)!.column]} />
+                </linearGradient>
+              ))}
+            </defs>
+            <rect width={canvasWidth} height={contentHeight + 80} fill="url(#flow-grid)" rx="12" />
+            {headings.map((h, i) => (
+              <g key={h}>
+                <circle cx={25 + i * spacing} cy={27} r="4" fill={colors[i]} />
+                <text
+                  x={37 + i * spacing}
+                  y={32}
+                  fill="currentColor"
+                  fontSize={13}
+                  fontWeight={600}
+                >
+                  {h}
+                </text>
+              </g>
+            ))}
+            {links.map((e, i) => {
+              const source = positions.get(e.from)!,
+                target = positions.get(e.to)!,
+                port = ports.get(JSON.stringify([e.from, e.to]))!,
+                highlighted = e.edges.some(edgeHighlighted)
+              return (
+                <path
+                  key={JSON.stringify([e.from, e.to])}
+                  data-testid="flow-ribbon"
+                  data-tooltip={`${source.label} → ${target.label}: ${e.tools} configured tool selections`}
+                  data-highlighted={focusing ? String(highlighted) : undefined}
+                  d={`M ${source.x + nodeWidth} ${port.from} C ${source.x + nodeWidth + 55} ${port.from}, ${target.x - 55} ${port.to}, ${target.x} ${port.to}`}
+                  fill="none"
+                  stroke={`url(#ribbon-${i})`}
+                  strokeWidth={ribbonWidth(e.tools)}
+                  strokeDasharray={e.tools === 0 ? '4 4' : undefined}
+                  opacity={focusing ? (highlighted ? 0.85 : 0.05) : 0.36}
+                  className="motion-flow"
+                />
+              )
+            })}
+            {layout.flat().map((n) => {
+              const grouped = n.members.length > 1,
+                first = n.members[0],
+                highlighted = n.members.some((m) => activeNodes.has(m.id)),
+                toolCount = links
+                  .filter((e) =>
+                    n.column === headings.length - 1 ? e.to === n.id : e.from === n.id,
+                  )
+                  .reduce((s, e) => s + e.tools, 0)
+              return (
+                <foreignObject
+                  key={n.id}
+                  x={n.x}
+                  y={n.y}
+                  width={nodeWidth}
+                  height={n.height}
+                  opacity={focusing && !highlighted ? 0.3 : 1}
+                  className="motion-flow"
+                >
+                  <div
+                    className={`h-full surface-node overflow-hidden ${highlighted ? 'border-accent-500 ring-1 ring-accent-500/20' : 'border-line'}`}
+                    style={{ borderLeftWidth: 3, borderLeftColor: colors[n.column] }}
+                  >
+                    <button
+                      className="group block w-full px-3 pt-3 text-left focus-visible:outline-2 focus-visible:outline-accent-500"
+                      aria-label={
+                        grouped
+                          ? `Expand ${n.label}`
+                          : first.tool
+                            ? `Trace ${first.alias ? 'alias' : 'upstream tool'} ${first.tool.server && first.alias ? first.tool.server : first.tool.upstream} / ${first.alias ? first.label : first.tool.original}`
+                            : n.label
+                      }
+                      data-tooltip={`${n.label} · ${n.status}`}
+                      aria-pressed={
+                        !grouped &&
+                        (selected === n.id ||
+                          (!!tool && !!first.tool && matchesTool(first.tool, tool)))
+                      }
+                      onMouseEnter={() => {
+                        if (!grouped) {
+                          if (first.tool) setPreviewTool(first.tool)
+                          else setPreview(n.id)
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        setPreview(undefined)
+                        setPreviewTool(undefined)
+                      }}
+                      onFocus={() => {
+                        if (!grouped) {
+                          if (first.tool) setPreviewTool(first.tool)
+                          else setPreview(n.id)
+                        }
+                      }}
+                      onBlur={() => {
+                        setPreview(undefined)
+                        setPreviewTool(undefined)
+                      }}
+                      onClick={() => {
+                        setPreview(undefined)
+                        setPreviewTool(undefined)
+                        if (grouped) {
+                          clearHighlight()
+                          if (first.base) {
+                            setScopes([
+                              ...scopes,
+                              {
+                                column: first.base.column,
+                                ids: n.members.map((m) => m.id),
+                                label: n.status,
+                              },
+                            ])
+                            setSelected(undefined)
+                          } else
+                            setToolScopes([
+                              ...toolScopes,
+                              {
+                                column: n.column,
+                                ids: n.members.map((m) => m.id),
+                                label: n.status,
+                              },
+                            ])
+                        } else expand(first)
+                      }}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate text-base font-semibold">
+                          {grouped ? 'Expand ' : ''}
+                          {n.label}
+                        </span>
+                        {grouped ? (
+                          <Layers3
+                            aria-hidden="true"
+                            className="icon-inline shrink-0 text-ink-muted"
+                          />
+                        ) : first.base && first.base.column !== 0 ? (
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="icon-inline shrink-0 text-ink-muted group-hover:text-accent-700"
+                          />
+                        ) : null}
+                      </span>
+                      <span className="mt-1 block">
+                        {grouped || (first.tool && !first.alias) ? (
+                          <TagBadge label={n.status} className="badge-inline" />
+                        ) : (
+                          <StatusBadge
+                            status={
+                              first.alias ? n.status.split(' · ').slice(1).join(' · ') : n.status
+                            }
+                            label={n.status}
+                            variant="inline"
+                          />
+                        )}
+                      </span>
+                    </button>
+                    <div className="flex items-center justify-between gap-2 px-3 pb-3 pt-2 text-[11px] text-ink-muted">
+                      <span>
+                        {first.tool && !grouped
+                          ? first.alias
+                            ? 'Exposed alias'
+                            : 'Original definition'
+                          : `${toolCount} tool ${toolCount === 1 ? 'selection' : 'selections'}`}
+                      </span>
+                      {!grouped && first.href && (
+                        <Link
+                          to={first.href}
+                          aria-label={`Open ${n.label} configuration`}
+                          className="text-accent-700"
+                        >
+                          <ArrowUpRight aria-hidden="true" className="icon-inline" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </foreignObject>
+              )
+            })}
+          </svg>
+        </div>
+      )}
+      {expanded && props.onInspect && routes.length > 0 && (
+        <details className="mx-5 mb-5 surface-inset sm:mx-6">
+          <summary className="cursor-pointer px-4 py-3 text-xs font-medium">
+            Connection details · {routes.length} upstream {routes.length === 1 ? 'route' : 'routes'}
+          </summary>
+          <div className="flex flex-wrap gap-2 border-t border-line p-4">
+            {routes.map((r) => (
+              <button
+                key={r.id}
+                className={btn}
+                aria-label={`View connection ${r.from} to ${r.to}`}
+                onClick={() => props.onInspect?.(r)}
+              >
+                <span className="min-w-0 break-all text-xs">
+                  {r.from} → {r.to}
+                </span>
+                <ArrowUpRight aria-hidden="true" className="icon-inline shrink-0" />
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+      {expanded && visibleMappings.length === 0 && (
+        <EmptyState
+          title="No matching configured tool mappings. Catalog-only routes remain visible."
+          description="Try another tool, alias or policy search."
+          compact
+        />
+      )}
+      {graph.nodes.length === 0 && (
+        <div className="panel-body">
+          {props.loading ? (
+            <LoadingState
+              label="Loading connection flow…"
+              detail="Reading saved identities, servers and relationships."
+            />
+          ) : (
+            <EmptyState
+              title={
+                props.error
+                  ? 'Configuration flow unavailable'
+                  : 'No configured identities or servers.'
+              }
+              description={
+                props.error
+                  ? 'Retry loading the configuration using the message above.'
+                  : 'Start with an upstream and a virtual server to build your connection flow.'
+              }
+              actions={
+                !props.error ? (
+                  <Link className={btn} to="/setup">
+                    Open setup guide
+                  </Link>
+                ) : undefined
+              }
+            />
+          )}
+        </div>
+      )}
+      <div className="border-t border-line panel-inset py-3 sm:px-6 text-[11px] text-ink-muted flex flex-wrap gap-x-5 gap-y-1">
+        <span className="font-medium">Width = configured tool selections</span>
+        <span>Dashed = zero tools / catalog access</span>
+        <span>Conditional, disabled, denied and missing mappings remain visible.</span>
+        <span>Configuration only · counts repeat across identity grants</span>
+      </div>
+    </section>
+  )
 }

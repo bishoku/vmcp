@@ -4,200 +4,403 @@ import { answerConfirmation } from './confirmation'
 import { expect, test, type Page } from '@playwright/test'
 import type { AgentKey, VirtualServer } from '../src/api'
 import { server, upstream, key, binding } from '../src/connections/fixtures'
-async function login(page:Page,role:'viewer'|'admin'='admin', path='/', inventory?:{servers:VirtualServer[];keys:AgentKey[]}) {
- await page.route('**/auth/config',r=>r.fulfill({json:{oidc:false}}))
- await page.route('**/api/v1/**',route=>{
- const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator'); if (capability) return capability
+async function login(
+  page: Page,
+  role: 'viewer' | 'admin' = 'admin',
+  path = '/',
+  inventory?: { servers: VirtualServer[]; keys: AgentKey[] },
+) {
+  await page.route('**/auth/config', (r) => r.fulfill({ json: { oidc: false } }))
+  await page.route('**/api/v1/**', (route) => {
+    const capability = configurationFixture(route, role === 'viewer' ? 'reader' : 'administrator')
+    if (capability) return capability
 
- if(new URL(route.request().url()).pathname.endsWith('/audit-settings'))return route.fulfill({json:auditSettings})
+    if (new URL(route.request().url()).pathname.endsWith('/audit-settings'))
+      return route.fulfill({ json: auditSettings })
 
-  const request=route.request(),path=new URL(request.url()).pathname
-  if(path==='/api/v1/upstreams/alpha')return route.fulfill({json:upstream})
-  if(path==='/api/v1/virtual-servers/demo')return route.fulfill({json:server})
-  if(path.endsWith('/me'))return route.fulfill({status:request.headers().authorization?200:401,json:{name:'Tester',role,via:'admin-token'}})
-  if(path==='/api/v1/upstreams/'+(upstream).slug)return route.fulfill({json:upstream})
-  if(path.endsWith('/upstreams'))return route.fulfill({json:{items:[upstream]}})
-  if(path.endsWith('/virtual-servers'))return route.fulfill({json:{items:inventory?.servers ?? [server]}})
-  if(path.endsWith('/agent-keys'))return route.fulfill({json:{items:inventory?.keys ?? [key]}})
-  if(path.endsWith('/identity-bindings'))return route.fulfill({json:{items:[binding]}})
-  if(path.endsWith('/catalog'))return route.fulfill({json:{resources:[],resourceTemplates:[],prompts:[],capabilities:{}}})
-  return route.fulfill({json:{items:[]}})
- })
- await page.goto(path);await page.getByLabel('Admin token').fill('admin-login-token');await page.getByRole('button',{name:'Continue',exact:true}).click()
- await expect(page.getByRole('link',{name:'Connections',exact:true}).first()).toBeVisible()
+    const request = route.request(),
+      path = new URL(request.url()).pathname
+    if (path === '/api/v1/upstreams/alpha') return route.fulfill({ json: upstream })
+    if (path === '/api/v1/virtual-servers/demo') return route.fulfill({ json: server })
+    if (path.endsWith('/me'))
+      return route.fulfill({
+        status: request.headers().authorization ? 200 : 401,
+        json: { name: 'Tester', role, via: 'admin-token' },
+      })
+    if (path === '/api/v1/upstreams/' + upstream.slug) return route.fulfill({ json: upstream })
+    if (path.endsWith('/upstreams')) return route.fulfill({ json: { items: [upstream] } })
+    if (path.endsWith('/virtual-servers'))
+      return route.fulfill({ json: { items: inventory?.servers ?? [server] } })
+    if (path.endsWith('/agent-keys'))
+      return route.fulfill({ json: { items: inventory?.keys ?? [key] } })
+    if (path.endsWith('/identity-bindings')) return route.fulfill({ json: { items: [binding] } })
+    if (path.endsWith('/catalog'))
+      return route.fulfill({
+        json: { resources: [], resourceTemplates: [], prompts: [], capabilities: {} },
+      })
+    return route.fulfill({ json: { items: [] } })
+  })
+  await page.goto(path)
+  await page.getByLabel('Admin token').fill('admin-login-token')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('link', { name: 'Connections', exact: true }).first()).toBeVisible()
 }
-test('keyboard inspection opens relationship health and a deep-linked upstream editor',async({page})=>{
- await login(page);await page.getByRole('link',{name:'Connections',exact:true}).click()
- await expect(page.getByText('Configured relationships (3)')).toBeVisible()
- await page.screenshot({path:test.info().outputPath('connections.png'),fullPage:true})
- const inspect=page.getByRole('button',{name:'Inspect upstream demo to alpha',exact:true})
- await inspect.focus();await page.keyboard.press('Enter')
- const dialog=page.getByRole('dialog',{name:'demo → alpha',exact:true})
- await expect(dialog).toBeVisible();await expect(dialog.getByText('Missing object',{exact:true})).toBeVisible();await expect(dialog.getByText(/Checked:/)).toBeVisible()
- await dialog.getByRole('link',{name:'Open configuration',exact:true}).click()
- await expect(page).toHaveURL(/upstreams\/alpha/)
- await expect(page.getByRole('heading',{name:'Alpha',exact:true})).toBeVisible()
- await expect(page.getByLabel('Name',{exact:true})).toBeDisabled()
+test('keyboard inspection opens relationship health and a deep-linked upstream editor', async ({
+  page,
+}) => {
+  await login(page)
+  await page.getByRole('link', { name: 'Connections', exact: true }).click()
+  await expect(page.getByText('Configured relationships (3)')).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('connections.png'), fullPage: true })
+  const inspect = page.getByRole('button', { name: 'Inspect upstream demo to alpha', exact: true })
+  await inspect.focus()
+  await page.keyboard.press('Enter')
+  const dialog = page.getByRole('dialog', { name: 'demo → alpha', exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Missing object', { exact: true })).toBeVisible()
+  await expect(dialog.getByText(/Checked:/)).toBeVisible()
+  await dialog.getByRole('link', { name: 'Open configuration', exact: true }).click()
+  await expect(page).toHaveURL(/upstreams\/alpha/)
+  await expect(page.getByRole('heading', { name: 'Alpha', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Name', { exact: true })).toBeDisabled()
 })
-test('saved views deep-link without losing draft protection and activity filters carry into audit',async({page})=>{
- await login(page,'admin','/virtual-servers/demo/capabilities')
- await expect(page.getByRole('heading',{name:'Demo',exact:true})).toBeVisible()
- await expect(page.getByRole('link',{name:'Capabilities',exact:true})).toHaveAttribute('aria-current','page')
- await page.getByRole('link',{name:'Edit configuration',exact:true}).click()
- await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Demo')
- await page.getByLabel('Name',{exact:true}).fill('Draft name')
- await expect(page.getByText(/Unsaved changes/)).toBeVisible()
- const dismissed=answerConfirmation(page,false)
- await page.getByRole('link',{name:'View saved configuration',exact:true}).click()
- await dismissed
- await expect(page.getByLabel('Name',{exact:true})).toHaveValue('Draft name')
- const accepted=answerConfirmation(page,true)
- await page.getByRole('link',{name:'View saved configuration',exact:true}).click()
- await accepted
- await page.getByRole('link',{name:'Activity',exact:true}).click()
- await expect(page.getByText(/No stored events in this window/)).toBeVisible()
- await page.getByRole('link',{name:'Open audit log',exact:true}).click()
- await expect(page.getByPlaceholder('Virtual server', {exact:true})).toHaveValue('demo')
+test('saved views deep-link without losing draft protection and activity filters carry into audit', async ({
+  page,
+}) => {
+  await login(page, 'admin', '/virtual-servers/demo/capabilities')
+  await expect(page.getByRole('heading', { name: 'Demo', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Capabilities', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await page.getByRole('link', { name: 'Edit configuration', exact: true }).click()
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Demo')
+  await page.getByLabel('Name', { exact: true }).fill('Draft name')
+  await expect(page.getByText(/Unsaved changes/)).toBeVisible()
+  const dismissed = answerConfirmation(page, false)
+  await page.getByRole('link', { name: 'View saved configuration', exact: true }).click()
+  await dismissed
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Draft name')
+  const accepted = answerConfirmation(page, true)
+  await page.getByRole('link', { name: 'View saved configuration', exact: true }).click()
+  await accepted
+  await page.getByRole('link', { name: 'Activity', exact: true }).click()
+  await expect(page.getByText(/No stored events in this window/)).toBeVisible()
+  await page.getByRole('link', { name: 'Open audit log', exact: true }).click()
+  await expect(page.getByPlaceholder('Virtual server', { exact: true })).toHaveValue('demo')
 })
-test('viewer explicitly verifies MCP discovery with a gateway key and no capability execution',async({page})=>{
- await login(page,'viewer','/virtual-servers/demo/connect')
- const methods:string[]=[]
- let deleted=false
- await page.route('**/mcp/v1/virtual/demo',route=>{
-  const request=route.request()
-  expect(request.headers().authorization).toBe('Bearer separate-agent-key')
-  if(request.method()==='GET')return route.fulfill({status:405})
-  if(request.method()==='DELETE'){deleted=true;return route.fulfill({status:204})}
-  const message=request.postDataJSON();methods.push(message.method)
-  if(message.method==='notifications/initialized')return route.fulfill({status:202})
-  const results:Record<string,unknown>={initialize:{protocolVersion:'2025-06-18',capabilities:{tools:{},resources:{},prompts:{}},serverInfo:{name:'vMCP demo',version:'test'}},ping:{},'tools/list':{tools:[]},'resources/list':{resources:[]},'resources/templates/list':{resourceTemplates:[]},'prompts/list':{prompts:[]}}
-  return route.fulfill({headers:{'Mcp-Session-Id':'browser-test'},json:{jsonrpc:'2.0',id:message.id,result:results[message.method]}})
- })
- await expect(page.getByRole('button',{name:'Verify connection',exact:true})).toBeDisabled()
- expect(methods).toEqual([])
- await page.getByLabel('Agent key or OAuth access token').fill('separate-agent-key')
- await page.getByRole('button',{name:'Verify connection',exact:true}).click()
- await expect(page.getByText(/Verified initialization and ping with vMCP demo/)).toBeVisible()
- await expect(page.getByLabel('Agent key or OAuth access token')).toHaveValue('')
- expect(methods).toEqual(['initialize','notifications/initialized','ping','tools/list','resources/list','resources/templates/list','prompts/list'])
- expect(deleted).toBe(true)
-})
-
-
-test('overview traces tools with keyboard focus and expands large identity groups',async({page})=>{
- const other={...server,slug:'second',name:'Second',tools:[{...server.tools[0],tool:'other',exposedName:'other'}],catalog:[]}
- const keys=Array.from({length:120},(_,i)=>({...key,slug:`key-${String(i).padStart(3,'0')}`,virtualServers:[i<60?'demo':'second']}))
- await login(page,'admin','/connections',{servers:[server,other],keys})
- const flow=page.getByRole('region',{name:'Connection flow'})
- await expect(flow.getByRole('button',{name:'Demo',exact:true})).toBeVisible()
- await expect(flow.getByRole('button',{name:'Second',exact:true})).toBeVisible()
- await page.screenshot({path:test.info().outputPath('large-overview.png'),fullPage:true})
- await flow.getByRole('button',{name:'Alpha',exact:true}).click()
- await flow.getByRole('button',{name:'Trace upstream tool alpha / lookup',exact:true}).focus()
- await expect(flow.locator('[data-highlighted="false"]')).not.toHaveCount(0)
- await page.keyboard.press('Enter')
- await expect(flow.getByRole('status',{name:'Highlighted tool path'})).toContainText('Tracing alpha / lookup')
- await page.screenshot({path:test.info().outputPath('tool-path.png'),fullPage:true})
- await flow.getByRole('button',{name:'Reset to overview'}).click()
- await flow.getByRole('button',{name:'Expand 11 identities',exact:true}).first().click()
- await expect(flow.getByRole('button',{name:'key-000',exact:true})).toBeVisible()
- await expect(flow.getByRole('button',{name:'Second',exact:true})).toHaveCount(0)
- await flow.getByRole('button',{name:'Reset to overview'}).click()
- await expect(flow.getByRole('button',{name:'Second',exact:true})).toBeVisible()
- await page.setViewportSize({width:390,height:844})
- await expect(flow.getByRole('button',{name:'Reset to overview'})).toBeVisible()
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
-})
-
-
-test('server overview uses composition cards and tool drill-down stays inside the diagram',async({page})=>{
- await login(page,'admin','/virtual-servers/demo/overview')
- await expect(page.getByRole('region',{name:'Upstream composition'})).toBeVisible()
- await expect(page.getByRole('region',{name:'Access and protection'})).toBeVisible()
- await page.screenshot({path:test.info().outputPath('server-overview.png'),fullPage:true})
- await page.getByRole('link',{name:'Connections',exact:true}).click()
- const flow=page.getByRole('region',{name:'Connection flow'})
- await flow.getByRole('button',{name:'Demo',exact:true}).click()
- await expect(flow.getByRole('group',{name:'Identities through exposed tools to upstream definitions'})).toBeVisible()
- await expect(flow.getByRole('button',{name:'Trace alias demo / lookup'})).toBeVisible()
- await expect(flow.getByRole('table')).toHaveCount(0)
- await flow.getByRole('button',{name:'Trace alias demo / lookup'}).click()
- await page.screenshot({path:test.info().outputPath('sankey-tool-drilldown.png'),fullPage:true})
- await page.setViewportSize({width:390,height:844})
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
- await page.getByRole('button',{name:'Open navigation',exact:true}).click()
- await page.getByRole('link',{name:'Virtual Servers',exact:true}).click()
- await page.getByRole('link',{name:'Demo',exact:true}).click()
- await expect(page.getByRole('region',{name:'Upstream composition'})).toBeVisible()
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
- await page.screenshot({path:test.info().outputPath('server-overview-mobile.png'),fullPage:true})
+test('viewer explicitly verifies MCP discovery with a gateway key and no capability execution', async ({
+  page,
+}) => {
+  await login(page, 'viewer', '/virtual-servers/demo/connect')
+  const methods: string[] = []
+  let deleted = false
+  await page.route('**/mcp/v1/virtual/demo', (route) => {
+    const request = route.request()
+    expect(request.headers().authorization).toBe('Bearer separate-agent-key')
+    if (request.method() === 'GET') return route.fulfill({ status: 405 })
+    if (request.method() === 'DELETE') {
+      deleted = true
+      return route.fulfill({ status: 204 })
+    }
+    const message = request.postDataJSON()
+    methods.push(message.method)
+    if (message.method === 'notifications/initialized') return route.fulfill({ status: 202 })
+    const results: Record<string, unknown> = {
+      initialize: {
+        protocolVersion: '2025-06-18',
+        capabilities: { tools: {}, resources: {}, prompts: {} },
+        serverInfo: { name: 'vMCP demo', version: 'test' },
+      },
+      ping: {},
+      'tools/list': { tools: [] },
+      'resources/list': { resources: [] },
+      'resources/templates/list': { resourceTemplates: [] },
+      'prompts/list': { prompts: [] },
+    }
+    return route.fulfill({
+      headers: { 'Mcp-Session-Id': 'browser-test' },
+      json: { jsonrpc: '2.0', id: message.id, result: results[message.method] },
+    })
+  })
+  await expect(page.getByRole('button', { name: 'Verify connection', exact: true })).toBeDisabled()
+  expect(methods).toEqual([])
+  await page.getByLabel('Agent key or OAuth access token').fill('separate-agent-key')
+  await page.getByRole('button', { name: 'Verify connection', exact: true }).click()
+  await expect(page.getByText(/Verified initialization and ping with vMCP demo/)).toBeVisible()
+  await expect(page.getByLabel('Agent key or OAuth access token')).toHaveValue('')
+  expect(methods).toEqual([
+    'initialize',
+    'notifications/initialized',
+    'ping',
+    'tools/list',
+    'resources/list',
+    'resources/templates/list',
+    'prompts/list',
+  ])
+  expect(deleted).toBe(true)
 })
 
-
-test('protection handles omitted PII lists and activity matches the protection surface',async({page})=>{
- await login(page,'admin','/virtual-servers/demo/protection',{servers:[{...server,pii:{enabled:true}}],keys:[key]})
- await expect(page.getByText('all built-in (default)',{exact:true})).toBeVisible()
- await expect(page.getByRole('region',{name:'Data masking'}).getByText('none',{exact:true})).toBeVisible()
- const protection=page.getByRole('region',{name:'Tool access & limits'})
- const surface=await protection.evaluate(el=>({background:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderColor,borderRadius:getComputedStyle(el).borderRadius}))
- await page.screenshot({path:test.info().outputPath('protection.png'),fullPage:true})
- await page.getByRole('link',{name:'Activity',exact:true}).click()
- const activity=page.getByRole('region',{name:'Recent observed activity'})
- await expect(activity.getByText(/No stored events in this window/)).toBeVisible()
- expect(await activity.getByRole('region',{name:'Stored events'}).evaluate(el=>({background:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderColor,borderRadius:getComputedStyle(el).borderRadius}))).toEqual(surface)
- await page.screenshot({path:test.info().outputPath('activity.png'),fullPage:true})
+test('overview traces tools with keyboard focus and expands large identity groups', async ({
+  page,
+}) => {
+  const other = {
+    ...server,
+    slug: 'second',
+    name: 'Second',
+    tools: [{ ...server.tools[0], tool: 'other', exposedName: 'other' }],
+    catalog: [],
+  }
+  const keys = Array.from({ length: 120 }, (_, i) => ({
+    ...key,
+    slug: `key-${String(i).padStart(3, '0')}`,
+    virtualServers: [i < 60 ? 'demo' : 'second'],
+  }))
+  await login(page, 'admin', '/connections', { servers: [server, other], keys })
+  const flow = page.getByRole('region', { name: 'Connection flow' })
+  await expect(flow.getByRole('button', { name: 'Demo', exact: true })).toBeVisible()
+  await expect(flow.getByRole('button', { name: 'Second', exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('large-overview.png'), fullPage: true })
+  await flow.getByRole('button', { name: 'Alpha', exact: true }).click()
+  await flow
+    .getByRole('button', { name: 'Trace upstream tool alpha / lookup', exact: true })
+    .focus()
+  await expect(flow.locator('[data-highlighted="false"]')).not.toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect(flow.getByRole('status', { name: 'Highlighted tool path' })).toContainText(
+    'Tracing alpha / lookup',
+  )
+  await page.screenshot({ path: test.info().outputPath('tool-path.png'), fullPage: true })
+  await flow.getByRole('button', { name: 'Reset to overview' }).click()
+  await flow.getByRole('button', { name: 'Expand 11 identities', exact: true }).first().click()
+  await expect(flow.getByRole('button', { name: 'key-000', exact: true })).toBeVisible()
+  await expect(flow.getByRole('button', { name: 'Second', exact: true })).toHaveCount(0)
+  await flow.getByRole('button', { name: 'Reset to overview' }).click()
+  await expect(flow.getByRole('button', { name: 'Second', exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(flow.getByRole('button', { name: 'Reset to overview' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
 })
 
-test('protection and populated activity use responsive overview-style panels',async({page})=>{
- const configured={...server,pii:{enabled:true,maskArguments:true,detectors:['email','phone'],customRules:[{name:'Employee identifiers',pattern:'EMP-[0-9]+'}]},rateLimitPerMinute:120,clientFeatures:{sampling:true,roots:false,elicitation:true}}
- await login(page,'admin','/virtual-servers/demo/protection',{servers:[configured],keys:[key]})
- await expect(page.getByRole('region',{name:'Client feature permissions'})).toBeVisible()
- await expect(page.getByText('Employee identifiers',{exact:true})).toBeVisible()
- await expect(page.getByRole('link',{name:'Protection',exact:true})).toHaveAttribute('aria-current','page')
- await page.screenshot({path:test.info().outputPath('protection-panels.png'),fullPage:true,animations:'disabled'})
- const base={eventId:'admit-1',operationId:'operation-1',requestId:'request-1',traceId:'trace-1',schemaVersion:1,actorType:'agent_key',actorId:'team-key',issuer:'',action:'tools/call',target:'lookup',configRevision:7,stage:'admission',id:1,time:'2026-10-15T10:00:00Z',virtualServer:'demo',method:'tools/call',tool:'lookup',upstream:'alpha',status:'started',durationMs:0}
- await page.route('**/api/v1/audit-events?*',route=>route.fulfill({json:{items:[base,{...base,eventId:'outcome-1',id:2,stage:'outcome',status:'denied',reason:'Tool policy denied access',durationMs:12}],nextCursor:'more-events'}}))
- await page.getByRole('link',{name:'Activity',exact:true}).click()
- await expect(page.getByRole('table',{name:'Recent events for demo'})).toBeVisible()
- await expect(page.getByRole('link',{name:'Continue in audit log'})).toBeVisible()
- await expect(page.getByRole('link',{name:'Activity',exact:true})).toHaveAttribute('aria-current','page')
- await page.screenshot({path:test.info().outputPath('activity-panels.png'),fullPage:true,animations:'disabled'})
- await page.setViewportSize({width:390,height:844})
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
- await page.screenshot({path:test.info().outputPath('activity-mobile.png'),fullPage:true,animations:'disabled'})
- await page.getByRole('link',{name:'Protection',exact:true}).click()
- await expect(page.getByText('Employee identifiers',{exact:true})).toBeVisible()
- expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
- await page.screenshot({path:test.info().outputPath('protection-mobile.png'),fullPage:true,animations:'disabled'})
+test('server overview uses composition cards and tool drill-down stays inside the diagram', async ({
+  page,
+}) => {
+  await login(page, 'admin', '/virtual-servers/demo/overview')
+  await expect(page.getByRole('region', { name: 'Upstream composition' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Access and protection' })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('server-overview.png'), fullPage: true })
+  await page.getByRole('link', { name: 'Connections', exact: true }).click()
+  const flow = page.getByRole('region', { name: 'Connection flow' })
+  await flow.getByRole('button', { name: 'Demo', exact: true }).click()
+  await expect(
+    flow.getByRole('group', { name: 'Identities through exposed tools to upstream definitions' }),
+  ).toBeVisible()
+  await expect(flow.getByRole('button', { name: 'Trace alias demo / lookup' })).toBeVisible()
+  await expect(flow.getByRole('table')).toHaveCount(0)
+  await flow.getByRole('button', { name: 'Trace alias demo / lookup' }).click()
+  await page.screenshot({
+    path: test.info().outputPath('sankey-tool-drilldown.png'),
+    fullPage: true,
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
+  await page.getByRole('link', { name: 'Virtual Servers', exact: true }).click()
+  await page.getByRole('link', { name: 'Demo', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Upstream composition' })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.screenshot({
+    path: test.info().outputPath('server-overview-mobile.png'),
+    fullPage: true,
+  })
 })
 
-test('capabilities access and connect share responsive detail-page panels',async({page})=>{
- await login(page,'admin','/virtual-servers/demo/capabilities')
- const capabilities=page.getByRole('region',{name:'Selected capabilities'})
- await expect(capabilities.getByText('Missing object',{exact:true})).toBeVisible()
- await page.getByLabel('Capability kind').selectOption('resource')
- await page.getByLabel('Search capabilities').fill('doc://team')
- await expect(capabilities.getByText('doc://team',{exact:true})).toBeVisible()
- await expect(capabilities.getByText('lookup',{exact:true})).toHaveCount(0)
- await page.getByLabel('Search capabilities').fill('')
- await page.getByLabel('Capability kind').selectOption('')
- await page.screenshot({path:test.info().outputPath('capabilities-panels.png'),fullPage:true,animations:'disabled'})
- await page.getByRole('link',{name:'Access',exact:true}).click()
- const access=page.getByRole('region',{name:'Configured access relationships'})
- await expect(access.getByRole('link',{name:'team-jwt',exact:true})).toBeVisible()
- await access.getByText('Restrictions & conditions',{exact:true}).last().click()
- await expect(access.getByText(/Verified JWT and matching claims/)).toBeVisible()
- await page.screenshot({path:test.info().outputPath('access-panels.png'),fullPage:true,animations:'disabled'})
- await page.getByRole('link',{name:'Connect',exact:true}).click()
- await expect(page.getByRole('region',{name:'Client configuration'})).toBeVisible()
- await expect(page.getByRole('button',{name:'Verify connection',exact:true})).toBeDisabled()
- await expect(page.getByLabel('Agent key or OAuth access token')).toBeVisible()
- await page.screenshot({path:test.info().outputPath('connect-panels.png'),fullPage:true,animations:'disabled'})
- await page.setViewportSize({width:390,height:844})
- for(const name of ['Capabilities','Access','Connect']){
-  await page.getByRole('link',{name,exact:true}).click()
-  await expect(page.getByRole('link',{name,exact:true})).toHaveAttribute('aria-current','page')
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
-  await page.screenshot({path:test.info().outputPath(`${name.toLowerCase()}-mobile.png`),fullPage:true,animations:'disabled'})
- }
+test('protection handles omitted PII lists and activity matches the protection surface', async ({
+  page,
+}) => {
+  await login(page, 'admin', '/virtual-servers/demo/protection', {
+    servers: [{ ...server, pii: { enabled: true } }],
+    keys: [key],
+  })
+  await expect(page.getByText('all built-in (default)', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: 'Data masking' }).getByText('none', { exact: true }),
+  ).toBeVisible()
+  const protection = page.getByRole('region', { name: 'Tool access & limits' })
+  const surface = await protection.evaluate((el) => ({
+    background: getComputedStyle(el).backgroundColor,
+    border: getComputedStyle(el).borderColor,
+    borderRadius: getComputedStyle(el).borderRadius,
+  }))
+  await page.screenshot({ path: test.info().outputPath('protection.png'), fullPage: true })
+  await page.getByRole('link', { name: 'Activity', exact: true }).click()
+  const activity = page.getByRole('region', { name: 'Recent observed activity' })
+  await expect(activity.getByText(/No stored events in this window/)).toBeVisible()
+  expect(
+    await activity.getByRole('region', { name: 'Stored events' }).evaluate((el) => ({
+      background: getComputedStyle(el).backgroundColor,
+      border: getComputedStyle(el).borderColor,
+      borderRadius: getComputedStyle(el).borderRadius,
+    })),
+  ).toEqual(surface)
+  await page.screenshot({ path: test.info().outputPath('activity.png'), fullPage: true })
+})
+
+test('protection and populated activity use responsive overview-style panels', async ({ page }) => {
+  const configured = {
+    ...server,
+    pii: {
+      enabled: true,
+      maskArguments: true,
+      detectors: ['email', 'phone'],
+      customRules: [{ name: 'Employee identifiers', pattern: 'EMP-[0-9]+' }],
+    },
+    rateLimitPerMinute: 120,
+    clientFeatures: { sampling: true, roots: false, elicitation: true },
+  }
+  await login(page, 'admin', '/virtual-servers/demo/protection', {
+    servers: [configured],
+    keys: [key],
+  })
+  await expect(page.getByRole('region', { name: 'Client feature permissions' })).toBeVisible()
+  await expect(page.getByText('Employee identifiers', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Protection', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await page.screenshot({
+    path: test.info().outputPath('protection-panels.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  const base = {
+    eventId: 'admit-1',
+    operationId: 'operation-1',
+    requestId: 'request-1',
+    traceId: 'trace-1',
+    schemaVersion: 1,
+    actorType: 'agent_key',
+    actorId: 'team-key',
+    issuer: '',
+    action: 'tools/call',
+    target: 'lookup',
+    configRevision: 7,
+    stage: 'admission',
+    id: 1,
+    time: '2026-10-15T10:00:00Z',
+    virtualServer: 'demo',
+    method: 'tools/call',
+    tool: 'lookup',
+    upstream: 'alpha',
+    status: 'started',
+    durationMs: 0,
+  }
+  await page.route('**/api/v1/audit-events?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          base,
+          {
+            ...base,
+            eventId: 'outcome-1',
+            id: 2,
+            stage: 'outcome',
+            status: 'denied',
+            reason: 'Tool policy denied access',
+            durationMs: 12,
+          },
+        ],
+        nextCursor: 'more-events',
+      },
+    }),
+  )
+  await page.getByRole('link', { name: 'Activity', exact: true }).click()
+  await expect(page.getByRole('table', { name: 'Recent events for demo' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Continue in audit log' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Activity', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await page.screenshot({
+    path: test.info().outputPath('activity-panels.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.screenshot({
+    path: test.info().outputPath('activity-mobile.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.getByRole('link', { name: 'Protection', exact: true }).click()
+  await expect(page.getByText('Employee identifiers', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.screenshot({
+    path: test.info().outputPath('protection-mobile.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+})
+
+test('capabilities access and connect share responsive detail-page panels', async ({ page }) => {
+  await login(page, 'admin', '/virtual-servers/demo/capabilities')
+  const capabilities = page.getByRole('region', { name: 'Selected capabilities' })
+  await expect(capabilities.getByText('Missing object', { exact: true })).toBeVisible()
+  await page.getByLabel('Capability kind').selectOption('resource')
+  await page.getByLabel('Search capabilities').fill('doc://team')
+  await expect(capabilities.getByText('doc://team', { exact: true })).toBeVisible()
+  await expect(capabilities.getByText('lookup', { exact: true })).toHaveCount(0)
+  await page.getByLabel('Search capabilities').fill('')
+  await page.getByLabel('Capability kind').selectOption('')
+  await page.screenshot({
+    path: test.info().outputPath('capabilities-panels.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.getByRole('link', { name: 'Access', exact: true }).click()
+  const access = page.getByRole('region', { name: 'Configured access relationships' })
+  await expect(access.getByRole('link', { name: 'team-jwt', exact: true })).toBeVisible()
+  await access.getByText('Restrictions & conditions', { exact: true }).last().click()
+  await expect(access.getByText(/Verified JWT and matching claims/)).toBeVisible()
+  await page.screenshot({
+    path: test.info().outputPath('access-panels.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.getByRole('link', { name: 'Connect', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Client configuration' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Verify connection', exact: true })).toBeDisabled()
+  await expect(page.getByLabel('Agent key or OAuth access token')).toBeVisible()
+  await page.screenshot({
+    path: test.info().outputPath('connect-panels.png'),
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  for (const name of ['Capabilities', 'Access', 'Connect']) {
+    await page.getByRole('link', { name, exact: true }).click()
+    await expect(page.getByRole('link', { name, exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await page.screenshot({
+      path: test.info().outputPath(`${name.toLowerCase()}-mobile.png`),
+      fullPage: true,
+      animations: 'disabled',
+    })
+  }
 })

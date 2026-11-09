@@ -1,4 +1,10 @@
-import { useConfigurationPermissions,useConfigurationField,ConfigurationFields,configurationPatch,configurationCreate } from '../configuration-access'
+import {
+  useConfigurationPermissions,
+  useConfigurationField,
+  ConfigurationFields,
+  configurationPatch,
+  configurationCreate,
+} from '../configuration-access'
 import ToolPicker from './ToolPicker'
 import ServerToolAccess from '../ownership/ServerToolAccess'
 import { approvalLabel } from '../ownership/grants'
@@ -8,59 +14,82 @@ import GuidanceEditor from '../GuidanceEditor'
 import { normalizeGuidance } from '../guidance'
 import type { Guidance } from '../api'
 import DescriptionOverride from '../DescriptionOverride'
-import { Checkbox,Switch } from '../SelectionControls'
+import { Checkbox, Switch } from '../SelectionControls'
 import Select from '../Select'
 import { LoadMore } from '../DataTable'
-import { FormField,FormScope,FormErrors,FormGroup } from '../FormField'
-import { useFormValidation,requiredText,slugError,rateError } from '../form-validation'
+import { FormField, FormScope, FormErrors, FormGroup } from '../FormField'
+import { useFormValidation, requiredText, slugError, rateError } from '../form-validation'
 import { useNotifications } from '../notifications'
-import { EmptyState,LoadingState } from '../Feedback'
+import { EmptyState, LoadingState } from '../Feedback'
 import { Link } from 'react-router-dom'
 import { serverPath } from '../connections/model'
 import type { SelectionProps } from '../connections/ManagementRoute'
 import { useInitialSelection } from '../connections/useInitialSelection'
-import { useSources,source,optionalSource,readSources } from '../requests'
+import { useSources, source, optionalSource, readSources } from '../requests'
 import { StaleRecovery } from '../ui'
-import { CopyButton,ErrorBox } from '../ui'
-import { useDraft,useOperation } from '../interaction'
+import { CopyButton, ErrorBox } from '../ui'
+import { useDraft, useOperation } from '../interaction'
 import CatalogPicker from './CatalogPicker'
 import { connectionEndpoint } from '../endpoint'
-import type { CatalogSelection,ClientFeatures } from '../api'
-import { useEffect,useMemo,useState } from 'react'
+import type { CatalogSelection, ClientFeatures } from '../api'
+import { useEffect, useMemo, useState } from 'react'
 import {
-DndContext,
-KeyboardSensor,
-PointerSensor,
-closestCenter,
-useSensor,
-useSensors,
-type DragEndEvent,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-SortableContext,
-arrayMove,
-sortableKeyboardCoordinates,
-useSortable,
-verticalListSortingStrategy,
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Fingerprint,GripVertical,Layers,ListChecks,Plus,ShieldCheck,SlidersHorizontal,Wrench,X } from 'lucide-react'
+import {
+  Fingerprint,
+  GripVertical,
+  Layers,
+  ListChecks,
+  Plus,
+  ShieldCheck,
+  SlidersHorizontal,
+  Wrench,
+  X,
+} from 'lucide-react'
 import clsx from 'clsx'
-import { api,type PiiConfig,type PolicyMode,type ToolPolicy,type Tool,type ToolSelection,type Upstream,type VirtualServer } from '../api'
+import {
+  api,
+  type PiiConfig,
+  type PolicyMode,
+  type ToolPolicy,
+  type Tool,
+  type ToolSelection,
+  type Upstream,
+  type VirtualServer,
+} from '../api'
 
-import { btn,input } from '../styles'
+import { btn, input } from '../styles'
 
-import { ServerPanel,SummaryTile } from '../connections/ServerPanels'
+import { ServerPanel, SummaryTile } from '../connections/ServerPanels'
 import EditorSaveBar from '../connections/EditorSaveBar'
 
 const key = (s: ToolSelection) => `${s.upstream}\u0000${s.tool}`
 const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 63)
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 63)
 
 interface Draft {
- project:string
- guidance:Guidance
- version?: number
+  project: string
+  guidance: Guidance
+  version?: number
   isNew: boolean
   slug: string
   name: string
@@ -72,8 +101,8 @@ interface Draft {
   policy: { default: PolicyMode; tools: Record<string, PolicyMode> }
   rateLimit: string // calls per minute, '' = unlimited
   tools: ToolSelection[]
- clientFeatures:ClientFeatures
- catalog:CatalogSelection[]
+  clientFeatures: ClientFeatures
+  catalog: CatalogSelection[]
 }
 
 const noPii: PiiConfig = { enabled: false, detectors: [], customRules: [], maskArguments: false }
@@ -86,12 +115,29 @@ const DETECTORS = [
   ['us_ssn', 'US SSN'],
 ]
 
-const blank: Draft = { project:"default", guidance:normalizeGuidance(), isNew: true, slug: '', name: '', description: '', enabled: true, omniEnabled: false, authRequired: true, pii: noPii, policy: { default: 'allow', tools: {} }, rateLimit: '', tools: [],catalog:[],clientFeatures:{sampling:false,roots:false,elicitation:false} }
+const blank: Draft = {
+  project: 'default',
+  guidance: normalizeGuidance(),
+  isNew: true,
+  slug: '',
+  name: '',
+  description: '',
+  enabled: true,
+  omniEnabled: false,
+  authRequired: true,
+  pii: noPii,
+  policy: { default: 'allow', tools: {} },
+  rateLimit: '',
+  tools: [],
+  catalog: [],
+  clientFeatures: { sampling: false, roots: false, elicitation: false },
+}
 const fromServer = (v: VirtualServer): Draft => ({
- project:v.project??"default", guidance:normalizeGuidance(v.guidance),
+  project: v.project ?? 'default',
+  guidance: normalizeGuidance(v.guidance),
   isNew: false,
-  version:v.version,
- slug: v.slug,
+  version: v.version,
+  slug: v.slug,
   name: v.name,
   description: v.description,
   enabled: v.enabled,
@@ -99,14 +145,30 @@ const fromServer = (v: VirtualServer): Draft => ({
   authRequired: v.authRequired,
   pii: { ...noPii, ...v.pii },
   // Draft overrides use stable upstream/tool identities, never editable aliases.
-  policy: { default: v.policy?.default ?? 'allow', tools: Object.fromEntries(v.tools.flatMap(t => {
-    const mode = v.policy?.tools?.[t.alias || `${t.upstream}__${t.tool}`]
-    return mode ? [[key(t), mode]] : []
-  })) },
+  policy: {
+    default: v.policy?.default ?? 'allow',
+    tools: Object.fromEntries(
+      v.tools.flatMap((t) => {
+        const mode = v.policy?.tools?.[t.alias || `${t.upstream}__${t.tool}`]
+        return mode ? [[key(t), mode]] : []
+      }),
+    ),
+  },
   rateLimit: v.rateLimitPerMinute?.toString() ?? '',
- clientFeatures:v.clientFeatures??{sampling:false,roots:false,elicitation:false},
- catalog:(v.catalog??[]).map(({upstream,kind,name,alias,description})=>({upstream,kind,name,alias,description})),
-  tools: v.tools.map(({ upstream, tool, alias, description }) => ({ upstream, tool, ...(alias && { alias }), ...(description && { description }) })),
+  clientFeatures: v.clientFeatures ?? { sampling: false, roots: false, elicitation: false },
+  catalog: (v.catalog ?? []).map(({ upstream, kind, name, alias, description }) => ({
+    upstream,
+    kind,
+    name,
+    alias,
+    description,
+  })),
+  tools: v.tools.map(({ upstream, tool, alias, description }) => ({
+    upstream,
+    tool,
+    ...(alias && { alias }),
+    ...(description && { description }),
+  })),
 })
 
 const MODES: [PolicyMode, string][] = [
@@ -117,42 +179,122 @@ const MODES: [PolicyMode, string][] = [
 
 /** Convert stable draft identities to final exposed names only at save time. */
 function cleanPolicy(d: Draft): ToolPolicy {
-  return { default: d.policy.default, tools: Object.fromEntries(d.tools.flatMap(t => {
-    const mode = d.policy.tools[key(t)]
-    return mode ? [[t.alias || `${t.upstream}__${t.tool}`, mode]] : []
-  })) }
+  return {
+    default: d.policy.default,
+    tools: Object.fromEntries(
+      d.tools.flatMap((t) => {
+        const mode = d.policy.tools[key(t)]
+        return mode ? [[t.alias || `${t.upstream}__${t.tool}`, mode]] : []
+      }),
+    ),
+  }
 }
 
-export default function VirtualServerEditor({ initialSelection, onSaved, onCancel }: SelectionProps & {onSaved?: (slug: string) => void; onCancel?: () => void}) {
-  const {notify,available}=useNotifications()
+export default function VirtualServerEditor({
+  initialSelection,
+  onSaved,
+  onCancel,
+}: SelectionProps & { onSaved?: (slug: string) => void; onCancel?: () => void }) {
+  const { notify, available } = useNotifications()
 
   const [servers, setServers] = useState<VirtualServer[]>([])
   const [upstreams, setUpstreams] = useState<Upstream[]>([])
-  const [sharedTools,setSharedTools]=useState<import("../api").ToolCatalogEntry[]>([])
- const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
-  const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(initialSelection ? null : blank, d => d ? d.isNew ? 'new' : d.slug : null)
-  const creationAccess=useConfigurationPermissions('virtual_servers','',['create'])
-  const access=useConfigurationPermissions('virtual_servers',draft?.isNew?'':draft?.slug??initialSelection??'',['read','create','update','publication.update','policy.update','client_features.update','ownership.transfer'],{project:draft?.project??'default'})
-  const canEdit=(draft?.isNew?creationAccess.can('create'):access.can('update'))
-  const fieldAllowed=(field:string)=>((draft?.isNew&&field==='project')===true)||access.can(field==='project'?'ownership.transfer':['enabled','omniEnabled'].includes(field)?'publication.update':field==='authRequired'||field==='rateLimitPerMinute'||field.startsWith('pii')||field.startsWith('policy')?'policy.update':field.startsWith('clientFeatures')?'client_features.update':draft?.isNew?'create':'update')
-  const validation=useFormValidation()
-  const problems=validation.issues.map(issue=>issue.message)
-  const [exposedLimit,setExposedLimit]=useState(50)
+  const [sharedTools, setSharedTools] = useState<import('../api').ToolCatalogEntry[]>([])
+  const [catalog, setCatalog] = useState<Record<string, Tool[]>>({})
+  const [draft, setDraft, resetDraft, openDraft, dirty] = useDraft<Draft | null>(
+    initialSelection ? null : blank,
+    (d) => (d ? (d.isNew ? 'new' : d.slug) : null),
+  )
+  const creationAccess = useConfigurationPermissions('virtual_servers', '', ['create'])
+  const access = useConfigurationPermissions(
+    'virtual_servers',
+    draft?.isNew ? '' : (draft?.slug ?? initialSelection ?? ''),
+    [
+      'read',
+      'create',
+      'update',
+      'publication.update',
+      'policy.update',
+      'client_features.update',
+      'ownership.transfer',
+    ],
+    { project: draft?.project ?? 'default' },
+  )
+  const canEdit = draft?.isNew ? creationAccess.can('create') : access.can('update')
+  const fieldAllowed = (field: string) =>
+    (draft?.isNew && field === 'project') === true ||
+    access.can(
+      field === 'project'
+        ? 'ownership.transfer'
+        : ['enabled', 'omniEnabled'].includes(field)
+          ? 'publication.update'
+          : field === 'authRequired' ||
+              field === 'rateLimitPerMinute' ||
+              field.startsWith('pii') ||
+              field.startsWith('policy')
+            ? 'policy.update'
+            : field.startsWith('clientFeatures')
+              ? 'client_features.update'
+              : draft?.isNew
+                ? 'create'
+                : 'update',
+    )
+  const validation = useFormValidation()
+  const problems = validation.issues.map((issue) => issue.message)
+  const [exposedLimit, setExposedLimit] = useState(50)
   const { busy, run } = useOperation()
 
-  const { load, loading, readError } = useSources(() => [source('Virtual servers', async signal => { const items=(initialSelection)?[await api.getVirtualServer(initialSelection,signal)]:await api.listVirtualServers(signal); const selected=items.find(v=>v.slug===initialSelection); if(selected?.hasGuidance){const full=await api.getVirtualServer(selected.slug,signal); return items.map(v=>v.slug===full.slug?full:v)} return items }, setServers),
-    source('Shared tools',signal=>api.toolCatalog(signal),setSharedTools),
- {name:'Upstreams',load:async signal=>{
-      let us: Upstream[]=[]
-      await optionalSource('Upstreams',s=>api.listUpstreams(s),items=>{us=items},[]).load(signal)
-      if(signal.aborted)return
-      setUpstreams(us)
-      setCatalog({})
-      const failures=await readSources(us.map(u=>optionalSource(u.slug,s=>api.listTools(u.slug,s),tools=>setCatalog(previous=>({...previous,[u.slug]:tools})),[])),signal)
-      if(failures)throw new Error(failures)
-    }}])
+  const { load, loading, readError } = useSources(() => [
+    source(
+      'Virtual servers',
+      async (signal) => {
+        const items = initialSelection
+          ? [await api.getVirtualServer(initialSelection, signal)]
+          : await api.listVirtualServers(signal)
+        const selected = items.find((v) => v.slug === initialSelection)
+        if (selected?.hasGuidance) {
+          const full = await api.getVirtualServer(selected.slug, signal)
+          return items.map((v) => (v.slug === full.slug ? full : v))
+        }
+        return items
+      },
+      setServers,
+    ),
+    source('Shared tools', (signal) => api.toolCatalog(signal), setSharedTools),
+    {
+      name: 'Upstreams',
+      load: async (signal) => {
+        let us: Upstream[] = []
+        await optionalSource(
+          'Upstreams',
+          (s) => api.listUpstreams(s),
+          (items) => {
+            us = items
+          },
+          [],
+        ).load(signal)
+        if (signal.aborted) return
+        setUpstreams(us)
+        setCatalog({})
+        const failures = await readSources(
+          us.map((u) =>
+            optionalSource(
+              u.slug,
+              (s) => api.listTools(u.slug, s),
+              (tools) => setCatalog((previous) => ({ ...previous, [u.slug]: tools })),
+              [],
+            ),
+          ),
+          signal,
+        )
+        if (failures) throw new Error(failures)
+      },
+    },
+  ])
   useEffect(() => {
-    const timer = setTimeout(() => { void load() }, 0)
+    const timer = setTimeout(() => {
+      void load()
+    }, 0)
     return () => clearTimeout(timer)
   }, [load])
 
@@ -175,15 +317,23 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
     setDraft({ ...draft, tools: arrayMove(draft.tools, from, to) })
   }
 
-  const setPii = (p: Partial<PiiConfig>) => draft && setDraft({ ...draft, pii: { ...draft.pii, ...p } })
+  const setPii = (p: Partial<PiiConfig>) =>
+    draft && setDraft({ ...draft, pii: { ...draft.pii, ...p } })
   const setMode = (name: string, m: PolicyMode) =>
-    draft && setDraft({ ...draft, policy: { ...draft.policy, tools: { ...draft.policy.tools, [name]: m } } })
-  const addTools = (tools: ToolSelection[]) => setDraft(previous => {
-    if (!previous) return previous
-    const existing = new Set(previous.tools.map(key))
-    const additions = tools.filter(tool => {const id=key(tool);if(existing.has(id))return false;existing.add(id);return true})
-    return {...previous,tools:[...previous.tools,...additions]}
-  })
+    draft &&
+    setDraft({ ...draft, policy: { ...draft.policy, tools: { ...draft.policy.tools, [name]: m } } })
+  const addTools = (tools: ToolSelection[]) =>
+    setDraft((previous) => {
+      if (!previous) return previous
+      const existing = new Set(previous.tools.map(key))
+      const additions = tools.filter((tool) => {
+        const id = key(tool)
+        if (existing.has(id)) return false
+        existing.add(id)
+        return true
+      })
+      return { ...previous, tools: [...previous.tools, ...additions] }
+    })
   const patchTool = (k: string, p: Partial<ToolSelection>) =>
     draft &&
     setDraft({
@@ -197,19 +347,36 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
       }),
     })
   const removeTool = (k: string) =>
-    draft && setDraft({ ...draft, tools: draft.tools.filter((t) => key(t) !== k), policy: {
-      ...draft.policy, tools: Object.fromEntries(Object.entries(draft.policy.tools).filter(([id]) => id !== k)),
-    } })
+    draft &&
+    setDraft({
+      ...draft,
+      tools: draft.tools.filter((t) => key(t) !== k),
+      policy: {
+        ...draft.policy,
+        tools: Object.fromEntries(Object.entries(draft.policy.tools).filter(([id]) => id !== k)),
+      },
+    })
 
-  const [saved,setSaved] = useState('')
+  const [saved, setSaved] = useState('')
   const save = async () => {
     let savedSlug: string | undefined
     await run(async () => {
       if (!draft || !canEdit) return
-      if(!validation.check({name:requiredText(draft.name,'Name',120),slug:slugError(draft.slug),description:draft.description.length>1000?'Use 1,000 characters or fewer.':undefined,rateLimitPerMinute:rateError(draft.rateLimit),tools:dupes.size?'Resolve duplicate exposed tool names before saving.':undefined}))return
+      if (
+        !validation.check({
+          name: requiredText(draft.name, 'Name', 120),
+          slug: slugError(draft.slug),
+          description:
+            draft.description.length > 1000 ? 'Use 1,000 characters or fewer.' : undefined,
+          rateLimitPerMinute: rateError(draft.rateLimit),
+          tools: dupes.size ? 'Resolve duplicate exposed tool names before saving.' : undefined,
+        })
+      )
+        return
       try {
         const body = {
-          project:draft.project, name: draft.name,
+          project: draft.project,
+          name: draft.name,
           description: draft.description,
           enabled: draft.enabled,
           authRequired: draft.authRequired,
@@ -218,16 +385,51 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
           policy: cleanPolicy(draft),
           rateLimitPerMinute: draft.rateLimit ? Number(draft.rateLimit) : null,
           tools: draft.tools,
-   catalog:draft.catalog,clientFeatures:draft.clientFeatures,guidance:draft.guidance,
+          catalog: draft.catalog,
+          clientFeatures: draft.clientFeatures,
+          guidance: draft.guidance,
         }
-        const original=servers.find(server=>server.slug===draft.slug)
-        if((!draft.isNew)&&original){
-         const baseline={project:original.project??'default',name:original.name,description:original.description??'',enabled:original.enabled,omniEnabled:original.omniEnabled??false,authRequired:original.authRequired,pii:fromServer(original).pii,policy:cleanPolicy(fromServer(original)),rateLimitPerMinute:original.rateLimitPerMinute??null,tools:fromServer(original).tools,catalog:fromServer(original).catalog,clientFeatures:fromServer(original).clientFeatures,guidance:normalizeGuidance(original.guidance)}
-         await api.patchVirtualServer(draft.slug,configurationPatch(body,baseline),draft.version)
-        }else if((draft.isNew)){
-         await api.createVirtualServer(draft.slug,configurationCreate(body,{enabled:'publication.update',omniEnabled:'publication.update',authRequired:'policy.update',pii:'policy.update',policy:'policy.update',rateLimitPerMinute:'policy.update',clientFeatures:'client_features.update'},access.can))
-        }else await api.putVirtualServer(draft.slug,body,draft.version)
-        notify({title:'Virtual server saved',description:draft.name})
+        const original = servers.find((server) => server.slug === draft.slug)
+        if (!draft.isNew && original) {
+          const baseline = {
+            project: original.project ?? 'default',
+            name: original.name,
+            description: original.description ?? '',
+            enabled: original.enabled,
+            omniEnabled: original.omniEnabled ?? false,
+            authRequired: original.authRequired,
+            pii: fromServer(original).pii,
+            policy: cleanPolicy(fromServer(original)),
+            rateLimitPerMinute: original.rateLimitPerMinute ?? null,
+            tools: fromServer(original).tools,
+            catalog: fromServer(original).catalog,
+            clientFeatures: fromServer(original).clientFeatures,
+            guidance: normalizeGuidance(original.guidance),
+          }
+          await api.patchVirtualServer(
+            draft.slug,
+            configurationPatch(body, baseline),
+            draft.version,
+          )
+        } else if (draft.isNew) {
+          await api.createVirtualServer(
+            draft.slug,
+            configurationCreate(
+              body,
+              {
+                enabled: 'publication.update',
+                omniEnabled: 'publication.update',
+                authRequired: 'policy.update',
+                pii: 'policy.update',
+                policy: 'policy.update',
+                rateLimitPerMinute: 'policy.update',
+                clientFeatures: 'client_features.update',
+              },
+              access.can,
+            ),
+          )
+        } else await api.putVirtualServer(draft.slug, body, draft.version)
+        notify({ title: 'Virtual server saved', description: draft.name })
         setSaved(`Saved ${draft.name}. Refreshing the saved configuration.`)
         resetDraft(null)
         savedSlug = draft.slug
@@ -239,139 +441,673 @@ export default function VirtualServerEditor({ initialSelection, onSaved, onCance
     if (savedSlug && onSaved) onSaved(savedSlug)
   }
 
-  const endpointPath = draft && !draft.isNew ? servers.find(v => v.slug === draft.slug)?.endpoint ?? '' : ''
+  const endpointPath =
+    draft && !draft.isNew ? (servers.find((v) => v.slug === draft.slug)?.endpoint ?? '') : ''
   const endpoint = connectionEndpoint(endpointPath)
 
-  useInitialSelection(initialSelection, servers, item => openDraft(fromServer(item)))
+  useInitialSelection(initialSelection, servers, (item) => openDraft(fromServer(item)))
 
   return (
-    <ConfigurationFields.Provider value={fieldAllowed}><FormScope validation={validation}><div className="page-layout">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div><h1 className="page-title">{initialSelection ? 'Edit virtual server' : 'New virtual server'}</h1><p className="page-description mt-1 text-sm text-ink-muted">Compose capabilities and configure access protection.</p></div>
-        <Link className={btn} to={initialSelection?serverPath(initialSelection):'/virtual-servers'}>{initialSelection?'View saved configuration':'Back to virtual servers'}</Link>
-      </header>
-      {draft && <EditorSaveBar status={`${draft.isNew?'New unsaved draft':`Editing draft of saved version ${draft.version}`}. ${dirty?'Unsaved changes':'No unsaved changes'}. Changes apply only after Save.`} detail={dupes.size?'Resolve duplicate exposed tool names before saving.':!draft.name||!draft.slug?'Enter a name and identifier before saving.':'Review capability selections and access protection before saving.'} busy={busy} disabled={!canEdit||((draft.isNew)&&!access.can('create'))||dupes.size>0} onSave={()=>void save()} onCancel={()=>{if(onCancel)onCancel();else setDraft(null)}}/>}
-      <FormErrors validation={validation}/>
-      {draft && <StaleRecovery message={problems.join('; ')} reload={async () => {
-        const latest = await api.getVirtualServer(draft.slug)
-        if (!latest) throw new Error('This item was deleted. Return to the list and refresh.')
-        resetDraft(fromServer(latest)); validation.reset()
-      }} />}
-      {readError && <ErrorBox title="Saved configuration could not be loaded" onRetry={load} busy={loading}>{readError}</ErrorBox>}
-      {loading && <LoadingState label="Loading capability catalogs…" compact/>}
-      {saved && !available && <p role="status" className="mt-3 text-green-700">{saved}</p>}
-      <div className="mt-6">
-        {draft ? (
-          <div className="layout-stack">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SummaryTile label="Selected tools" value={draft.tools.length} detail="Explicit tool selections in this draft" icon={Wrench}/><SummaryTile label="Resources & prompts" value={draft.catalog.length} detail="Resources, templates and prompt selections" icon={ListChecks}/><SummaryTile label="Upstream servers" value={new Set([...draft.tools,...draft.catalog].map(item=>item.upstream)).size} detail="Sources composed into this draft" icon={Layers}/><SummaryTile label="Authentication" value={draft.authRequired?'Required':'Anonymous'} detail="Draft client access requirement" icon={Fingerprint}/></div>
-            <fieldset disabled={!canEdit || busy} className="min-w-0 layout-stack border-0 p-0 m-0">
-            <ServerPanel title="Server identity" description="Name, stable identifier and client access settings" icon={Layers}><div className="space-y-4 panel-body">
-            <fieldset disabled={!fieldAllowed('project')} className="m-0 min-w-0 border-0 p-0"><ProjectSelect value={draft.project} onChange={project=>setDraft({...draft,project})}/></fieldset>
- <p className="text-xs text-ink-muted">Tools from another owner team require approval. Save first, then use the approval actions under Exposed tools to request access.</p>
- <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <FormField name="name" label="Name" required hint="Display name shown to users; up to 120 characters."><input
-                  className={clsx(input, 'mt-1')}
-                  value={draft.name}
-                  onChange={(e) =>
-                    {if(draft.isNew)validation.clear('slug');setDraft({ ...draft, name: e.target.value, ...(draft.isNew && { slug: slugify(e.target.value) }) })}
-                  }
-                /></FormField>
-              <FormField name="slug" label="Slug" required hint="Stable identifier used in the endpoint. It cannot be changed after creation."><input className={clsx(input, 'mt-1')} disabled={!draft.isNew} value={draft.slug} onChange={(e) => setDraft({ ...draft, slug: e.target.value })} /></FormField>
-              <Switch className="self-start" label="Enabled" field="enabled" checked={draft.enabled} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}/>
-              <Switch className="sm:col-span-3" label="Publish through Omni MCP" field="omniEnabled" checked={draft.omniEnabled} onChange={(e) => setDraft({ ...draft, omniEnabled: e.target.checked })} description={draft.authRequired ? "Allow authorized agents to discover and invoke this server through Omni. Existing tool approvals and runtime access still apply. The server description is used for semantic search." : "When anonymous Omni access is enabled by the platform, anonymous clients can discover this server, read its tool schemas and invoke its tools. Existing tool approvals still apply. The server description is used for semantic search."}/>
-              <Switch className="sm:col-span-3" label="Require an agent key" field="authRequired" checked={draft.authRequired} onChange={(e) => setDraft({ ...draft, authRequired: e.target.checked })} description={!draft.authRequired ? <span className="text-amber-700">Anyone who can reach the data plane can call these tools.</span> : 'Clients must authenticate before using this server.'}/>
+    <ConfigurationFields.Provider value={fieldAllowed}>
+      <FormScope validation={validation}>
+        <div className="page-layout">
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="page-title">
+                {initialSelection ? 'Edit virtual server' : 'New virtual server'}
+              </h1>
+              <p className="page-description mt-1 text-sm text-ink-muted">
+                Compose capabilities and configure access protection.
+              </p>
             </div>
-            <FormField name="description" label="Description" hint="Optional. Explain the purpose in up to 1,000 characters."><input className={clsx(input, 'mt-1')} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></FormField>
-            {endpointPath && (
-              <div className="mt-4 flex items-center gap-2 surface-inset px-3 py-2 text-xs">
-                <code className="min-w-0 flex-1 break-all">{endpoint ?? endpointPath}</code>
-                <CopyButton label="Copy endpoint" value={endpoint} />
+            <Link
+              className={btn}
+              to={initialSelection ? serverPath(initialSelection) : '/virtual-servers'}
+            >
+              {initialSelection ? 'View saved configuration' : 'Back to virtual servers'}
+            </Link>
+          </header>
+          {draft && (
+            <EditorSaveBar
+              status={`${draft.isNew ? 'New unsaved draft' : `Editing draft of saved version ${draft.version}`}. ${dirty ? 'Unsaved changes' : 'No unsaved changes'}. Changes apply only after Save.`}
+              detail={
+                dupes.size
+                  ? 'Resolve duplicate exposed tool names before saving.'
+                  : !draft.name || !draft.slug
+                    ? 'Enter a name and identifier before saving.'
+                    : 'Review capability selections and access protection before saving.'
+              }
+              busy={busy}
+              disabled={!canEdit || (draft.isNew && !access.can('create')) || dupes.size > 0}
+              onSave={() => void save()}
+              onCancel={() => {
+                if (onCancel) onCancel()
+                else setDraft(null)
+              }}
+            />
+          )}
+          <FormErrors validation={validation} />
+          {draft && (
+            <StaleRecovery
+              message={problems.join('; ')}
+              reload={async () => {
+                const latest = await api.getVirtualServer(draft.slug)
+                if (!latest)
+                  throw new Error('This item was deleted. Return to the list and refresh.')
+                resetDraft(fromServer(latest))
+                validation.reset()
+              }}
+            />
+          )}
+          {readError && (
+            <ErrorBox title="Saved configuration could not be loaded" onRetry={load} busy={loading}>
+              {readError}
+            </ErrorBox>
+          )}
+          {loading && <LoadingState label="Loading capability catalogs…" compact />}
+          {saved && !available && (
+            <p role="status" className="mt-3 text-green-700">
+              {saved}
+            </p>
+          )}
+          <div className="mt-6">
+            {draft ? (
+              <div className="layout-stack">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <SummaryTile
+                    label="Selected tools"
+                    value={draft.tools.length}
+                    detail="Explicit tool selections in this draft"
+                    icon={Wrench}
+                  />
+                  <SummaryTile
+                    label="Resources & prompts"
+                    value={draft.catalog.length}
+                    detail="Resources, templates and prompt selections"
+                    icon={ListChecks}
+                  />
+                  <SummaryTile
+                    label="Upstream servers"
+                    value={
+                      new Set([...draft.tools, ...draft.catalog].map((item) => item.upstream)).size
+                    }
+                    detail="Sources composed into this draft"
+                    icon={Layers}
+                  />
+                  <SummaryTile
+                    label="Authentication"
+                    value={draft.authRequired ? 'Required' : 'Anonymous'}
+                    detail="Draft client access requirement"
+                    icon={Fingerprint}
+                  />
+                </div>
+                <fieldset
+                  disabled={!canEdit || busy}
+                  className="min-w-0 layout-stack border-0 p-0 m-0"
+                >
+                  <ServerPanel
+                    title="Server identity"
+                    description="Name, stable identifier and client access settings"
+                    icon={Layers}
+                  >
+                    <div className="space-y-4 panel-body">
+                      <fieldset
+                        disabled={!fieldAllowed('project')}
+                        className="m-0 min-w-0 border-0 p-0"
+                      >
+                        <ProjectSelect
+                          value={draft.project}
+                          onChange={(project) => setDraft({ ...draft, project })}
+                        />
+                      </fieldset>
+                      <p className="text-xs text-ink-muted">
+                        Tools from another owner team require approval. Save first, then use the
+                        approval actions under Exposed tools to request access.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <FormField
+                          name="name"
+                          label="Name"
+                          required
+                          hint="Display name shown to users; up to 120 characters."
+                        >
+                          <input
+                            className={clsx(input, 'mt-1')}
+                            value={draft.name}
+                            onChange={(e) => {
+                              if (draft.isNew) validation.clear('slug')
+                              setDraft({
+                                ...draft,
+                                name: e.target.value,
+                                ...(draft.isNew && { slug: slugify(e.target.value) }),
+                              })
+                            }}
+                          />
+                        </FormField>
+                        <FormField
+                          name="slug"
+                          label="Slug"
+                          required
+                          hint="Stable identifier used in the endpoint. It cannot be changed after creation."
+                        >
+                          <input
+                            className={clsx(input, 'mt-1')}
+                            disabled={!draft.isNew}
+                            value={draft.slug}
+                            onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                          />
+                        </FormField>
+                        <Switch
+                          className="self-start"
+                          label="Enabled"
+                          field="enabled"
+                          checked={draft.enabled}
+                          onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
+                        />
+                        <Switch
+                          className="sm:col-span-3"
+                          label="Publish through Omni MCP"
+                          field="omniEnabled"
+                          checked={draft.omniEnabled}
+                          onChange={(e) => setDraft({ ...draft, omniEnabled: e.target.checked })}
+                          description={
+                            draft.authRequired
+                              ? 'Allow authorized agents to discover and invoke this server through Omni. Existing tool approvals and runtime access still apply. The server description is used for semantic search.'
+                              : 'When anonymous Omni access is enabled by the platform, anonymous clients can discover this server, read its tool schemas and invoke its tools. Existing tool approvals still apply. The server description is used for semantic search.'
+                          }
+                        />
+                        <Switch
+                          className="sm:col-span-3"
+                          label="Require an agent key"
+                          field="authRequired"
+                          checked={draft.authRequired}
+                          onChange={(e) => setDraft({ ...draft, authRequired: e.target.checked })}
+                          description={
+                            !draft.authRequired ? (
+                              <span className="text-amber-700">
+                                Anyone who can reach the data plane can call these tools.
+                              </span>
+                            ) : (
+                              'Clients must authenticate before using this server.'
+                            )
+                          }
+                        />
+                      </div>
+                      <FormField
+                        name="description"
+                        label="Description"
+                        hint="Optional. Explain the purpose in up to 1,000 characters."
+                      >
+                        <input
+                          className={clsx(input, 'mt-1')}
+                          value={draft.description}
+                          onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                        />
+                      </FormField>
+                      {endpointPath && (
+                        <div className="mt-4 flex items-center gap-2 surface-inset px-3 py-2 text-xs">
+                          <code className="min-w-0 flex-1 break-all">
+                            {endpoint ?? endpointPath}
+                          </code>
+                          <CopyButton label="Copy endpoint" value={endpoint} />
+                        </div>
+                      )}
+
+                      {endpointPath && !endpoint && (
+                        <p role="status" className="mt-2 text-sm text-amber-700">
+                          Public gateway URL is not configured. Ask your administrator to configure
+                          the public gateway URL; the path above is not a complete connection URL.
+                        </p>
+                      )}
+                    </div>
+                  </ServerPanel>
+
+                  <div>
+                    <h2 className="section-title">Capability composition</h2>
+                    <p className="section-description mt-1 text-sm text-ink-muted">
+                      Select tools, resources, templates and prompts from stored upstream discovery.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 items-start xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] layout-grid">
+                    <ToolPicker
+                      upstreams={upstreams}
+                      catalog={catalog}
+                      shared={sharedTools}
+                      selected={draft.tools}
+                      disabled={!canEdit || busy}
+                      loading={loading}
+                      onAdd={addTools}
+                    />
+
+                    <ServerPanel
+                      title={`Exposed tools (${draft.tools.length})`}
+                      description="Set client-facing aliases, descriptions and policy overrides. Drag or use the keyboard to reorder."
+                      icon={ListChecks}
+                    >
+                      {!draft.isNew && servers.find((s) => s.slug === draft.slug) && (
+                        <ServerToolAccess
+                          key={draft.slug}
+                          server={servers.find((s) => s.slug === draft.slug)!}
+                          canEdit={canEdit && !dirty && !loading && !readError}
+                          onReload={load}
+                        />
+                      )}
+                      <p className="panel-inset py-2 text-xs text-ink-muted">
+                        Approval actions apply to saved tool selections. Save draft changes first.
+                      </p>
+                      <div className="space-y-3 panel-body">
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={onDragEnd}
+                        >
+                          <SortableContext
+                            items={draft.tools.map(key)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {draft.tools
+                              .slice(
+                                0,
+                                validation.issues.some((issue) => issue.field?.startsWith('tools.'))
+                                  ? draft.tools.length
+                                  : exposedLimit,
+                              )
+                              .map((t, index) => (
+                                <div key={key(t)}>
+                                  {['required', 'pending', 'rejected', 'revoked'].includes(
+                                    servers
+                                      .find((s) => s.slug === draft.slug)
+                                      ?.tools.find((x) => key(x) === key(t))?.approvalStatus ?? '',
+                                  ) && (
+                                    <p className="text-sm text-amber-700">
+                                      {approvalLabel(
+                                        servers
+                                          .find((s) => s.slug === draft.slug)
+                                          ?.tools.find((x) => key(x) === key(t))?.approvalStatus,
+                                      )}
+                                      . This tool is not available to agents.{' '}
+                                      <Link
+                                        to={`/ownership?section=access&server=${encodeURIComponent(draft.slug)}`}
+                                        className="underline"
+                                      >
+                                        View requests and decisions
+                                      </Link>
+                                    </p>
+                                  )}
+                                  {servers
+                                    .find((s) => s.slug === draft.slug)
+                                    ?.tools.find((x) => key(x) === key(t))?.orphaned && (
+                                    <p className="text-sm text-amber-700">
+                                      Missing upstream tool: {t.upstream}/{t.tool}. Remove it or
+                                      restore discovery before saving.
+                                    </p>
+                                  )}
+                                  <Row
+                                    index={index}
+                                    key={key(t)}
+                                    id={key(t)}
+                                    t={t}
+                                    mode={draft.policy.tools[key(t)] ?? draft.policy.default}
+                                    inherited={!(key(t) in draft.policy.tools)}
+                                    readOnlyHint={
+                                      catalog[t.upstream]?.find((x) => x.name === t.tool)
+                                        ?.annotations?.readOnlyHint === true
+                                    }
+                                    onMode={(m) => setMode(key(t), m)}
+                                    dup={dupes.has(exposed(t))}
+                                    upstreamDesc={
+                                      catalog[t.upstream]?.find((x) => x.name === t.tool)
+                                        ?.description ??
+                                      servers
+                                        .find((s) => s.slug === draft.slug)
+                                        ?.tools.find((x) => key(x) === key(t))
+                                        ?.upstreamDescription ??
+                                      ''
+                                    }
+                                    drift={
+                                      servers
+                                        .find((s) => s.slug === draft.slug)
+                                        ?.tools.find((x) => key(x) === key(t))?.descriptionDrift ===
+                                      true
+                                    }
+                                    onDescription={(d) => patchTool(key(t), { description: d })}
+                                    onAlias={(a) => patchTool(key(t), { alias: a })}
+                                    onRemove={() => removeTool(key(t))}
+                                  />
+                                </div>
+                              ))}
+                          </SortableContext>
+                        </DndContext>
+                        {draft.tools.length > exposedLimit && (
+                          <LoadMore
+                            shown={Math.min(exposedLimit, draft.tools.length)}
+                            total={draft.tools.length}
+                            noun="tools"
+                            label="Show 50 more exposed tools"
+                            onLoad={() => setExposedLimit((n) => n + 50)}
+                          />
+                        )}
+                        {draft.tools.length === 0 && (
+                          <EmptyState
+                            title="Add tools with the tool picker."
+                            description="Only selected tools are composed into this virtual server."
+                            compact
+                          />
+                        )}
+                      </div>
+                    </ServerPanel>
+                  </div>
+
+                  <CatalogPicker
+                    upstreams={upstreams}
+                    value={draft.catalog}
+                    savedCatalog={servers.find((s) => s.slug === draft.slug)?.catalog}
+                    onChange={(catalog) => setDraft({ ...draft, catalog })}
+                  />
+                  <ConfigurationGroup
+                    title="Agent guidance"
+                    description="Instructions and descriptions presented to agents"
+                  >
+                    <GuidanceEditor
+                      value={draft.guidance}
+                      tools={draft.tools}
+                      upstreams={upstreams}
+                      onChange={(guidance) => setDraft({ ...draft, guidance })}
+                    />
+                  </ConfigurationGroup>
+
+                  <ConfigurationGroup
+                    title="Access & protection"
+                    description="Client permissions, rate limits, tool policies and PII masking"
+                  >
+                    {' '}
+                    <ServerPanel
+                      title="Client feature permissions"
+                      description="Requires client negotiation and client approval. Roots never expose gateway files."
+                      icon={Fingerprint}
+                    >
+                      <div className="grid gap-3 panel-body sm:grid-cols-3">
+                        {(['sampling', 'roots', 'elicitation'] as const).map((feature) => (
+                          <Checkbox
+                            key={feature}
+                            label={feature}
+                            field={`clientFeatures.${feature}`}
+                            checked={draft.clientFeatures[feature]}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                clientFeatures: {
+                                  ...draft.clientFeatures,
+                                  [feature]: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                        ))}
+                      </div>
+                    </ServerPanel>
+                    <fieldset
+                      className="m-0 min-w-0 border-0 p-0"
+                      disabled={!access.can('policy.update')}
+                    >
+                      <div className="grid items-start layout-grid xl:grid-cols-2">
+                        <ServerPanel
+                          title="Rate limit"
+                          description="Bound tool calls across client identities"
+                          icon={SlidersHorizontal}
+                        >
+                          <div className="panel-body">
+                            <FormField
+                              name="rateLimitPerMinute"
+                              label="Rate limit"
+                              help="Server and credential limits can both apply. Empty means this configuration does not add a rate limit."
+                              hint="Optional. 1–1,000,000 calls per minute; empty means unlimited."
+                            >
+                              <input
+                                type="number"
+                                min={1}
+                                placeholder="unlimited"
+                                className={`${input} max-w-40`}
+                                value={draft.rateLimit}
+                                onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })}
+                              />
+                            </FormField>
+                            <p className="mt-1 text-xs text-ink-muted">
+                              Shared by all agents. Each agent key can have its own limit too.
+                              Excess calls get HTTP 429.
+                            </p>
+                          </div>
+                        </ServerPanel>
+
+                        <ServerPanel
+                          title="Tool policy"
+                          description="Default behavior for tools without an override"
+                          icon={ShieldCheck}
+                        >
+                          <div className="panel-body">
+                            <label className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                              Default for tools without a rule
+                              <Select
+                                className={`${input} max-w-48`}
+                                value={draft.policy.default}
+                                onChange={(e) =>
+                                  setDraft({
+                                    ...draft,
+                                    policy: {
+                                      ...draft.policy,
+                                      default: e.target.value as PolicyMode,
+                                    },
+                                  })
+                                }
+                              >
+                                {MODES.map(([v, l]) => (
+                                  <option key={v} value={v}>
+                                    {l}
+                                  </option>
+                                ))}
+                              </Select>
+                            </label>
+                            <p className="mt-1 text-xs text-ink-muted">
+                              Read-only lets through only tools classified as read-only by an
+                              operator in the upstream invocation policy. Upstream hints alone do
+                              not grant access.
+                            </p>
+                          </div>
+                        </ServerPanel>
+                      </div>
+
+                      <ServerPanel
+                        title="PII masking"
+                        description="Mask sensitive data in tool results and optionally in upstream arguments"
+                        icon={ShieldCheck}
+                      >
+                        <div className="panel-body">
+                          <Switch
+                            label="Mask sensitive data in tool results"
+                            field="pii.enabled"
+                            checked={draft.pii.enabled}
+                            onChange={(e) => setPii({ enabled: e.target.checked })}
+                          />
+                          {draft.pii.enabled && (
+                            <div className="mt-3 space-y-3">
+                              <p className="text-xs text-ink-muted">
+                                Leaving detectors unselected uses all built-in detectors.
+                              </p>
+                              <FormGroup name="pii.detectors" label="Built-in detectors">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  {DETECTORS.map(([id, label]) => (
+                                    <Checkbox
+                                      key={id}
+                                      label={label}
+                                      checked={draft.pii.detectors.includes(id)}
+                                      onChange={(e) =>
+                                        setPii({
+                                          detectors: e.target.checked
+                                            ? [...draft.pii.detectors, id]
+                                            : draft.pii.detectors.filter((d) => d !== id),
+                                        })
+                                      }
+                                    />
+                                  ))}
+                                </div>
+                              </FormGroup>
+                              <Switch
+                                label="Also mask tool arguments sent upstream"
+                                field="pii.maskArguments"
+                                checked={draft.pii.maskArguments}
+                                onChange={(e) => setPii({ maskArguments: e.target.checked })}
+                              />
+                              <div className="space-y-2">
+                                {draft.pii.customRules.map((r, i) => (
+                                  <div key={i} className="flex flex-wrap gap-2">
+                                    <FormField
+                                      name={`pii.customRules.${i}.name`}
+                                      label={`Custom rule ${i + 1} name`}
+                                      className="w-full"
+                                      required
+                                      hint="Short identifier for this masking rule."
+                                    >
+                                      <input
+                                        aria-label={`Custom rule ${i + 1} name`}
+                                        className={input}
+                                        placeholder="Name"
+                                        value={r.name}
+                                        onChange={(e) =>
+                                          setPii({
+                                            customRules: draft.pii.customRules.map((x, j) =>
+                                              j === i ? { ...x, name: e.target.value } : x,
+                                            ),
+                                          })
+                                        }
+                                      />
+                                    </FormField>
+                                    <FormField
+                                      name={`pii.customRules.${i}.pattern`}
+                                      label={`Custom rule ${i + 1} pattern`}
+                                      className="w-full"
+                                      required
+                                      hint="Use an RE2 regular expression. Pattern validity is checked on Save."
+                                    >
+                                      <input
+                                        aria-label={`Custom rule ${i + 1} pattern`}
+                                        className={clsx(input, 'font-mono')}
+                                        placeholder="Regex (RE2)"
+                                        value={r.pattern}
+                                        onChange={(e) =>
+                                          setPii({
+                                            customRules: draft.pii.customRules.map((x, j) =>
+                                              j === i ? { ...x, pattern: e.target.value } : x,
+                                            ),
+                                          })
+                                        }
+                                      />
+                                    </FormField>
+                                    <button
+                                      className={`${btn} action-danger-outline action-icon`}
+                                      aria-label="Remove rule"
+                                      onClick={() => {
+                                        validation.clear('pii.customRules')
+                                        setPii({
+                                          customRules: draft.pii.customRules.filter(
+                                            (_, j) => j !== i,
+                                          ),
+                                        })
+                                      }}
+                                    >
+                                      <X
+                                        aria-hidden="true"
+                                        className="icon-control text-ink-muted"
+                                      />
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  className={btn}
+                                  disabled={draft.pii.customRules.length >= 20}
+                                  onClick={() =>
+                                    setPii({
+                                      customRules: [
+                                        ...draft.pii.customRules,
+                                        { name: '', pattern: '' },
+                                      ],
+                                    })
+                                  }
+                                >
+                                  <Plus aria-hidden="true" className="icon-control" /> Custom rule
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </ServerPanel>
+                    </fieldset>
+                  </ConfigurationGroup>
+                </fieldset>
+              </div>
+            ) : (
+              <div className="surface-card">
+                {initialSelection && loading ? (
+                  <LoadingState label="Loading saved configuration…" />
+                ) : (
+                  <EmptyState
+                    title={
+                      initialSelection
+                        ? 'Virtual server configuration is unavailable. Return to the list or refresh this page.'
+                        : 'Saved. Select a virtual server from the list.'
+                    }
+                    description={
+                      initialSelection
+                        ? 'Your current draft is not replaced by a failed read.'
+                        : 'Open the saved configuration to review your changes.'
+                    }
+                    actions={
+                      initialSelection ? (
+                        <button className={btn} onClick={() => void load()}>
+                          Retry
+                        </button>
+                      ) : undefined
+                    }
+                  />
+                )}
               </div>
             )}
-
-            {endpointPath && !endpoint && <p role="status" className="mt-2 text-sm text-amber-700">Public gateway URL is not configured. Ask your administrator to configure the public gateway URL; the path above is not a complete connection URL.</p>}
-            </div></ServerPanel>
-
-<div><h2 className="section-title">Capability composition</h2><p className="section-description mt-1 text-sm text-ink-muted">Select tools, resources, templates and prompts from stored upstream discovery.</p></div>
- <div className="grid grid-cols-1 items-start xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] layout-grid">
-              <ToolPicker upstreams={upstreams} catalog={catalog} shared={sharedTools} selected={draft.tools} disabled={!canEdit||busy} loading={loading} onAdd={addTools}/>
-
-              <ServerPanel title={`Exposed tools (${draft.tools.length})`} description="Set client-facing aliases, descriptions and policy overrides. Drag or use the keyboard to reorder." icon={ListChecks}>
-                {!draft.isNew && servers.find(s=>s.slug===draft.slug) && <ServerToolAccess key={draft.slug} server={servers.find(s=>s.slug===draft.slug)!} canEdit={canEdit && !dirty && !loading && !readError} onReload={load}/>}
-                <p className="panel-inset py-2 text-xs text-ink-muted">Approval actions apply to saved tool selections. Save draft changes first.</p>
-                <div className="space-y-3 panel-body">
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-                    <SortableContext items={draft.tools.map(key)} strategy={verticalListSortingStrategy}>
-                      {draft.tools.slice(0,validation.issues.some(issue=>issue.field?.startsWith('tools.'))?draft.tools.length:exposedLimit).map((t,index) => (
-                        <div key={key(t)}>{["required","pending","rejected","revoked"].includes(servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus??"")&&<p className="text-sm text-amber-700">{approvalLabel(servers.find(s=>s.slug===draft.slug)?.tools.find(x=>key(x)===key(t))?.approvalStatus)}. This tool is not available to agents. <Link to={`/ownership?section=access&server=${encodeURIComponent(draft.slug)}`} className="underline">View requests and decisions</Link></p>}{servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.orphaned && <p className="text-sm text-amber-700">Missing upstream tool: {t.upstream}/{t.tool}. Remove it or restore discovery before saving.</p>}<Row index={index} key={key(t)} id={key(t)} t={t} mode={draft.policy.tools[key(t)] ?? draft.policy.default} inherited={!(key(t) in draft.policy.tools)} readOnlyHint={catalog[t.upstream]?.find((x) => x.name === t.tool)?.annotations?.readOnlyHint === true} onMode={(m) => setMode(key(t), m)} dup={dupes.has(exposed(t))} upstreamDesc={catalog[t.upstream]?.find((x) => x.name === t.tool)?.description ?? servers.find(s => s.slug === draft.slug)?.tools.find(x => key(x) === key(t))?.upstreamDescription ?? ''} drift={servers.find((s) => s.slug === draft.slug)?.tools.find((x) => key(x) === key(t))?.descriptionDrift === true} onDescription={(d) => patchTool(key(t), { description: d })} onAlias={(a) => patchTool(key(t), { alias: a })} onRemove={() => removeTool(key(t))} /></div>
-                      ))}
-                    </SortableContext>
-                  </DndContext>
-                  {draft.tools.length>exposedLimit&&<LoadMore shown={Math.min(exposedLimit,draft.tools.length)} total={draft.tools.length} noun="tools" label="Show 50 more exposed tools" onLoad={()=>setExposedLimit(n=>n+50)}/>}
-                  {draft.tools.length === 0 && <EmptyState title="Add tools with the tool picker." description="Only selected tools are composed into this virtual server." compact/>}
-                </div>
-              </ServerPanel>
-            </div>
-
- <CatalogPicker upstreams={upstreams} value={draft.catalog} savedCatalog={servers.find((s) => s.slug === draft.slug)?.catalog} onChange={catalog=>setDraft({...draft,catalog})}/>
- <ConfigurationGroup title="Agent guidance" description="Instructions and descriptions presented to agents"><GuidanceEditor value={draft.guidance} tools={draft.tools} upstreams={upstreams} onChange={guidance=>setDraft({...draft,guidance})}/></ConfigurationGroup>
-
-            <ConfigurationGroup title="Access & protection" description="Client permissions, rate limits, tool policies and PII masking">            <ServerPanel title="Client feature permissions" description="Requires client negotiation and client approval. Roots never expose gateway files." icon={Fingerprint}><div className="grid gap-3 panel-body sm:grid-cols-3">{(['sampling','roots','elicitation'] as const).map(feature=><Checkbox key={feature} label={feature} field={`clientFeatures.${feature}`} checked={draft.clientFeatures[feature]} onChange={e=>setDraft({...draft,clientFeatures:{...draft.clientFeatures,[feature]:e.target.checked}})}/>)}</div></ServerPanel>
-            <fieldset className="m-0 min-w-0 border-0 p-0" disabled={!access.can('policy.update')}><div className="grid items-start layout-grid xl:grid-cols-2"><ServerPanel title="Rate limit" description="Bound tool calls across client identities" icon={SlidersHorizontal}><div className="panel-body">
-              <FormField name="rateLimitPerMinute" label="Rate limit" help="Server and credential limits can both apply. Empty means this configuration does not add a rate limit." hint="Optional. 1–1,000,000 calls per minute; empty means unlimited."><input type="number" min={1} placeholder="unlimited" className={`${input} max-w-40`} value={draft.rateLimit} onChange={(e) => setDraft({ ...draft, rateLimit: e.target.value })} /></FormField>
-              <p className="mt-1 text-xs text-ink-muted">Shared by all agents. Each agent key can have its own limit too. Excess calls get HTTP 429.</p>
-            </div></ServerPanel>
-
-            <ServerPanel title="Tool policy" description="Default behavior for tools without an override" icon={ShieldCheck}><div className="panel-body">
-              <label className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                Default for tools without a rule
-                <Select className={`${input} max-w-48`} value={draft.policy.default} onChange={(e) => setDraft({ ...draft, policy: { ...draft.policy, default: e.target.value as PolicyMode } })}>
-                  {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </Select>
-              </label>
-              <p className="mt-1 text-xs text-ink-muted">Read-only lets through only tools classified as read-only by an operator in the upstream invocation policy. Upstream hints alone do not grant access.</p>
-            </div></ServerPanel></div>
-
-            <ServerPanel title="PII masking" description="Mask sensitive data in tool results and optionally in upstream arguments" icon={ShieldCheck}><div className="panel-body">
-              <Switch label="Mask sensitive data in tool results" field="pii.enabled" checked={draft.pii.enabled} onChange={(e) => setPii({ enabled: e.target.checked })}/>
-              {draft.pii.enabled && (
-                <div className="mt-3 space-y-3">
-                  <p className="text-xs text-ink-muted">Leaving detectors unselected uses all built-in detectors.</p>
-                  <FormGroup name="pii.detectors" label="Built-in detectors"><div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {DETECTORS.map(([id, label]) => (
-                      <Checkbox key={id} label={label} checked={draft.pii.detectors.includes(id)} onChange={(e) => setPii({ detectors: e.target.checked ? [...draft.pii.detectors, id] : draft.pii.detectors.filter((d) => d !== id) })}/>
-                    ))}
-                  </div></FormGroup>
-                  <Switch label="Also mask tool arguments sent upstream" field="pii.maskArguments" checked={draft.pii.maskArguments} onChange={(e) => setPii({ maskArguments: e.target.checked })}/>
-                  <div className="space-y-2">
-                    {draft.pii.customRules.map((r, i) => (
-                      <div key={i} className="flex flex-wrap gap-2">
-                        <FormField name={`pii.customRules.${i}.name`} label={`Custom rule ${i+1} name`} className="w-full" required hint="Short identifier for this masking rule."><input aria-label={`Custom rule ${i+1} name`} className={input} placeholder="Name" value={r.name} onChange={(e) => setPii({ customRules: draft.pii.customRules.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></FormField>
-                        <FormField name={`pii.customRules.${i}.pattern`} label={`Custom rule ${i+1} pattern`} className="w-full" required hint="Use an RE2 regular expression. Pattern validity is checked on Save."><input aria-label={`Custom rule ${i+1} pattern`} className={clsx(input, 'font-mono')} placeholder="Regex (RE2)" value={r.pattern} onChange={(e) => setPii({ customRules: draft.pii.customRules.map((x, j) => (j === i ? { ...x, pattern: e.target.value } : x)) })} /></FormField>
-                        <button className={`${btn} action-danger-outline action-icon`} aria-label="Remove rule" onClick={() => {validation.clear('pii.customRules');setPii({ customRules: draft.pii.customRules.filter((_, j) => j !== i) })}}><X aria-hidden="true" className="icon-control text-ink-muted" /></button>
-                      </div>
-                    ))}
-                    <button className={btn} disabled={draft.pii.customRules.length >= 20} onClick={() => setPii({ customRules: [...draft.pii.customRules, { name: '', pattern: '' }] })}>
-                      <Plus aria-hidden="true" className="icon-control" /> Custom rule
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div></ServerPanel>
-            </fieldset></ConfigurationGroup>
-
-            </fieldset>
           </div>
-        ) : (
-          <div className="surface-card">{initialSelection&&loading?<LoadingState label="Loading saved configuration…"/>:<EmptyState title={initialSelection?'Virtual server configuration is unavailable. Return to the list or refresh this page.':'Saved. Select a virtual server from the list.'} description={initialSelection?'Your current draft is not replaced by a failed read.':'Open the saved configuration to review your changes.'} actions={initialSelection?<button className={btn} onClick={()=>void load()}>Retry</button>:undefined}/>}</div>
-        )}
-      </div>
-    </div></FormScope></ConfigurationFields.Provider>
+        </div>
+      </FormScope>
+    </ConfigurationFields.Provider>
   )
 }
 
-function Row({ index, id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, drift, onDescription, onMode, onAlias, onRemove }: { index:number; id: string; t: ToolSelection; upstreamDesc: string; drift: boolean; onDescription: (d: string) => void; dup: boolean; mode: PolicyMode; inherited: boolean; readOnlyHint: boolean; onMode: (m: PolicyMode) => void; onAlias: (a: string) => void; onRemove: () => void }) {
-  const policyAllowed=useConfigurationField('policy')
+function Row({
+  index,
+  id,
+  t,
+  dup,
+  mode,
+  inherited,
+  readOnlyHint,
+  upstreamDesc,
+  drift,
+  onDescription,
+  onMode,
+  onAlias,
+  onRemove,
+}: {
+  index: number
+  id: string
+  t: ToolSelection
+  upstreamDesc: string
+  drift: boolean
+  onDescription: (d: string) => void
+  dup: boolean
+  mode: PolicyMode
+  inherited: boolean
+  readOnlyHint: boolean
+  onMode: (m: PolicyMode) => void
+  onAlias: (a: string) => void
+  onRemove: () => void
+}) {
+  const policyAllowed = useConfigurationField('policy')
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
   return (
     <div
@@ -379,13 +1115,78 @@ function Row({ index, id, t, dup, mode, inherited, readOnlyHint, upstreamDesc, d
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={clsx('surface-inset p-4', dup ? 'border-red-300' : 'border-line')}
     >
-      <div className="flex items-start gap-2"><button className={`${btn} action-icon cursor-grab touch-none`} aria-label={`Reorder ${t.upstream}/${t.tool}`} {...attributes} {...listeners}><GripVertical aria-hidden="true" className="icon-control" /></button><p className="min-w-0 flex-1 break-all pt-1 text-xs font-medium text-ink-muted">{t.upstream} / {t.tool}</p><button className={`${btn} action-danger-outline action-icon`} aria-label="Remove" onClick={onRemove}><X aria-hidden="true" className="icon-inline text-ink-muted"/></button></div>
+      <div className="flex items-start gap-2">
+        <button
+          className={`${btn} action-icon cursor-grab touch-none`}
+          aria-label={`Reorder ${t.upstream}/${t.tool}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical aria-hidden="true" className="icon-control" />
+        </button>
+        <p className="min-w-0 flex-1 break-all pt-1 text-xs font-medium text-ink-muted">
+          {t.upstream} / {t.tool}
+        </p>
+        <button
+          className={`${btn} action-danger-outline action-icon`}
+          aria-label="Remove"
+          onClick={onRemove}
+        >
+          <X aria-hidden="true" className="icon-inline text-ink-muted" />
+        </button>
+      </div>
       <div className="mt-3 space-y-3">
-        <FormField name={`tools.${index}.alias`} label="Exposed alias" error={dup?'Choose a unique exposed name. Another tool uses this name.':undefined} hint="Optional. Leave empty to use the default upstream tool name."><input className={`${input} mt-2`} aria-label={`Alias for ${t.upstream}/${t.tool}`} placeholder={`${t.upstream}__${t.tool}`} value={t.alias??''} onChange={e=>onAlias(e.target.value)}/></FormField>
-        <DescriptionOverride name={`tools.${index}.description`} identity={`${t.upstream}/${t.tool}`} exposedName={t.alias || `${t.upstream}__${t.tool}`} value={t.description ?? ''} upstream={upstreamDesc} drift={drift} onChange={onDescription}/>
-        <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs font-medium">Tool policy<Select disabled={!policyAllowed} aria-label="Policy" className={clsx(input,'mt-2',mode==='deny'&&'border-red-300 text-red-700')} value={mode} onChange={e=>onMode(e.target.value as PolicyMode)}>{MODES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</Select></label><span className="pb-2 text-xs text-ink-muted">{inherited?'Uses default':'Override'}</span></div>
-        {mode==='read_only'&&<p className="text-xs text-ink-muted">Requires an operator read-only classification in the upstream invocation policy.{readOnlyHint?' The upstream also advertises a read-only hint.':''}</p>}
-        {dup&&<p className="sr-only">Duplicate exposed name</p>}
+        <FormField
+          name={`tools.${index}.alias`}
+          label="Exposed alias"
+          error={dup ? 'Choose a unique exposed name. Another tool uses this name.' : undefined}
+          hint="Optional. Leave empty to use the default upstream tool name."
+        >
+          <input
+            className={`${input} mt-2`}
+            aria-label={`Alias for ${t.upstream}/${t.tool}`}
+            placeholder={`${t.upstream}__${t.tool}`}
+            value={t.alias ?? ''}
+            onChange={(e) => onAlias(e.target.value)}
+          />
+        </FormField>
+        <DescriptionOverride
+          name={`tools.${index}.description`}
+          identity={`${t.upstream}/${t.tool}`}
+          exposedName={t.alias || `${t.upstream}__${t.tool}`}
+          value={t.description ?? ''}
+          upstream={upstreamDesc}
+          drift={drift}
+          onChange={onDescription}
+        />
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-0 flex-1 text-xs font-medium">
+            Tool policy
+            <Select
+              disabled={!policyAllowed}
+              aria-label="Policy"
+              className={clsx(input, 'mt-2', mode === 'deny' && 'border-red-300 text-red-700')}
+              value={mode}
+              onChange={(e) => onMode(e.target.value as PolicyMode)}
+            >
+              {MODES.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <span className="pb-2 text-xs text-ink-muted">
+            {inherited ? 'Uses default' : 'Override'}
+          </span>
+        </div>
+        {mode === 'read_only' && (
+          <p className="text-xs text-ink-muted">
+            Requires an operator read-only classification in the upstream invocation policy.
+            {readOnlyHint ? ' The upstream also advertises a read-only hint.' : ''}
+          </p>
+        )}
+        {dup && <p className="sr-only">Duplicate exposed name</p>}
       </div>
     </div>
   )
