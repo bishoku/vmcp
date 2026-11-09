@@ -1,32 +1,41 @@
-# React + TypeScript + Vite
+# vMCP web UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React, TypeScript and Vite frontend. See [CONTRIBUTING](../CONTRIBUTING.md) for
+prerequisites, backend setup and the complete verification workflow.
 
-Currently, two official plugins are available:
+## Local setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm ci
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Dependency setup installs the pinned Prettier version and the tracked repository
+pre-commit hook. Repeat `npm ci` in each new checkout. The hook checks the exact
+staged web content and rejects formatting violations without rewriting or staging
+files. Non-web commits do not require the web dependencies.
+
+## Formatting and verification
+
+```sh
+npm run format          # Apply shared formatting after edits
+npm run format:check    # Check without modifying files
+npm run format:staged   # Check the staged content before a commit
+npm run test:format     # Exercise the hook and npm lifecycle gates
+npm run lint
+npm test
+npm run build
+npm run test:browser
+```
+
+`dev`, `build` and `preview` format automatically before starting. The preview
+server serves the last build; run `npm run build` first. CI checks formatting
+before building so automatic formatting cannot hide a violation.
+
+VS Code settings and extension recommendations are tracked for both the repository
+root and this directory. Other IDEs can use the same `.prettierrc.json` and the
+root `.editorconfig`. Use the locally installed formatter, never a global version.
+Generated output and the npm-owned lockfile are excluded from formatting.
+
+AI agents must also follow the mandatory formatting and commit instructions in
+[AGENTS.md](../AGENTS.md). Do not skip hooks or use `--no-verify`.

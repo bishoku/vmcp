@@ -32,7 +32,10 @@
             "properties": {
               "address": {
                 "type": "object",
-                "properties": { "city": { "type": "string" }, "lines": { "type": "array", "items": { "type": "string" } } }
+                "properties": {
+                  "city": { "type": "string" },
+                  "lines": { "type": "array", "items": { "type": "string" } }
+                }
               }
             }
           },

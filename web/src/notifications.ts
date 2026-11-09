@@ -7,5 +7,8 @@ export interface Notification {
   key?: string
   duration?: number
 }
-export const NotificationContext = createContext<{ available: boolean; notify: (notice: Notification) => void }>({ available: false, notify: () => {} })
+export const NotificationContext = createContext<{
+  available: boolean
+  notify: (notice: Notification) => void
+}>({ available: false, notify: () => {} })
 export const useNotifications = () => useContext(NotificationContext)

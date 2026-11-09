@@ -1,6 +1,7 @@
 FROM --platform=$BUILDPLATFORM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
+COPY scripts/install-hooks.mjs ./scripts/install-hooks.mjs
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 ARG VITE_PUBLIC_GATEWAY_URL

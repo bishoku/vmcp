@@ -34,7 +34,7 @@ separate.
 
 1. Branch from `main`; keep changes focused.
 2. Add tests (integration tests under `core/internal/e2e` and `core/internal/controlplane` show the patterns).
-3. Run `gofmt`, `go vet ./...`, the tests, and the web lint/build before pushing.
+3. Run `gofmt`, `go vet ./...`, the tests, and the web format checks/lint/build before pushing.
 4. Describe *why* in the PR, and note what you did and did not verify.
 
 By contributing you agree your work is licensed under Apache-2.0.
@@ -85,3 +85,33 @@ Pushing a `vMAJOR.MINOR.PATCH` tag runs `publish-docker-hub`, verifies that comm
 through reusable CI, and publishes the Helm runtime images under `barishoku`.
 See [Docker Hub setup and Helm image overlays](maintainer/DOCKER_HUB_PUBLISHING.md) for
 the required repository secret, image list and versioning procedure.
+
+## Web formatting
+
+Run `npm ci --prefix web` in each checkout. The lockfile pins Prettier and npm's
+`prepare` step installs the repository-managed `.githooks/pre-commit` hook. This
+sets the checkout's `core.hooksPath` to `.githooks`; reinstalling dependencies
+restores it. Docker contexts and source archives without `.git` skip hook setup.
+Do not skip npm lifecycle scripts for a development checkout.
+
+Use `npm run format --prefix web` before local development/builds and after the
+last edit. `npm run dev`, `npm run build` and `npm run preview` inside `web/` run
+formatting automatically first. `npm run format:check --prefix web` is read-only.
+Before committing, stage the intended formatted changes and run
+`npm run format:staged --prefix web`; the Git hook runs this same check against
+staged blobs, including partially staged files. It never formats or stages files
+on your behalf. Missing dependencies or malformed/unformatted staged web files
+block the commit; non-web commits do not require web dependencies.
+
+Tracked VS Code settings work from the repository root or `web/`. Install the
+recommended Prettier extension and use the project-local formatter/configuration;
+other IDEs can use the same `web/.prettierrc.json` and `.editorconfig`. The shared
+style is two spaces, single quotes, no semicolons, LF line endings and a 100-column
+print-width target. Tracked Git attributes preserve LF across Windows/macOS/Linux
+checkouts without converting binary assets. Build/test artifacts and the npm-owned
+lockfile are ignored.
+
+The required **web** CI job checks the entire web tree before a build can format
+anything, then tests the formatting gates themselves. A developer can disable a
+local hook, so protected-branch CI is the enforcement boundary; do not bypass
+hooks or protected-branch requirements. Formatting does not replace lint/tests.

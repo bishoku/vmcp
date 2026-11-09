@@ -17,10 +17,7 @@
               "uniqueItems": true,
               "minItems": 1,
               "items": {
-                "type": [
-                  "object",
-                  "null"
-                ],
+                "type": ["object", "null"],
                 "properties": {
                   "sku": {
                     "type": "string"
@@ -29,41 +26,24 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "sku",
-                  "price"
-                ]
+                "required": ["sku", "price"]
               }
             },
             "secret": {
               "type": "string"
             }
           },
-          "required": [
-            "id",
-            "items",
-            "secret"
-          ]
+          "required": ["id", "items", "secret"]
         },
         "private": {
           "type": "string"
         }
       },
-      "required": [
-        "order",
-        "private"
-      ]
+      "required": ["order", "private"]
     },
     "paths": [
-      [
-        "order",
-        "id"
-      ],
-      [
-        "order",
-        "items",
-        "sku"
-      ]
+      ["order", "id"],
+      ["order", "items", "sku"]
     ],
     "expectedSchema": {
       "type": "object",
@@ -78,32 +58,22 @@
               "type": "array",
               "minItems": 1,
               "items": {
-                "type": [
-                  "object",
-                  "null"
-                ],
+                "type": ["object", "null"],
                 "properties": {
                   "sku": {
                     "type": "string"
                   }
                 },
-                "required": [
-                  "sku"
-                ],
+                "required": ["sku"],
                 "additionalProperties": false
               }
             }
           },
-          "required": [
-            "id",
-            "items"
-          ],
+          "required": ["id", "items"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "order"
-      ],
+      "required": ["order"],
       "additionalProperties": false,
       "description": "Order response"
     },
@@ -153,11 +123,7 @@
         }
       }
     },
-    "paths": [
-      [
-        "id"
-      ]
-    ],
+    "paths": [["id"]],
     "expectedSchema": {
       "type": "array",
       "items": {
@@ -210,11 +176,7 @@
         "hidden": {}
       }
     },
-    "paths": [
-      [
-        "record"
-      ]
-    ],
+    "paths": [["record"]],
     "expectedSchema": {
       "type": "object",
       "properties": {

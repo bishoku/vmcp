@@ -8,7 +8,7 @@ core:
 	python3 scripts/check-test-results.py verification.jsonl
 	rm -f verification.jsonl
 web:
-	cd web && npm test && npm run lint && npm run build && npm run validate:api && npm run test:browser
+	cd web && npm run format:check && npm run test:format && npm test && npm run lint && npm run build && npm run validate:api && npm run test:browser
 images:
 	docker build --build-arg SERVICE=control-plane -t vmcp/control-plane:local core
 	docker build --build-arg SERVICE=data-plane -t vmcp/data-plane:local core
