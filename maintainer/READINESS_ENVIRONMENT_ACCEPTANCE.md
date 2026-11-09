@@ -598,3 +598,12 @@ capacity gate during a mixed-version rollout. Complete the rollout before compar
 SQL costs. On rollback retain migration 46 while any new binary remains. Reducing a
 limit does not cancel running work. Total command reduction is 2/27 (~7.4%) for this
 short serial profile; no throughput or latency gain is claimed from this small sample.
+
+CI follow-up: the first full browser run on `4bc1bb9` passed 202/203 tests; the
+remaining form-validation test received a generic collection mock for the new
+admission singleton and saw an extra validation alert. The shared presentation
+fixture now supplies valid default settings. Product logic and error assertions are
+unchanged. All 12 Settings/form-validation browser tests passed locally (31.7s);
+`web-ci-initial-failure.log` and `web-fixture-recheck.log` retain the failure and fix
+evidence in the run directory. Core, image, Helm and security demo CI checks passed
+on that implementation commit. Required checks must also pass on the final PR head.
