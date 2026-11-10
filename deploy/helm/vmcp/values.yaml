@@ -78,6 +78,9 @@ controlPlane: {enabled: true}
 dataPlane: {enabled: true}
 # Optional gradual discovery service. It shares the gateway's runtime audience.
 omni:
+  # Independent model-provider grants; never inherit runtime egress permissions.
+  egressAllowCIDRs: []
+  egressAllowHosts: []
   allowAnonymous: false
   minSimilarity: 0 # Optional cosine floor; calibrate per model, 0 disables it.
   enabled: false

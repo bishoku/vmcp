@@ -74,6 +74,8 @@
 - {name: VMCP_OMNI_URL, value: {{ printf "http://%s:8080" (include "vmcp.name" (dict "root" $r "component" "omni-mcp")) | quote }}}
 {{- end }}
 {{- if eq $c "omni-mcp" }}
+- {name: VMCP_EGRESS_ALLOW_CIDRS, value: {{ join "," $v.omni.egressAllowCIDRs | quote }}}
+- {name: VMCP_EGRESS_ALLOW_HOSTS, value: {{ join "," $v.omni.egressAllowHosts | quote }}}
 - {name: VMCP_LISTEN, value: ":8080"}
 - {name: VMCP_OMNI_DATA_PLANE_URL, value: {{ printf "http://%s:8080" (include "vmcp.name" (dict "root" $r "component" "data-plane")) | quote }}}
 - {name: VMCP_OMNI_MIN_SIMILARITY, value: {{ $v.omni.minSimilarity | quote }}}

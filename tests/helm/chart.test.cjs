@@ -129,3 +129,34 @@ test('Optional reranker wires its own provider key and validated controls only t
  const keyless=deployments(render({omni:{...omni,rerank:{...omni.rerank,key:{existingSecret:'',value:''}}}})).find(d=>d.metadata.name.endsWith('omni-mcp'));
  assert.ok(!env(keyless).some(e=>e.name==='VMCP_OMNI_RERANK_KEY'));
 });
+
+test('Omni model egress grants are independent of CP/DP grants',()=>{
+ const omni={enabled:true,image:'example/omni@sha256:'+'a'.repeat(64),secret:{existingSecret:'omni-secret'}};
+ const runtime={egressAllowCIDRs:['192.168.10.0/24'],egressAllowHosts:['upstream.example']};
+ const grant={egressAllowCIDRs:['10.152.183.135/32','10.152.183.136/32'],egressAllowHosts:['embedding.internal','rerank.internal']};
+ const keys=['VMCP_EGRESS_ALLOW_CIDRS','VMCP_EGRESS_ALLOW_HOSTS'];
+ for(const configured of [false,true]){
+  const ds=deployments(render({runtime,omni:{...omni,...(configured?grant:{})}}));
+  for(const suffix of ['control-plane','data-plane','omni-mcp']){
+   const d=ds.find(d=>d.metadata.name.endsWith(suffix));
+   const expected=suffix==='omni-mcp'?(configured?grant:{egressAllowCIDRs:[],egressAllowHosts:[]}):runtime;
+   for(const [i,field] of ['egressAllowCIDRs','egressAllowHosts'].entries()){
+    const entries=env(d).filter(e=>e.name===keys[i]);
+    assert.equal(entries.length,1);assert.equal(entries[0].value,expected[field].join(','));
+   }
+  }
+ }
+ const ds=deployments(render({omni:{...omni,...grant}}));
+ for(const d of ds.filter(d=>/-(control-plane|data-plane)$/.test(d.metadata.name))){
+  for(const key of keys)assert.equal(env(d).find(e=>e.name===key).value,'');
+ }
+ for(const field of ['egressAllowCIDRs','egressAllowHosts']){
+  for(const invalid of ['not-an-array',[42]]){
+   assert.match(render({omni:{...omni,[field]:invalid}},[],false),new RegExp(field));
+  }
+ }
+ for(const source of ['env','secretEnv']){
+  const value=source==='env'?'10.0.0.0/8':{existingSecret:'bypass',key:'value'};
+  assert.match(render({omni:{...omni,[source]:{VMCP_EGRESS_ALLOW_CIDRS:value}}},[],false),/chart-managed/);
+ }
+});

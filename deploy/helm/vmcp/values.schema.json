@@ -395,6 +395,18 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "egressAllowCIDRs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "egressAllowHosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "enabled": {
           "type": "boolean"
         },

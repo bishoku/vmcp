@@ -292,6 +292,31 @@ without evidence from the intended infrastructure.
 
 ## Optional Omni MCP
 
+Since chart 2.1.3, configure model-provider egress independently:
+
+```yaml
+omni:
+  egressAllowCIDRs: ["10.152.183.135/32"] # Example: replace with your model Service IP.
+  egressAllowHosts: ["omni-models.omni-models.svc.cluster.local"]
+```
+
+These values set `VMCP_EGRESS_ALLOW_CIDRS` and `VMCP_EGRESS_ALLOW_HOSTS`
+only on Omni. They default to empty lists and never inherit or extend
+`runtime.egressAllowCIDRs` / `runtime.egressAllowHosts`, which continue to
+control CP/DP. Private destinations require an explicit CIDR even when the host
+is allowed. A nonempty host list restricts destinations to those exact names;
+include both embedding and rerank hosts when they differ. Prefer narrow Service
+IP grants; update them if a Service is recreated with a different IP. Kubernetes
+NetworkPolicy is separate and must also allow the destination and port when enabled.
+
+Chart 2.1.3 reuses the signed application v2.1.2 images. Download its packaged
+chart and unchanged image overlay from the `helm-v2.1.3` GitHub release. Upgrade
+with `--reuse-values -f omni-egress.yaml -f helm-images.yaml` and wait for rollout.
+No new application image or database migration is introduced. Existing Helm
+migration hooks still run in automatic mode. Keep the Omni grants in your own
+values file; direct `kubectl set env` changes are not a persistent Helm configuration.
+
+
 The v1.2.0 image inventory includes `omni-mcp`, but `omni.enabled` defaults to false.
 Set `omni.enabled: true`, supply `omni.secret` through an existing Secret (same
 secret is wired to CP/DP/Omni), and optionally set `omni.embeddingURL`,
