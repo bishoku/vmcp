@@ -246,6 +246,12 @@ body:has(dialog[open]) #main-content {
   cursor: pointer;
   border-radius: inherit;
 }
+.access-permission-choice .choice-label {
+  align-items: flex-start;
+}
+.access-permission-choice .choice-input {
+  margin-top: 0.125rem;
+}
 .choice-plain .choice-label {
   padding: 0.5rem 0;
 }

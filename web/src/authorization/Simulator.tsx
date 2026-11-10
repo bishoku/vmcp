@@ -8,6 +8,7 @@ import { input } from '../styles'
 import type { AccessPrincipal, AccessScope, Evaluation, EvaluationInput } from './client'
 import { AccessError, Field, ModeSelect, TextInput } from './common'
 import { uuid, type AccessData } from './state'
+import { describePermission } from './permission-help'
 import { PrincipalFields, ScopeFields } from './Selectors'
 export default function Simulator({ data, onDenied }: { data: AccessData; onDenied: () => void }) {
   const [principal, setPrincipal] = useState<AccessPrincipal>({
@@ -149,7 +150,14 @@ export default function Simulator({ data, onDenied }: { data: AccessData; onDeni
             icon={ScanLine}
           >
             <div className="space-y-5 panel-body">
-              <Field label="Permission to evaluate">
+              <Field
+                label="Permission to evaluate"
+                hint={
+                  permission
+                    ? describePermission(permission).description
+                    : 'Choose a capability to see what it allows.'
+                }
+              >
                 <Select
                   required
                   value={permission}
@@ -161,7 +169,7 @@ export default function Simulator({ data, onDenied }: { data: AccessData; onDeni
                   <option value="">Choose a permission</option>
                   {data.permissions.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.id}
+                      {describePermission(p.id).title} ({p.id})
                     </option>
                   ))}
                 </Select>

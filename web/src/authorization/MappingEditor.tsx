@@ -5,7 +5,7 @@ import Select from '../Select'
 import { Checkbox } from '../SelectionControls'
 import { Modal } from '../ui'
 import type { IdentityMapping, MappingInput, MappingCondition } from './client'
-import { AccessError, Field, TextInput } from './common'
+import { AccessError, AccessSection, Field, TextInput } from './common'
 import { useEditor, type AccessData } from './state'
 export default function MappingEditor({
   mapping,
@@ -103,6 +103,7 @@ export default function MappingEditor({
   return (
     <Modal
       title={base ? 'Edit claim mapping' : 'Create claim mapping'}
+      description="Match verified identity claims before assigning a role. Every condition must match."
       size="wide"
       busy={e.busy}
       onClose={() => e.unsaved.guard(onClose)}
@@ -134,90 +135,100 @@ export default function MappingEditor({
             Version {base.version} · {base.id}
           </p>
         )}
-        <Field
-          label="OIDC issuer"
-          hint={`Configured issuer: ${data.status.trustedIssuer || 'No OIDC provider configured'}`}
+        <AccessSection
+          title="Identity provider"
+          description="Use the configured OIDC issuer. A mapping matches identities; access is granted separately through an assignment."
         >
-          <TextInput
-            required
-            maxLength={2048}
-            value={e.draft.issuer}
-            onChange={(issuer) => e.setDraft({ ...e.draft, issuer })}
+          <Field
+            label="OIDC issuer"
+            hint={`Configured issuer: ${data.status.trustedIssuer || 'No OIDC provider configured'}`}
+          >
+            <TextInput
+              required
+              maxLength={2048}
+              value={e.draft.issuer}
+              onChange={(issuer) => e.setDraft({ ...e.draft, issuer })}
+            />
+          </Field>
+          <Checkbox
+            label="Mapping enabled"
+            checked={e.draft.enabled}
+            onChange={(event) => e.setDraft({ ...e.draft, enabled: event.target.checked })}
           />
-        </Field>
-        <Checkbox
-          label="Mapping enabled"
-          checked={e.draft.enabled}
-          onChange={(event) => e.setDraft({ ...e.draft, enabled: event.target.checked })}
-        />
-        {untrusted && (
-          <p role="status" className="supporting-copy">
-            This issuer can only be saved as a disabled draft. Enabled assignment references may
-            also prevent an issuer change.
-          </p>
-        )}
-        <fieldset className="space-y-4">
-          <legend className="field-label">AND conditions</legend>
-          {e.draft.conditions.map((c, index) => (
-            <div
-              key={index}
-              className="grid items-end gap-3 rounded-xl border border-line p-4 sm:grid-cols-3"
-            >
-              <Field label={`Claim path ${index + 1}`}>
-                <TextInput
-                  required
-                  maxLength={512}
-                  value={c.path}
-                  onChange={(path) => condition(index, { path })}
-                />
-              </Field>
-              <Field label={`Operator ${index + 1}`}>
-                <Select
-                  value={c.operator}
-                  onChange={(event) =>
-                    condition(index, {
-                      operator: event.target.value as MappingCondition['operator'],
+          {untrusted && (
+            <p role="status" className="supporting-copy">
+              This issuer can only be saved as a disabled draft. Enabled assignment references may
+              also prevent an issuer change.
+            </p>
+          )}
+        </AccessSection>
+        <AccessSection
+          title="Claim conditions"
+          description="Match exact values from verified OIDC ID-token claims. Add conditions to narrow the identities that qualify."
+        >
+          <fieldset className="space-y-4">
+            <legend className="field-label">AND conditions</legend>
+            {e.draft.conditions.map((c, index) => (
+              <div
+                key={index}
+                className="grid min-w-0 items-end gap-4 rounded-xl border border-line bg-canvas/40 p-4 sm:grid-cols-2"
+              >
+                <Field label={`Claim path ${index + 1}`}>
+                  <TextInput
+                    required
+                    maxLength={512}
+                    value={c.path}
+                    onChange={(path) => condition(index, { path })}
+                  />
+                </Field>
+                <Field label={`Operator ${index + 1}`}>
+                  <Select
+                    value={c.operator}
+                    onChange={(event) =>
+                      condition(index, {
+                        operator: event.target.value as MappingCondition['operator'],
+                      })
+                    }
+                  >
+                    <option value="equals">String equals</option>
+                    <option value="array_contains">Array contains string</option>
+                    <option value="scope_contains">Scope contains exact token</option>
+                  </Select>
+                </Field>
+                <Field label={`Claim value ${index + 1}`}>
+                  <TextInput
+                    required
+                    maxLength={2048}
+                    value={c.value}
+                    onChange={(value) => condition(index, { value })}
+                  />
+                </Field>
+                <Button
+                  disabled={e.draft.conditions.length === 1}
+                  onClick={() =>
+                    e.setDraft({
+                      ...e.draft,
+                      conditions: e.draft.conditions.filter((_, i) => i !== index),
                     })
                   }
                 >
-                  <option value="equals">String equals</option>
-                  <option value="array_contains">Array contains string</option>
-                  <option value="scope_contains">Scope contains exact token</option>
-                </Select>
-              </Field>
-              <Field label={`Claim value ${index + 1}`}>
-                <TextInput
-                  required
-                  maxLength={2048}
-                  value={c.value}
-                  onChange={(value) => condition(index, { value })}
-                />
-              </Field>
-              <Button
-                disabled={e.draft.conditions.length === 1}
-                onClick={() =>
-                  e.setDraft({
-                    ...e.draft,
-                    conditions: e.draft.conditions.filter((_, i) => i !== index),
-                  })
-                }
-              >
-                Remove condition {index + 1}
-              </Button>
-            </div>
-          ))}
-          <Button
-            disabled={e.draft.conditions.length >= 32}
-            onClick={() =>
-              e.setDraft({
-                ...e.draft,
-                conditions: [...e.draft.conditions, { path: '', operator: 'equals', value: '' }],
-              })
-            }
-          >
-            Add condition
-          </Button>
-        </fieldset>
+                  Remove condition {index + 1}
+                </Button>
+              </div>
+            ))}
+            <Button
+              disabled={e.draft.conditions.length >= 32}
+              onClick={() =>
+                e.setDraft({
+                  ...e.draft,
+                  conditions: [...e.draft.conditions, { path: '', operator: 'equals', value: '' }],
+                })
+              }
+            >
+              Add condition
+            </Button>
+          </fieldset>
+        </AccessSection>
       </form>
     </Modal>
   )

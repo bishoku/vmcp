@@ -179,10 +179,31 @@ for (const width of [390, 1440])
     await page.screenshot({ path: `/tmp/vmcp-access-inventory-${width}.png`, fullPage: true })
     await observer.getByRole('button', { name: 'Copy', exact: true }).click()
     const copy = page.getByRole('dialog', { name: 'Copy role' })
+    const requestPermission = copy.getByRole('checkbox', {
+      name: 'Read captured requests',
+      exact: true,
+    })
+    await expect(requestPermission).toHaveAccessibleDescription(/Does not grant response access/)
+    await expect(requestPermission.locator('..')).toHaveCSS('align-items', 'flex-start')
+    await copy.getByRole('searchbox', { name: 'Find permissions', exact: true }).fill('metadata')
+    await expect(
+      copy.getByRole('checkbox', { name: 'View audit events', exact: true }),
+    ).toBeVisible()
+    await expect(requestPermission).toHaveCount(0)
+    await copy.getByRole('searchbox', { name: 'Find permissions', exact: true }).fill('')
+    expect(await copy.evaluate((d) => d.scrollWidth <= d.clientWidth)).toBe(true)
+    await page.screenshot({ path: `/tmp/vmcp-access-role-${width}.png`, fullPage: true })
+    await requestPermission.locator('..').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `/tmp/vmcp-access-permissions-${width}.png`, fullPage: true })
     await copy.getByLabel('Role identifier', { exact: true }).fill('audit-copy')
     await copy.getByLabel('Role name', { exact: true }).fill('Audit copy')
-    await copy.getByRole('checkbox', { name: 'audit.events.read', exact: true }).check()
-    await copy.getByRole('checkbox', { name: 'audit.payloads.request.read', exact: true }).check()
+    await copy.getByRole('checkbox', { name: 'View audit events', exact: true }).check()
+    await copy
+      .getByRole('checkbox', {
+        name: 'Read captured requests',
+        exact: true,
+      })
+      .check()
     await copy.getByRole('button', { name: 'Save role', exact: true }).click()
     await expect(copy).toHaveCount(0)
     const created = f.requests.find((r) => r.path === '/roles' && r.method === 'POST')!
@@ -200,6 +221,8 @@ for (const width of [390, 1440])
     ).toBe('"1"')
     await page.getByRole('button', { name: 'Claim mappings', exact: true }).click()
     await page.getByRole('button', { name: 'Create mapping', exact: true }).click()
+    await expect(page.getByRole('region', { name: 'Claim conditions', exact: true })).toBeVisible()
+    await page.screenshot({ path: `/tmp/vmcp-access-mapping-${width}.png`, fullPage: true })
     await page.getByLabel('Claim path 1', { exact: true }).fill('scope')
     await page.getByLabel('Operator 1', { exact: true }).selectOption('scope_contains')
     await page.getByLabel('Claim value 1', { exact: true }).fill('audit:read')
@@ -209,6 +232,10 @@ for (const width of [390, 1440])
     await page.getByRole('button', { name: 'Assignments', exact: true }).click()
     await page.getByRole('button', { name: 'Create assignment', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Create role assignment' })
+    await expect(
+      dialog.getByRole('region', { name: 'Role and identity', exact: true }),
+    ).toBeVisible()
+    await page.screenshot({ path: `/tmp/vmcp-access-assignment-${width}.png`, fullPage: true })
     await dialog.getByLabel('Assigned role', { exact: true }).selectOption(f.state.roles.at(-1)!.id)
     await dialog.getByLabel('Identity source', { exact: true }).selectOption('mapping')
     await dialog.getByLabel('Claim mapping', { exact: true }).selectOption(mapping.id)

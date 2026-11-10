@@ -1,5 +1,7 @@
-import { cloneElement, isValidElement, useId } from 'react'
-import type { ReactNode, ComponentProps } from 'react'
+import type { ReactNode, ReactElement, InputHTMLAttributes, ComponentProps } from 'react'
+import { ShieldCheck } from 'lucide-react'
+import { FormField } from '../FormField'
+import { ServerPanel } from '../connections/ServerPanels'
 import { ErrorBox } from '../ui'
 import Select from '../Select'
 import { input } from '../styles'
@@ -9,32 +11,28 @@ export function Field({
   hint,
 }: {
   label: string
-  children: ReactNode
+  children: ReactElement<InputHTMLAttributes<HTMLInputElement>>
   hint?: ReactNode
 }) {
-  const id = useId(),
-    controlId = isValidElement<{ id?: string }>(children) ? (children.props.id ?? id) : id,
-    hintId = `${id}-hint`
-  const control = isValidElement<{ id?: string; 'aria-describedby'?: string }>(children)
-    ? cloneElement(children, {
-        id: children.props.id ?? id,
-        'aria-describedby':
-          [children.props['aria-describedby'], hint ? hintId : ''].filter(Boolean).join(' ') ||
-          undefined,
-      })
-    : children
   return (
-    <div className="min-w-0 space-y-2 text-xs">
-      <label className="field-label" htmlFor={controlId}>
-        {label}
-      </label>
-      {control}
-      {hint && (
-        <p id={hintId} className="supporting-copy text-ink-muted">
-          {hint}
-        </p>
-      )}
-    </div>
+    <FormField name={label} label={label} hint={hint} required={children.props.required}>
+      {children}
+    </FormField>
+  )
+}
+export function AccessSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: ReactNode
+}) {
+  return (
+    <ServerPanel title={title} description={description} icon={ShieldCheck} headingLevel={3}>
+      <div className="panel-body space-y-5">{children}</div>
+    </ServerPanel>
   )
 }
 export function ModeSelect({
