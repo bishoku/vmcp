@@ -82,9 +82,15 @@ async function login(page, user = 'alice') {
 async function init(page) {
   await page.locator('#clear').click()
   await page.locator('#connect').click()
-  await page.waitForFunction(() =>
-    document.querySelector('#log').textContent.includes('serverInfo'),
-  )
+  try {
+    await page.waitForFunction(() =>
+      document.querySelector('#log').textContent.includes('serverInfo'),
+    )
+  } catch (error) {
+    // init clears the log first; only the synthetic initialize exchange is present.
+    console.log('INITIALIZE_DIAGNOSTIC', (await page.locator('#log').innerText()).slice(0, 2000))
+    throw error
+  }
 }
 async function send(page, tool, args = {}, fresh = true) {
   console.log('Testing', tool, fresh ? 'new' : 'retry')

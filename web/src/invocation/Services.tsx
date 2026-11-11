@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
-import type { InvocationServices } from '../api'
+import type { InvocationService, InvocationServices } from '../api'
 import Button from '../Button'
 import { ServerPanel } from '../connections/ServerPanels'
 import { useConfirm } from '../confirmation'
@@ -86,11 +86,20 @@ export default function Services({
                   <p className="break-all text-sm font-semibold">{name}</p>
                   <p className="break-all text-xs text-ink-muted">{service.url}</p>
                   <p className="text-xs text-ink-muted">
-                    {service.token
-                      ? 'Token pending save'
-                      : service.hasToken
-                        ? 'Token stored'
-                        : 'Token required'}
+                    <span>
+                      {service.authType === 'none'
+                        ? 'No authentication'
+                        : service.authType === 'headers'
+                          ? 'Custom authentication headers'
+                          : service.authType === 'oauth_client_credentials'
+                            ? 'OAuth2 client credentials'
+                            : service.token
+                              ? 'Token pending save'
+                              : service.hasToken
+                                ? 'Token stored'
+                                : 'Token required'}
+                    </span>{' '}
+                    · {service.timeoutSeconds || 2}s timeout
                   </p>
                   {used.has(name) && <p className="text-xs text-ink-muted">Used by a policy</p>}
                 </div>
@@ -171,6 +180,15 @@ function ServiceEditor({
       url: current?.url ?? '',
       origin: current?.approvalOrigin ?? '',
       token: '',
+      authType: current?.authType ?? 'bearer',
+      timeout: String(current?.timeoutSeconds || 2),
+      headers: Object.entries(current?.headers ?? {}).map(([name, value]) => ({ name, value })),
+      tokenUrl: current?.oauth?.tokenUrl ?? '',
+      clientId: current?.oauth?.clientId ?? '',
+      clientSecret: '',
+      scopes: current?.oauth?.scopes?.join(' ') ?? '',
+      audience: current?.oauth?.audience ?? '',
+      authStyle: current?.oauth?.authStyle ?? 'client_secret_basic',
       ca: current?.caPem ?? '',
     },
     () => name,
@@ -180,7 +198,52 @@ function ServiceEditor({
   const close = async () => {
     if (!dirty || (await confirm('Discard changes to this service?'))) onClose()
   }
-  const tokenRequired = !(current?.hasToken || current?.token) || current?.url !== draft.url
+  const sameDestination =
+    current?.url === draft.url &&
+    (current?.caPem ?? '') === draft.ca &&
+    (current?.authType ?? 'bearer') === draft.authType
+  const tokenRequired = !sameDestination || !(current?.hasToken || current?.token)
+  const secretRequired =
+    !sameDestination ||
+    current?.oauth?.tokenUrl !== draft.tokenUrl ||
+    current?.oauth?.clientId !== draft.clientId ||
+    (current?.oauth?.authStyle || 'client_secret_basic') !== draft.authStyle ||
+    !(current?.oauth?.hasClientSecret || current?.oauth?.clientSecret)
+  const headerError = () => {
+    if (draft.headers.length < 1 || draft.headers.length > 16)
+      return 'Add 1 to 16 authentication headers.'
+    const names = new Set<string>()
+    for (const row of draft.headers) {
+      const key = row.name.toLowerCase()
+      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(row.name) || names.has(key))
+        return 'Use unique valid header names.'
+      names.add(key)
+      if (
+        [
+          'host',
+          'content-type',
+          'content-length',
+          'connection',
+          'transfer-encoding',
+          'trailer',
+          'upgrade',
+          'te',
+          'expect',
+          'keep-alive',
+        ].includes(key) ||
+        key.startsWith('proxy-') ||
+        key.startsWith('sec-')
+      )
+        return 'Transport and proxy headers cannot be used for authentication.'
+      const stored = Object.keys(current?.hasHeaders ?? {}).some(
+        (name) => name.toLowerCase() === key && current?.hasHeaders?.[name],
+      )
+      if (!row.value && !(sameDestination && stored))
+        return 'Enter a value for each new or changed header.'
+      if (/[\r\n]/.test(row.value) || row.value.length > 8192)
+        return 'Header values must be a single line of at most 8192 characters.'
+    }
+  }
   const stage = () => {
     if (
       !validation.check({
@@ -191,7 +254,27 @@ function ServiceEditor({
             : undefined,
         url: httpsError(draft.url),
         origin: httpsError(draft.origin, true),
-        token: tokenRequired ? requiredText(draft.token, 'Service token') : undefined,
+        token:
+          draft.authType === 'bearer' && tokenRequired
+            ? requiredText(draft.token, 'Service token')
+            : undefined,
+        timeout:
+          !Number.isInteger(Number(draft.timeout)) ||
+          Number(draft.timeout) < 1 ||
+          Number(draft.timeout) > 60
+            ? 'Enter a timeout from 1 to 60 seconds.'
+            : undefined,
+        headers: draft.authType === 'headers' ? headerError() : undefined,
+        tokenUrl:
+          draft.authType === 'oauth_client_credentials' ? httpsError(draft.tokenUrl) : undefined,
+        clientId:
+          draft.authType === 'oauth_client_credentials'
+            ? requiredText(draft.clientId, 'Client ID')
+            : undefined,
+        clientSecret:
+          draft.authType === 'oauth_client_credentials' && secretRequired
+            ? requiredText(draft.clientSecret, 'Client secret')
+            : undefined,
       })
     )
       return
@@ -200,8 +283,33 @@ function ServiceEditor({
       [draft.name]: {
         url: draft.url,
         approvalOrigin: draft.origin,
-        token: draft.token || current?.token,
-        hasToken: current?.hasToken,
+        authType: draft.authType,
+        timeoutSeconds: Number(draft.timeout),
+        token:
+          draft.authType === 'bearer'
+            ? draft.token || (sameDestination ? current?.token : undefined)
+            : undefined,
+        hasToken: draft.authType === 'bearer' && sameDestination ? current?.hasToken : undefined,
+        headers:
+          draft.authType === 'headers'
+            ? Object.fromEntries(draft.headers.map((row) => [row.name, row.value]))
+            : undefined,
+        hasHeaders:
+          draft.authType === 'headers' && sameDestination ? current?.hasHeaders : undefined,
+        oauth:
+          draft.authType === 'oauth_client_credentials'
+            ? {
+                tokenUrl: draft.tokenUrl,
+                clientId: draft.clientId,
+                clientSecret:
+                  draft.clientSecret ||
+                  (!secretRequired ? current?.oauth?.clientSecret : undefined),
+                hasClientSecret: !secretRequired && current?.oauth?.hasClientSecret,
+                scopes: draft.scopes.split(/\s+/).filter(Boolean),
+                audience: draft.audience || undefined,
+                authStyle: draft.authStyle,
+              }
+            : undefined,
         caPem: draft.ca || undefined,
       },
     })
@@ -232,24 +340,57 @@ function ServiceEditor({
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
             </FormField>
+            <FormField name="authType" label="Service authentication">
+              <select
+                className={input}
+                value={draft.authType}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    authType: e.target.value as NonNullable<InvocationService['authType']>,
+                  })
+                }
+              >
+                <option value="bearer">Bearer token</option>
+                <option value="oauth_client_credentials">OAuth2 client credentials</option>
+                <option value="headers">Custom headers</option>
+                <option value="none">No authentication</option>
+              </select>
+            </FormField>
             <FormField
-              name="token"
-              label="Service token"
-              required={tokenRequired}
-              hint={
-                tokenRequired
-                  ? 'Enter the write-only credential for this endpoint.'
-                  : 'Leave blank to retain the existing token.'
-              }
+              name="timeout"
+              label="Request timeout (seconds)"
+              hint="1–60 seconds per check or consume, including OAuth token acquisition."
             >
               <input
                 className={input}
-                type="password"
-                autoComplete="new-password"
-                value={draft.token}
-                onChange={(e) => setDraft({ ...draft, token: e.target.value })}
+                type="number"
+                min="1"
+                max="60"
+                value={draft.timeout}
+                onChange={(e) => setDraft({ ...draft, timeout: e.target.value })}
               />
             </FormField>
+            {draft.authType === 'bearer' && (
+              <FormField
+                name="token"
+                label="Service token"
+                required={tokenRequired}
+                hint={
+                  tokenRequired
+                    ? 'Enter the write-only credential for this endpoint.'
+                    : 'Leave blank to retain the existing token.'
+                }
+              >
+                <input
+                  className={input}
+                  type="password"
+                  autoComplete="new-password"
+                  value={draft.token}
+                  onChange={(e) => setDraft({ ...draft, token: e.target.value })}
+                />
+              </FormField>
+            )}
             <FormField name="url" label="HTTPS decision endpoint" required>
               <input
                 className={input}
@@ -270,6 +411,136 @@ function ServiceEditor({
               />
             </FormField>
           </div>
+          {draft.authType === 'oauth_client_credentials' && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField name="tokenUrl" label="OAuth token endpoint" required>
+                <input
+                  className={input}
+                  value={draft.tokenUrl}
+                  onChange={(e) => setDraft({ ...draft, tokenUrl: e.target.value })}
+                />
+              </FormField>
+              <FormField name="clientId" label="OAuth client ID" required>
+                <input
+                  className={input}
+                  value={draft.clientId}
+                  onChange={(e) => setDraft({ ...draft, clientId: e.target.value })}
+                />
+              </FormField>
+              <FormField
+                name="clientSecret"
+                label="OAuth client secret"
+                required={secretRequired}
+                hint={
+                  secretRequired
+                    ? 'Enter the write-only client secret.'
+                    : 'Leave blank to retain the existing secret.'
+                }
+              >
+                <input
+                  className={input}
+                  type="password"
+                  autoComplete="new-password"
+                  value={draft.clientSecret}
+                  onChange={(e) => setDraft({ ...draft, clientSecret: e.target.value })}
+                />
+              </FormField>
+              <FormField name="authStyle" label="Token endpoint authentication">
+                <select
+                  className={input}
+                  value={draft.authStyle}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      authStyle: e.target.value as 'client_secret_basic' | 'client_secret_post',
+                    })
+                  }
+                >
+                  <option value="client_secret_basic">Client secret in Basic header</option>
+                  <option value="client_secret_post">Client secret in request body</option>
+                </select>
+              </FormField>
+              <FormField name="scopes" label="OAuth scopes" hint="Space-separated scopes.">
+                <input
+                  className={input}
+                  value={draft.scopes}
+                  onChange={(e) => setDraft({ ...draft, scopes: e.target.value })}
+                />
+              </FormField>
+              <FormField name="audience" label="OAuth audience (optional)">
+                <input
+                  className={input}
+                  value={draft.audience}
+                  onChange={(e) => setDraft({ ...draft, audience: e.target.value })}
+                />
+              </FormField>
+            </div>
+          )}
+          {draft.authType === 'headers' && (
+            <FormField
+              name="headers"
+              label="Authentication headers"
+              hint="Values are write-only. Leave existing values blank to retain them; remove a row to delete it."
+            >
+              <div className="layout-stack">
+                {draft.headers.map((row, index) => (
+                  <div className="flex flex-wrap gap-2" key={index}>
+                    <input
+                      className={input}
+                      aria-label={`Header ${index + 1} name`}
+                      placeholder="X-API-Key"
+                      value={row.name}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          headers: draft.headers.map((item, i) =>
+                            i === index ? { ...item, name: e.target.value } : item,
+                          ),
+                        })
+                      }
+                    />
+                    <input
+                      className={input}
+                      type="password"
+                      autoComplete="new-password"
+                      aria-label={`Header ${index + 1} value`}
+                      placeholder="Secret value"
+                      value={row.value}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          headers: draft.headers.map((item, i) =>
+                            i === index ? { ...item, value: e.target.value } : item,
+                          ),
+                        })
+                      }
+                    />
+                    <Button
+                      aria-label={`Remove header ${index + 1}`}
+                      onClick={() =>
+                        setDraft({ ...draft, headers: draft.headers.filter((_, i) => i !== index) })
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  disabled={draft.headers.length >= 16}
+                  onClick={() =>
+                    setDraft({ ...draft, headers: [...draft.headers, { name: '', value: '' }] })
+                  }
+                >
+                  Add header
+                </Button>
+              </div>
+            </FormField>
+          )}
+          {draft.authType === 'none' && (
+            <p className="text-sm text-ink-muted">
+              Requests to this service will not include authentication credentials.
+            </p>
+          )}
           <details className="surface-inset p-4">
             <summary className="cursor-pointer text-sm font-medium">
               Private certificate authority

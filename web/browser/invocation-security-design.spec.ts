@@ -144,3 +144,52 @@ for (const kind of ['mcp', 'rest'] as const)
     expect(doc.policy.tools?.transfer).toBeUndefined()
     expect(doc.policy.stepUp?.maxAgeSeconds).toBe(300)
   })
+
+test('shared service authentication editor supports OAuth, headers and none on mobile', async ({
+  page,
+}) => {
+  await page.route('**/auth/config', (r) => r.fulfill({ json: { oidc: false } }))
+  await page.route('**/api/v1/**', (route) => {
+    const capability = configurationFixture(route, 'operator', true)
+    if (capability) return capability
+    const path = new URL(route.request().url()).pathname
+    if (path.endsWith('/me'))
+      return route.fulfill({
+        status: route.request().headers().authorization ? 200 : 401,
+        json: { name: 'Operator', role: 'admin' },
+      })
+    if (path.endsWith('/invocation-security/shared-services'))
+      return route.fulfill({ json: { revision: 1, services: {}, inUse: [] } })
+    return route.fulfill({ json: { items: [] } })
+  })
+  await page.goto('/invocation-security')
+  await page.getByLabel('Admin token').fill('test')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await page.getByRole('button', { name: 'Add service' }).click()
+  const modal = page.getByRole('dialog')
+  await modal.getByLabel('Service name', { exact: true }).fill('corporate')
+  await modal
+    .getByLabel('HTTPS decision endpoint', { exact: true })
+    .fill('https://approval.test/check')
+  await modal
+    .getByLabel('Trusted approval screen origin', { exact: true })
+    .fill('https://approval.test')
+  await modal
+    .getByLabel('Service authentication', { exact: true })
+    .selectOption('oauth_client_credentials')
+  await modal.getByLabel('OAuth token endpoint', { exact: true }).fill('https://idp.test/token')
+  await modal.getByLabel('OAuth client ID', { exact: true }).fill('client')
+  await modal.getByLabel('OAuth client secret', { exact: true }).fill('test-secret')
+  await page.screenshot({ path: test.info().outputPath('service-oauth-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: test.info().outputPath('service-oauth-mobile.png') })
+  await modal.getByLabel('Service authentication', { exact: true }).selectOption('headers')
+  await modal.getByRole('button', { name: 'Add header' }).click()
+  await modal.getByLabel('Header 1 name', { exact: true }).fill('X-API-Key')
+  await modal.getByLabel('Header 1 value', { exact: true }).fill('test-key')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await modal.getByLabel('Service authentication', { exact: true }).selectOption('none')
+  await modal.getByRole('button', { name: 'Stage service' }).click()
+  await expect(page.getByText('No authentication', { exact: true })).toBeVisible()
+})

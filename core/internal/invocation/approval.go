@@ -85,9 +85,11 @@ func Content(raw []byte, fields []string) (string, map[string]json.RawMessage, e
 }
 func Call(ctx context.Context, svc Service, req Request) (Decision, error) {
 	var out Decision
-	if svc.Token == "" {
-		return out, errors.New("approval service credentials unavailable")
+	if err := svc.ValidateConnection(); err != nil {
+		return out, errors.New("invalid approval service configuration")
 	}
+	ctx, cancel := context.WithTimeout(ctx, svc.Timeout())
+	defer cancel()
 	client, err := approvalClient(svc.CAPEM)
 	if err != nil {
 		return out, err
@@ -96,19 +98,45 @@ func Call(ctx context.Context, svc Service, req Request) (Decision, error) {
 	if err != nil {
 		return out, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, svc.URL, bytes.NewReader(raw))
 	if err != nil {
 		return out, err
 	}
 	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Authorization", "Bearer "+svc.Token)
+	var source *serviceToken
+	var bearer string
+	switch svc.Authentication() {
+	case "bearer":
+		if svc.Token == "" {
+			return out, errors.New("approval service credentials unavailable")
+		}
+		r.Header.Set("Authorization", "Bearer "+svc.Token)
+	case "headers":
+		for name, value := range svc.Headers {
+			if value == "" {
+				return out, errors.New("approval service credentials unavailable")
+			}
+			r.Header.Set(name, value)
+		}
+	case "oauth_client_credentials":
+		if svc.OAuth.ClientSecret == "" {
+			return out, errors.New("approval service credentials unavailable")
+		}
+		source = tokenSource(svc)
+		bearer, err = source.get(ctx, svc, client)
+		if err != nil {
+			return out, errors.New("approval OAuth token unavailable")
+		}
+		r.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	res, err := client.Do(r)
 	if err != nil {
 		return out, errors.New("approval service unavailable")
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusUnauthorized && source != nil {
+		source.invalidate(ctx, bearer)
+	}
 	if res.StatusCode != 200 {
 		return out, errors.New("approval service rejected request")
 	}
@@ -166,7 +194,7 @@ func approvalClient(ca string) (*http.Client, error) {
 		}
 		transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
 	}
-	client := netpolicy.DedicatedClient(&http.Client{Transport: transport, Timeout: 2 * time.Second})
+	client := netpolicy.DedicatedClient(&http.Client{Transport: transport, Timeout: 0})
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	if len(approvalClients) >= 256 {

@@ -103,15 +103,10 @@ func (t *Tx) SaveInvocationSecurity(ctx context.Context, s invocation.Settings) 
 
 func retainInvocationCredentials(services, previousServices map[string]invocation.Service) error {
 	for name, svc := range services {
-		if svc.Token == "" {
-			if previous, ok := previousServices[name]; ok && previous.URL != svc.URL {
-				return apierror.New(422, "credentials_required", "Credentials required", "Changing an approval endpoint requires an explicit service token")
-			}
-			svc.Token = previousServices[name].Token
-		}
-		svc.HasToken = false
-		if svc.Token == "" {
-			return apierror.New(422, "credentials_required", "Credentials required", "Approval service token required")
+		var err error
+		svc, err = svc.RetainCredentials(previousServices[name])
+		if err != nil {
+			return apierror.New(422, "credentials_required", "Invalid service credentials", err.Error())
 		}
 		services[name] = svc
 	}
