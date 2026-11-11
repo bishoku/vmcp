@@ -103,7 +103,7 @@ test('builtin roles are readonly and copied permissions stay explicit', async ()
   fireEvent.click(within(observer).getByRole('button', { name: 'Copy' }))
   fill('Role identifier', 'copied-observer')
   fill('Role name', 'Copied observer')
-  fireEvent.click(screen.getByLabelText('audit.payloads.request.read'))
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Read captured requests' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save role' }))
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   const body = create.mock.calls[0][0]
@@ -448,4 +448,48 @@ test('explains that permission roles do not establish administrator identity', a
     ),
   ).toBeTruthy()
   expect(screen.queryByText('Platform admin')).toBeNull()
+})
+
+test('role permissions explain capabilities and search descriptions without discarding selections', async () => {
+  const create = vi.spyOn(api, 'createAccessRole').mockResolvedValue({ ...fixture.roles[2] })
+  render(view())
+  await loaded()
+  fireEvent.click(screen.getByRole('button', { name: 'Create role' }))
+  const dialog = screen.getByRole('dialog', { name: 'Create role' })
+  expect(within(dialog).getByRole('region', { name: 'Role details' })).toBeTruthy()
+  expect(within(dialog).getByRole('region', { name: 'Permissions' })).toBeTruthy()
+  fill('Role identifier', 'request-reviewer')
+  fill('Role name', 'Request reviewer')
+  const request = within(dialog).getByRole('checkbox', { name: 'Read captured requests' })
+  const hint = document.getElementById(request.getAttribute('aria-describedby')!)!
+  expect(hint.textContent).toContain('audit.payloads.request.read')
+  expect(hint.textContent).toContain('Does not grant response access')
+  expect(hint.textContent).toContain('explicit payload capture allowlist')
+  fireEvent.click(request)
+  fill('Find permissions', 'metadata')
+  expect(within(dialog).getByRole('checkbox', { name: 'View audit events' })).toBeTruthy()
+  expect(within(dialog).queryByRole('checkbox', { name: 'Read captured requests' })).toBeNull()
+  fill('Find permissions', 'nothing-matches')
+  expect(within(dialog).getByText(/No permissions match your search/)).toBeTruthy()
+  fill('Find permissions', '')
+  expect(within(dialog).getByRole('checkbox', { name: 'Read captured requests' })).toHaveProperty(
+    'checked',
+    true,
+  )
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save role' }))
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+  expect(create.mock.calls[0][0].permissions).toEqual(['audit.payloads.request.read'])
+})
+
+test('new server permissions show cautious fallback guidance', async () => {
+  vi.mocked(api.accessPermissions).mockResolvedValue({
+    items: [{ id: 'future.action', scopes: ['tenant'], captureRestricted: false }],
+  })
+  render(view())
+  await loaded()
+  fireEvent.click(screen.getByRole('button', { name: 'Create role' }))
+  const permission = screen.getByRole('checkbox', { name: 'future.action' })
+  const hint = document.getElementById(permission.getAttribute('aria-describedby')!)!
+  expect(hint.textContent).toContain('No description is available')
+  expect(hint.textContent).toContain('Supported scopes: tenant')
 })

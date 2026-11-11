@@ -5,9 +5,10 @@ import Select from '../Select'
 import { Checkbox } from '../SelectionControls'
 import { Modal } from '../ui'
 import type { AssignmentInput, RoleAssignment } from './client'
-import { AccessError, Field, ModeSelect } from './common'
+import { AccessError, AccessSection, Field, ModeSelect } from './common'
 import { captureScopes, useEditor, uuid, type AccessData } from './state'
 import { PrincipalFields, ScopeFields } from './Selectors'
+import { describePermission } from './permission-help'
 function assignmentInput(item: RoleAssignment): AssignmentInput {
   return {
     roleId: item.roleId,
@@ -135,6 +136,7 @@ export default function AssignmentEditor({
   return (
     <Modal
       title={base ? 'Edit role assignment' : 'Create role assignment'}
+      description="Connect a role to an identity and limit where its permissions apply."
       size="wide"
       busy={e.busy}
       onClose={() => e.unsaved.guard(onClose)}
@@ -166,108 +168,127 @@ export default function AssignmentEditor({
             Version {base.version} · {base.id}
           </p>
         )}
-        <Field label="Assigned role">
-          <Select
-            required
-            value={e.draft.roleId}
-            onChange={(event) => e.setDraft({ ...e.draft, roleId: event.target.value })}
-          >
-            <option value="">Choose a role</option>
-            {data.roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} ({r.slug})
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {role && (
-          <details>
-            <summary className="cursor-pointer text-xs font-medium">
-              Assigned permissions · {role.permissions.length}
-            </summary>
-            <p className="supporting-copy">
-              Request and response access are separate. Metadata rights do not reveal messages.
-            </p>
-            <ul className="mt-2 space-y-1 text-xs">
-              {role.permissions.map((p) => (
-                <li key={p}>
-                  {p}
-                  {!applicable.includes(p) && ` · Inactive for ${e.draft.scope.kind}`}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        <ModeSelect
-          label="Identity source"
-          value={mapped ? 'mapping' : 'principal'}
-          options={['principal', 'mapping']}
-          onChange={(value) => {
-            const { principal: _, mappingId: __, ...rest } = e.draft
-            e.setDraft(
-              value === 'mapping'
-                ? { ...rest, mappingId: '' }
-                : {
-                    ...rest,
-                    principal: { kind: 'oidc', id: '', issuer: data.status.trustedIssuer },
-                  },
-            )
-          }}
-        />
-        {mapped ? (
-          <Field label="Claim mapping">
+        <AccessSection
+          title="Role and identity"
+          description="Choose the capabilities and the identity that receives them. New assignments start disabled."
+        >
+          <Field label="Assigned role">
             <Select
               required
-              value={e.draft.mappingId ?? ''}
-              onChange={(event) => e.setDraft({ ...e.draft, mappingId: event.target.value })}
+              value={e.draft.roleId}
+              onChange={(event) => e.setDraft({ ...e.draft, roleId: event.target.value })}
             >
-              <option value="">Choose a mapping</option>
-              {data.mappings.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.issuer} · {m.id} {m.enabled ? '' : '(disabled)'}
+              <option value="">Choose a role</option>
+              {data.roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.slug})
                 </option>
               ))}
             </Select>
           </Field>
-        ) : (
-          <PrincipalFields
-            value={e.draft.principal!}
-            status={data.status}
-            onDenied={onDenied}
-            onChange={(principal) => e.setDraft({ ...e.draft, principal })}
+          {role && (
+            <details>
+              <summary className="cursor-pointer text-xs font-medium">
+                Assigned permissions · {role.permissions.length}
+              </summary>
+              <p className="supporting-copy">
+                Request and response access are separate. Metadata rights do not reveal messages.
+              </p>
+              <ul className="mt-3 divide-y divide-line">
+                {role.permissions.map((p) => (
+                  <li key={p} className="py-3">
+                    <p className="field-label">{describePermission(p).title}</p>
+                    <p className="meta-copy break-all">{p}</p>
+                    <p className="supporting-copy text-ink-muted">
+                      {describePermission(p).description}
+                    </p>
+                    {!applicable.includes(p) && (
+                      <p className="supporting-copy text-amber-800">
+                        Inactive for {e.draft.scope.kind.replaceAll('_', ' ')} scope
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <ModeSelect
+            label="Identity source"
+            value={mapped ? 'mapping' : 'principal'}
+            options={['principal', 'mapping']}
+            onChange={(value) => {
+              const { principal: _, mappingId: __, ...rest } = e.draft
+              e.setDraft(
+                value === 'mapping'
+                  ? { ...rest, mappingId: '' }
+                  : {
+                      ...rest,
+                      principal: { kind: 'oidc', id: '', issuer: data.status.trustedIssuer },
+                    },
+              )
+            }}
           />
-        )}
-        <ScopeFields
-          value={e.draft.scope}
-          onChange={(scope) => e.setDraft({ ...e.draft, scope })}
-          onDenied={onDenied}
-        />
-        <fieldset className="space-y-2">
-          <legend className="field-label">Payload capture allowlist</legend>
-          <p className="supporting-copy">
-            Select the event capture scopes this assignment may open. This list alone does not grant
-            payload access.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {captureScopes.map((scope) => (
-              <Checkbox
-                variant="row"
-                key={scope}
-                label={scope}
-                checked={e.draft.captureScopes.includes(scope)}
-                onChange={(event) =>
-                  e.setDraft({
-                    ...e.draft,
-                    captureScopes: event.target.checked
-                      ? [...e.draft.captureScopes, scope]
-                      : e.draft.captureScopes.filter((v) => v !== scope),
-                  })
-                }
-              />
-            ))}
-          </div>
-        </fieldset>
+          {mapped ? (
+            <Field label="Claim mapping">
+              <Select
+                required
+                value={e.draft.mappingId ?? ''}
+                onChange={(event) => e.setDraft({ ...e.draft, mappingId: event.target.value })}
+              >
+                <option value="">Choose a mapping</option>
+                {data.mappings.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.issuer} · {m.id} {m.enabled ? '' : '(disabled)'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <PrincipalFields
+              value={e.draft.principal!}
+              status={data.status}
+              onDenied={onDenied}
+              onChange={(principal) => e.setDraft({ ...e.draft, principal })}
+            />
+          )}
+        </AccessSection>
+        <AccessSection
+          title="Scope and payload access"
+          description="Limit this assignment to the intended resources. Payload capture scopes are an additional restriction, not a payload permission."
+        >
+          <ScopeFields
+            value={e.draft.scope}
+            onChange={(scope) => e.setDraft({ ...e.draft, scope })}
+            onDenied={onDenied}
+          />
+          <fieldset className="space-y-2">
+            <legend className="field-label">Payload capture allowlist</legend>
+            <p className="supporting-copy">
+              Select the event capture scopes this assignment may open. This list alone does not
+              grant payload access.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {captureScopes.map((scope) => (
+                <Checkbox
+                  variant="row"
+                  key={scope}
+                  label={scope}
+                  checked={e.draft.captureScopes.includes(scope)}
+                  onChange={(event) =>
+                    e.setDraft({
+                      ...e.draft,
+                      captureScopes: event.target.checked
+                        ? [...e.draft.captureScopes, scope]
+                        : e.draft.captureScopes.filter((v) => v !== scope),
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+        </AccessSection>
         <Checkbox
+          description="Enable only after reviewing the role, identity and scope. Changes apply to subsequent requests."
           label="Assignment enabled"
           checked={e.draft.enabled}
           onChange={(event) => e.setDraft({ ...e.draft, enabled: event.target.checked })}
