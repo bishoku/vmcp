@@ -173,3 +173,44 @@ WHERE permission_id='upstreams.invocation_security.manage' AND role_id=(SELECT i
 	request(200, "GET", ownPath, nil)
 	request(403, "PUT", ownPath, doc)
 }
+
+func TestInvocationServiceAuthenticationRoundTrip(t *testing.T) {
+	a := setup(t)
+	_, doc := a.expect(200, "GET", "/api/v1/invocation-security", nil)
+	doc["services"] = map[string]any{
+		"oauth":   map[string]any{"url": "https://approval.test/check", "approvalOrigin": "https://approval.test", "authType": "oauth_client_credentials", "timeoutSeconds": 5, "oauth": map[string]any{"tokenUrl": "https://idp.test/token", "clientId": "client", "clientSecret": "oauth-private-value"}},
+		"headers": map[string]any{"url": "https://approval.test/check", "approvalOrigin": "https://approval.test", "authType": "headers", "headers": map[string]string{"X-Key": "header-private-value"}},
+		"public":  map[string]any{"url": "https://approval.test/check", "approvalOrigin": "https://approval.test", "authType": "none"},
+	}
+	_, saved := a.expect(200, "PUT", "/api/v1/invocation-security", doc)
+	assertRedacted := func(value any) {
+		t.Helper()
+		raw, _ := json.Marshal(value)
+		if strings.Contains(string(raw), "oauth-private-value") || strings.Contains(string(raw), "header-private-value") {
+			t.Fatal("credential leaked")
+		}
+	}
+	assertRedacted(saved)
+	services := saved["services"].(map[string]any)
+	if services["oauth"].(map[string]any)["oauth"].(map[string]any)["hasClientSecret"] != true || services["headers"].(map[string]any)["hasHeaders"].(map[string]any)["X-Key"] != true {
+		t.Fatal("missing credential status")
+	}
+	// A read-modify-write retains both types of redacted credentials.
+	_, saved = a.expect(200, "PUT", "/api/v1/invocation-security", saved)
+	assertRedacted(saved)
+	_, exported := a.expect(200, "GET", "/api/v1/export", nil)
+	assertRedacted(exported)
+	a.expect(200, "POST", "/api/v1/apply?refreshTools=false", map[string]any{"apiVersion": "vmcp/v1", "invocationSecurity": exported["invocationSecurity"]})
+	_, saved = a.expect(200, "GET", "/api/v1/invocation-security", nil)
+	services = saved["services"].(map[string]any)
+	services["oauth"].(map[string]any)["oauth"].(map[string]any)["tokenUrl"] = "https://other.test/token"
+	a.expect(422, "PUT", "/api/v1/invocation-security", saved)
+	services["oauth"].(map[string]any)["oauth"].(map[string]any)["clientSecret"] = "replacement"
+	_, saved = a.expect(200, "PUT", "/api/v1/invocation-security", saved)
+	services = saved["services"].(map[string]any)
+	services["headers"].(map[string]any)["url"] = "https://other.test/check"
+	a.expect(422, "PUT", "/api/v1/invocation-security", saved)
+	// Explicit none removes credentials rather than inheriting them from the old mode.
+	services["headers"] = map[string]any{"url": "https://other.test/check", "approvalOrigin": "https://other.test", "authType": "none"}
+	a.expect(200, "PUT", "/api/v1/invocation-security", saved)
+}

@@ -792,6 +792,19 @@ export interface InvocationRule {
   shareFields?: string[]
 }
 export interface InvocationService {
+  authType?: 'bearer' | 'none' | 'headers' | 'oauth_client_credentials'
+  timeoutSeconds?: number
+  headers?: Record<string, string>
+  hasHeaders?: Record<string, boolean>
+  oauth?: {
+    tokenUrl: string
+    clientId: string
+    clientSecret?: string
+    hasClientSecret?: boolean
+    scopes?: string[]
+    audience?: string
+    authStyle?: 'client_secret_basic' | 'client_secret_post'
+  }
   url: string
   approvalOrigin: string
   token?: string

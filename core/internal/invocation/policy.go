@@ -37,11 +37,16 @@ type UpstreamPolicy struct {
 	Services map[string]Service `json:"services,omitempty"`
 }
 type Service struct {
-	URL            string `json:"url"`
-	Token          string `json:"token,omitempty"` // write-only in management responses
-	HasToken       bool   `json:"hasToken,omitempty"`
-	ApprovalOrigin string `json:"approvalOrigin"`
-	CAPEM          string `json:"caPem,omitempty"`
+	AuthType       string            `json:"authType,omitempty"`
+	TimeoutSeconds int               `json:"timeoutSeconds,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	HasHeaders     map[string]bool   `json:"hasHeaders,omitempty"`
+	OAuth          *ServiceOAuth     `json:"oauth,omitempty"`
+	URL            string            `json:"url"`
+	Token          string            `json:"token,omitempty"` // write-only in management responses
+	HasToken       bool              `json:"hasToken,omitempty"`
+	ApprovalOrigin string            `json:"approvalOrigin"`
+	CAPEM          string            `json:"caPem,omitempty"`
 }
 type Settings struct {
 	Revision int64              `json:"revision"`
@@ -73,8 +78,7 @@ func (p UpstreamPolicy) HideCredentials() {
 
 func hideServiceCredentials(services map[string]Service, includeStatus bool) {
 	for name, service := range services {
-		service.HasToken = includeStatus && service.Token != ""
-		service.Token = ""
+		service = service.Redacted(includeStatus)
 		services[name] = service
 	}
 }
@@ -93,6 +97,9 @@ func validateServices(services map[string]Service) error {
 		return errors.New("too many invocation services")
 	}
 	for name, svc := range services {
+		if err := svc.ValidateConnection(); err != nil {
+			return fmt.Errorf("service %s: %w", name, err)
+		}
 		if !acrPattern.MatchString(name) {
 			return errors.New("invalid service name")
 		}

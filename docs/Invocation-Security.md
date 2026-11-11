@@ -22,9 +22,9 @@ Existing rules whose tools are no longer in the catalog can be removed.
 
 A local service can only be used by its upstream, and its name must differ
 from shared service names. Endpoint traffic still obeys the gateway's egress
-policy. Service tokens are encrypted at rest, omitted from responses and
-retained when omitted from a subsequent write. Changing an endpoint requires
-an explicit token. Management responses include `hasToken`.
+policy. Credentials are encrypted at rest and redacted in management responses.
+See [service authentication and timeout](#service-authentication-and-timeout) for
+credential retention and rotation rules.
 
 The existing tenant endpoint `/api/v1/invocation-security` remains available
 for whole-document automation. It requires `invocation_security.read` or
@@ -80,6 +80,92 @@ provision them when applying to a new deployment. Omitting this section leaves
 existing policies unchanged. Remove an upstream policy before deleting its
 upstream, including when using forced deletion. Exporting configured policies requires
 `invocation_security.read`; applying them requires `invocation_security.manage`.
+
+## Service authentication and timeout
+
+vMCP supports multiple shared and upstream-local services. **One URL means one
+endpoint per service**, not one service for the installation. Each selected service
+receives both `check` and `consume` at its own configured URL.
+
+Choose authentication in the shared/local service editor, or set `authType`:
+
+| authType | Configuration | Behavior |
+|---|---|---|
+| `bearer` (default when omitted) | `token` | Static `Authorization: Bearer <token>`; existing configurations keep working. |
+| `oauth_client_credentials` | `oauth` | Fetch and cache an access token; send it as Bearer to the decision endpoint. |
+| `headers` | `headers` | Send 1–16 fixed secret headers, including `Authorization` when needed. |
+| `none` | No credential fields | Send no authentication credentials. Select explicitly. |
+
+Modes are mutually exclusive. Custom headers cannot override transport headers such
+as Host, Content-Type, Content-Length, Connection or proxy/security headers. Header
+names are case-insensitively unique; values are single-line and at most 8192 bytes.
+These are configured service credentials, not caller-forwarded headers.
+
+Set `timeoutSeconds` to 1–60 (default 2; zero also means default). This is one
+**total deadline per phase**, including token acquisition/cache contention and the
+decision HTTP request. The enclosing tool deadline can expire earlier. Services
+still run sequentially; this setting is not a human approval waiting period.
+
+Examples of individual service definitions:
+
+```json
+{
+  "url": "https://approvals.example.com/check",
+  "approvalOrigin": "https://approvals.example.com",
+  "authType": "oauth_client_credentials",
+  "timeoutSeconds": 5,
+  "oauth": {
+    "tokenUrl": "https://idp.example.com/oauth/token",
+    "clientId": "vmcp-approvals",
+    "clientSecret": "replace-with-secret",
+    "authStyle": "client_secret_basic",
+    "scopes": ["approvals.check"],
+    "audience": "approvals-api"
+  }
+}
+```
+
+`authStyle` is `client_secret_basic` (default) or `client_secret_post`. Audience and
+scopes are optional. Token and decision URLs must be HTTPS; both obey egress policy
+and reject redirects. `caPem`, when supplied, adds private CA trust for both endpoints;
+it is not an mTLS client certificate. Tokens are cached per complete service
+configuration in a bounded process-local cache and refreshed before expiry. Rotating
+credentials creates a new cache entry. A decision HTTP 401 invalidates its token for
+a later request; vMCP does **not** automatically replay check or consume.
+
+```json
+{
+  "url": "https://approvals.example.com/check",
+  "approvalOrigin": "https://approvals.example.com",
+  "authType": "headers",
+  "timeoutSeconds": 5,
+  "headers": {"X-API-Key": "replace-with-key", "X-Client-Secret": "replace-with-secret"}
+}
+```
+
+```json
+{
+  "url": "https://internal.example.com/decision",
+  "approvalOrigin": "https://internal.example.com",
+  "authType": "none",
+  "timeoutSeconds": 3
+}
+```
+
+Read responses omit Bearer/client secrets and return `hasToken` or
+`oauth.hasClientSecret`. Header names remain visible, values are blank, and
+`hasHeaders` identifies stored values. For unchanged destinations, blank/omitted
+Bearer or OAuth secrets retain their values; blank values for existing header keys
+retain theirs. Omit a header key to remove it. Changing URL, CA or authentication
+mode requires explicit credentials for the new destination; changing OAuth token
+URL, client ID or token authentication style also requires an explicit client secret.
+When switching mode, remove incompatible credential fields. GitOps exports redact
+all values; provision credentials separately in a new installation.
+
+Download the [external service OpenAPI contract](../api/invocation-service.openapi.yaml)
+for request/response schemas and examples. This is separate from the
+[vMCP management OpenAPI](../api/openapi.yaml). See the
+[enterprise adapter guide](Invocation-Service-Adapters.md) for existing workflows.
 
 ## User identity selection
 
@@ -156,8 +242,11 @@ authorization and session checks at execution time.
 
 ## Approval and session verification service contract (version 1)
 
-The gateway sends an authenticated HTTPS POST, with a two-second deadline and no
-redirects. Existing egress controls apply. `caPem` can configure a private CA.
+The gateway sends HTTPS POST with the selected authentication mode, a configurable
+per-phase deadline (default two seconds) and no redirects. Existing egress controls
+apply. `caPem` can configure a private CA. Responses must fit 8192 bytes.
+The [downloadable OpenAPI contract](../api/invocation-service.openapi.yaml) includes
+OAuth-user check, caller-context check, consume and every response status example.
 
 ```json
 {

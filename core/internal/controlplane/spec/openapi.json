@@ -5656,6 +5656,86 @@
           "approvalOrigin"
         ],
         "properties": {
+          "authType": {
+            "type": "string",
+            "enum": [
+              "bearer",
+              "oauth_client_credentials",
+              "headers",
+              "none"
+            ],
+            "default": "bearer",
+            "description": "Omitted preserves legacy Bearer authentication. Modes are mutually exclusive."
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 60,
+            "default": 2,
+            "description": "Per-phase deadline including OAuth token acquisition. Zero or omitted means 2 seconds."
+          },
+          "headers": {
+            "type": "object",
+            "maxProperties": 16,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 8192
+            },
+            "description": "Headers mode only. Values are write-only; reads return blank values and hasHeaders flags. Blank existing values retain secrets only for unchanged endpoint, CA and authentication mode. Omit a key to remove it. Transport/proxy/security headers are reserved; Authorization is permitted."
+          },
+          "hasHeaders": {
+            "type": "object",
+            "readOnly": true,
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "oauth": {
+            "type": "object",
+            "required": [
+              "tokenUrl",
+              "clientId"
+            ],
+            "properties": {
+              "tokenUrl": {
+                "type": "string",
+                "format": "uri",
+                "description": "HTTPS token endpoint."
+              },
+              "clientId": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "clientSecret": {
+                "type": "string",
+                "writeOnly": true,
+                "maxLength": 8192
+              },
+              "hasClientSecret": {
+                "type": "boolean",
+                "readOnly": true
+              },
+              "scopes": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "audience": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "authStyle": {
+                "type": "string",
+                "enum": [
+                  "client_secret_basic",
+                  "client_secret_post"
+                ],
+                "default": "client_secret_basic"
+              }
+            }
+          },
           "url": {
             "type": "string",
             "format": "uri"

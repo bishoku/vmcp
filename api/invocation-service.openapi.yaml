@@ -1,0 +1,207 @@
+openapi: 3.0.3
+info:
+  title: vMCP Approval and Session Verification Service
+  version: '1.0.0'
+  description: |
+    Contract implemented by an external service, not a vMCP management API.
+    Configure the full decision endpoint URL in vMCP. /check below is an example path;
+    both check and consume are POSTed to that same configured URL.
+    Authentication is selected per service: Bearer (static or OAuth2 client credentials),
+    custom headers, or explicitly none. Replace the example custom header and OAuth
+    token URL/scopes with your deployment values. OAuth scopes are provider-defined.
+    The configured 1–60 second deadline (default 2) covers token acquisition and one
+    decision request. Responses are limited to 8192 bytes; unknown JSON fields fail closed.
+servers:
+  - url: https://approvals.example.com
+paths:
+  /check:
+    post:
+      operationId: evaluateInvocation
+      summary: Check or atomically consume an invocation approval/session attestation
+      description: |
+        check creates or retrieves a decision bound to the immutable operation.
+        Repeated check requests must not create duplicate human approval tasks.
+        consume revalidates the binding, expiry and user/session, then atomically spends
+        the approval; a second consumption must not be allowed. No automatic replay.
+        All decision statuses use HTTP 200. Other HTTP statuses fail closed.
+        pending and step_up_required return promptly; human interaction happens separately.
+      security:
+        - bearerAuth: []
+        - oauthClientCredentials: []
+        - customHeader: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvocationRequest'
+            examples:
+              oauthCheck:
+                value:
+                  version: '1'
+                  phase: check
+                  operationId: 6b3debc7-f21e-45ac-900d-9acc65efb9c5
+                  identitySource: oauth_subject
+                  application: {mode: oauth, credentialId: binding-id, issuer: 'https://idp.example.com', subject: alice, acr: '2', authTime: 1800000000}
+                  user: {mode: oauth, credentialId: binding-id, issuer: 'https://idp.example.com', subject: alice, acr: '2', authTime: 1800000000}
+                  requirements: {approval: true}
+                  tenant: default
+                  upstreamId: 6b3debc7-f21e-45ac-900d-9acc65efb9c6
+                  tool: delete_records
+                  method: tools/call
+                  server: operations
+                  policyRevision: 4
+                  configurationRevision: 42
+                  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                  details: {dataset: demo, count: 5}
+              customerCheck:
+                value:
+                  version: '1'
+                  phase: check
+                  operationId: 6b3debc7-f21e-45ac-900d-9acc65efb9c5
+                  identitySource: caller_context
+                  application: {mode: agent-key, credentialId: application-key}
+                  callerContext: {customerId: alice, sessionId: opaque-session-reference}
+                  requirements:
+                    approval: false
+                    stepUp: {acceptedAcrValues: ['2'], maxAgeSeconds: 300}
+                  tenant: default
+                  upstreamId: 6b3debc7-f21e-45ac-900d-9acc65efb9c6
+                  tool: delete_records
+                  method: tools/call
+                  server: operations
+                  policyRevision: 4
+                  configurationRevision: 42
+                  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                  details: {}
+              consume:
+                value:
+                  version: '1'
+                  phase: consume
+                  operationId: 6b3debc7-f21e-45ac-900d-9acc65efb9c5
+                  identitySource: oauth_subject
+                  application: {mode: oauth, credentialId: binding-id, issuer: 'https://idp.example.com', subject: alice, acr: '2', authTime: 1800000000}
+                  user: {mode: oauth, credentialId: binding-id, issuer: 'https://idp.example.com', subject: alice, acr: '2', authTime: 1800000000}
+                  requirements: {approval: true}
+                  tenant: default
+                  upstreamId: 6b3debc7-f21e-45ac-900d-9acc65efb9c6
+                  tool: delete_records
+                  method: tools/call
+                  server: operations
+                  policyRevision: 4
+                  configurationRevision: 42
+                  sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                  details: {dataset: demo, count: 5}
+      responses:
+        '200':
+          description: Decision. Future expiry and nonempty approvalId required unless denied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+              examples:
+                pending:
+                  value: {status: pending, approvalId: consent-id, expiresAt: '2099-01-01T00:00:00Z', url: 'https://approvals.example.com/review/consent-id'}
+                stepUp:
+                  value: {status: step_up_required, approvalId: challenge-id, expiresAt: '2099-01-01T00:00:00Z', url: 'https://approvals.example.com/verify/challenge-id'}
+                denied:
+                  value: {status: denied}
+                allowed:
+                  value: {status: allowed, approvalId: consent-id, expiresAt: '2099-01-01T00:00:00Z'}
+                verified:
+                  value:
+                    status: allowed
+                    approvalId: session-attestation-id
+                    expiresAt: '2099-01-01T00:00:00Z'
+                    verifiedUser: {mode: external, issuer: 'https://idp.example.com', subject: alice, acr: '2', authTime: 1800000000}
+        default:
+          description: Authentication, transport or service failure; vMCP does not execute the protected operation.
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+    customHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Example only. vMCP supports 1–16 configured authentication headers.
+    oauthClientCredentials:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://idp.example.com/oauth/token
+          scopes: {}
+  schemas:
+    Identity:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: {type: string}
+        credentialId: {type: string}
+        issuer: {type: string}
+        subject: {type: string}
+        acr: {type: string}
+        authTime: {type: integer, format: int64, description: Unix authentication time in seconds, not token issuance time.}
+    StepUp:
+      type: object
+      additionalProperties: false
+      required: [acceptedAcrValues, maxAgeSeconds]
+      properties:
+        acceptedAcrValues:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: {type: string}
+        maxAgeSeconds: {type: integer, minimum: 1, maximum: 86400}
+    InvocationRequest:
+      type: object
+      additionalProperties: false
+      required: [version, phase, operationId, identitySource, application, requirements, tenant, upstreamId, tool, method, server, policyRevision, configurationRevision, sha256, details]
+      properties:
+        version: {type: string, enum: ['1']}
+        phase: {type: string, enum: [check, consume]}
+        operationId: {type: string, format: uuid, description: Client correlation UUID; never authorization by itself.}
+        identitySource: {type: string, enum: [oauth_subject, caller_context]}
+        application: {$ref: '#/components/schemas/Identity'}
+        user:
+          allOf: [{$ref: '#/components/schemas/Identity'}]
+          description: Present for OAuth; absent on initial caller-context verification and populated after verification. Compare issuer and subject on consume.
+        callerContext:
+          type: object
+          additionalProperties: {type: string}
+          description: Selected untrusted session references sent only to the identity service. Never log these values.
+        requirements:
+          type: object
+          additionalProperties: false
+          required: [approval]
+          properties:
+            approval: {type: boolean}
+            stepUp: {$ref: '#/components/schemas/StepUp'}
+        tenant: {type: string}
+        upstreamId: {type: string, format: uuid}
+        tool: {type: string, description: Original upstream tool name; may be empty for catalog operations.}
+        method: {type: string}
+        server: {type: string}
+        policyRevision: {type: integer, format: int64}
+        configurationRevision: {type: integer, format: int64}
+        sha256: {type: string, pattern: '^[0-9a-f]{64}$', description: Opaque gateway digest binding execution arguments and forwarded execution context. Do not recompute from details.}
+        details: {type: object, additionalProperties: true, description: Explicitly allowed top-level fields only; not the full arguments.}
+    Decision:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: {type: string, enum: [pending, step_up_required, denied, allowed]}
+        approvalId: {type: string, minLength: 1}
+        expiresAt: {type: string, format: date-time}
+        url: {type: string, format: uri, description: Optional HTTPS human-facing URL at the configured approvalOrigin, without credentials or fragment.}
+        verifiedUser:
+          allOf: [{$ref: '#/components/schemas/Identity'}]
+          description: Required on allowed from the caller-context identity service, with nonempty issuer/subject and policy-satisfying assurance.
+      oneOf:
+        - properties:
+            status: {enum: [denied]}
+        - required: [approvalId, expiresAt]
+          properties:
+            status: {enum: [pending, step_up_required, allowed]}
