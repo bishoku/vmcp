@@ -37,7 +37,7 @@ grouping only; the original root field is not fabricated.
 ## Direct virtual MCP and Omni
 
 The same verified agent-key mapping is applied on direct virtual MCP tool calls
-and all four Omni tools. For Omni invocation, outer `params._meta` is forwarded to
+and all three Omni tools. For Omni invocation, outer `params._meta` is forwarded to
 the private invocation bridge, then to the virtual tool call. It is not merged
 into business arguments. Existing upstream Caller context configuration determines
 which namespaced fields reach MCP upstream metadata or REST headers. Arbitrary

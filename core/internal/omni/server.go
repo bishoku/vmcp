@@ -152,7 +152,6 @@ func (s *Server) access(ctx context.Context, token, ip string, full bool) (Acces
 type query struct {
 	Meta      json.RawMessage `json:"_meta,omitempty"`
 	Query     string          `json:"query"`
-	Server    string          `json:"server_id"`
 	Project   string          `json:"project"`
 	Limit     int             `json:"limit"`
 	Ref       string          `json:"tool_ref"`
@@ -225,7 +224,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 	}
 	if msg.Method == mcp.MethodToolsCall {
 		var call mcp.CallToolParams
-		if json.Unmarshal(msg.Params, &call) == nil && (call.Name == "discover_server" || call.Name == "discover_tools" || call.Name == "get_tool_schema" || call.Name == "invoke_tool") {
+		if json.Unmarshal(msg.Params, &call) == nil && (call.Name == "discover_tools" || call.Name == "get_tool_schema" || call.Name == "invoke_tool") {
 			original := w
 			ctx, complete, err := s.beginAudit(r.Context(), token, ip, r.Header.Get("traceparent"), &MessageAudit{Tool: call.Name, Payload: raw})
 			if err != nil {
@@ -289,12 +288,18 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 	case mcp.MethodToolsCall:
 		var call mcp.CallToolParams
 		var q query
-		if json.Unmarshal(msg.Params, &call) != nil || json.Unmarshal(call.Arguments, &q) != nil {
+		if json.Unmarshal(msg.Params, &call) != nil {
+			rpcErr(mcp.CodeInvalidParams, "invalid tool arguments")
+			return
+		}
+		decoder := json.NewDecoder(strings.NewReader(string(call.Arguments)))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&q) != nil {
 			rpcErr(mcp.CodeInvalidParams, "invalid tool arguments")
 			return
 		}
 		switch call.Name {
-		case "discover_server", "discover_tools":
+		case "discover_tools":
 			if !s.allowSearch(w, r, token) {
 				return
 			}
@@ -302,17 +307,13 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 				rpcErr(mcp.CodeInvalidParams, "query required (maximum 4096 bytes), limit must be 1–50")
 				return
 			}
-			search := s.Index.Search
-			if call.Name == "discover_server" {
-				search = s.Index.SearchServers
-			}
 			access, e := s.access(r.Context(), token, ip, true)
 			if e != nil {
 				s.fail(w, e)
 				return
 			}
 			searchCtx := context.WithValue(r.Context(), accessRefreshKey{}, accessRefresh(func(ctx context.Context) (Access, error) { return s.access(ctx, token, ip, true) }))
-			hits, mode, e := search(searchCtx, access, q.Query, q.Server, q.Project, q.Limit)
+			hits, mode, e := s.Index.Search(searchCtx, access, q.Query, "", q.Project, q.Limit)
 			if e != nil {
 				s.fail(w, e)
 				return
@@ -331,23 +332,6 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 				trace.Counts["final_acl_removed"] = before - len(hits)
 			}
 			traceHits(r.Context(), "final_results", hits)
-			if call.Name == "discover_server" {
-				servers := []map[string]any{}
-				seen := map[string]bool{}
-				for _, h := range hits {
-					if seen[h.Server] {
-						continue
-					}
-					seen[h.Server] = true
-					servers = append(servers, map[string]any{"server_id": h.Server, "name": h.ServerName, "description": h.ServerDescription, "project": h.Project, "score": h.Score})
-					if len(servers) >= q.Limit {
-						break
-					}
-				}
-				traceCount(r.Context(), "returned_servers", len(servers))
-				result(toolResult(map[string]any{"servers": servers, "search_mode": mode}))
-				return
-			}
 			traceCount(r.Context(), "returned_tools", len(hits))
 			result(toolResult(map[string]any{"tools": hits, "search_mode": mode}))
 		case "get_tool_schema", "invoke_tool":
@@ -393,12 +377,11 @@ func toolResult(v any) any {
 	return map[string]any{"content": []map[string]string{{"type": "text", "text": string(b)}}, "structuredContent": v, "isError": false}
 }
 func Tools() []mcp.Tool {
-	search := json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":4096,"description":"Describe the task goal for server discovery or the needed capability for tool discovery."},"server_id":{"type":"string","description":"Exact server_id returned by discover_server. Normally set this when discovering tools for a selected server."},"project":{"type":"string","description":"Optional exact project identifier. Preserve an explicit user project scope across discovery calls."},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}},"required":["query"],"additionalProperties":false}`)
+	search := json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":4096,"description":"Describe the needed capability in the context of the user's overall goal."},"project":{"type":"string","description":"Optional exact project identifier. Preserve an explicit user project scope across discovery calls."},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}},"required":["query"],"additionalProperties":false}`)
 	return []mcp.Tool{
-		{Name: "discover_server", Description: "Start a new task here to find authorized virtual MCP servers matching the overall goal. Select a suitable server_id, then pass it to discover_tools. Keep the selection for the task; if servers are equally suitable, prefer the lexicographically smallest server_id. Returns metadata, not tool schemas.", InputSchema: search},
-		{Name: "discover_tools", Description: "Find authorized tools for a capability within the server_id selected with discover_server. Normally include server_id and preserve explicit project scope to avoid duplicate routes across virtual servers. Unscoped search remains available when selection is unresolved. If needed capabilities are missing, consider another server. Fetch get_tool_schema before invocation.", InputSchema: search},
+		{Name: "discover_tools", Description: "Start here to find authorized tools matching the needed capability and overall task goal. Preserve explicit user project scope. Select a suitable tool_ref from the results, then fetch get_tool_schema before invocation. If no suitable tool is found, refine the intent or clarify with the user.", InputSchema: search},
 		{Name: "get_tool_schema", Description: "Before invocation, read the current published input/output schema and annotations for a tool_ref returned by discovery. Treat the reference as opaque. Use the returned schema_version with the same reference in invoke_tool; do not guess arguments or reuse another tool's version.", InputSchema: json.RawMessage(`{"type":"object","properties":{"tool_ref":{"type":"string"}},"required":["tool_ref"],"additionalProperties":false}`)},
-		{Name: "invoke_tool", Description: "Invoke the selected tool_ref with schema-valid arguments and the schema_version returned by get_tool_schema. Respect annotations and client/user approval policies. The selected server determines execution and audit context. Do not automatically retry a failed or uncertain invocation or switch servers to repeat it; a timed-out write may already have executed.", InputSchema: json.RawMessage(`{"type":"object","properties":{"tool_ref":{"type":"string"},"arguments":{"type":"object"},"schema_version":{"type":"string"}},"required":["tool_ref","arguments"],"additionalProperties":false}`), Annotations: json.RawMessage(`{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":true}`)},
+		{Name: "invoke_tool", Description: "Invoke the selected tool_ref with schema-valid arguments and the schema_version returned by get_tool_schema. Respect annotations and client/user approval policies. The tool_ref preserves the execution and audit route. Do not automatically retry a failed or uncertain invocation or substitute another tool_ref to repeat it; a timed-out write may already have executed.", InputSchema: json.RawMessage(`{"type":"object","properties":{"tool_ref":{"type":"string"},"arguments":{"type":"object"},"schema_version":{"type":"string"}},"required":["tool_ref","arguments"],"additionalProperties":false}`), Annotations: json.RawMessage(`{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":true}`)},
 	}
 }
 func (s *Server) preview(w http.ResponseWriter, r *http.Request) {

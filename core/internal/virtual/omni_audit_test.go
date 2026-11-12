@@ -105,10 +105,7 @@ func TestOmniAuditBridgeDurabilityPolicyIdentityAndParent(t *testing.T) {
 	if err != nil || bytes.Contains(raw, []byte("CUST-123")) || !bytes.Contains(raw, []byte("[REDACTED]")) {
 		t.Fatalf("masking: %s %v", raw, err)
 	}
-	// Four Omni tools, and an explicit invocation parent for normal virtual/upstream audit.
-	if out := call("discover_server", map[string]any{"query": "tables"}); out.Code != 200 {
-		t.Fatal(out.Body)
-	}
+	// Three Omni tools, and an explicit invocation parent for normal virtual/upstream audit.
 	if out := call("get_tool_schema", map[string]any{"tool_ref": omni.Ref("support", "tables")}); out.Code != 200 {
 		t.Fatal(out.Body)
 	}

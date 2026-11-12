@@ -1,8 +1,8 @@
 # Omni MCP
 
 Omni is an optional, separately deployed entry point at `/mcp/v1/omni`. Existing
-`/mcp/v1/virtual/{slug}` endpoints keep their current behavior. Omni exposes four
-tools: `discover_server`, `discover_tools`, `get_tool_schema`, and `invoke_tool`.
+`/mcp/v1/virtual/{slug}` endpoints keep their current behavior. Omni exposes three
+tools: `discover_tools`, `get_tool_schema`, and `invoke_tool`.
 
 ## Publication and access
 
@@ -26,14 +26,17 @@ data-plane's tenant. They are not capabilities or secrets. Omni cannot select an
 arbitrary data-plane or upstream URL. Deploy one Omni instance/group per tenant's
 gateway boundary; cross-tenant federation is outside this version.
 
-## Agent workflow guidance (since v1.2.3)
+## Agent workflow guidance (updated in v2.2.0)
 
 Omni supplies English `initialize.instructions` and tool descriptions recommending
-this workflow: `discover_server` → choose a server → `discover_tools(server_id)` →
-`get_tool_schema` → `invoke_tool` with the current `schema_version`. Keep the chosen
-server for the task, and explore another server when capabilities are missing or
-the task requires multiple servers. For equally suitable servers, the guidance
-recommends the lexicographically smallest `server_id`.
+this workflow: `discover_tools` → `get_tool_schema` → `invoke_tool` with the current
+`schema_version`. Describe the needed capability in the context of the user's goal
+and preserve explicit `project` scope. Discovery searches the authorized catalog
+directly; agents do not need to discover or select a server first.
+
+Treat the returned `tool_ref` as opaque and use it unchanged. It preserves the
+virtual-server/exposed-tool route and its execution, policy, quota, and audit
+context. Similar tool names do not make different references interchangeable.
 
 The full English guide is a static Markdown resource at
 `omni://guides/discovery-workflow/v1`, advertised by `resources/list`. Read it with:
@@ -56,12 +59,19 @@ There are no resource templates or subscriptions.
 
 Clients decide whether to include server instructions and resources in their
 model context. This guidance does not enforce a call sequence or deduplicate
-search results: unscoped `discover_tools` remains supported and `server_id` stays
-optional. Omni still exposes exactly four tools and does not advertise prompts.
+search results. Omni exposes exactly three tools and does not advertise prompts.
+
+### Migrating from the four-tool API
+
+v2.2.0 removes `discover_server` and the `server_id` input filter. Existing clients
+must start with `discover_tools` using `query`, optional `project`, and optional
+`limit`. Refresh cached tool definitions and instructions after upgrading. Removed
+tool calls and removed input fields return an invalid-parameters error.
+Server metadata in results and internal routing remain available; schema retrieval
+and invocation continue to use `tool_ref`, without a separate server input.
 
 Deploy a newly built Omni binary or image to use this change; the guide is embedded
-in the binary. No new environment settings, database migration, UI changes, or
-control-plane/data-plane changes are required.
+in the binary. No new environment settings or database migration are required.
 
 ## Deployment
 
@@ -215,7 +225,7 @@ load is additional data-plane work and is covered by the 1,000-tool acceptance p
 
 ## Omni call audit and discovery diagnostics (v1.2.5+)
 
-Agent calls to `discover_server`, `discover_tools`, `get_tool_schema` and
+Agent calls to `discover_tools`, `get_tool_schema` and
 `invoke_tool` are recorded under **Activity → Omni MCP**. Each call has an
 admission/outcome lifecycle, verified runtime identity/IP, an operation ID,
 configuration and audit policy revision, duration and outcome. Search no-match is

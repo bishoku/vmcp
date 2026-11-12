@@ -87,27 +87,34 @@ func TestOmniAdvertisesGuidanceWithoutPromptsOrExtraTools(t *testing.T) {
 	if init.Capabilities.Resources.Subscribe || init.Capabilities.Resources.ListChanged {
 		t.Fatal("static resource advertised unsupported subscriptions/notifications")
 	}
-	for _, want := range []string{WorkflowGuideURI, "discover_server", "server_id", "get_tool_schema", "schema_version", "Do not automatically retry"} {
+	for _, want := range []string{WorkflowGuideURI, "discover_tools", "get_tool_schema", "schema_version", "Do not automatically retry"} {
 		if !strings.Contains(init.Instructions, want) {
 			t.Fatalf("initialize instructions omit %q", want)
 		}
 	}
 	var tools mcp.ListToolsResult
 	guidanceResult(t, guidanceRPC(t, h, "Bearer valid", "tools/list", nil), &tools)
-	if len(tools.Tools) != 4 {
+	if len(tools.Tools) != 3 {
 		t.Fatalf("guidance changed tool count: %d", len(tools.Tools))
 	}
-	if !strings.Contains(tools.Tools[1].Description, "server_id") {
-		t.Fatal("scoped discovery guidance missing")
+	for _, tool := range tools.Tools {
+		if tool.Name == "discover_server" || strings.Contains(string(tool.InputSchema), "server_id") {
+			t.Fatalf("removed discovery API still advertised: %+v", tool)
+		}
+	}
+	for _, text := range []string{init.Instructions, workflowGuide} {
+		if strings.Contains(text, "discover_server") || strings.Contains(text, "server_id") {
+			t.Fatal("guidance still references removed discovery API")
+		}
 	}
 	var schema struct {
 		Required []string `json:"required"`
 	}
-	if err := json.Unmarshal(tools.Tools[1].InputSchema, &schema); err != nil {
+	if err := json.Unmarshal(tools.Tools[0].InputSchema, &schema); err != nil {
 		t.Fatal(err)
 	}
 	if len(schema.Required) != 1 || schema.Required[0] != "query" {
-		t.Fatal("guidance made scoped discovery mandatory")
+		t.Fatal("discovery requires unexpected arguments")
 	}
 }
 
@@ -133,7 +140,7 @@ func TestOmniListsAndReadsEmbeddedEnglishWorkflow(t *testing.T) {
 	if len(read.Contents) != 1 || read.Contents[0].Text != workflowGuide || read.Contents[0].URI != WorkflowGuideURI || read.Contents[0].MimeType != "text/markdown" {
 		t.Fatal("resource contents did not match embedded guide")
 	}
-	for _, want := range []string{"# Omni MCP discovery workflow", "## 1. Select a server", "## 2. Discover tools", "## 3. Read", "## 4. Invoke", "Do not automatically retry", "does not remove global search"} {
+	for _, want := range []string{"# Omni MCP discovery workflow", "## 1. Discover tools", "## 2. Read", "## 3. Invoke", "Do not automatically retry", "authorized catalog directly"} {
 		if !strings.Contains(read.Contents[0].Text, want) {
 			t.Fatalf("missing workflow requirement: %s", want)
 		}

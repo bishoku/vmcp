@@ -60,7 +60,7 @@ func (h *Handler) omniAuditBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch p.Tool {
-	case "discover_server", "discover_tools", "get_tool_schema", "invoke_tool":
+	case "discover_tools", "get_tool_schema", "invoke_tool":
 	default:
 		http.Error(w, "invalid audit tool", 400)
 		return

@@ -119,7 +119,7 @@ func (s *Server) beginAudit(ctx context.Context, token, ip, trace string, msg *M
 				status = "tool_error"
 			}
 		}
-		if status == "ok" && (msg.Tool == "discover_tools" || msg.Tool == "discover_server") && collector.Counts["returned_tools"]+collector.Counts["returned_servers"] == 0 {
+		if status == "ok" && msg.Tool == "discover_tools" && collector.Counts["returned_tools"] == 0 {
 			reason = "no_match"
 		}
 		payload := out.body.Bytes()

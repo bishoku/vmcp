@@ -57,19 +57,11 @@ func prepareEntry(d Document) entry {
 
 // Bounded candidate fusion for comparison against the weighted baseline. Ranking
 // sees only freshly authorized entries and never changes publication decisions.
-func rankFusion(ctx context.Context, entries []entry, access Access, query, server, project string, words []string, vector []float32, limit int, groupServers bool) ([]Hit, error) {
+func rankFusion(ctx context.Context, entries []entry, access Access, query, server, project string, words []string, vector []float32, limit int) ([]Hit, error) {
 	window := min(200, max(50, limit*4))
 	lexical, dense := make(hitHeap, 0, window), make(hitHeap, 0, window)
-	lexServers, denseServers := map[string]Hit{}, map[string]Hit{}
-	offer := func(h Hit, target *hitHeap, groups map[string]Hit) {
+	offer := func(h Hit, target *hitHeap) {
 		if h.Score <= 0 {
-			return
-		}
-		if groupServers {
-			prev, ok := groups[h.Server]
-			if !ok || better(h, prev) {
-				groups[h.Server] = h
-			}
 			return
 		}
 		offerBounded(target, h, window)
@@ -82,17 +74,11 @@ func rankFusion(ctx context.Context, entries []entry, access Access, query, serv
 			continue
 		}
 		lexicalScore := fieldLexical(e, words)
-		offer(Hit{Document: e.Document, Score: lexicalScore, Lexical: lexicalScore}, &lexical, lexServers)
+		offer(Hit{Document: e.Document, Score: lexicalScore, Lexical: lexicalScore}, &lexical)
 		if len(vector) > 0 {
 			denseScore := positiveCosine(vector, e.Vector)
-			offer(Hit{Document: e.Document, Score: denseScore, VectorScore: denseScore}, &dense, denseServers)
+			offer(Hit{Document: e.Document, Score: denseScore, VectorScore: denseScore}, &dense)
 		}
-	}
-	for _, h := range lexServers {
-		offerBounded(&lexical, h, window)
-	}
-	for _, h := range denseServers {
-		offerBounded(&dense, h, window)
 	}
 	sort.Slice(lexical, func(a, b int) bool { return better(lexical[a], lexical[b]) })
 	sort.Slice(dense, func(a, b int) bool { return better(dense[a], dense[b]) })
@@ -102,9 +88,6 @@ func rankFusion(ctx context.Context, entries []entry, access Access, query, serv
 	for _, list := range []hitHeap{lexical, dense} {
 		for rank, h := range list {
 			key := h.Ref
-			if groupServers {
-				key = h.Server
-			}
 			prev, ok := fused[key]
 			if !ok {
 				prev = h

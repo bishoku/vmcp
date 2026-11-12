@@ -165,7 +165,7 @@ export default function Omni() {
                   </pre>
                 )}
                 <p className="text-xs text-ink-muted">
-                  Available tools: discover_server, discover_tools, get_tool_schema, invoke_tool.
+                  Available tools: discover_tools, get_tool_schema, invoke_tool.
                 </p>
                 <Link className={btn} to="/virtual-servers">
                   Manage virtual server publication
