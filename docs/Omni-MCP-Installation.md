@@ -215,7 +215,7 @@ internal Omni secret. The browser preview requires an explicit runtime token.
    the endpoint/index and optionally request refresh. Admins see global index data;
    other users see only their authorized discovery results.
 3. Connect an MCP client to `https://mcp.example.com/mcp/v1/omni` using its runtime
-   credential. `tools/list` must return exactly the four Omni tools. Run
+   credential. `tools/list` must return exactly the three Omni tools. Run
    `discover_tools`, then `get_tool_schema`, then `invoke_tool` with the returned
    `tool_ref` and `schema_version`. See [protocol examples](Omni-MCP.md).
 4. Check the original agent identity, target vMCP/tool and trace in runtime audit.
@@ -290,7 +290,7 @@ values stop startup. No database migration is needed.
 
 Anonymous clients omit the Authorization header. Only virtual servers with
 anonymous runtime access **and** Omni publication enabled are available through
-all four Omni tools. Protected or unpublished servers remain hidden. A valid
+all three Omni tools. Protected or unpublished servers remain hidden. A valid
 runtime credential sees published public tools plus its assigned protected tools;
 credential IP restrictions still apply. Any supplied invalid/expired credential
 is rejected rather than treated as anonymous. Runtime OAuth clients still need

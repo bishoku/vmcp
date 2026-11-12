@@ -121,7 +121,7 @@ func (e *HTTPReranker) Rerank(ctx context.Context, query string, documents []Doc
 type accessRefreshKey struct{}
 type accessRefresh func(context.Context) (Access, error)
 
-func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int, groupServers bool, mode string) ([]Hit, string, error) {
+func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int, mode string) ([]Hit, string, error) {
 	if i.Reranker == nil {
 		return hits, mode, nil
 	}
@@ -182,7 +182,7 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 		if i.RerankFailurePolicy == "closed" {
 			return nil, "", &HTTPError{503}
 		}
-		return finalizeHits(hits, limit, groupServers), mode + "-rerank-fallback", nil
+		return finalizeHits(hits, limit), mode + "-rerank-fallback", nil
 	}
 	i.rerankLog.report("search_rerank", nil)
 	bestScore := 0.0
@@ -209,49 +209,18 @@ func (i *Index) refine(ctx context.Context, query string, hits []Hit, limit int,
 	traceCount(ctx, "reranker_min_score_removed", len(hits)-len(selected))
 	traceHits(ctx, "reranker_selected", selected)
 	if uncertain {
-		return finalizeHits(selected, limit, groupServers), mode + "-rerank-uncertain", nil
+		return finalizeHits(selected, limit), mode + "-rerank-uncertain", nil
 	}
 	sort.Slice(selected, func(a, b int) bool { return better(selected[a], selected[b]) })
-	return finalizeHits(selected, limit, groupServers), mode + "-reranked", nil
+	return finalizeHits(selected, limit), mode + "-reranked", nil
 }
-func finalizeHits(hits []Hit, limit int, groupServers bool) []Hit {
+func finalizeHits(hits []Hit, limit int) []Hit {
 	out := make([]Hit, 0, min(limit, len(hits)))
-	seen := map[string]bool{}
 	for _, h := range hits {
-		if groupServers && seen[h.Server] {
-			continue
-		}
 		out = append(out, h)
-		seen[h.Server] = true
 		if len(out) == limit {
 			break
 		}
 	}
-	return out
-}
-
-// One candidate per selected server first, then bounded extra tool views. A large
-// server cannot occupy the entire pool and hide other matching servers.
-func balancedServerCandidates(groups map[string]hitHeap, limit int) []Hit {
-	heads := make(hitHeap, 0, limit)
-	for server, hits := range groups {
-		sort.Slice(hits, func(a, b int) bool { return better(hits[a], hits[b]) })
-		groups[server] = hits
-		if len(hits) > 0 {
-			offerBounded(&heads, hits[0], limit)
-		}
-	}
-	sort.Slice(heads, func(a, b int) bool { return better(heads[a], heads[b]) })
-	out := append([]Hit{}, heads...)
-	extra := make(hitHeap, 0, limit-len(out))
-	if len(out) < limit {
-		for _, head := range heads {
-			for _, h := range groups[head.Server][1:] {
-				offerBounded(&extra, h, limit-len(out))
-			}
-		}
-		out = append(out, extra...)
-	}
-	sort.Slice(out, func(a, b int) bool { return better(out[a], out[b]) })
 	return out
 }

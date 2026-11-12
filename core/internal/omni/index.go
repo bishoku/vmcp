@@ -213,14 +213,6 @@ func cosine(a, b []float32) float64 {
 
 // Search filters by fresh authorization before scoring and limiting. It never caches credentials.
 func (i *Index) Search(ctx context.Context, access Access, query, server, project string, limit int) ([]Hit, string, error) {
-	return i.search(ctx, access, query, server, project, limit, false)
-}
-func (i *Index) SearchServers(ctx context.Context, access Access, query, server, project string, limit int) ([]Hit, string, error) {
-	return i.search(ctx, access, query, server, project, limit, true)
-}
-
-// Retain only the best K matches; memory per query does not grow with catalog size.
-func (i *Index) search(ctx context.Context, access Access, query, server, project string, limit int, groupServers bool) ([]Hit, string, error) {
 	i.mu.RLock()
 	entries, ready, dimension, profile := i.entries, i.status.Ready, i.status.Dimensions, i.status.EmbeddingProfile
 	i.mu.RUnlock()
@@ -231,14 +223,13 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 		return nil, "", &HTTPError{400}
 	}
 	traceCatalog(ctx, entries, access, server, project)
-	resultLimit, resultServers := limit, groupServers
+	resultLimit := limit
 	if i.Reranker != nil {
 		candidates := i.RerankCandidates
 		if candidates <= 0 {
 			candidates = 20
 		}
 		limit = min(100, max(limit, candidates))
-		groupServers = false // Rerank tool candidates before collapsing server results.
 	}
 	var vector []float32
 	mode := "keyword"
@@ -298,12 +289,12 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 		ranking = defaultRanking
 	}
 	if ranking == "rrf" {
-		hits, err := rankFusion(ctx, entries, access, query, server, project, words, vector, limit, groupServers)
+		hits, err := rankFusion(ctx, entries, access, query, server, project, words, vector, limit)
 		if err != nil {
 			return nil, mode, err
 		}
 		traceHits(ctx, "retrieval_candidates", hits)
-		return i.refine(ctx, query, hits, resultLimit, resultServers, mode)
+		return i.refine(ctx, query, hits, resultLimit, mode)
 	}
 	best := make(hitHeap, 0, limit)
 	offer := func(h Hit) {
@@ -313,14 +304,6 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 			best[0] = h
 			heap.Fix(&best, 0)
 		}
-	}
-	var servers map[string]Hit
-	var serverCandidates map[string]hitHeap
-	if i.Reranker != nil && resultServers {
-		serverCandidates = map[string]hitHeap{}
-	}
-	if groupServers {
-		servers = map[string]Hit{}
 	}
 	for n, e := range entries {
 		if n%256 == 0 && ctx.Err() != nil {
@@ -346,30 +329,11 @@ func (i *Index) search(ctx context.Context, access Access, query, server, projec
 			continue
 		}
 		h := Hit{Document: e.Document, Score: score, Lexical: lex, VectorScore: positiveCosine(vector, e.Vector)}
-		if i.Reranker != nil && resultServers {
-			candidates := serverCandidates[e.Server]
-			offerBounded(&candidates, h, 3)
-			serverCandidates[e.Server] = candidates
-			continue
-		}
-		if groupServers {
-			prev, exists := servers[e.Server]
-			if !exists || better(h, prev) {
-				servers[e.Server] = h
-			}
-		} else {
-			offer(h)
-		}
-	}
-	for _, h := range servers {
 		offer(h)
-	}
-	if i.Reranker != nil && resultServers {
-		best = hitHeap(balancedServerCandidates(serverCandidates, limit))
 	}
 	sort.Slice(best, func(a, b int) bool { return better(best[a], best[b]) })
 	traceHits(ctx, "retrieval_candidates", []Hit(best))
-	return i.refine(ctx, query, []Hit(best), resultLimit, resultServers, mode)
+	return i.refine(ctx, query, []Hit(best), resultLimit, mode)
 }
 func better(a, b Hit) bool {
 	if a.Score == b.Score {

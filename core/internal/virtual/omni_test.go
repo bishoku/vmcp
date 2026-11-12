@@ -265,7 +265,7 @@ func TestOmniDoesNotRevealAnotherAssignedProject(t *testing.T) {
 		app.ServeHTTP(w, r)
 		return w
 	}
-	for _, name := range []string{"discover_server", "discover_tools"} {
+	for _, name := range []string{"discover_tools"} {
 		w := call(name, map[string]any{"query": "tables", "project": "finance"})
 		if w.Code != 200 || strings.Contains(w.Body.String(), "payroll") || strings.Contains(w.Body.String(), "Confidential") {
 			t.Fatalf("hidden project discovered: %d %s", w.Code, w.Body)
@@ -353,7 +353,7 @@ func TestOmniAnonymousPublicationAndFreshAuthorization(t *testing.T) {
 		t.Fatalf("DP opt-in bypassed: %d", w.Code)
 	}
 	h.OmniAllowAnonymous = true
-	for _, name := range []string{"discover_server", "discover_tools"} {
+	for _, name := range []string{"discover_tools"} {
 		w := call("", name, query)
 		if w.Code != 200 || !strings.Contains(w.Body.String(), "support") || strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "hidden") || strings.Contains(w.Body.String(), "unpublished") {
 			t.Fatalf("public discovery: %d %s", w.Code, w.Body)

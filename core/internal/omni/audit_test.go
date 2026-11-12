@@ -25,7 +25,7 @@ func (a *captureAuditor) Complete(_ context.Context, _, _, _ string, p AuditFini
 	a.finishes = append(a.finishes, p)
 	return a.finishErr
 }
-func TestOmniAuditsFourToolsAndStrictFailures(t *testing.T) {
+func TestOmniAuditsThreeToolsAndStrictFailures(t *testing.T) {
 	calls := 0
 	dp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; _, _ = w.Write([]byte(`{"refs":{}}`)) }))
 	defer dp.Close()
@@ -42,7 +42,7 @@ func TestOmniAuditsFourToolsAndStrictFailures(t *testing.T) {
 		handler.ServeHTTP(out, r)
 		return out
 	}
-	for _, name := range []string{"discover_server", "discover_tools", "get_tool_schema", "invoke_tool"} {
+	for _, name := range []string{"discover_tools", "get_tool_schema", "invoke_tool"} {
 		call(name)
 		if len(a.starts) != len(a.finishes) || a.starts[len(a.starts)-1].Tool != name {
 			t.Fatalf("missing audit for %s", name)

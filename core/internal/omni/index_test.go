@@ -108,7 +108,7 @@ func BenchmarkAuthorizedSearch(b *testing.B) {
 	}
 }
 
-func TestSearchTopKAndDistinctServers(t *testing.T) {
+func TestSearchTopK(t *testing.T) {
 	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	docs := []Document{}
 	for n := 0; n < 30; n++ {
@@ -132,10 +132,7 @@ func TestSearchTopKAndDistinctServers(t *testing.T) {
 			t.Fatal("incorrect ranking")
 		}
 	}
-	servers, _, err := i.SearchServers(context.Background(), a, "orders", "", "", 3)
-	if err != nil || len(servers) != 2 || servers[0].Server == servers[1].Server {
-		t.Fatal("servers not distinct", servers, err)
-	}
+
 }
 
 func TestDiscoveryRechecksAuthorizationAfterRanking(t *testing.T) {

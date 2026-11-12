@@ -7,18 +7,14 @@ weights, Python runtime or external model service are bundled into Omni.
 
 1. Obtain the caller's current data-plane access manifest.
 2. Retrieve a bounded set of authorized tool candidates using the existing
-   embedding/keyword path and any explicit server/project filters.
+   embedding/keyword path and any explicit project filter.
 3. **Refresh authorization immediately before sending tool metadata to the
    reranker.** Removed or changed tools are filtered out; auth outages fail closed.
 4. Send the intent and bounded tool descriptions to the configured rerank API.
 5. Apply the query-level no-match floor. In the optional uncertain region retain
    retrieval order; otherwise sort original tool entries using returned scores.
    An independent per-tool floor can further filter results. Empty results are valid.
-6. For server discovery, preserve candidate diversity (one best candidate per
-   selected server first, then up to three tool views per server), and collapse
-   tools by server **after** reranking. Candidate pools can therefore be smaller
-   than the configured target.
-7. Recheck authorization before returning the final result to the caller.
+6. Recheck authorization before returning the final tool results to the caller.
 
 Only authorized candidate metadata is sent to the rerank provider. It receives
 the tool-first bounded representation (tool, purpose, service, context), not tool

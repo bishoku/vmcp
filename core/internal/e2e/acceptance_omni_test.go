@@ -315,7 +315,7 @@ func TestOmniAcceptance(t *testing.T) {
 				if r.status != 404 {
 					t.Errorf("%s invoke after effective revocation returned %d", label, r.status)
 				}
-				r = rpc(routed[0], "discover_tools", map[string]any{"query": "tool-099", "server_id": "accept-vs-0000", "limit": 5})
+				r = rpc(routed[0], "discover_tools", map[string]any{"query": "tool-099", "limit": 5})
 				if r.err != nil || strings.Contains(string(r.result), reference) {
 					t.Errorf("%s discovery retained revoked reference", label)
 				}

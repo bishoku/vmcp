@@ -11,7 +11,7 @@ try {
   const catalog = await client.listTools()
   assert.deepEqual(
     catalog.tools.map((t) => t.name),
-    ['discover_server', 'discover_tools', 'get_tool_schema', 'invoke_tool'],
+    ['discover_tools', 'get_tool_schema', 'invoke_tool'],
   )
   const found = await client.callTool({ name: 'discover_tools', arguments: { query: 'tables' } })
   const tool = found.structuredContent.tools.find((t) => t.name === 'tables')

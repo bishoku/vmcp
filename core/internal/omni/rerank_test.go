@@ -156,7 +156,7 @@ func TestRerankFreshACLNoMatchAndFailurePolicy(t *testing.T) {
 		t.Fatal("auth outage failed open")
 	}
 }
-func TestRerankServerGroupingAndCancellation(t *testing.T) {
+func TestRerankToolSelectionAndCancellation(t *testing.T) {
 	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
 	i := NewIndex(nil)
 	i.status.Ready = true
@@ -167,7 +167,7 @@ func TestRerankServerGroupingAndCancellation(t *testing.T) {
 	}
 	i.Reranker = rerankFunc(func(_ context.Context, _ string, d []Document) ([]float64, error) {
 		if len(d) != 3 {
-			t.Fatal("grouped servers before rerank")
+			t.Fatal("missing tool candidates before rerank")
 		}
 		scores := make([]float64, len(d))
 		for n, v := range d {
@@ -178,9 +178,9 @@ func TestRerankServerGroupingAndCancellation(t *testing.T) {
 		}
 		return scores, nil
 	})
-	hits, _, err := i.SearchServers(context.Background(), access, "orders", "", "", 2)
+	hits, _, err := i.Search(context.Background(), access, "orders", "", "", 2)
 	if err != nil || len(hits) != 2 || hits[0].Server != "a" || hits[0].Name != "cancel" {
-		t.Fatalf("grouping: %+v %v", hits, err)
+		t.Fatalf("tool selection: %+v %v", hits, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -252,58 +252,23 @@ func TestRerankQueryGateAndUncertainty(t *testing.T) {
 	i.RerankNoMatchScore = .0001
 	i.RerankConfidenceScore = .1
 	i.Reranker = rerankFunc(func(context.Context, string, []Document) ([]float64, error) { return scores, nil })
-	result, mode, err := i.refine(context.Background(), "intent", hits, 2, false, "hybrid")
+	result, mode, err := i.refine(context.Background(), "intent", hits, 2, "hybrid")
 	if err != nil || len(result) != 0 || mode != "hybrid-reranked-no-match" {
 		t.Fatalf("query rejection: %v %s %v", result, mode, err)
 	}
 	scores = []float64{.03, .08}
-	result, mode, err = i.refine(context.Background(), "intent", hits, 2, false, "hybrid")
+	result, mode, err = i.refine(context.Background(), "intent", hits, 2, "hybrid")
 	if err != nil || len(result) != 2 || result[0].Name != "read" || result[0].Score != .8 || mode != "hybrid-rerank-uncertain" {
 		t.Fatalf("uncertain order: %v %s %v", result, mode, err)
 	}
 	scores = []float64{.7, .9}
-	result, mode, err = i.refine(context.Background(), "intent", hits, 2, false, "hybrid")
+	result, mode, err = i.refine(context.Background(), "intent", hits, 2, "hybrid")
 	if err != nil || result[0].Name != "cancel" || mode != "hybrid-reranked" {
 		t.Fatalf("confident rerank: %v %s %v", result, mode, err)
 	}
 	i.RerankMinScore = .95
-	result, _, err = i.refine(context.Background(), "intent", hits, 2, false, "hybrid")
+	result, _, err = i.refine(context.Background(), "intent", hits, 2, "hybrid")
 	if err != nil || len(result) != 0 {
 		t.Fatal("per-tool threshold ignored")
-	}
-}
-
-func TestRerankServerDiscoveryBalancesCandidatePool(t *testing.T) {
-	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8,::1/128")
-	i := NewIndex(nil)
-	i.status.Ready = true
-	i.RerankCandidates = 20
-	access := Access{Refs: map[string]string{}}
-	for n := 0; n < 30; n++ {
-		d := Document{Ref: Ref("large", string(rune('A'+n))), Server: "large", Name: "orders", Description: "customer orders"}
-		i.entries = append(i.entries, prepareEntry(d))
-		access.Refs[d.Ref] = d.Hash()
-	}
-	d := Document{Ref: Ref("small", "orders"), Server: "small", Name: "orders"}
-	i.entries = append(i.entries, prepareEntry(d))
-	access.Refs[d.Ref] = d.Hash()
-	i.Reranker = rerankFunc(func(_ context.Context, _ string, docs []Document) ([]float64, error) {
-		scores := make([]float64, len(docs))
-		found := false
-		for n, d := range docs {
-			scores[n] = .1
-			if d.Server == "small" {
-				found = true
-				scores[n] = .9
-			}
-		}
-		if !found || len(docs) > 4 {
-			t.Fatalf("server diversity lost: %+v", docs)
-		}
-		return scores, nil
-	})
-	hits, _, err := i.SearchServers(context.Background(), access, "customer orders", "", "", 2)
-	if err != nil || len(hits) != 2 || hits[0].Server != "small" {
-		t.Fatalf("server discovery: %+v %v", hits, err)
 	}
 }
