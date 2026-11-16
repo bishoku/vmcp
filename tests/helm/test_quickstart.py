@@ -5,6 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -29,7 +30,7 @@ class QuickstartTests(unittest.TestCase):
     def test_help_does_not_require_cluster_or_helm(self):
         r = subprocess.run(['bash', str(ROOT / 'deploy/helm/vmcp/quickstart.sh'), '--help'], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        for flag in ['--omni', '--omni-port', '--kafka', '--rabbitmq', '--exporter', '--uninstall', '--purge', '--ephemeral']:
+        for flag in ['--omni', '--omni-port', '--kafka', '--rabbitmq', '--exporter', '--uninstall', '--purge', '--ephemeral', '--dry-run', '--output-dir']:
             self.assertIn(flag, r.stdout)
 
     def test_rejects_invalid_combinations_before_any_mutation(self):
@@ -229,6 +230,95 @@ class QuickstartTests(unittest.TestCase):
         cfg = q.values(a, q.image_values(inventory(), a.version))
         self.assertNotIn('sensitive', json.dumps(cfg))
         self.assertEqual(cfg['exporters']['http']['secretEnv']['VMCP_AUDIT_EXPORT_URL']['key'], 'http-export-url')
+
+    def test_dry_run_rejects_destructive_or_unused_options(self):
+        for options in [('--output-dir', '/tmp/unused'), ('--dry-run', '--uninstall'),
+                        ('--dry-run', '--uninstall', '--purge')]:
+            with self.subTest(options=options), patch.object(q.subprocess, 'run') as run:
+                with self.assertRaises(ValueError): q.main(list(options))
+                run.assert_not_called()
+
+    def test_dry_run_only_calls_local_helm_and_captures_direct_resources(self):
+        manifest = ROOT / 'tests/helm/fixtures/v1.2.2-images.json'
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / 'preview'
+            calls = []
+            def render(command, **kwargs):
+                self.assertEqual(command[:2], ['helm', 'template'])
+                self.assertNotIn('--validate', command)
+                self.assertNotIn('--dry-run=server', command)
+                calls.append(command)
+                return subprocess.CompletedProcess(command, 0, stdout='kind: List\nitems: []\n')
+            def job_suffix(size):
+                self.assertEqual(size, 3, 'preview must not generate credentials')
+                return 'abcdef'
+            with patch.object(q.subprocess, 'run', side_effect=render), \
+                 patch.object(q.subprocess, 'check_output', side_effect=AssertionError('no kubeconfig discovery')), \
+                 patch.object(q.subprocess, 'Popen', side_effect=AssertionError('no port-forwards')), \
+                 patch.object(q.shutil, 'which', side_effect=lambda name: '/bin/helm' if name == 'helm' else None), \
+                 patch.object(q.secrets, 'token_hex', side_effect=job_suffix), \
+                 patch.object(q.secrets, 'token_bytes', side_effect=AssertionError('no encryption key generation')), \
+                 redirect_stdout(io.StringIO()):
+                q.main(['--dry-run', '--output-dir', str(output), '--version', 'v1.2.2',
+                        '--chart', str(ROOT / 'deploy/helm/vmcp'), '--images-file', str(manifest),
+                        '--omni', '--keycloak', '--mock', '--monitoring', '--exporter', 'kafka',
+                        '--exporter', 'rabbitmq', '--exporter', 'http',
+                        '--http-export-url', 'https://sink.test/audit?token=sensitive'])
+            self.assertEqual(len(calls), 2)
+            self.assertIn('monitoring.coreos.com/v1/ServiceMonitor', calls[1])
+            def resource(filename):
+                return json.loads((output / filename).read_text().split('\n', 1)[1])
+            namespace = resource('00-namespace.yaml')
+            self.assertEqual(namespace['metadata']['name'], 'vmcp-demo')
+            secret = resource('01-secret.yaml')
+            self.assertEqual(secret['metadata']['namespace'], 'vmcp-demo')
+            self.assertIn('preview', str(secret['metadata']['annotations']))
+            decoded = {key: q.base64.b64decode(value).decode() for key, value in secret['data'].items()}
+            self.assertEqual(decoded['omni-secret'], '0' * 64)
+            self.assertEqual(decoded['keycloak-client-secret'], '0' * 48)
+            self.assertEqual(decoded['http-export-url'], 'https://preview.invalid/audit')
+            job = resource('03-bootstrap.yaml')
+            self.assertEqual(job['kind'], 'Job')
+            self.assertIn('vmcp-migrate@sha256:', job['spec']['template']['spec']['containers'][0]['image'])
+            self.assertIn('CREATE ROLE', (output / '02-roles.sql').read_text())
+            self.assertIn('GRANT SELECT', (output / '04-grants.sql').read_text())
+            combined = '\n'.join(path.read_text() for path in output.iterdir())
+            self.assertNotIn('sensitive', combined)
+            for step in ['Keycloak', 'RabbitMQ', 'reindex', 'SCC/admission']:
+                self.assertIn(step, (output / 'README.txt').read_text())
+
+    def test_dry_run_does_not_overwrite_existing_directory_or_symlink(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(q.shutil, 'which', return_value='/bin/helm'), \
+             patch.object(q.subprocess, 'run') as run, patch.object(q, 'download_release') as download:
+            directory = Path(temp) / 'existing'
+            directory.mkdir()
+            marker = directory / 'keep.txt'
+            marker.write_text('keep')
+            link = Path(temp) / 'link'
+            link.symlink_to(directory, target_is_directory=True)
+            for target in [directory, link]:
+                with self.assertRaisesRegex(ValueError, 'already exists'):
+                    q.main(['--dry-run', '--output-dir', str(target)])
+            self.assertEqual(marker.read_text(), 'keep')
+            run.assert_not_called()
+            download.assert_not_called()
+
+    def test_preview_capture_rejects_unexpected_commands(self):
+        with tempfile.TemporaryDirectory() as temp:
+            installer = q.PreviewInstaller(args('--dry-run'), Path(temp))
+            with self.assertRaises(ValueError):
+                installer.run(installer.k + ['apply', '-f', '-'])
+
+    def test_dry_run_render_failure_never_runs_cluster_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(q.shutil, 'which', return_value='/bin/helm'), \
+             patch.object(q.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, ['helm', 'template'])) as run:
+            with self.assertRaises(subprocess.CalledProcessError):
+                q.main(['--dry-run', '--output-dir', str(Path(temp) / 'preview'), '--version', 'v1.2.2',
+                        '--chart', str(ROOT / 'deploy/helm/vmcp'),
+                        '--images-file', str(ROOT / 'tests/helm/fixtures/v1.2.2-images.json')])
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[0][:2], ['helm', 'template'])
 
 
 if __name__ == '__main__': unittest.main()

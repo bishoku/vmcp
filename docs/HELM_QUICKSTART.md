@@ -28,6 +28,46 @@ For production, follow [Production deployment](PRODUCTION_DEPLOYMENT.md).
 The installer prints the selected context and passes it explicitly to every
 cluster command. It does not switch your kubeconfig context or create a cluster.
 
+## Preview manifests without deploying
+
+Use `--dry-run` to render a **fresh-install preview** without accessing Kubernetes
+or reading existing credentials. For the v2.2.0 PostgreSQL, Redis and Omni demo:
+
+```sh
+./deploy/helm/vmcp/quickstart.sh \
+  --version v2.2.0 --omni --ephemeral \
+  --dry-run --output-dir /tmp/vmcp-preview
+
+less /tmp/vmcp-preview/02-infra.yaml
+less /tmp/vmcp-preview/05-vmcp.yaml
+```
+
+The output directory must not already exist; omitting `--output-dir` creates and
+prints a unique temporary directory. Helm and Python are required, but kubectl,
+a kubeconfig and cluster credentials are not. Published assets are downloaded
+and checksum-checked as in normal installation. For offline use, supply
+`--chart PATH --images-file PATH`; a local chart directory must already contain
+its locked dependencies (`helm dependency build deploy/helm/vmcp`). Dry-run does
+not download dependencies or change Helm repository configuration.
+
+The directory contains both Helm release manifests and their values, a namespace,
+a placeholder credential Secret, the bootstrap migration Job, and SQL role/grant
+previews. Directly generated resources use JSON syntax, which is valid YAML.
+`README.txt` describes execution order and any skipped Keycloak, broker, mock-data
+or Omni reindex operations. Secret/SQL credentials are public zero-filled
+placeholders; HTTP exporter URLs in the Secret are redacted. Existing cluster
+Secrets are never read or exported.
+
+**Do not apply the preview as an installation bundle.** SQL, waits and API seeding
+are still required, and real installation generates/reuses credentials. Run the
+same quickstart options without `--dry-run` and `--output-dir` to install.
+Dry-run renders install-time Helm hooks using Kubernetes 1.32 capabilities and
+assumes monitoring CRDs when `--monitoring` is selected. It does not validate
+OpenShift SCC/admission, StorageClasses, TLS Secrets, image availability or
+scheduling, and it does not predict existing-release revisions or upgrade hooks.
+`--context` is ignored during preview; `--uninstall`/`--purge` cannot be combined
+with `--dry-run`.
+
 ## Optional Omni MCP
 
 Use the current repository quickstart with v1.2.0 or later. For example:
