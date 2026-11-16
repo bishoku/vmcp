@@ -26,6 +26,7 @@
 ## Deploy and operate
 
 - [Production deployment](PRODUCTION_DEPLOYMENT.md)
+- [OpenShift AI and MCP Gateway integration](OpenShift-AI-Integration.md)
 - [Omni installation without Helm](Omni-MCP-Installation.md)
 - [Omni embedding models](Omni-MCP-Embedding.md)
 - [Omni reranking and calibration](Omni-MCP-Reranking.md)

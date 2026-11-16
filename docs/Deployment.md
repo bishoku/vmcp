@@ -6,6 +6,7 @@
 | Run core services with your own HTTP upstream | Local Docker installation below |
 | Try Kubernetes with bundled dependencies | [Kubernetes quickstart](HELM_QUICKSTART.md) |
 | Install a versioned packaged chart and images | [Release installation](Release-Installation.md) |
+| Integrate with OpenShift AI MCP Gateway | [OpenShift AI integration](OpenShift-AI-Integration.md) |
 | Operate a production environment | [Production deployment](PRODUCTION_DEPLOYMENT.md) |
 
 ## Local Docker installation
