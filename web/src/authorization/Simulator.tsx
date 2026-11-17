@@ -32,7 +32,7 @@ export default function Simulator({
     data.assignments.map((a) => a.scope.kind),
     onDenied,
   )
-  const sampleClaims: Record<string, unknown> = {}
+  const sampleClaims: Record<string, unknown> = Object.create(null)
   for (const c of mapping?.conditions ?? []) {
     if (c.operator === 'array_contains')
       sampleClaims[c.path] = [
@@ -59,7 +59,7 @@ export default function Simulator({
           ?.scopes.includes(assignment?.scope.kind ?? 'tenant'),
       ) ?? '',
     ),
-    [target, setTarget] = useState('resource'),
+    [target, setTarget] = useState(assignment?.scope.kind === 'unmanaged' ? 'event' : 'resource'),
     [scope, setScope] = useState<AccessScope>(
       assignment && assignment.scope.kind !== 'unmanaged'
         ? { ...assignment.scope }

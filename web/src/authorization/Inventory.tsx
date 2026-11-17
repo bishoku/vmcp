@@ -149,7 +149,7 @@ export default function Inventory({
       editor: { kind: 'mapping', value: m },
       protected: false,
       references: data.assignments.filter((a) => a.mappingId === m.id).length,
-      search: m.conditions.map((c) => `${c.path} ${c.value}`).join(' '),
+      search: `${m.issuer} ${m.description ?? ''} ${m.conditions.map((c) => `${c.path} ${c.value}`).join(' ')}`,
     }))
   }, [section, data, directory])
   const shown = rows.filter(

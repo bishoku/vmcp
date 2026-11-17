@@ -605,3 +605,18 @@ test('mapping inventory exposes related assignments and grant context without UU
   fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
   expect(screen.getByLabelText('Claim mapping')).toHaveProperty('value', ids.mapping)
 })
+
+test('unmanaged assignments start simulation with an explicit audit-event target', async () => {
+  vi.mocked(api.accessAssignments).mockResolvedValue({
+    items: [{ ...fixture.assignments[0], scope: { kind: 'unmanaged' } }],
+    authorizationRevision: 7,
+  })
+  const evaluate = vi.spyOn(api, 'evaluateAccess').mockResolvedValue(result)
+  render(view('admin', 'assignments'))
+  await screen.findByRole('button', { name: 'Test access' })
+  fireEvent.click(screen.getByRole('button', { name: 'Test access' }))
+  expect(screen.getByLabelText('Evaluation target')).toHaveProperty('value', 'event')
+  fireEvent.click(screen.getByRole('button', { name: 'Evaluate permission' }))
+  await screen.findByText('Enter an audit event UUID.')
+  expect(evaluate).not.toHaveBeenCalled()
+})
