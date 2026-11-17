@@ -51,14 +51,16 @@ func readAuthorization(ctx context.Context, q dbtx) (authz.Policy, error) {
 	if err != nil {
 		return authz.Policy{}, err
 	}
-	rows, err = q.Query(ctx, `SELECT id::text,issuer,principal_kind,conditions,enabled,version FROM authorization_mappings ORDER BY id`)
+	// Display metadata is optional for policy reads, including migration inspection
+	// against older schemas. Its absence must not change authorization decisions.
+	rows, err = q.Query(ctx, `SELECT id::text,issuer,principal_kind,conditions,enabled,version,COALESCE(to_jsonb(m)->>'name',''),COALESCE(to_jsonb(m)->>'description','') FROM authorization_mappings m ORDER BY id`)
 	if err != nil {
 		return authz.Policy{}, err
 	}
 	for rows.Next() {
 		var m authz.Mapping
 		var raw []byte
-		if err = rows.Scan(&m.ID, &m.Issuer, &m.PrincipalKind, &raw, &m.Enabled, &m.Version); err != nil {
+		if err = rows.Scan(&m.ID, &m.Issuer, &m.PrincipalKind, &raw, &m.Enabled, &m.Version, &m.Name, &m.Description); err != nil {
 			rows.Close()
 			return authz.Policy{}, err
 		}

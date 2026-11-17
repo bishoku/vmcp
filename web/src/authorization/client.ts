@@ -37,6 +37,8 @@ export interface MappingCondition {
   value: string
 }
 export interface IdentityMapping {
+  name?: string
+  description?: string
   id: string
   issuer: string
   principalKind: 'oidc'

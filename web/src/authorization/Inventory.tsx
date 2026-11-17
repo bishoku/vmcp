@@ -1,7 +1,15 @@
 import { useMemo, useState } from 'react'
 import { ShieldCheck, UserCheck, Fingerprint, Copy, Trash2, Pencil, Eye } from 'lucide-react'
 import Button from '../Button'
-import { Pill } from '../ui'
+import { Pill, CopyButton } from '../ui'
+import {
+  assignmentWarnings,
+  identityName,
+  mappingName,
+  mappingConditions,
+  scopeName,
+  useAccessDirectory,
+} from './presentation'
 import { TagBadge } from '../Badge'
 import { DetailRow } from '../connections/ServerPanels'
 import {
@@ -12,11 +20,11 @@ import {
 } from '../connections/ServerList'
 import { useTableSort } from '../table-sorting'
 import { filterItem } from '../search-filters'
-import type { AccessRole, RoleAssignment, IdentityMapping } from './client'
+import type { AccessRole, RoleAssignment, IdentityMapping, AssignmentInput } from './client'
 import type { AccessData } from './state'
 export type AccessEditor =
   | { kind: 'role'; value?: AccessRole; copy?: AccessRole }
-  | { kind: 'assignment'; value?: RoleAssignment }
+  | { kind: 'assignment'; value?: RoleAssignment; initial?: Partial<AssignmentInput> }
   | { kind: 'mapping'; value?: IdentityMapping }
 type Row = {
   id: string
@@ -24,6 +32,7 @@ type Row = {
   identifier: string
   description: string
   status: string
+  attention?: boolean
   type: string
   version: number
   scope: string
@@ -41,7 +50,11 @@ export default function Inventory({
   error,
   onEdit,
   onDelete,
+  onDenied,
+  onSimulate,
 }: {
+  onDenied: () => void
+  onSimulate: (assignment: RoleAssignment) => void
   section: 'roles' | 'assignments' | 'mappings'
   data: AccessData
   loading: boolean
@@ -52,6 +65,15 @@ export default function Inventory({
     item: AccessRole | RoleAssignment | IdentityMapping,
   ) => void
 }) {
+  const { directory, failed: namesFailed } = useAccessDirectory(
+    [
+      ...data.assignments.map((a) => a.scope.kind),
+      ...(data.assignments.some((a) => a.principal?.kind === 'control_token')
+        ? ['control_token']
+        : []),
+    ],
+    onDenied,
+  )
   const [query, setQuery] = useState(''),
     [status, setStatus] = useState(''),
     [type, setType] = useState(''),
@@ -81,18 +103,24 @@ export default function Inventory({
     if (section === 'assignments')
       return data.assignments.map((a) => ({
         id: a.id,
-        name: data.roles.find((r) => r.id === a.roleId)?.name ?? a.roleId,
+        name: identityName(a, data, directory),
         identifier: a.id,
-        description: a.mappingId
-          ? `Verified claim mapping · ${a.mappingId}`
-          : `${a.principal.kind === 'oidc' ? 'OIDC subject' : 'Control token'} · ${a.principal.id}${a.principal.issuer ? ` · ${a.principal.issuer}` : ''}`,
+        description: `${data.roles.find((r) => r.id === a.roleId)?.name ?? a.roleId} → ${scopeName(a.scope, directory)}`,
         status: a.enabled ? 'enabled' : 'disabled',
+        attention: a.enabled && assignmentWarnings(a, data).length > 0,
         type: a.mappingId ? 'Mapping' : 'Principal',
         version: a.version,
         scope: a.scope.kind,
         details: [
-          ['Scope', a.scope.kind],
-          ['Resource', a.scope.id ?? 'Deployment-wide'],
+          ['Role', data.roles.find((r) => r.id === a.roleId)?.name ?? a.roleId],
+          ['Where', scopeName(a.scope, directory)],
+          [
+            'Configuration',
+            !a.enabled
+              ? 'Disabled — grants no access'
+              : assignmentWarnings(a, data).join(' ') ||
+                'Enabled — identity and resource checks still apply',
+          ],
           ['Ownership period', a.scope.epoch ?? 'Automatic / live'],
           ['Recorded owner', a.scope.ownerTeam ?? 'Not pinned'],
           ['Payload scopes', a.captureScopes.join(', ') || 'None'],
@@ -104,14 +132,16 @@ export default function Inventory({
       }))
     return data.mappings.map((m) => ({
       id: m.id,
-      name: m.issuer,
+      name: mappingName(m),
       identifier: m.id,
-      description: m.conditions.map((c) => `${c.path} · ${c.operator}`).join(' AND '),
+      description: mappingConditions(m),
       status: m.enabled ? 'enabled' : 'disabled',
       type: m.issuer === data.status.trustedIssuer ? 'Configured issuer' : 'Draft issuer',
       version: m.version,
       scope: '',
       details: [
+        ['Provider', m.issuer],
+        ['Purpose', m.description || 'No description'],
         ['Conditions', m.conditions.length],
         ['Assignments', data.assignments.filter((a) => a.mappingId === m.id).length],
         ['Principal type', 'Verified OIDC'],
@@ -119,9 +149,9 @@ export default function Inventory({
       editor: { kind: 'mapping', value: m },
       protected: false,
       references: data.assignments.filter((a) => a.mappingId === m.id).length,
-      search: m.conditions.map((c) => `${c.path} ${c.value}`).join(' '),
+      search: `${m.issuer} ${m.description ?? ''} ${m.conditions.map((c) => `${c.path} ${c.value}`).join(' ')}`,
     }))
-  }, [section, data])
+  }, [section, data, directory])
   const shown = rows.filter(
     (r) =>
       `${r.name} ${r.identifier} ${r.description} ${r.search}`
@@ -156,6 +186,11 @@ export default function Inventory({
     Icon = section === 'roles' ? ShieldCheck : section === 'assignments' ? UserCheck : Fingerprint
   return (
     <>
+      {namesFailed && (
+        <p role="status" className="supporting-copy">
+          Some resource names could not be loaded. Identifiers are shown instead.
+        </p>
+      )}
       <ServerListFilters
         title={`Find ${label}`}
         description="Search saved access configuration and narrow this inventory"
@@ -262,14 +297,23 @@ export default function Inventory({
                       {row.name}
                     </button>
                   </h2>
-                  <p className="meta-copy mt-1 break-all font-mono text-xs text-ink-muted">
-                    {row.identifier}
-                  </p>
+                  <details className="mt-2 text-xs text-ink-muted">
+                    <summary className="cursor-pointer">Identifier</summary>
+                    <p className="break-all font-mono">{row.identifier}</p>
+                    <CopyButton value={row.id} label="Copy ID" />
+                  </details>
                 </div>
-                {row.status ? <Pill status={row.status} /> : <TagBadge label={row.type} />}
+                {row.status ? (
+                  <Pill
+                    status={row.attention ? 'warning' : row.status}
+                    label={row.attention ? 'Enabled · needs attention' : undefined}
+                  />
+                ) : (
+                  <TagBadge label={row.type} />
+                )}
               </div>
               <div className="flex-1 panel-inset pb-5">
-                <p className="line-clamp-2 min-h-10 text-xs leading-relaxed text-ink-muted">
+                <p className="min-h-10 break-words text-xs leading-relaxed text-ink-muted">
                   {row.description}
                 </p>
                 <div className="mt-4 surface-inset p-3">
@@ -289,10 +333,64 @@ export default function Inventory({
                     </DetailRow>
                   ))}
                 </dl>
+                {row.editor.kind !== 'assignment' && (
+                  <details className="mt-3 text-xs">
+                    <summary className="cursor-pointer font-medium">
+                      Related assignments ({row.references})
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      {data.assignments
+                        .filter((a) =>
+                          row.editor.kind === 'role' ? a.roleId === row.id : a.mappingId === row.id,
+                        )
+                        .map((a) => (
+                          <div key={a.id} className="surface-inset p-3">
+                            <p className="supporting-copy break-words">
+                              {identityName(a, data, directory)} →{' '}
+                              {data.roles.find((r) => r.id === a.roleId)?.name ?? a.roleId} →{' '}
+                              {scopeName(a.scope, directory)}
+                            </p>
+                            <p className="supporting-copy">
+                              {a.enabled
+                                ? assignmentWarnings(a, data).join(' ') ||
+                                  'Enabled; policy checks apply'
+                                : 'Disabled'}
+                            </p>
+                            <Button onClick={() => onEdit({ kind: 'assignment', value: a })}>
+                              Edit assignment
+                            </Button>
+                            <Button onClick={() => onSimulate(a)}>Test access</Button>
+                          </div>
+                        ))}
+                      {!row.references && (
+                        <p className="supporting-copy">
+                          No access is granted through this {row.editor.kind} yet.
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                )}
               </div>
               <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line panel-footer">
                 <span className="text-xs text-ink-muted">Saved version {row.version}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {row.editor.kind === 'assignment' ? (
+                    <Button onClick={() => onSimulate(row.editor.value as RoleAssignment)}>
+                      Test access
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() =>
+                        onEdit({
+                          kind: 'assignment',
+                          initial:
+                            row.editor.kind === 'role' ? { roleId: row.id } : { mappingId: row.id },
+                        })
+                      }
+                    >
+                      Grant access
+                    </Button>
+                  )}
                   <Button onClick={() => onEdit(row.editor)}>
                     {row.protected ? (
                       <Eye aria-hidden="true" className="icon-inline" />
