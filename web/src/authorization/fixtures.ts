@@ -69,6 +69,8 @@ export const accessFixture: AccessData = {
   mappings: [
     {
       id: ids.mapping,
+      name: 'Audit reviewers',
+      description: 'Identities with audit scope',
       issuer: 'https://trusted.example',
       principalKind: 'oidc',
       conditions: [{ path: 'scope', operator: 'scope_contains', value: 'audit:read' }],

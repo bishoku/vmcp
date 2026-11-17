@@ -3315,6 +3315,14 @@ components:
         - principalKind
         - conditions
       properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Display name only; empty legacy names use a condition-based UI label.
+        description:
+          type: string
+          maxLength: 4000
+          description: Human-readable purpose; never used for identity matching.
         issuer:
           type: string
           minLength: 1
@@ -3343,6 +3351,14 @@ components:
         - enabled
         - version
       properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Display name only; empty legacy names use a condition-based UI label.
+        description:
+          type: string
+          maxLength: 4000
+          description: Human-readable purpose; never used for identity matching.
         issuer:
           type: string
           minLength: 1

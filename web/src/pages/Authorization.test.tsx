@@ -70,6 +70,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 const loaded = () => screen.findByText('Platform Operator')
+const nextStep = () => fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
 const fill = (name: string, value: string) =>
   fireEvent.change(screen.getByLabelText(name), { target: { value } })
 
@@ -145,14 +146,17 @@ test('stale role edits are preserved, never retried and require an explicit relo
 test('request payload roles require an explicit capture allowlist on assignments', async () => {
   const create = vi.spyOn(api, 'createAccessAssignment').mockResolvedValue(fixture.assignments[0])
   render(view('admin', 'assignments'))
-  await screen.findByRole('button', { name: 'Create assignment' })
-  fireEvent.click(screen.getByRole('button', { name: 'Create assignment' }))
-  fill('Assigned role', ids.custom)
+  await screen.findByRole('button', { name: 'Grant access' })
+  fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
   fill('OIDC subject', 'new-subject')
-  fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }))
-  await screen.findByText(/Payload permissions require/)
+  nextStep()
+  fill('Assigned role', ids.custom)
+  nextStep()
+  nextStep()
+  await screen.findByText(/required payload capture scopes/)
   expect(create).not.toHaveBeenCalled()
   fireEvent.click(screen.getByLabelText('control'))
+  nextStep()
   fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }))
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   expect(create.mock.calls[0][0]).toEqual({
@@ -180,7 +184,9 @@ test('untrusted issuers cannot be enabled from the mapping editor', async () => 
   render(view('admin', 'mappings'))
   await screen.findByRole('button', { name: 'Create mapping' })
   fireEvent.click(screen.getByRole('button', { name: 'Create mapping' }))
+  fill('Mapping name', 'Foreign draft')
   fill('OIDC issuer', 'https://foreign.example')
+  fill('Mapping name', 'Auditors')
   fill('Claim value 1', 'auditors')
   fireEvent.click(screen.getByLabelText('Mapping enabled'))
   fireEvent.click(screen.getByRole('button', { name: 'Save mapping' }))
@@ -327,12 +333,15 @@ test('a new current ownership period is sent only after explicit selection', asy
 test('control-token assignments use immutable identities and omit the OIDC issuer', async () => {
   const create = vi.spyOn(api, 'createAccessAssignment').mockResolvedValue(fixture.assignments[0])
   render(view('admin', 'assignments'))
-  await screen.findByRole('button', { name: 'Create assignment' })
-  fireEvent.click(screen.getByRole('button', { name: 'Create assignment' }))
-  fill('Assigned role', ids.observer)
+  await screen.findByRole('button', { name: 'Grant access' })
+  fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
   fill('Principal type', 'control_token')
   await screen.findByRole('option', { name: new RegExp('reader-token') })
   fill('Control token', ids.token)
+  nextStep()
+  fill('Assigned role', ids.observer)
+  nextStep()
+  nextStep()
   fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }))
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   expect(create.mock.calls[0][0].principal).toEqual({ kind: 'control_token', id: ids.token })
@@ -341,11 +350,14 @@ test('control-token assignments use immutable identities and omit the OIDC issue
 test('mapping assignments omit the direct principal and preserve explicit enabled state', async () => {
   const create = vi.spyOn(api, 'createAccessAssignment').mockResolvedValue(fixture.assignments[0])
   render(view('admin', 'assignments'))
-  await screen.findByRole('button', { name: 'Create assignment' })
-  fireEvent.click(screen.getByRole('button', { name: 'Create assignment' }))
-  fill('Assigned role', ids.observer)
+  await screen.findByRole('button', { name: 'Grant access' })
+  fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
   fill('Identity source', 'mapping')
   fill('Claim mapping', ids.mapping)
+  nextStep()
+  fill('Assigned role', ids.observer)
+  nextStep()
+  nextStep()
   fireEvent.click(screen.getByLabelText('Assignment enabled'))
   fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }))
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
@@ -357,6 +369,7 @@ test('typed AND conditions are submitted without new trust or token fields', asy
   render(view('admin', 'mappings'))
   await screen.findByRole('button', { name: 'Create mapping' })
   fireEvent.click(screen.getByRole('button', { name: 'Create mapping' }))
+  fill('Mapping name', 'Auditors')
   fill('Claim value 1', 'auditors')
   fireEvent.click(screen.getByRole('button', { name: 'Add condition' }))
   fill('Claim path 2', 'scope')
@@ -369,6 +382,8 @@ test('typed AND conditions are submitted without new trust or token fields', asy
   fireEvent.click(screen.getByRole('button', { name: 'Save mapping' }))
   await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   expect(create.mock.calls[0][0]).toEqual({
+    name: 'Auditors',
+    description: '',
     issuer: fixture.status.trustedIssuer,
     principalKind: 'oidc',
     enabled: false,
@@ -406,10 +421,13 @@ test('a mapping reference conflict remains an editable draft without automatic r
   expect(screen.getByLabelText('Mapping enabled')).toHaveProperty('checked', false)
 })
 test('selector access loss clears all management data as well as the selector itself', async () => {
-  vi.mocked(api.accessScopes).mockRejectedValue(new ApiError(403, 'No longer admin'))
+  vi.mocked(api.accessScopes).mockImplementation(async (kind) => {
+    if (kind === 'control_token') throw new ApiError(403, 'No longer admin')
+    return { items: [] }
+  })
   render(view('admin', 'assignments'))
-  await screen.findByRole('button', { name: 'Create assignment' })
-  fireEvent.click(screen.getByRole('button', { name: 'Create assignment' }))
+  await screen.findByRole('button', { name: 'Grant access' })
+  fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
   fill('Principal type', 'control_token')
   await screen.findByText(/Access is no longer available/)
   expect(screen.queryByRole('dialog')).toBeNull()
@@ -427,13 +445,16 @@ test('an empty selected-scope permission set cannot be assigned', async () => {
   })
   const create = vi.spyOn(api, 'createAccessAssignment')
   render(view('admin', 'assignments'))
-  await screen.findByRole('button', { name: 'Create assignment' })
-  fireEvent.click(screen.getByRole('button', { name: 'Create assignment' }))
-  fill('Assigned role', ids.observer)
+  await screen.findByRole('button', { name: 'Grant access' })
+  fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
   fill('OIDC subject', 'subject')
+  nextStep()
+  fill('Assigned role', ids.observer)
+  nextStep()
   fill('Scope kind', 'upstream')
   await screen.findByRole('option', { name: /CRM/ })
   fill('Resource', ids.resource)
+  nextStep()
   fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }))
   await screen.findByText('None of the selected role permissions support this scope.')
   expect(create).not.toHaveBeenCalled()
@@ -492,4 +513,95 @@ test('new server permissions show cautious fallback guidance', async () => {
   const hint = document.getElementById(permission.getAttribute('aria-describedby')!)!
   expect(hint.textContent).toContain('No description is available')
   expect(hint.textContent).toContain('Supported scopes: tenant')
+})
+
+test('guided access creates a named mapping inline and keeps the selected role', async () => {
+  const mapping = {
+    ...fixture.mappings[0],
+    id: '30000000-0000-0000-0000-000000000002',
+    name: 'Support team',
+    enabled: false,
+  }
+  const createMapping = vi.spyOn(api, 'createAccessMapping').mockResolvedValue(mapping)
+  const create = vi.spyOn(api, 'createAccessAssignment').mockResolvedValue(fixture.assignments[0])
+  render(view())
+  await loaded()
+  fireEvent.click(
+    within(screen.getByText('Observer').closest('article')!).getByRole('button', {
+      name: 'Grant access',
+    }),
+  )
+  fill('Identity source', 'mapping')
+  fireEvent.click(screen.getByRole('button', { name: 'Create a claim mapping' }))
+  fill('Mapping name', 'Support team')
+  fill('Description', 'Customer support staff')
+  fill('Claim value 1', 'support')
+  fireEvent.click(screen.getByRole('button', { name: 'Save mapping' }))
+  await waitFor(() =>
+    expect(screen.getByLabelText('Claim mapping')).toHaveProperty('value', mapping.id),
+  )
+  expect(createMapping.mock.calls[0][0]).toMatchObject({
+    name: 'Support team',
+    description: 'Customer support staff',
+    enabled: false,
+  })
+  nextStep()
+  expect(screen.getByLabelText('Assigned role')).toHaveProperty('value', ids.observer)
+  nextStep()
+  expect(screen.queryByText('Payload capture allowlist')).toBeNull()
+  nextStep()
+  expect(screen.getByText(/claim mapping is disabled/)).toBeTruthy()
+  expect(
+    within(screen.getByRole('region', { name: 'Review access' })).getByText('Support team'),
+  ).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }))
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+  expect(create.mock.calls[0][0]).toMatchObject({
+    mappingId: mapping.id,
+    roleId: ids.observer,
+    enabled: false,
+  })
+  expect(create.mock.calls[0][0]).not.toHaveProperty('principal')
+})
+
+test('legacy mappings show full conditions and contextual simulation names saved grants', async () => {
+  vi.mocked(api.accessMappings).mockResolvedValue({
+    items: [{ ...fixture.mappings[0], name: '' }],
+    authorizationRevision: 7,
+  })
+  vi.mocked(api.accessAssignments).mockResolvedValue({
+    items: [{ ...fixture.assignments[0], mappingId: ids.mapping }],
+    authorizationRevision: 7,
+  })
+  const evaluate = vi.spyOn(api, 'evaluateAccess').mockResolvedValue(result)
+  render(view('admin', 'assignments'))
+  await screen.findByRole('heading', { name: 'scope includes scope “audit:read”' })
+  await screen.findByText('upstream · CRM')
+  fireEvent.click(screen.getByRole('button', { name: 'Test access' }))
+  expect(screen.getByLabelText('Sample OIDC claims')).toHaveProperty(
+    'value',
+    '{\n  "scope": "audit:read"\n}',
+  )
+  expect(screen.getByLabelText('OIDC subject')).toHaveProperty('value', 'sample-subject')
+  fireEvent.click(screen.getByRole('button', { name: 'Evaluate permission' }))
+  await screen.findByText('Allowed by stored policy')
+  expect(evaluate.mock.calls[0][0]).toMatchObject({
+    claims: { scope: 'audit:read' },
+    resource: { kind: 'upstream', id: ids.resource },
+  })
+  expect(screen.getByText(/Evaluation includes all saved assignments/)).toBeTruthy()
+  expect(screen.getByText(/Authentication verified: no/)).toBeTruthy()
+})
+
+test('mapping inventory exposes related assignments and grant context without UUID selection', async () => {
+  vi.mocked(api.accessAssignments).mockResolvedValue({
+    items: [{ ...fixture.assignments[0], mappingId: ids.mapping }],
+    authorizationRevision: 7,
+  })
+  render(view('admin', 'mappings'))
+  await screen.findByRole('heading', { name: 'Audit reviewers' })
+  expect(screen.getByText('scope includes scope “audit:read”')).toBeTruthy()
+  expect(screen.getByText('Related assignments (1)')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Grant access' }))
+  expect(screen.getByLabelText('Claim mapping')).toHaveProperty('value', ids.mapping)
 })

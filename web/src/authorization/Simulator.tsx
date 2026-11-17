@@ -5,22 +5,68 @@ import { Fingerprint, ShieldCheck, ScanLine } from 'lucide-react'
 import { ServerPanel } from '../connections/ServerPanels'
 import Select from '../Select'
 import { input } from '../styles'
-import type { AccessPrincipal, AccessScope, Evaluation, EvaluationInput } from './client'
+import type {
+  AccessPrincipal,
+  AccessScope,
+  Evaluation,
+  EvaluationInput,
+  RoleAssignment,
+} from './client'
 import { AccessError, Field, ModeSelect, TextInput } from './common'
 import { uuid, type AccessData } from './state'
 import { describePermission } from './permission-help'
+import { identityName, mappingName, scopeName, useAccessDirectory } from './presentation'
 import { PrincipalFields, ScopeFields } from './Selectors'
-export default function Simulator({ data, onDenied }: { data: AccessData; onDenied: () => void }) {
-  const [principal, setPrincipal] = useState<AccessPrincipal>({
-    kind: 'oidc',
-    id: '',
-    issuer: data.status.trustedIssuer,
-  })
-  const [permission, setPermission] = useState(''),
+export default function Simulator({
+  data,
+  onDenied,
+  assignment,
+}: {
+  data: AccessData
+  onDenied: () => void
+  assignment?: RoleAssignment
+}) {
+  const mapping = data.mappings.find((m) => m.id === assignment?.mappingId)
+  const role = data.roles.find((r) => r.id === assignment?.roleId)
+  const { directory } = useAccessDirectory(
+    data.assignments.map((a) => a.scope.kind),
+    onDenied,
+  )
+  const sampleClaims: Record<string, unknown> = {}
+  for (const c of mapping?.conditions ?? []) {
+    if (c.operator === 'array_contains')
+      sampleClaims[c.path] = [
+        ...(Array.isArray(sampleClaims[c.path]) ? (sampleClaims[c.path] as string[]) : []),
+        c.value,
+      ]
+    else if (c.operator === 'scope_contains')
+      sampleClaims[c.path] = [sampleClaims[c.path], c.value].filter(Boolean).join(' ')
+    else sampleClaims[c.path] = c.value
+  }
+  const [principal, setPrincipal] = useState<AccessPrincipal>(
+    assignment && !assignment.mappingId
+      ? { ...assignment.principal }
+      : {
+          kind: 'oidc',
+          id: mapping ? 'sample-subject' : '',
+          issuer: data.status.trustedIssuer,
+        },
+  )
+  const [permission, setPermission] = useState(
+      role?.permissions.find((id) =>
+        data.permissions
+          .find((p) => p.id === id)
+          ?.scopes.includes(assignment?.scope.kind ?? 'tenant'),
+      ) ?? '',
+    ),
     [target, setTarget] = useState('resource'),
-    [scope, setScope] = useState<AccessScope>({ kind: 'tenant' }),
+    [scope, setScope] = useState<AccessScope>(
+      assignment && assignment.scope.kind !== 'unmanaged'
+        ? { ...assignment.scope }
+        : { kind: 'tenant' },
+    ),
     [eventId, setEventId] = useState(''),
-    [claims, setClaims] = useState('{}')
+    [claims, setClaims] = useState(JSON.stringify(sampleClaims, null, 2))
   const [result, setResult] = useState<Evaluation>(),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
@@ -95,6 +141,25 @@ export default function Simulator({ data, onDenied }: { data: AccessData; onDeni
   }
   return (
     <section aria-label="Permission simulation" className="space-y-5">
+      {assignment && (
+        <div className="surface-card panel-body space-y-2">
+          <h2 className="panel-title">Test saved access</h2>
+          <p className="supporting-copy">
+            {identityName(assignment, data)} → {role?.name ?? assignment.roleId} →{' '}
+            {scopeName(assignment.scope, directory)}
+          </p>
+          <p className="supporting-copy">
+            The fields below are a starting example. Review sample claims and choose the exact
+            permission and target to test. Evaluation includes all saved assignments, not just this
+            one.
+          </p>
+          {assignment.scope.kind === 'unmanaged' && (
+            <p className="supporting-copy">
+              For unmanaged audit access, choose an audit event target.
+            </p>
+          )}
+        </div>
+      )}
       <p className="supporting-copy">
         Policy simulation only. Identity, token audience, signatures and claim freshness are not
         verified. A positive result does not open an authenticated session or grant live
@@ -239,7 +304,10 @@ export default function Simulator({ data, onDenied }: { data: AccessData; onDeni
                 {result.matchedMappingIds.length ? (
                   result.matchedMappingIds.map((id) => (
                     <p className="mt-2 break-all text-xs" key={id}>
-                      {id}
+                      {data.mappings.find((m) => m.id === id)
+                        ? mappingName(data.mappings.find((m) => m.id === id)!)
+                        : 'Unavailable mapping'}{' '}
+                      <span className="text-ink-muted">· {id}</span>
                     </p>
                   ))
                 ) : (
@@ -253,7 +321,13 @@ export default function Simulator({ data, onDenied }: { data: AccessData; onDeni
                 </p>
                 {result.candidateAssignmentIds.map((id) => (
                   <p className="mt-2 break-all text-xs" key={id}>
-                    {id}
+                    {(() => {
+                      const a = data.assignments.find((v) => v.id === id)
+                      return a
+                        ? `${identityName(a, data)} → ${data.roles.find((r) => r.id === a.roleId)?.name ?? a.roleId} → ${scopeName(a.scope, directory)}`
+                        : 'Unavailable assignment'
+                    })()}{' '}
+                    <span className="text-ink-muted">· {id}</span>
                   </p>
                 ))}
               </div>

@@ -133,6 +133,13 @@ export default function RoleEditor({
           </p>
         )}
         {base && <p className="text-xs text-ink-muted">Version {base.version}</p>}
+        {base && (
+          <p className="supporting-copy">
+            This role is used by {data.assignments.filter((a) => a.roleId === base.id).length}{' '}
+            assignments. Permission changes affect every linked assignment on subsequent requests.
+            Other roles and grants remain independent.
+          </p>
+        )}
         <AccessSection
           title="Role details"
           description="Use a stable identifier and a name people can recognize when assigning access."

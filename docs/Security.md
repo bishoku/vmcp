@@ -78,3 +78,15 @@ Publishing retries only Cosign exit code 10 with `no signatures found`, at most
 ten attempts ten seconds apart. Wrong signer identity, certificate failures and
 other verification errors fail immediately; the bounded retry never permits an
 unsigned image to pass.
+
+## Managing access in the console
+
+Access Management opens on **Assignments**: each entry identifies who receives a role, where it applies, and whether its configuration has warnings. An enabled assignment still needs a matching identity, permission and resource; it is not proof that a particular request will be allowed. Platform administrator identity remains deployment-configured and cannot be granted by assigning a role here.
+
+Use **Grant access** to choose an identity, choose a role, limit the resource scope, and review the result. New assignments start disabled. Payload capture controls appear only for roles with payload permissions. A capture allowlist restricts those permissions; it does not grant payload access itself.
+
+**Claim mappings** select identities from verified OIDC ID-token claims. All conditions must match. Give each mapping a recognizable name and description; these are display metadata, while assignments continue referencing immutable mapping IDs. Legacy unnamed mappings display their full conditions. A disabled mapping cannot supply access through an otherwise enabled assignment. You can create a mapping inside Grant access; it is saved separately and remains available if the assignment is cancelled.
+
+Expand **Related assignments** on a role or mapping to inspect its grants, edit an assignment or test access. Changing a role's permissions affects every linked assignment; changing mapping conditions changes who qualifies for its assignments. Renaming a mapping does not change matching. The assignment review explains scope and dependency warnings before saving.
+
+**Test access** opens Simulation with the saved assignment's identity, role permission and scope as a starting point. For mappings it supplies editable sample claims. Review these values, particularly when conditions conflict or an audit-event target is needed. Simulation evaluates all stored assignments and never validates token signatures, authentication or claim freshness. An allowed sample does not grant a live session. Resource names are presentation only; historical or unavailable resources retain their stable identifiers.
