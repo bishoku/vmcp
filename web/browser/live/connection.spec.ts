@@ -58,8 +58,10 @@ test('fresh stack discovers a real upstream and verifies a credentialed MCP brow
       timeout: 15_000,
     })
   }).toPass({ timeout: 40_000 })
-  await expect(page.getByText('1 resources on the first page')).toBeVisible()
-  await expect(page.getByText('1 prompts on the first page')).toBeVisible()
+  for (const kind of ['resources', 'prompts']) {
+    const row = page.locator('dl > div').filter({ has: page.getByText(kind, { exact: true }) })
+    await expect(row.getByRole('definition')).toHaveText('1 on the first page')
+  }
   await page.screenshot({ path: test.info().outputPath('live-connection.png'), fullPage: true })
 })
 

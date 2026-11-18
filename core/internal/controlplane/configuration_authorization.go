@@ -21,7 +21,8 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 	parts := strings.Split(path, "/")
 	family := parts[0]
 	switch family {
-	case "configuration-access":
+	// Schema checks evaluate only caller-supplied data and access no saved resource.
+	case "configuration-access", "rest-schema-checks":
 		op.Family = "self"
 		return op, method == "POST"
 	case "me":

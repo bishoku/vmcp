@@ -1,5 +1,14 @@
-import { expect, test } from 'vitest'
+import { api } from '../api'
+import { beforeEach, expect, test, vi } from 'vitest'
+import { schemaCheckFixture } from '../../test-fixtures/schema-checks'
 import { checkSchema, schemaLimitError } from './schema-validation'
+
+beforeEach(() => {
+  vi.spyOn(api, 'validateRESTSchemas').mockImplementation(async (checks) =>
+    schemaCheckFixture(checks),
+  )
+})
+
 test('reports schema and example mismatch with a field path', async () => {
   expect(
     await checkSchema(
