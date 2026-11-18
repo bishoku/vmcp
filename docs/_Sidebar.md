@@ -6,6 +6,7 @@
 - [Guided setup and client connections](Connections-and-Setup.md)
 - [Installation options](Deployment.md)
 - [Kubernetes quickstart](HELM_QUICKSTART.md)
+- [Kustomize and Argo CD](Kustomize-Installation.md)
 - [Install a published release](Release-Installation.md)
 
 ## Use vMCP

@@ -91,7 +91,12 @@ jobs:
           helm lint source/deploy/helm/vmcp \
             -f source/deploy/helm/vmcp/examples/production.yaml -f release-assets/helm-images.yaml
           helm package source/deploy/helm/vmcp --app-version "$VERSION" --destination release-assets
-          (cd release-assets && sha256sum helm-images.yaml images.json vmcp-*.tgz > SHA256SUMS)
+          python3 -m venv "$RUNNER_TEMP/kustomize-env"
+          "$RUNNER_TEMP/kustomize-env/bin/pip" install PyYAML==6.0.3
+          "$RUNNER_TEMP/kustomize-env/bin/python" automation/scripts/package-kustomize.py \
+            release-assets/vmcp-*.tgz "$VERSION" release-assets \
+            source/deploy/helm/vmcp/examples/production.yaml release-assets/helm-images.yaml
+          (cd release-assets && sha256sum helm-images.yaml images.json vmcp-*.tgz vmcp-kustomize-*.tar.gz > SHA256SUMS)
       - name: Create release notes
         env:
           VERSION: ${{ steps.source.outputs.version }}
@@ -113,6 +118,7 @@ jobs:
           - \`helm-images.yaml\`: immutable image digests for this application version.
           - \`images.json\`: complete image inventory, including the secret rotation utility.
           - \`$chart\`: Helm chart with locked optional dependency subcharts included.
+          - \`vmcp-kustomize-$VERSION.tar.gz\`: production manifests and overlays for [kubectl and Argo CD](https://github.com/$GH_REPO/wiki/Kustomize-Installation).
           - \`SHA256SUMS\`: asset checksums.
 
           Prepare Kubernetes Secrets, PostgreSQL, Redis, ingress, and your production values using the [installation guide](https://github.com/$GH_REPO/blob/$VERSION/deploy/helm/vmcp/README.md).

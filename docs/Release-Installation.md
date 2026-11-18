@@ -9,6 +9,8 @@ use [Kubernetes quickstart](HELM_QUICKSTART.md). For production, prepare infrast
 and configuration using [Production deployment](PRODUCTION_DEPLOYMENT.md) and the
 [Helm chart guide](../deploy/helm/vmcp/README.md).
 
+For release bundles supporting kubectl or GitOps, see [Kustomize and Argo CD installation](Kustomize-Installation.md).
+
 ## Download a version
 
 Choose a version from [GitHub Releases](https://github.com/bishoku/vmcp/releases).
