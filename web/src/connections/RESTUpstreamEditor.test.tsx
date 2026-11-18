@@ -298,3 +298,72 @@ test('numeric default editing retains decimal keystrokes and rejects invalid tex
       .defaultValue,
   ).toBe(-0.5)
 })
+
+test('operation files update matches, add new tools and retain local credentials on repeat import', async () => {
+  render(<Draft />)
+  const operations = [
+    { ...config.operations[0], description: 'Revised', headers: { 'X-Key': 'source-secret' } },
+    {
+      ...config.operations[0],
+      name: 'list_orders',
+      path: '/orders/all',
+      responseFieldPaths: [['id']],
+    },
+  ]
+  const upload = () =>
+    fireEvent.change(screen.getByLabelText('Import operations file'), {
+      target: {
+        files: [
+          {
+            size: 512,
+            text: async () => JSON.stringify({ format: 'vmcp.rest-operations.v1', operations }),
+          },
+        ],
+      },
+    })
+  upload()
+  fireEvent.click(await screen.findByRole('button', { name: 'Apply to upstream draft' }))
+  const value = JSON.parse(screen.getByTestId('rest-draft').textContent!)
+  expect(value.auth).toEqual(config.auth)
+  expect(value.operations[0]).toEqual({ ...config.operations[0], description: 'Revised' })
+  expect(value.operations[1].responseFieldPaths).toEqual([['id']])
+  expect(value.operations[1].headerNames).toBeUndefined()
+  upload()
+  expect(await screen.findByRole('button', { name: 'Apply to upstream draft' })).toHaveProperty(
+    'disabled',
+    true,
+  )
+})
+
+test('incomplete candidates can be repaired before selection', async () => {
+  vi.spyOn(api, 'importREST').mockResolvedValue({
+    title: 'Orders',
+    version: '3.1',
+    servers: [],
+    warnings: [],
+    operations: [
+      {
+        id: 'GET /pending',
+        path: '/pending',
+        method: 'GET',
+        summary: 'Pending',
+        tags: [],
+        warnings: [],
+        errors: ['Review response'],
+        repairDraft: { ...config.operations[0], enabled: false, name: 'pending', path: '/pending' },
+      },
+    ],
+  })
+  render(<Draft />)
+  fireEvent.click(screen.getByRole('button', { name: 'Import OpenAPI / Swagger' }))
+  fireEvent.change(screen.getByLabelText('OpenAPI / Swagger definition'), {
+    target: { value: 'definition' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Analyze definition' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Repair operation' }))
+  fireEvent.change(screen.getByLabelText('Tool name'), { target: { value: 'reviewed' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Accept reviewed definition' }))
+  fireEvent.click(screen.getByRole('checkbox', { name: 'GET /pending' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Add 1 to draft' }))
+  expect(screen.getByRole('button', { name: 'Edit operation reviewed' })).toBeTruthy()
+})

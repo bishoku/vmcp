@@ -38,7 +38,7 @@ func (s *Server) pinControlAudit(r *http.Request, capture bool) (*audit.AccessCo
 	inspect := kind != "" && (r.Method == "PUT" || r.Method == "PATCH")
 	if (capture || inspect) && r.Body != nil {
 		var err error
-		raw, err = io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
+		raw, err = io.ReadAll(io.LimitReader(r.Body, requestBodyLimit(r)+1))
 		if err != nil {
 			return nil, nil, apierror.New(400, "invalid_body", "Invalid body", "request could not be read")
 		}

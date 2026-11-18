@@ -19,9 +19,19 @@ interface Props {
   catalog: Catalog | null
   loading: boolean
   error: string
+  discover?: () => void
+  busy?: boolean
   reload: () => Promise<void>
 }
-export default function UpstreamDiscovery({ tools, catalog, loading, error, reload }: Props) {
+export default function UpstreamDiscovery({
+  tools,
+  catalog,
+  loading,
+  error,
+  reload,
+  discover,
+  busy,
+}: Props) {
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState('')
   const [limit, setLimit] = useState(50)
@@ -68,6 +78,11 @@ export default function UpstreamDiscovery({ tools, catalog, loading, error, relo
             Stored tools, resources, templates and prompts for this upstream.
           </p>
         </div>
+        {discover && (
+          <Button className={btn} disabled={busy || loading} onClick={discover}>
+            Discover capabilities
+          </Button>
+        )}
         <Button loading={loading} className={btn} onClick={() => reload()} disabled={loading}>
           <RefreshCw aria-hidden="true" className={`icon-inline ${loading ? 'motion-spin' : ''}`} />
           Reload discovery snapshots
@@ -83,7 +98,7 @@ export default function UpstreamDiscovery({ tools, catalog, loading, error, relo
         title="Discovery snapshots"
         description={`${rows.length} loaded objects · saved discovery only`}
         icon={Boxes}
-        footer="Reload reads stored discovery only. Use Refresh capabilities in the upstream list to discover changes."
+        footer="Reload reads stored discovery only. Discovery contacts the saved upstream."
       >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line panel-body">
           <RadioGroup

@@ -2,6 +2,9 @@ package controlplane_test
 
 import (
 	"context"
+	"fmt"
+	"github.com/bishoku/vmcp/core/internal/restapi"
+	"strings"
 	"testing"
 )
 
@@ -42,4 +45,26 @@ func TestRESTImportPreviewIsAuthorizedAndDoesNotMutate(t *testing.T) {
 	payload["slug"] = "insecure"
 	payload["url"] = "http://example.com"
 	a.expect(422, "POST", "/api/v1/upstreams", payload)
+}
+
+func TestRESTImportFiveMiBAndSave(t *testing.T) {
+	a := setup(t)
+	var paths []string
+	for n := 0; n < 60; n++ {
+		paths = append(paths, fmt.Sprintf(`"/items%d":{"get":{"operationId":"items%d","description":"%s","responses":{"204":{}}}}`, n, n, strings.Repeat("a", 18000)))
+	}
+	source := `{"openapi":"3.1.0","paths":{` + strings.Join(paths, ",") + `}}`
+	source += strings.Repeat(" ", restapi.MaxImportBytes-len(source))
+	_, preview := a.expect(200, "POST", "/api/v1/rest-imports", map[string]string{"document": source})
+	ops := []any{}
+	for _, candidate := range preview["operations"].([]any) {
+		ops = append(ops, candidate.(map[string]any)["operation"])
+	}
+	payload := map[string]any{"slug": "large-import", "name": "Large import", "kind": "rest", "url": "https://example.com", "rest": map[string]any{"auth": map[string]string{"type": "none"}, "operations": ops}}
+	_, saved := a.expect(201, "POST", "/api/v1/upstreams", payload)
+	if saved["toolCount"] != float64(60) {
+		t.Fatal("missing saved operations")
+	}
+	a.expect(200, "PATCH", "/api/v1/upstreams/large-import", map[string]any{"rest": payload["rest"]})
+	a.expect(422, "POST", "/api/v1/rest-imports", map[string]string{"document": source + " "})
 }

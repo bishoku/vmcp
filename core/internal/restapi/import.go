@@ -15,7 +15,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-const MaxImportBytes = 2 << 20
+const MaxImportBytes = 5 << 20
 const maxImportOperations = 1000
 
 // ImportResult is a preview only. Credentials and server settings are never imported.
@@ -27,14 +27,15 @@ type ImportResult struct {
 	Operations []ImportOperation `json:"operations"`
 }
 type ImportOperation struct {
-	ID        string     `json:"id"`
-	Method    string     `json:"method"`
-	Path      string     `json:"path"`
-	Summary   string     `json:"summary"`
-	Tags      []string   `json:"tags"`
-	Operation *Operation `json:"operation,omitempty"`
-	Warnings  []string   `json:"warnings"`
-	Errors    []string   `json:"errors"`
+	ID          string     `json:"id"`
+	Method      string     `json:"method"`
+	Path        string     `json:"path"`
+	Summary     string     `json:"summary"`
+	Tags        []string   `json:"tags"`
+	Operation   *Operation `json:"operation,omitempty"`
+	RepairDraft *Operation `json:"repairDraft,omitempty"`
+	Warnings    []string   `json:"warnings"`
+	Errors      []string   `json:"errors"`
 }
 
 type importer struct {
@@ -54,7 +55,7 @@ func raw(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
 // Conversion failures belong to individual operations so unrelated operations remain selectable.
 func Import(document string) (*ImportResult, error) {
 	if len(document) == 0 || len(document) > MaxImportBytes || !utf8.ValidString(document) {
-		return nil, errors.New("provide a UTF-8 JSON or YAML document up to 2 MiB")
+		return nil, errors.New("provide a UTF-8 JSON or YAML document up to 5 MiB")
 	}
 	decoder := yaml.NewDecoder(strings.NewReader(document))
 	var node yaml.Node
@@ -154,6 +155,10 @@ func Import(document string) (*ImportResult, error) {
 			operation, err := imp.operation(path, method, pathItem, source, &candidate.Warnings)
 			if err != nil {
 				candidate.Errors = append(candidate.Errors, err.Error())
+				if operation.Name != "" {
+					operation.Enabled = false
+					candidate.RepairDraft = &operation
+				}
 			} else {
 				base := operation.Name
 				for suffix := 2; names[operation.Name] > 0; suffix++ {
