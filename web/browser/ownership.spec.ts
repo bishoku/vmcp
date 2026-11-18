@@ -134,6 +134,33 @@ const section = (page: Page, name: string) =>
     .getByRole('button', { name, exact: true })
     .click()
 
+for (const kind of ['team', 'project']) {
+  test(`typing in the new ${kind} keeps focus without access requests`, async ({ page }) => {
+    await fixture(page)
+    await page.goto(`/ownership?section=${kind}s`)
+    await page.getByRole('button', { name: `New ${kind}`, exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByRole('button', { name: `Save ${kind}` })).toBeEnabled()
+    const requests: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/configuration-access'))
+        requests.push(request.url())
+    })
+    const labels = ['Name', 'Identifier']
+    if (kind === 'team') labels.push('OIDC issuer', 'Group claim value')
+    for (const label of labels) {
+      const field = dialog.getByLabel(label, { exact: true })
+      await field.click()
+      for (const key of 'chat-ops') {
+        await page.keyboard.press(key)
+        await expect(field).toBeFocused()
+      }
+      await expect(field).toHaveValue('chat-ops')
+    }
+    expect(requests).toHaveLength(0)
+  })
+}
+
 for (const width of [390, 1440])
   test(`ownership workflow and shared responsive components ${width}`, async ({ page }) => {
     // This scenario covers team/project creation and the full grant approval/revocation
