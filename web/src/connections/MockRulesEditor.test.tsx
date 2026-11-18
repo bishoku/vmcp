@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { render } from '../test-utils'
-import { type RESTConfig } from '../api'
+import { schemaCheckFixture } from '../../test-fixtures/schema-checks'
+import { api, type RESTConfig } from '../api'
 import { emptyREST } from './rest-config'
 import RESTUpstreamEditor from './RESTUpstreamEditor'
 HTMLDialogElement.prototype.showModal = function () {
@@ -114,6 +115,9 @@ test('invalid body and header drafts block navigation until repaired and retain 
   expect(rules[0].response).toMatchObject({ jsonBody: { ok: false }, headers: { 'X-Mock': 'yes' } })
 })
 test('quick mock generates nested request schema and opens a review without applying', async () => {
+  vi.spyOn(api, 'validateRESTSchemas').mockImplementationOnce(async (checks) =>
+    schemaCheckFixture(checks),
+  )
   render(<Draft />)
   fireEvent.click(screen.getByRole('button', { name: 'Quick mock operation' }))
   fireEvent.change(screen.getByLabelText('Quick mock tool name'), {

@@ -2,7 +2,7 @@ import { ToolInvocationPolicy } from '../invocation/UpstreamSecurity'
 import { useConfigurationPermissions } from '../configuration-access'
 import { useEffect, useState } from 'react'
 import { parameterValueError, hasParameterDefault } from './rest-parameters'
-import { checkSchema, schemaLimitError } from './schema-validation'
+import { checkSchemas, schemaLimitError } from './schema-validation'
 import { responseSelectionError, restToolPreview } from './rest-tool-preview'
 import { inferSchema, mergeExample, objectSchema } from './schema-editor'
 import RESTDefinitionTransfer from './RESTDefinitionTransfer'
@@ -142,20 +142,19 @@ export default function RESTUpstreamEditor({
       for (const parameter of draft.parameters) {
         const issue = parameterValueError(parameter)
         if (issue) problems.push(`Parameter ${parameter.name}: ${issue}`)
-        const sample = hasParameterDefault(parameter)
-          ? { value: parameter.defaultValue }
-          : undefined
-        problems.push(
-          ...(await checkSchema(parameter.schema, sample)).map(
-            (issue) => `Parameter ${parameter.name}: ${issue}`,
-          ),
-        )
       }
-      for (const [label, schema] of [
-        ['Request body', draft.bodySchema],
-        ['Response', draft.responseSchema],
-      ] as const)
-        problems.push(...(await checkSchema(schema)).map((issue) => `${label}: ${issue}`))
+      if (!problems.length)
+        problems.push(
+          ...(await checkSchemas([
+            ...draft.parameters.map((p) => ({
+              label: `Parameter ${p.name}: `,
+              schema: p.schema,
+              sample: hasParameterDefault(p) ? p.defaultValue : undefined,
+            })),
+            { label: 'Request body: ', schema: draft.bodySchema },
+            { label: 'Response: ', schema: draft.responseSchema },
+          ])),
+        )
       if (problems.length) {
         setIssues(problems)
         return

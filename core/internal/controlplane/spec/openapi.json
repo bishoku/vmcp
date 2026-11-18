@@ -4146,6 +4146,95 @@
         }
       }
     },
+    "/api/v1/rest-schema-checks": {
+      "post": {
+        "tags": [
+          "Upstreams"
+        ],
+        "operationId": "validateRESTSchemas",
+        "summary": "Check caller-supplied inline schemas and optional example values",
+        "description": "Authenticated preview. Returns per-check messages in request order. Checks do not access stored upstreams, persist drafts or contact a service.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRF"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "checks"
+                ],
+                "properties": {
+                  "checks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 102,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "schema"
+                      ],
+                      "properties": {
+                        "schema": {
+                          "description": "Inline JSON Schema up to 64 KiB"
+                        },
+                        "sample": {
+                          "description": "Optional JSON instance including null"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empty message lists indicate success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "issues"
+                  ],
+                  "properties": {
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuditUnavailable"
+          }
+        }
+      }
+    },
     "/api/v1/rest-imports": {
       "post": {
         "tags": [

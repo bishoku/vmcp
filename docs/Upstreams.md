@@ -286,8 +286,7 @@ The REST workspace includes visual request-body and response schema editors.
 Paste example JSON and choose **Generate request body schema** or **Generate
 response schema**, then edit types, descriptions and required fields. Objects
 expand into nested fields; arrays expose their item schema. GET operations do
-not show a request-body editor. Example values remain local and are not saved
-with the upstream.
+not show a request-body editor. Generating, checking or applying a schema validates the inline schema and its example (when present) on the control plane. Apply operation checks the parameter defaults and operation schemas in one request. Validation takes no upstream credentials, makes no upstream call and excludes examples from audit payload capture. Applied changes stay in the editor draft until **Save**.
 
 Inferred fields start optional. Null values, empty arrays and mixed-type arrays
 need an explicit type choice. Examples supplement existing definitions without
