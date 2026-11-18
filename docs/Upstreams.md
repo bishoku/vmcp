@@ -228,9 +228,7 @@ remain enforced.
 In a REST upstream draft, choose **Import OpenAPI / Swagger** and upload a local
 JSON/YAML file or paste its contents. **Analyze definition** lists the operations;
 nothing is selected, saved or executed automatically. Search by method, path, tag
-or tool name, select the operations to include, and choose **Add to draft**. Selecting
-an operation or choosing its **Preview** action displays its MCP definition in the
-workspace preview panel. Review
+or tool name, select the operations to include, and choose **Add to draft**. Use **Preview** on an operation to inspect its MCP definition. Review
 or edit the imported operations, then use the upstream's main **Save** action.
 Canceling the import or upstream draft does not change saved configuration.
 
@@ -258,7 +256,7 @@ Examples and defaults are omitted from generated schemas. Read-only request
 properties and their required entries are removed; write-only response fields
 require manual filtering and are reported as incompatible.
 
-Unsupported operations remain visible with a reason and cannot be selected. This
+Incomplete operations show the conversion error. When the importer has a partial definition, choose **Repair operation**, review the converted fields, complete any missing mappings, then accept the reviewed definition and select it. Repair drafts start disabled and exist only in the current editor session. Unsupported operations without a partial definition remain unavailable. This
 includes external/cyclic references, operation/path-specific servers, multipart or
 binary bodies, dynamic header/cookie/form parameters, unsupported serialization,
 and success responses without JSON content (except 204). JSON bodies use
@@ -269,12 +267,14 @@ adapter exposes its body argument as required. OpenAPI 3.0 nullable types and bo
 exclusive bounds are converted to inline JSON Schema; advanced reference siblings,
 schema identifiers and discriminators require manual review.
 
-The source limit is 2 MiB, with at most 1,000 source operations and an 8 MiB preview.
-Nesting and reference expansion are bounded. Multiple YAML documents, aliases,
+The source limit is 5 MiB, with at most 1,000 source operations and an 8 MiB preview.
+REST configurations can contain up to 12 MiB. When using an external ingress or gateway, allow the JSON-wrapped import request through to the web proxy (32 MiB transport budget). Nesting and reference expansion are bounded. Multiple YAML documents, aliases,
 custom tags and duplicate keys are rejected. The importer never fetches a URL or
 reads referenced files. Existing REST save-time validation and all runtime security
 controls still apply to imported operations. No additional database migration is
 needed beyond REST upstream migration 28.
+
+For repeatable transfers between environments, **Export operations** writes a versioned JSON file containing tool names, descriptions, parameters, schemas, response projections and catalog settings. On the destination REST upstream choose **Import operations file**, review additions and updates, apply to the draft and save. Matching uses the tool name. Destination-only tools and operation headers are retained. Connection URL, auth, TLS and upstream settings stay local. A rename creates a new tool. Review literal defaults and schemas for environment-specific values before sharing the file.
 
 Format references: [OpenAPI 3.0](https://spec.openapis.org/oas/v3.0.4.html),
 [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0.html),

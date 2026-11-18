@@ -5883,7 +5883,7 @@ components:
           maxItems: 200
           items:
             $ref: "#/components/schemas/RESTOperation"
-      description: REST configuration (max 512 KiB). When supplied this block replaces configuration, preserving omitted secrets and per-operation headers. Omit the entire block to retain it. Agent identity is derived only from authenticated sessions; requireIdentity also requires forwardIdentity. No redirects, fallbacks or automatic operation retries.
+      description: REST configuration (max 12 MiB, or 512 KiB for mock upstreams). When supplied this block replaces configuration, preserving omitted secrets and per-operation headers. Omit the entire block to retain it. Agent identity is derived only from authenticated sessions; requireIdentity also requires forwardIdentity. No redirects, fallbacks or automatic operation retries.
     RESTOperationRequest:
       type: object
       additionalProperties: false
@@ -5931,7 +5931,9 @@ components:
           $ref: "#/components/schemas/RESTOperation"
         warnings: *a3
         errors: *a3
-      description: Unsupported operations remain visible with errors and no operation. Import never selects or publishes operations.
+        repairDraft:
+          $ref: "#/components/schemas/RESTOperation"
+      description: Repairable candidates include an incomplete session-only repairDraft. Unsupported operations remain visible with errors and no operation. Import never selects or publishes operations.
     RESTImportResult:
       type: object
       additionalProperties: false
@@ -5964,8 +5966,8 @@ components:
         document:
           type: string
           minLength: 1
-          maxLength: 2097152
-          description: Complete UTF-8 JSON/YAML document, at most 2 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams.
+          maxLength: 5242880
+          description: Complete UTF-8 JSON/YAML document, at most 5 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams.
 
     RequestHeaderMapping:
       type: object

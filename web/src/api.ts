@@ -90,6 +90,7 @@ export interface RESTImportOperation {
   summary: string
   tags: string[]
   operation?: RESTOperation
+  repairDraft?: RESTOperation
   warnings: string[]
   errors: string[]
 }

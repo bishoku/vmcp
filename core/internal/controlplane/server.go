@@ -382,8 +382,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) error {
 }
 
 // decode reads a strict JSON body: unknown fields and trailing data are rejected.
+// Allow space for the JSON-escaped source and expanded operation schemas on save.
+func requestBodyLimit(r *http.Request) int64 {
+	switch r.Pattern {
+	case "POST /api/v1/rest-imports":
+		return 32 << 20
+	case "POST /api/v1/upstreams", "PUT /api/v1/upstreams/{slug}", "PATCH /api/v1/upstreams/{slug}":
+		return 16 << 20
+	default:
+		return maxBodyBytes
+	}
+}
+
 func decode(r *http.Request, dst any) error {
-	dec := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes))
+	dec := json.NewDecoder(io.LimitReader(r.Body, requestBodyLimit(r)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		return apierror.Validation([]apierror.FieldError{{Code: apierror.CodeValidationFailed, Message: "invalid JSON body: " + err.Error()}})

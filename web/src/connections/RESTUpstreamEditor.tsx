@@ -5,6 +5,7 @@ import { parameterValueError, hasParameterDefault } from './rest-parameters'
 import { checkSchema, schemaLimitError } from './schema-validation'
 import { responseSelectionError, restToolPreview } from './rest-tool-preview'
 import { inferSchema, mergeExample, objectSchema } from './schema-editor'
+import RESTDefinitionTransfer from './RESTDefinitionTransfer'
 import RESTImportDialog from './RESTImportDialog'
 import RESTOperationEditor from './RESTOperationEditor'
 import QuickMockOperation from './QuickMockOperation'
@@ -45,7 +46,7 @@ export default function RESTUpstreamEditor({
   onInvalidChange?: (invalid: boolean) => void
 }) {
   const [quick, setQuick] = useState(false)
-  const [selected, setSelected] = useState(0),
+  const [preview, setPreview] = useState<RESTOperation | null>(null),
     [importing, setImporting] = useState(false),
     [query, setQuery] = useState(''),
     [limit, setLimit] = useState(50)
@@ -164,7 +165,6 @@ export default function RESTUpstreamEditor({
           ? [...value.operations, draft]
           : value.operations.map((o, i) => (i === draftIndex ? draft : o))
       onChange({ ...value, operations })
-      setSelected(draftIndex ?? value.operations.length)
       setDraft(null)
       setInvalid(false)
       setIssues([])
@@ -172,7 +172,6 @@ export default function RESTUpstreamEditor({
       setChecking(false)
     }
   }
-  const operation = value.operations[selected]
   const shown = value.operations
     .map((op, i) => ({ op, i }))
     .filter(({ op }) =>
@@ -181,15 +180,12 @@ export default function RESTUpstreamEditor({
   return (
     <section aria-label="REST to MCP workspace" className="layout-stack min-w-0">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="section-title">
-            {value.mock ? 'Mock → MCP workspace' : 'REST → MCP workspace'}
-          </h2>
-          <p className="section-description mt-1 text-sm text-ink-muted">
-            Manage operations here. Open a workspace to edit requests and schemas without extending
-            this page.
-          </p>
-        </div>
+        {!value.mock && (
+          <RESTDefinitionTransfer
+            operations={value.operations}
+            apply={onChange ? (operations) => onChange({ ...value, operations }) : undefined}
+          />
+        )}
         {onChange && (
           <div className="flex flex-wrap gap-2">
             {value.mock && (
@@ -238,7 +234,7 @@ export default function RESTUpstreamEditor({
         {value.operations.length} total · Apply operation changes to the draft, then Save the
         upstream.
       </p>
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="min-w-0">
         <section
           aria-label="REST operations"
           className="surface-card panel-body layout-stack min-w-0"
@@ -266,14 +262,17 @@ export default function RESTUpstreamEditor({
                   <button
                     aria-label={`${op.name || 'Untitled tool'} ${op.method} ${op.path}`}
                     className="min-w-0 flex-1 text-left"
-                    onClick={() => setSelected(i)}
-                    aria-current={i === selected ? 'true' : undefined}
+                    onClick={() => setPreview(op)}
                   >
                     <span className="block break-all text-sm font-semibold">
                       {op.name || 'Untitled tool'}
                     </span>
                     <span className="mt-1 block break-all font-mono text-xs text-ink-muted">
                       {op.method} {op.path}
+                    </span>
+                    <span className="block text-xs text-ink-muted">
+                      {op.description} · {op.parameters.length} parameters
+                      {op.bodySchema !== undefined ? ' · JSON body' : ''}
                     </span>
                   </button>
                   <span className="text-xs text-ink-muted">
@@ -282,9 +281,14 @@ export default function RESTUpstreamEditor({
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button className={btn} onClick={() => openOperation(i, op)}>
-                    {onChange ? 'Edit' : 'View'} operation {op.name}
+                  <button className={btn} onClick={() => setPreview(op)}>
+                    Preview {op.name}
                   </button>
+                  {onChange && (
+                    <button className={btn} onClick={() => openOperation(i, op)}>
+                      Edit operation {op.name}
+                    </button>
+                  )}
                   {onChange && (
                     <button
                       className={`${btn} action-danger-outline`}
@@ -302,7 +306,6 @@ export default function RESTUpstreamEditor({
                             ...value,
                             operations: value.operations.filter((_, j) => j !== i),
                           })
-                          setSelected(0)
                         }
                       }}
                     >
@@ -327,7 +330,17 @@ export default function RESTUpstreamEditor({
             )}
           </div>
         </section>
-        <RESTToolPreview operation={operation} />
+        {preview && (
+          <Modal
+            title={`Preview REST operation · ${preview.name}`}
+            onClose={() => setPreview(null)}
+          >
+            <p className="font-mono">
+              {preview.method} {preview.path}
+            </p>
+            <RESTToolPreview operation={preview} />
+          </Modal>
+        )}
       </div>
       {quick && onChange && (
         <QuickMockOperation
@@ -363,7 +376,6 @@ export default function RESTUpstreamEditor({
                 ),
               ],
             })
-            setSelected(value.operations.length)
             setQuery('')
             setImporting(false)
           }}
@@ -403,7 +415,7 @@ export default function RESTUpstreamEditor({
                 </ul>
               </ErrorBox>
             )}
-            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="layout-stack">
               <RESTOperationEditor
                 mockMode={!!value.mock}
                 operation={draft}
@@ -415,9 +427,10 @@ export default function RESTUpstreamEditor({
                 onInvalidChange={setInvalid}
                 onChange={onChange ? setDraft : undefined}
               />
-              <div className={value.mock ? 'xl:sticky xl:top-0' : undefined}>
+              <details>
+                <summary className="cursor-pointer">Preview MCP tool definition</summary>
                 <RESTToolPreview operation={draft} invalid={invalid} />
-              </div>
+              </details>
             </div>
           </div>
         </Modal>

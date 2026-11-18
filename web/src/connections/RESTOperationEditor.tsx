@@ -114,7 +114,7 @@ export default function RESTOperationEditor({
       title="Request & tool"
       description={
         onChange
-          ? 'Changes update the upstream draft. Use Save when ready.'
+          ? 'Define the HTTP request, then choose which inputs and response fields the tool exposes.'
           : 'Saved operation definition'
       }
       icon={Wrench}
