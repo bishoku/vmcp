@@ -1,13 +1,21 @@
+import { api, type RESTConfig } from '../api'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { schemaCheckFixture } from '../../test-fixtures/schema-checks'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, expect, test, vi } from 'vitest'
 import { useState } from 'react'
 import { render } from '../test-utils'
-import { api, type RESTConfig } from '../api'
 import { upstream } from './fixtures'
 import RESTUpstreamEditor, { RESTConnectionSettings } from './RESTUpstreamEditor'
 import { emptyREST } from './rest-config'
 import { RoleContext } from '../interaction'
 import orderFixture from './testdata/order-mapping.json'
+
+beforeEach(() => {
+  vi.spyOn(api, 'validateRESTSchemas').mockImplementation(async (checks) =>
+    schemaCheckFixture(checks),
+  )
+})
+
 HTMLDialogElement.prototype.showModal = function () {
   this.setAttribute('open', '')
 }
@@ -366,4 +374,21 @@ test('incomplete candidates can be repaired before selection', async () => {
   fireEvent.click(screen.getByRole('checkbox', { name: 'GET /pending' }))
   fireEvent.click(screen.getByRole('button', { name: 'Add 1 to draft' }))
   expect(screen.getByRole('button', { name: 'Edit operation reviewed' })).toBeTruthy()
+})
+
+test('validation failure keeps the operation modal and original draft for retry', async () => {
+  const check = vi.spyOn(api, 'validateRESTSchemas').mockRejectedValueOnce(new Error('Offline'))
+  render(<Draft />)
+  const editor = edit()
+  fireEvent.change(editor.getByLabelText('Operation path'), { target: { value: '/orders/{id}' } })
+  fireEvent.click(editor.getByRole('button', { name: 'Apply operation' }))
+  await editor.findByText(/Retry validation.*Offline/)
+  expect(JSON.parse(screen.getByTestId('rest-draft').textContent!).operations[0].path).toBe(
+    '/orders',
+  )
+  check.mockResolvedValueOnce({ issues: [[]] })
+  await apply()
+  expect(JSON.parse(screen.getByTestId('rest-draft').textContent!).operations[0].path).toBe(
+    '/orders/{id}',
+  )
 })

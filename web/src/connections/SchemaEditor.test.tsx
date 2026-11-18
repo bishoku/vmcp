@@ -1,9 +1,18 @@
+import { api } from '../api'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { schemaCheckFixture } from '../../test-fixtures/schema-checks'
 import { useState } from 'react'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from '../test-utils'
 import SchemaEditor from './SchemaEditor'
 import type { Schema } from './schema-editor'
+
+beforeEach(() => {
+  vi.spyOn(api, 'validateRESTSchemas').mockImplementation(async (checks) =>
+    schemaCheckFixture(checks),
+  )
+})
+
 beforeEach(() => {
   HTMLDialogElement.prototype.showModal = function () {
     this.open = true
