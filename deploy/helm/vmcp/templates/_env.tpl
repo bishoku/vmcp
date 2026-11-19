@@ -24,6 +24,7 @@
 - {name: VMCP_OIDC_DISCOVERY_URL, value: {{ .discoveryURL | quote }}}
 - {name: VMCP_OIDC_CLIENT_ID, value: {{ required "OIDC clientId is required" .clientId | quote }}}
 - {name: VMCP_OIDC_REDIRECT_URL, value: {{ required "OIDC redirectURL is required" .redirectURL | quote }}}
+- {name: VMCP_OIDC_CLAIM_TTL_SECONDS, value: {{ .claimTTLSeconds | int64 | quote }}}
 - {name: VMCP_OIDC_GROUPS_CLAIM, value: {{ .groupsClaim | quote }}}
 - {name: VMCP_OIDC_ADMIN_GROUPS, value: {{ join "," .adminGroups | quote }}}
 - {name: VMCP_OIDC_EDITOR_GROUPS, value: {{ join "," .editorGroups | quote }}}

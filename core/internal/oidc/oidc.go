@@ -56,6 +56,7 @@ type Config struct {
 	// SessionKey signs cookies; at least 32 bytes.
 	SessionKey []byte
 	SessionTTL time.Duration
+	ClaimTTL   time.Duration
 	// HTTPClient is used for discovery and token exchange (tests only).
 	HTTPClient *http.Client
 	Sessions   SessionStore
@@ -110,6 +111,9 @@ func New(ctx context.Context, cfg Config) (*Provider, error) {
 	}
 	if cfg.GroupsClaim == "" {
 		cfg.GroupsClaim = "groups"
+	}
+	if cfg.ClaimTTL == 0 {
+		cfg.ClaimTTL = 15 * time.Minute
 	}
 	if cfg.SessionTTL <= 0 {
 		cfg.SessionTTL = 8 * time.Hour
@@ -253,7 +257,7 @@ func (p *Provider) Callback(w http.ResponseWriter, r *http.Request) {
 		s.Issuer = p.cfg.Issuer
 		s.Claims = selected
 		if len(selected) > 0 {
-			s.ClaimsExpire = p.now().Add(15 * time.Minute)
+			s.ClaimsExpire = p.now().Add(p.cfg.ClaimTTL)
 			if idt.Expiry.Before(s.ClaimsExpire) {
 				s.ClaimsExpire = idt.Expiry
 			}
