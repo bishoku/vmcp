@@ -8,7 +8,7 @@ ARG VITE_PUBLIC_GATEWAY_URL
 ENV VITE_PUBLIC_GATEWAY_URL=$VITE_PUBLIC_GATEWAY_URL
 RUN npm run build
 
-FROM nginx:1.30.6-alpine-slim@sha256:d9322bba63c6cfc63dc9e86522fd4f95fd4d9020a02b5bced282bbf38b8c3960
+FROM nginx:1.30.7-alpine-slim@sha256:8c950211a641ec5b23f265450517001f6bcca533666120ebe36cb4cff3d00a55
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 ENV VMCP_CONTROL_PLANE_URL=http://control-plane:8081
 ENV NGINX_ENVSUBST_FILTER=^VMCP_CONTROL_PLANE_URL$
