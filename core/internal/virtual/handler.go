@@ -236,6 +236,32 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
+	if mcp.ModernEnabled() && r.Header.Get("MCP-Protocol-Version") == mcp.ProtocolVersion20260728 {
+		if invalid := mcp.ValidateModern(r.Header, msg); invalid != nil {
+			writeMessage(w, 400, invalid)
+			return
+		}
+		w = modernResultWriter{w, msg.Method}
+		switch msg.Method {
+		case mcp.MethodDiscover:
+			h.reply(w, msg.ID, mcp.DiscoverServer("vmcp:"+slug, vs.Instructions, mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{}}))
+		case mcp.MethodToolsList:
+			h.listTools(w, msg, vs, snap.Revision)
+		case mcp.MethodToolsCall:
+			sess, err := newSession(slug, mcp.ProtocolVersion20260728)
+			if err != nil {
+				http.Error(w, "execution context unavailable", 503)
+				return
+			}
+			defer sess.closeUpstreams()
+			sess.owner = owner
+			sess.keySlug = owner.Principal
+			h.callTool(ctx, w, msg, vs, sess, snap, h.ipString(r), r.Header)
+		default:
+			writeMessage(w, 200, mcp.NewErrorResponse(msg.ID, mcp.CodeMethodNotFound, "unsupported method"))
+		}
+		return
+	}
 	if msg.IsRequest() && msg.Method == mcp.MethodInitialize {
 		if r.Header.Get("Mcp-Session-Id") != "" {
 			writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInvalidRequest, "initialize must start a new session"))
@@ -840,7 +866,17 @@ func (h *Handler) reply(w http.ResponseWriter, id mcp.ID, result any) {
 	writeMessage(w, http.StatusOK, m)
 }
 
+type modernResultWriter struct {
+	http.ResponseWriter
+	method string
+}
+
+func (w modernResultWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
 func writeMessage(w http.ResponseWriter, status int, m *mcp.Message) {
+	if writer, modern := w.(modernResultWriter); modern {
+		mcp.CompleteResult(writer.method, m)
+	}
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(10 * time.Second))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

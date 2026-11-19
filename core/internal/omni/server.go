@@ -188,7 +188,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "JSON required", 415)
 		return
 	}
-	if v := r.Header.Get("MCP-Protocol-Version"); v != "" && !mcp.SupportsVersion(v) {
+	if v := r.Header.Get("MCP-Protocol-Version"); v != "" && !(v == mcp.ProtocolVersion20260728 && mcp.ModernEnabled()) && !mcp.SupportsVersion(v) {
 		http.Error(w, "unsupported protocol version", 400)
 		return
 	}
@@ -209,6 +209,15 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "invalid JSON-RPC", 400)
 		return
+	}
+	modern := r.Header.Get("MCP-Protocol-Version") == mcp.ProtocolVersion20260728
+	if modern {
+		if invalid := mcp.ValidateModern(r.Header, msg); invalid != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(400)
+			replyJSON(w, invalid)
+			return
+		}
 	}
 	if msg.IsNotification() {
 		if _, err := s.access(r.Context(), token, ip, false); err != nil {
@@ -246,9 +255,25 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rpcErr := func(code int, message string) { replyJSON(w, mcp.NewErrorResponse(msg.ID, code, message)) }
-	result := func(v any) { res, _ := mcp.NewResult(msg.ID, v); replyJSON(w, res) }
+	result := func(v any) {
+		res, _ := mcp.NewResult(msg.ID, v)
+		if modern {
+			mcp.CompleteResult(msg.Method, res)
+		}
+		replyJSON(w, res)
+	}
 	switch msg.Method {
+	case mcp.MethodDiscover:
+		if modern {
+			result(mcp.DiscoverServer("vmcp-omni", initializeInstructions, mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{}, Resources: &mcp.ResourcesCapability{}}))
+		} else {
+			rpcErr(mcp.CodeMethodNotFound, "method not supported")
+		}
 	case mcp.MethodInitialize:
+		if modern {
+			rpcErr(mcp.CodeMethodNotFound, "method not supported")
+			return
+		}
 		p, e := mcp.ValidateInitializeParams(msg.Params)
 		if e != nil {
 			rpcErr(mcp.CodeInvalidParams, "invalid initialize parameters")
@@ -364,6 +389,9 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			response.ID = msg.ID
+			if modern {
+				mcp.CompleteResult(msg.Method, &response)
+			}
 			replyJSON(w, &response)
 		default:
 			rpcErr(mcp.CodeInvalidParams, "unknown Omni tool")

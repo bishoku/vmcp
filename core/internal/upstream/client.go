@@ -11,6 +11,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,8 +64,18 @@ func (c *Client) SessionID() string {
 
 // Initialize performs the MCP handshake and records the session.
 func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) {
+	if mcp.ModernEnabled() {
+		discovered, err := c.discover(ctx)
+		if err != nil || discovered != nil {
+			return discovered, err
+		}
+	}
+	return c.initializeLegacy(ctx)
+}
+
+func (c *Client) initializeLegacy(ctx context.Context) (*mcp.InitializeResult, error) {
 	params := mcp.InitializeParams{
-		ProtocolVersion: mcp.SupportedVersions[0],
+		ProtocolVersion: mcp.ProtocolVersion20250618,
 		Capabilities:    ClientCapabilities(ctx),
 		ClientInfo:      mcp.Implementation{Name: "vmcp-gateway", Version: "0.1.0"},
 	}
@@ -88,6 +99,42 @@ func (c *Client) Initialize(ctx context.Context) (*mcp.InitializeResult, error) 
 	}
 	return res, nil
 }
+
+func (c *Client) discover(ctx context.Context) (*mcp.InitializeResult, error) {
+	c.mu.Lock()
+	c.protocolVersion = mcp.ProtocolVersion20260728
+	c.mu.Unlock()
+	raw, err := c.Call(ctx, mcp.MethodDiscover, struct{}{})
+	if err != nil {
+		var rpc *mcp.Error
+		var status *httpStatusError
+		legacy := errors.As(err, &rpc) && rpc.Code == mcp.CodeMethodNotFound
+		if errors.As(err, &rpc) && rpc.Code == -32022 {
+			var versions struct{ Supported []string }
+			legacy = json.Unmarshal(rpc.Data, &versions) == nil && slices.Contains(versions.Supported, mcp.ProtocolVersion20250618)
+		}
+		if !legacy && !(errors.As(err, &status) && (status.status == 400 || status.status == 404)) {
+			return nil, err
+		}
+		c.mu.Lock()
+		c.protocolVersion = ""
+		c.mu.Unlock()
+		return nil, nil
+	}
+	var d mcp.Discovery
+	if json.Unmarshal(raw, &d) != nil || d.ResultType != "complete" || !slices.Contains(d.SupportedVersions, mcp.ProtocolVersion20260728) || d.Meta.Server.Name == "" {
+		return nil, errors.New("invalid modern discovery result")
+	}
+	c.capabilities = d.Capabilities
+	return &mcp.InitializeResult{ProtocolVersion: mcp.ProtocolVersion20260728, Capabilities: d.Capabilities, ServerInfo: d.Meta.Server, Instructions: d.Instructions}, nil
+}
+
+type httpStatusError struct {
+	status int
+	detail string
+}
+
+func (e *httpStatusError) Error() string { return e.detail }
 
 // ListTools returns every tool, following pagination cursors.
 func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
@@ -181,6 +228,33 @@ func (c *Client) applyHeaders(req *http.Request, method string) {
 }
 
 func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, error) {
+	c.mu.RLock()
+	modern := c.protocolVersion == mcp.ProtocolVersion20260728
+	c.mu.RUnlock()
+	var target string
+	if modern {
+		if !msg.IsRequest() {
+			return nil, errors.New("modern upstream requires a request")
+		}
+		params := map[string]json.RawMessage{}
+		if len(msg.Params) > 0 {
+			if err := json.Unmarshal(msg.Params, &params); err != nil {
+				return nil, err
+			}
+		}
+		meta := map[string]json.RawMessage{}
+		if raw := params["_meta"]; len(raw) > 0 && string(raw) != "null" {
+			if err := json.Unmarshal(raw, &meta); err != nil {
+				return nil, err
+			}
+		}
+		meta["io.modelcontextprotocol/protocolVersion"] = json.RawMessage(`"2026-07-28"`)
+		meta["io.modelcontextprotocol/clientInfo"] = json.RawMessage(`{"name":"vmcp-gateway","version":"0.1.0"}`)
+		meta["io.modelcontextprotocol/clientCapabilities"] = json.RawMessage(`{}`)
+		params["_meta"], _ = json.Marshal(meta)
+		msg.Params, _ = json.Marshal(params)
+		_ = json.Unmarshal(params["name"], &target)
+	}
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return nil, err
@@ -196,6 +270,15 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		callercontext.ApplyHeaders(ctx, req)
 	}
 
+	if modern {
+		req.Header.Del("Mcp-Session-Id")
+		req.Header.Del("Mcp-Name")
+		req.Header.Set("Mcp-Method", msg.Method)
+		req.Header.Set("MCP-Protocol-Version", mcp.ProtocolVersion20260728)
+		if target != "" {
+			req.Header.Set("Mcp-Name", target)
+		}
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("post %s: %w", msg.Method, err)
@@ -215,7 +298,12 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("upstream %s returned %d: %s", msg.Method, resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if modern && resp.StatusCode == 400 {
+			if reply, err := mcp.Decode(snippet); err == nil && reply.Error != nil && reply.ID.String() == msg.ID.String() {
+				return reply, nil
+			}
+		}
+		return nil, &httpStatusError{resp.StatusCode, fmt.Sprintf("upstream %s returned %d: %s", msg.Method, resp.StatusCode, strings.TrimSpace(string(snippet)))}
 	}
 
 	if msg.IsNotification() || msg.IsResponse() {

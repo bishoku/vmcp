@@ -178,7 +178,7 @@ func Dial(ctx context.Context, up config.Upstream) (upstream.Conn, error) {
 		if len(urls) > 1 {
 			actx, cancel = context.WithTimeout(ctx, 10*time.Second)
 		}
-		_, err = c.Initialize(actx)
+		err = upstream.PrepareInvocation(actx, c, u, up.Fingerprint())
 		cancel()
 		if err == nil {
 			return c, nil

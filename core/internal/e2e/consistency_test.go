@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -223,5 +224,51 @@ func TestOAuthSessionOwnershipAcrossNodes(t *testing.T) {
 	})
 	if replacement == credential {
 		t.Fatal("binding ID was not replaced")
+	}
+}
+
+func TestModernInvocationAcrossReplicas(t *testing.T) {
+	t.Setenv("VMCP_MCP_20260728", "1")
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	e := setup(t)
+	a, _, ma := consistencyNode(t, e, nil)
+	b, _, mb := consistencyNode(t, e, nil)
+	defer ma.Close()
+	defer mb.Close()
+	invoke := func(target, method string) {
+		t.Helper()
+		params := map[string]any{"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": map[string]string{"name": "cross-node", "version": "1"}, "io.modelcontextprotocol/clientCapabilities": map[string]any{}}}
+		if method == "tools/call" {
+			params["name"] = "say"
+			params["arguments"] = map[string]string{"message": "cross-node-echo"}
+		}
+		msg, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 5, "method": method, "params": params})
+		req, _ := http.NewRequest("POST", target, strings.NewReader(string(msg)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("MCP-Protocol-Version", "2026-07-28")
+		req.Header.Set("Mcp-Method", method)
+		if method == "tools/call" {
+			req.Header.Set("Mcp-Name", "say")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 || resp.Header.Get("Mcp-Session-Id") != "" || !strings.Contains(string(data), `"resultType":"complete"`) {
+			t.Fatalf("%s %s", resp.Status, data)
+		}
+		if method == "tools/call" && !strings.Contains(string(data), "cross-node-echo") {
+			t.Fatalf("echo: %s", data)
+		}
+	}
+	invoke(a, "server/discover")
+	invoke(b, "tools/call")
+	invoke(a, "tools/call")
+	var rows int
+	if err := e.pool.QueryRow(e.ctx, "SELECT count(*) FROM sessions").Scan(&rows); err != nil || rows != 0 || ma.Len() != 0 || mb.Len() != 0 {
+		t.Fatalf("modern call registered a session: %d %v", rows, err)
 	}
 }
