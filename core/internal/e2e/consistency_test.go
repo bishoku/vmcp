@@ -3,6 +3,7 @@ package e2e
 import (
 	"encoding/json"
 	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/omni"
 	"io"
 	"log/slog"
 	"net/http"
@@ -332,4 +333,69 @@ func TestModernInvocationAcrossReplicas(t *testing.T) {
 		t.Fatal("terminated legacy session accepted on A")
 	}
 
+}
+
+func TestModernOmniDiscoveryAndInvocationAcrossReplicas(t *testing.T) {
+	t.Setenv("VMCP_MCP_20260728", "1")
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	e := setup(t)
+	e.exec(t, `UPDATE virtual_servers SET omni_enabled=true WHERE slug='agent'`)
+	e.exec(t, `INSERT INTO agent_keys(tenant_id,slug,key_hash,key_prefix) SELECT id,'matrix',$1,'matrix' FROM tenants WHERE slug='default'`, store.HashKey("matrix-key"))
+	e.exec(t, `INSERT INTO agent_key_servers SELECT k.id,v.id FROM agent_keys k,virtual_servers v WHERE k.slug='matrix' AND v.slug='agent'`)
+	node := func() string {
+		_, syncer, manager := consistencyNode(t, e, nil)
+		t.Cleanup(manager.Close)
+		mux := http.NewServeMux()
+		(&virtual.Handler{Snap: syncer, Sessions: manager, Log: syncer.Log}).RegisterOmni(mux, strings.Repeat("s", 32))
+		dp := httptest.NewServer(mux)
+		t.Cleanup(dp.Close)
+		backend, err := omni.NewBackend(dp.URL, strings.Repeat("s", 32))
+		if err != nil {
+			t.Fatal(err)
+		}
+		index := omni.NewIndex(nil)
+		index.Refresh(e.ctx, backend)
+		api := httptest.NewServer((&omni.Server{Backend: backend, Index: index}).Handler())
+		t.Cleanup(api.Close)
+		return api.URL + "/mcp/v1/omni"
+	}
+	a, b := node(), node()
+	rpc := func(url, method, name string, args map[string]any) string {
+		p := map[string]any{"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": map[string]any{}}}
+		if name != "" {
+			p["name"] = name
+			p["arguments"] = args
+		}
+		msg, _ := mcp.NewRequest(mcp.NewIntID(1), method, p)
+		raw, _ := json.Marshal(msg)
+		req, _ := http.NewRequest("POST", url, strings.NewReader(string(raw)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer matrix-key")
+		req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+		req.Header.Set("Mcp-Method", method)
+		if name != "" {
+			req.Header.Set("Mcp-Name", name)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 || resp.Header.Get("Mcp-Session-Id") != "" || !strings.Contains(string(body), `"resultType":"complete"`) {
+			t.Fatalf("%s: %s %s", name, resp.Status, body)
+		}
+		return string(body)
+	}
+	rpc(a, mcp.MethodDiscover, "", nil)
+	if body := rpc(a, mcp.MethodToolsCall, "discover_tools", map[string]any{"query": "say"}); !strings.Contains(body, "agent/say") {
+		t.Fatal(body)
+	}
+	if body := rpc(b, mcp.MethodToolsCall, "invoke_tool", map[string]any{"tool_ref": "agent/say", "arguments": map[string]any{"message": "cross-omni"}}); !strings.Contains(body, "cross-omni") {
+		t.Fatal(body)
+	}
+	var rows int
+	if err := e.pool.QueryRow(e.ctx, "SELECT count(*) FROM sessions").Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("Omni session rows=%d err=%v", rows, err)
+	}
 }
