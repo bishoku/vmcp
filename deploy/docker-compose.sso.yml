@@ -36,6 +36,7 @@ services:
       VMCP_OIDC_CLIENT_ID: vmcp
       VMCP_OIDC_CLIENT_SECRET: vmcp-dev-secret
       VMCP_OIDC_REDIRECT_URL: http://localhost:3000/auth/callback
+      VMCP_OIDC_CLAIM_TTL_SECONDS: ${VMCP_OIDC_CLAIM_TTL_SECONDS:-900}
       VMCP_OIDC_GROUPS_CLAIM: groups
       VMCP_OIDC_ADMIN_GROUPS: vmcp-admins
       VMCP_OIDC_EDITOR_GROUPS: vmcp-editors

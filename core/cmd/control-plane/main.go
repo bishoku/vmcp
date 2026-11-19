@@ -260,6 +260,14 @@ func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oi
 		}
 		return out
 	}
+	var claimTTL time.Duration
+	if raw, ok := os.LookupEnv("VMCP_OIDC_CLAIM_TTL_SECONDS"); ok {
+		seconds, err := strconv.ParseInt(raw, 10, 32)
+		if err != nil || seconds <= 0 {
+			return nil, errors.New("VMCP_OIDC_CLAIM_TTL_SECONDS must be an integer between 1 and 2147483647")
+		}
+		claimTTL = time.Duration(seconds) * time.Second
+	}
 	box, err := secrets.FromEnv(masterKey)
 	if err != nil {
 		return nil, err
@@ -273,6 +281,7 @@ func oidcFromEnv(ctx context.Context, masterKey string, pool *pgxpool.Pool) (*oi
 		ClientID:     clientID,
 		ClientSecret: config.Env("VMCP_OIDC_CLIENT_SECRET", ""),
 		RedirectURL:  redirect,
+		ClaimTTL:     claimTTL,
 		GroupsClaim:  config.Env("VMCP_OIDC_GROUPS_CLAIM", "groups"),
 		AdminGroups:  list("VMCP_OIDC_ADMIN_GROUPS"),
 		EditorGroups: list("VMCP_OIDC_EDITOR_GROUPS"),

@@ -253,3 +253,20 @@ func TestClaimSessionCaptureOnlyAfterVerifiedIDToken(t *testing.T) {
 		}
 	}
 }
+
+func TestConfiguredClaimLifetime(t *testing.T) {
+	f := newFakeIdP(t)
+	f.claims = map[string]any{"groups": []string{"everyone"}, "scope": "audit:read"}
+	p, _ := secureProvider(t, f)
+	for _, tc := range []struct{ ttl, want time.Duration }{
+		{30 * time.Minute, 30 * time.Minute},
+		{2 * time.Hour, time.Hour}, // The test issuer issues one-hour ID tokens.
+	} {
+		p.cfg.ClaimTTL = tc.ttl
+		start := time.Now()
+		s, ok := p.Session(secureRequest(t, p, f))
+		if !ok || s.ClaimsExpire.Before(start.Add(tc.want-time.Second)) || s.ClaimsExpire.After(time.Now().Add(tc.want)) {
+			t.Fatalf("configured TTL %s yielded deadline %v", tc.ttl, s.ClaimsExpire)
+		}
+	}
+}
