@@ -217,7 +217,7 @@ func TestModernPrimaryLegacyFallback(t *testing.T) {
 	up := config.Upstream{URL: primary.URL, FallbackURLs: []string{legacy.URL}}
 	preferences := new(upstream.PreferenceCache)
 	call := func(up config.Upstream, want string) {
-		c, err := dial(context.Background(), up, preferences)
+		c, err := dial(context.Background(), up, preferences, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,7 +231,7 @@ func TestModernPrimaryLegacyFallback(t *testing.T) {
 	// A warm dispatch may already have executed. Fail it once, then let a
 	// separate invocation discover the failed primary and use the fallback.
 	available.Store(false)
-	c, err := dial(context.Background(), up, preferences)
+	c, err := dial(context.Background(), up, preferences, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

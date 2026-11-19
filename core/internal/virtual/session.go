@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -132,6 +133,7 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 	if caps := upstream.ClientCapabilities(ctx); string(caps) != "{}" {
 		generation = sha256.Sum256(append(baseGeneration[:], caps...))
 	}
+	var candidates []string
 	if uc.current != nil {
 		streamable, _ := uc.current.conn.(*upstream.Client)
 		replace := uc.current.generation != generation
@@ -139,7 +141,18 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 			var err error
 			replace, err = streamable.NeedsDiscovery(ctx)
 			if err != nil {
-				return nil, nil, err
+				if ctx.Err() != nil {
+					return nil, nil, ctx.Err()
+				}
+				failed := upstream.UnavailableEndpoint(err)
+				if failed == "" || len(up.FallbackURLs) == 0 {
+					return nil, nil, err
+				}
+				candidates = slices.DeleteFunc(append([]string{up.URL}, up.FallbackURLs...), func(url string) bool { return url == failed })
+				if len(candidates) == 0 {
+					return nil, nil, err
+				}
+				replace = true
 			}
 		}
 		if replace {
@@ -150,7 +163,7 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 		if onDial, ok := ctx.Value(dialHookKey{}).(func()); ok {
 			onDial()
 		}
-		c, err := dial(ctx, up, s.preferences)
+		c, err := dial(ctx, up, s.preferences, candidates)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -178,8 +191,10 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 // Dial opens and initializes a connection to the upstream, falling back through its
 // alternative URLs in order. With fallbacks configured each attempt gets a short budget so a
 // black-holed primary does not stall the caller.
-func dial(ctx context.Context, up config.Upstream, preferences *upstream.PreferenceCache) (upstream.Conn, error) {
-	urls := append([]string{up.URL}, up.FallbackURLs...)
+func dial(ctx context.Context, up config.Upstream, preferences *upstream.PreferenceCache, urls []string) (upstream.Conn, error) {
+	if urls == nil {
+		urls = append([]string{up.URL}, up.FallbackURLs...)
+	}
 	var lastErr error
 	for _, u := range urls {
 		c, err := upstream.OpenAuth(up.Transport, u, up.Headers, up.TLS, up.OAuth)
@@ -187,7 +202,7 @@ func dial(ctx context.Context, up config.Upstream, preferences *upstream.Prefere
 			return nil, err
 		}
 		actx, cancel := ctx, context.CancelFunc(func() {})
-		if len(urls) > 1 {
+		if len(up.FallbackURLs) > 0 {
 			actx, cancel = context.WithTimeout(ctx, 10*time.Second)
 		}
 		err = preferences.PrepareInvocation(actx, c, u, up.Fingerprint())

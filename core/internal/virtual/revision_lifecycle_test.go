@@ -211,3 +211,74 @@ func TestExpiredUpstreamConsumesInvocationRetryBudget(t *testing.T) {
 		})
 	}
 }
+
+// The initial call opens a persistent Virtual session against the primary.
+// A failed preference refresh on the next call is still before tool dispatch.
+func TestActiveSessionFailoverAfterDiscovery503(t *testing.T) {
+	t.Setenv("VMCP_MCP_20260728", "1")
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	var unavailable atomic.Bool
+	type endpoint struct{ probes, calls atomic.Int32 }
+	var primary, fallback endpoint
+	serve := func(counter *endpoint, name string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var msg mcp.Message
+			if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+				t.Error(err)
+				return
+			}
+			var result any
+			switch msg.Method {
+			case mcp.MethodDiscover:
+				counter.probes.Add(1)
+				if counter == &primary && unavailable.Load() {
+					http.Error(w, "unavailable", 503)
+					return
+				}
+				result = mcp.DiscoverServer(name, "", mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{}})
+			case mcp.MethodToolsCall:
+				counter.calls.Add(1)
+				result = map[string]any{"resultType": "complete", "content": []map[string]string{{"type": "text", "text": name}}}
+			default:
+				t.Errorf("unexpected method %s", msg.Method)
+				http.Error(w, "unexpected method", 400)
+				return
+			}
+			reply, _ := mcp.NewResult(msg.ID, result)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(reply)
+		}))
+	}
+	a := serve(&primary, "primary")
+	defer a.Close()
+	b := serve(&fallback, "fallback")
+	defer b.Close()
+	rig := newRig(t)
+	m := rig.handler.Sessions
+	defer m.Close()
+	now := time.Now()
+	m.preferences.Clock = func() time.Time { return now }
+	s, err := m.Create("support", mcp.ProtocolVersion20250618)
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := config.Upstream{ID: "u", URL: a.URL, FallbackURLs: []string{b.URL}}
+	call := func(want string) {
+		t.Helper()
+		raw, err := rig.handler.callResilient(context.Background(), s, up, config.VirtualTool{UpstreamName: "echo"}, json.RawMessage(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got struct{ Content []struct{ Text string } }
+		if err := json.Unmarshal(raw, &got); err != nil || len(got.Content) != 1 || got.Content[0].Text != want {
+			t.Fatalf("unexpected tool result %s", raw)
+		}
+	}
+	call("primary")
+	unavailable.Store(true)
+	now = now.Add(6 * time.Minute)
+	call("fallback")
+	if primary.probes.Load() != 2 || primary.calls.Load() != 1 || fallback.probes.Load() != 1 || fallback.calls.Load() != 1 {
+		t.Fatalf("primary probes/calls %d/%d, fallback %d/%d", primary.probes.Load(), primary.calls.Load(), fallback.probes.Load(), fallback.calls.Load())
+	}
+}

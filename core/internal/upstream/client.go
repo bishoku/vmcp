@@ -134,11 +134,22 @@ func (c *Client) discover(ctx context.Context) (*mcp.InitializeResult, error) {
 }
 
 type httpStatusError struct {
-	status int
-	detail string
+	endpoint string
+	status   int
+	detail   string
 }
 
 func (e *httpStatusError) Error() string { return e.detail }
+
+// UnavailableEndpoint identifies a server-side HTTP failure during discovery.
+// Callers can omit that URL when selecting a connection before tool dispatch.
+func UnavailableEndpoint(err error) string {
+	var status *httpStatusError
+	if errors.As(err, &status) && status.status >= 500 && status.status < 600 {
+		return status.endpoint
+	}
+	return ""
+}
 
 // ListTools returns every tool, following pagination cursors.
 func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
@@ -340,7 +351,7 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		} else {
 			snippet, _ = io.ReadAll(io.LimitReader(resp.Body, 512))
 		}
-		return nil, &httpStatusError{resp.StatusCode, fmt.Sprintf("upstream %s returned %d: %s", msg.Method, resp.StatusCode, strings.TrimSpace(string(snippet)))}
+		return nil, &httpStatusError{endpoint: c.url, status: resp.StatusCode, detail: fmt.Sprintf("upstream %s returned %d: %s", msg.Method, resp.StatusCode, strings.TrimSpace(string(snippet)))}
 	}
 
 	if msg.IsNotification() || msg.IsResponse() {
