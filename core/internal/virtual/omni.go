@@ -248,12 +248,12 @@ func (h *Handler) omniInvoke(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	// Invocation-scoped sessions prevent capability/credential sharing between agents.
-	sess, err := h.Sessions.Create(v.Slug, mcp.SupportedVersions[0])
+	sess, err := newSession(v.Slug, mcp.ProtocolVersion20250618)
 	if err != nil {
 		http.Error(w, "session capacity unavailable", 503)
 		return
 	}
-	defer h.Sessions.Delete(sess.id)
+	defer sess.closeUpstreams()
 	sess.owner = owner
 	sess.keySlug = owner.Principal
 	ctx := audit.WithTrace(withSubject(r.Context(), owner.Subject), r.Header.Get("traceparent"))

@@ -272,6 +272,21 @@ func NewManager() *Manager { return &Manager{sessions: map[string]*Session{}} }
 
 // Create registers a new session bound to a virtual server slug.
 func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
+	s, err := newSession(slug, protocolVersion)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || len(m.sessions) >= 10000 {
+		return nil, errors.New("session capacity unavailable")
+	}
+	m.sessions[s.id] = s
+	return s, nil
+}
+
+// newSession creates an isolated execution context without registering a client session.
+func newSession(slug, protocolVersion string) (*Session, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, err
@@ -285,13 +300,6 @@ func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
 		conns:              map[string]*upstreamConn{},
 		last:               time.Now(),
 	}
-	m.mu.Lock()
-	if m.closed || len(m.sessions) >= 10000 {
-		m.mu.Unlock()
-		return nil, errors.New("session capacity unavailable")
-	}
-	m.sessions[s.id] = s
-	m.mu.Unlock()
 	return s, nil
 }
 
@@ -535,4 +543,3 @@ func (m *Manager) Close() {
 	}
 	wg.Wait()
 }
-
