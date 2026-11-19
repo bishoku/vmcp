@@ -56,6 +56,7 @@ func (uc *upstreamConn) closeLocked(c *cachedClient) {
 // Session is one client session on a virtual server. It owns one upstream
 // session per upstream the client actually touches (created lazily).
 type Session struct {
+	preferences        *upstream.PreferenceCache
 	id                 string
 	slug               string
 	version            string
@@ -133,7 +134,15 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 	}
 	if uc.current != nil {
 		streamable, _ := uc.current.conn.(*upstream.Client)
-		if uc.current.generation != generation || (streamable != nil && streamable.NeedsDiscovery()) {
+		replace := uc.current.generation != generation
+		if !replace && streamable != nil {
+			var err error
+			replace, err = streamable.NeedsDiscovery(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		if replace {
 			uc.retireLocked()
 		}
 	}
@@ -141,7 +150,7 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 		if onDial, ok := ctx.Value(dialHookKey{}).(func()); ok {
 			onDial()
 		}
-		c, err := Dial(ctx, up)
+		c, err := dial(ctx, up, s.preferences)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -169,7 +178,7 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 // Dial opens and initializes a connection to the upstream, falling back through its
 // alternative URLs in order. With fallbacks configured each attempt gets a short budget so a
 // black-holed primary does not stall the caller.
-func Dial(ctx context.Context, up config.Upstream) (upstream.Conn, error) {
+func dial(ctx context.Context, up config.Upstream, preferences *upstream.PreferenceCache) (upstream.Conn, error) {
 	urls := append([]string{up.URL}, up.FallbackURLs...)
 	var lastErr error
 	for _, u := range urls {
@@ -181,7 +190,7 @@ func Dial(ctx context.Context, up config.Upstream) (upstream.Conn, error) {
 		if len(urls) > 1 {
 			actx, cancel = context.WithTimeout(ctx, 10*time.Second)
 		}
-		err = upstream.PrepareInvocation(actx, c, u, up.Fingerprint())
+		err = preferences.PrepareInvocation(actx, c, u, up.Fingerprint())
 		cancel()
 		if err == nil {
 			return c, nil
@@ -261,9 +270,10 @@ func (s *Session) closeUpstreamsSync() {
 // session records are shared, so a node that has never seen a session id can still resume it
 // (its upstream sessions are simply re-established on first use).
 type Manager struct {
-	mu       sync.RWMutex
-	sessions map[string]*Session
-	closed   bool
+	preferences upstream.PreferenceCache
+	mu          sync.RWMutex
+	sessions    map[string]*Session
+	closed      bool
 	// Store is optional; nil keeps sessions node-local.
 	Store SessionStore
 }
@@ -275,7 +285,7 @@ func NewManager() *Manager { return &Manager{sessions: map[string]*Session{}} }
 
 // Create registers a new session bound to a virtual server slug.
 func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
-	s, err := newSession(slug, protocolVersion)
+	s, err := m.newSession(slug, protocolVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -289,12 +299,12 @@ func (m *Manager) Create(slug, protocolVersion string) (*Session, error) {
 }
 
 // newSession creates an isolated execution context without registering a client session.
-func newSession(slug, protocolVersion string) (*Session, error) {
+func (m *Manager) newSession(slug, protocolVersion string) (*Session, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, err
 	}
-	s := &Session{
+	s := &Session{preferences: &m.preferences,
 		id:                 hex.EncodeToString(b[:]),
 		slug:               slug,
 		version:            protocolVersion,
@@ -368,7 +378,7 @@ func (m *Manager) Resolve(ctx context.Context, id string) (*Session, error) {
 	if m.closed || len(m.sessions) >= 10000 {
 		return nil, errors.New("session capacity unavailable")
 	}
-	s := &Session{owner: rec.Owner, id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, loggingLevel: level, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
+	s := &Session{preferences: &m.preferences, owner: rec.Owner, id: rec.ID, slug: rec.Slug, keySlug: rec.KeySlug, version: rec.Version, initialized: rec.Initialized, clientCapabilities: rec.ClientCapabilities, loggingLevel: level, conns: map[string]*upstreamConn{}, last: time.Now(), persisted: rec.LastSeen}
 	m.sessions[id] = s
 	return s, nil
 }

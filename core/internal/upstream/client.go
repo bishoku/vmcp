@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
@@ -31,16 +30,17 @@ const maxSSEEventBytes = 10 << 20
 
 // Client is a Streamable HTTP MCP client bound to one upstream and one session.
 type Client struct {
-	preference       preferenceKey
-	preferenceExpiry time.Time
-	retired          atomic.Bool
-	capabilities     mcp.ServerCapabilities
-	loggingMu        sync.Mutex
-	loggingLevel     string
-	url              string
-	headers          map[string]string
-	http             *http.Client
-	nextID           atomic.Int64
+	preference   preferenceKey
+	preferences  *PreferenceCache
+	verdict      atomic.Pointer[preference]
+	retired      atomic.Bool
+	capabilities mcp.ServerCapabilities
+	loggingMu    sync.Mutex
+	loggingLevel string
+	url          string
+	headers      map[string]string
+	http         *http.Client
+	nextID       atomic.Int64
 
 	// OnServerMessage receives server-initiated requests and notifications
 	// (progress, logging, list_changed) seen on a response stream. Optional.

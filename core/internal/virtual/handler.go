@@ -24,7 +24,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
-	"github.com/bishoku/vmcp/core/internal/oauthtoken"
+
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
 	"github.com/bishoku/vmcp/core/internal/resilience"
 	"github.com/bishoku/vmcp/core/internal/restapi"
@@ -248,7 +248,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		case mcp.MethodToolsList:
 			h.listTools(w, msg, vs, snap.Revision)
 		case mcp.MethodToolsCall:
-			sess, err := newSession(slug, mcp.ProtocolVersion20260728)
+			sess, err := h.Sessions.newSession(slug, mcp.ProtocolVersion20260728)
 			if err != nil {
 				http.Error(w, "execution context unavailable", 503)
 				return
@@ -751,7 +751,7 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 	attempts := 1
 	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && ctx.Value(retryInvocationKey{}) == "once" {
 		attempts = 2
-		ctx = oauthtoken.WithReplaySafe(ctx)
+		// The outer loop owns the one permitted replay, including OAuth 401s.
 	}
 	var res json.RawMessage
 	var err error
@@ -790,39 +790,34 @@ func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Up
 	return res, err
 }
 
-// callUpstream calls the tool, re-establishing the upstream session once if it expired.
+// callUpstream dispatches once. Retire expired sessions before the caller considers replay.
 func (h *Handler) callUpstream(ctx context.Context, sess *Session, up config.Upstream, tool string, args json.RawMessage) (result json.RawMessage, callErr error) {
 	done := h.Metrics.BeginOperation(telemetry.Operation{Family: "upstream_requests", Upstream: up.Slug, Method: mcp.MethodToolsCall, Tool: tool})
 	defer func() { done(operationOutcome(ctx, result, callErr)) }()
-	for attempt := 0; ; attempt++ {
-		if err := checkAuthorization(ctx); err != nil {
-			return nil, err
-		}
-		c, release, err := sess.client(ctx, up)
-		if err != nil {
-			return nil, err
-		}
-		if err := checkAuthorization(ctx); err != nil {
-			sess.reset(up.ID, c)
-			release()
-			return nil, err
-		}
-		h.notifyRoots(ctx, sess)
-		if err := h.configureLogging(ctx, sess, c); err != nil {
-			release()
-			return nil, err
-		}
-		ctx = audit.WithUpstream(upstream.WithOrigin(ctx, up.Slug), up.Slug)
-		res, err := c.CallTool(ctx, tool, args)
-		release()
-		if errors.Is(err, upstream.ErrSessionExpired) {
-			sess.reset(up.ID, c)
-			if attempt == 0 && oauthtoken.ReplaySafe(ctx) {
-				continue
-			}
-		}
-		return res, err
+	if err := checkAuthorization(ctx); err != nil {
+		return nil, err
 	}
+	c, release, err := sess.client(ctx, up)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkAuthorization(ctx); err != nil {
+		sess.reset(up.ID, c)
+		release()
+		return nil, err
+	}
+	h.notifyRoots(ctx, sess)
+	if err := h.configureLogging(ctx, sess, c); err != nil {
+		release()
+		return nil, err
+	}
+	ctx = audit.WithUpstream(upstream.WithOrigin(ctx, up.Slug), up.Slug)
+	res, err := c.CallTool(ctx, tool, args)
+	release()
+	if errors.Is(err, upstream.ErrSessionExpired) {
+		sess.reset(up.ID, c)
+	}
+	return res, err
 }
 
 func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {

@@ -57,21 +57,19 @@ func TestPreferenceExpiryRediscoversInPlaceUpgrade(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
+	now := time.Now()
+	preferences := PreferenceCache{Clock: func() time.Time { return now }}
 	key := preferenceKey{url: server.URL}
 	prepare := func(wantModern bool) {
 		c := NewClient(server.URL, nil, nil)
-		if err := PrepareInvocation(context.Background(), c, key.url, key.generation); err != nil || c.isModern() != wantModern {
+		if err := preferences.PrepareInvocation(context.Background(), c, key.url, key.generation); err != nil || c.isModern() != wantModern {
 			t.Fatalf("modern=%v err=%v", c.isModern(), err)
 		}
 	}
 	prepare(false)
 	prepare(false)
 	modern.Store(true)
-	preferences.Lock()
-	entry := preferences.entries[key]
-	entry.expires = time.Now().Add(-time.Minute)
-	preferences.entries[key] = entry
-	preferences.Unlock()
+	now = now.Add(6 * time.Minute)
 	prepare(true)
 	prepare(true)
 	if probes.Load() != 2 {

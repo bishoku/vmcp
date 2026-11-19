@@ -248,7 +248,7 @@ func (h *Handler) omniInvoke(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	// Invocation-scoped sessions prevent capability/credential sharing between agents.
-	sess, err := newSession(v.Slug, mcp.ProtocolVersion20250618)
+	sess, err := h.Sessions.newSession(v.Slug, mcp.ProtocolVersion20250618)
 	if err != nil {
 		http.Error(w, "session capacity unavailable", 503)
 		return
