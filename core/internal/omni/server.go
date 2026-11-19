@@ -210,7 +210,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON-RPC", 400)
 		return
 	}
-	modern := r.Header.Get("MCP-Protocol-Version") == mcp.ProtocolVersion20260728
+	modern := mcp.ModernRequest(r.Header, msg)
 	if modern {
 		if invalid := mcp.ValidateModern(r.Header, msg); invalid != nil {
 			w.Header().Set("Content-Type", "application/json")

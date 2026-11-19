@@ -236,7 +236,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	if mcp.ModernEnabled() && r.Header.Get("MCP-Protocol-Version") == mcp.ProtocolVersion20260728 {
+	if mcp.ModernRequest(r.Header, msg) {
 		if invalid := mcp.ValidateModern(r.Header, msg); invalid != nil {
 			writeMessage(w, 400, invalid)
 			return

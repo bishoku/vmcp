@@ -43,6 +43,28 @@ try {
     times.push(performance.now() - start)
     assert.equal(result.content[0].text, 'list_tables')
   }
+  const burst = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      client.callTool(
+        omni
+          ? {
+              name: 'invoke_tool',
+              arguments: { tool_ref: 'support/tables', arguments: { burst: true } },
+            }
+          : { name: 'tables', arguments: { burst: true } },
+      ),
+    ),
+  )
+  assert.ok(burst.every((r) => r.content[0].text === 'list_tables'))
+  const mixed = await client.callTool(
+    omni
+      ? {
+          name: 'invoke_tool',
+          arguments: { tool_ref: 'support/github__create_issue', arguments: {} },
+        }
+      : { name: 'github__create_issue', arguments: {} },
+  )
+  assert.equal(mixed.content[0].text, 'gh:create_issue')
   const [cold, ...warm] = times
   warm.sort((a, b) => a - b)
   console.log(JSON.stringify({ firstMs: cold, warmP95Ms: warm[18], samples: warm.length }))

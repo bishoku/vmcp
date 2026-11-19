@@ -1,9 +1,11 @@
 package mcp
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 )
 
 const ProtocolVersion20260728 = "2026-07-28"
@@ -14,7 +16,7 @@ func ModernEnabled() bool { return os.Getenv("VMCP_MCP_20260728") == "1" }
 
 type RequestMetadata struct {
 	Version      string                     `json:"io.modelcontextprotocol/protocolVersion"`
-	Client       Implementation             `json:"io.modelcontextprotocol/clientInfo"`
+	Client       *Implementation            `json:"io.modelcontextprotocol/clientInfo"`
 	Capabilities map[string]json.RawMessage `json:"io.modelcontextprotocol/clientCapabilities"`
 }
 
@@ -34,24 +36,75 @@ func DiscoverServer(name, instructions string, caps ServerCapabilities) Discover
 	return d
 }
 
+// ModernRequest classifies body metadata even if the HTTP mirror is missing.
+func ModernRequest(h http.Header, msg *Message) bool {
+	if !ModernEnabled() {
+		return false
+	}
+	if h.Get("MCP-Protocol-Version") == ProtocolVersion20260728 {
+		return true
+	}
+	var p struct {
+		Meta RequestMetadata `json:"_meta"`
+	}
+	return json.Unmarshal(msg.Params, &p) == nil && p.Meta.Version == ProtocolVersion20260728
+}
+
+// ValidateModern consumes the per-hop envelope before passing parameters to local handlers.
 func ValidateModern(h http.Header, msg *Message) *Message {
 	var p struct {
 		Name string
+		URI  string
 		Meta RequestMetadata `json:"_meta"`
 	}
 	if !msg.IsRequest() || json.Unmarshal(msg.Params, &p) != nil {
 		return NewErrorResponse(msg.ID, CodeInvalidParams, "modern request parameters required")
 	}
-	if len(h.Values("MCP-Protocol-Version")) != 1 || p.Meta.Version != ProtocolVersion20260728 || len(h.Values("Mcp-Method")) != 1 || h.Get("Mcp-Method") != msg.Method {
+	if len(h.Values("MCP-Protocol-Version")) != 1 || h.Get("MCP-Protocol-Version") != ProtocolVersion20260728 || p.Meta.Version != ProtocolVersion20260728 || len(h.Values("Mcp-Method")) != 1 || h.Get("Mcp-Method") != msg.Method {
 		return NewErrorResponse(msg.ID, -32020, "protocol version or method header mismatch")
 	}
-	if msg.Method == MethodToolsCall && (p.Name == "" || len(h.Values("Mcp-Name")) != 1 || h.Get("Mcp-Name") != p.Name) {
+	var name string
+	switch msg.Method {
+	case MethodToolsCall, "prompts/get":
+		name = p.Name
+	case "resources/read":
+		name = p.URI
+	}
+	if (msg.Method == MethodToolsCall || msg.Method == "resources/read" || msg.Method == "prompts/get") && (name == "" || len(h.Values("Mcp-Name")) != 1 || h.Get("Mcp-Name") != RoutingValue(name)) {
 		return NewErrorResponse(msg.ID, -32020, "tool name header mismatch")
 	}
-	if p.Meta.Client.Name == "" || p.Meta.Client.Version == "" || h.Get("Mcp-Session-Id") != "" {
+	if p.Meta.Capabilities == nil || (p.Meta.Client != nil && (p.Meta.Client.Name == "" || p.Meta.Client.Version == "")) || h.Get("Mcp-Session-Id") != "" {
 		return NewErrorResponse(msg.ID, CodeInvalidRequest, "invalid modern client metadata or session header")
 	}
+	var params map[string]json.RawMessage
+	var meta map[string]json.RawMessage
+	_ = json.Unmarshal(msg.Params, &params)
+	_ = json.Unmarshal(params["_meta"], &meta)
+	for _, key := range []string{"protocolVersion", "clientInfo", "clientCapabilities"} {
+		delete(meta, "io.modelcontextprotocol/"+key)
+	}
+	if len(meta) == 0 {
+		delete(params, "_meta")
+	} else {
+		params["_meta"], _ = json.Marshal(meta)
+	}
+	msg.Params, _ = json.Marshal(params)
 	return nil
+}
+
+// RoutingValue encodes values that would be changed or rejected by HTTP field parsing.
+func RoutingValue(value string) string {
+	encode := value == "" || strings.TrimSpace(value) != value || (strings.HasPrefix(value, "=?base64?") && strings.HasSuffix(value, "?="))
+	for _, r := range value {
+		if r != '\t' && (r < 32 || r > 126) {
+			encode = true
+			break
+		}
+	}
+	if encode {
+		return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(value)) + "?="
+	}
+	return value
 }
 
 func CompleteResult(method string, msg *Message) {

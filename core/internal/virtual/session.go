@@ -131,8 +131,11 @@ func (s *Session) client(ctx context.Context, up config.Upstream) (upstream.Conn
 	if caps := upstream.ClientCapabilities(ctx); string(caps) != "{}" {
 		generation = sha256.Sum256(append(baseGeneration[:], caps...))
 	}
-	if uc.current != nil && uc.current.generation != generation {
-		uc.retireLocked()
+	if uc.current != nil {
+		streamable, _ := uc.current.conn.(*upstream.Client)
+		if uc.current.generation != generation || (streamable != nil && streamable.NeedsDiscovery()) {
+			uc.retireLocked()
+		}
 	}
 	if uc.current == nil {
 		if onDial, ok := ctx.Value(dialHookKey{}).(func()); ok {

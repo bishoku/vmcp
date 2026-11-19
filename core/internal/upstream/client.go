@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
@@ -30,13 +31,16 @@ const maxSSEEventBytes = 10 << 20
 
 // Client is a Streamable HTTP MCP client bound to one upstream and one session.
 type Client struct {
-	capabilities mcp.ServerCapabilities
-	loggingMu    sync.Mutex
-	loggingLevel string
-	url          string
-	headers      map[string]string
-	http         *http.Client
-	nextID       atomic.Int64
+	preference       preferenceKey
+	preferenceExpiry time.Time
+	retired          atomic.Bool
+	capabilities     mcp.ServerCapabilities
+	loggingMu        sync.Mutex
+	loggingLevel     string
+	url              string
+	headers          map[string]string
+	http             *http.Client
+	nextID           atomic.Int64
 
 	// OnServerMessage receives server-initiated requests and notifications
 	// (progress, logging, list_changed) seen on a response stream. Optional.
@@ -122,7 +126,7 @@ func (c *Client) discover(ctx context.Context) (*mcp.InitializeResult, error) {
 		return nil, nil
 	}
 	var d mcp.Discovery
-	if json.Unmarshal(raw, &d) != nil || d.ResultType != "complete" || !slices.Contains(d.SupportedVersions, mcp.ProtocolVersion20260728) || d.Meta.Server.Name == "" {
+	if json.Unmarshal(raw, &d) != nil || (d.ResultType != "" && d.ResultType != "complete") || !slices.Contains(d.SupportedVersions, mcp.ProtocolVersion20260728) {
 		return nil, errors.New("invalid modern discovery result")
 	}
 	c.capabilities = d.Capabilities
@@ -168,13 +172,25 @@ func (c *Client) Call(ctx context.Context, method string, params any) (auditResu
 	}
 	resp, err := c.send(ctx, req)
 	if err != nil {
+		if ctx.Err() == nil {
+			c.forgetPreference()
+		}
 		return nil, err
 	}
 	if !resp.IsResponse() || resp.ID.String() != id.String() {
 		return nil, errors.New("upstream response does not match request id")
 	}
 	if resp.Error != nil {
+		if resp.Error.Code == -32022 {
+			c.forgetPreference()
+		}
 		return nil, resp.Error
+	}
+	if method != mcp.MethodDiscover && c.isModern() {
+		var result struct{ ResultType string }
+		if err := json.Unmarshal(resp.Result, &result); err != nil || (result.ResultType != "" && result.ResultType != "complete") {
+			return nil, errors.New("unsupported upstream continuation")
+		}
 	}
 	return resp.Result, nil
 }
@@ -227,10 +243,14 @@ func (c *Client) applyHeaders(req *http.Request, method string) {
 	}
 }
 
-func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, error) {
+func (c *Client) isModern() bool {
 	c.mu.RLock()
-	modern := c.protocolVersion == mcp.ProtocolVersion20260728
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
+	return c.protocolVersion == mcp.ProtocolVersion20260728
+}
+
+func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, error) {
+	modern := c.isModern()
 	var target string
 	if modern {
 		if !msg.IsRequest() {
@@ -241,6 +261,9 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 			if err := json.Unmarshal(msg.Params, &params); err != nil {
 				return nil, err
 			}
+		}
+		if params == nil {
+			return nil, errors.New("upstream request parameters must be an object")
 		}
 		meta := map[string]json.RawMessage{}
 		if raw := params["_meta"]; len(raw) > 0 && string(raw) != "null" {
@@ -253,7 +276,12 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		meta["io.modelcontextprotocol/clientCapabilities"] = json.RawMessage(`{}`)
 		params["_meta"], _ = json.Marshal(meta)
 		msg.Params, _ = json.Marshal(params)
-		_ = json.Unmarshal(params["name"], &target)
+		switch msg.Method {
+		case "tools/call", "prompts/get":
+			_ = json.Unmarshal(params["name"], &target)
+		case "resources/read":
+			_ = json.Unmarshal(params["uri"], &target)
+		}
 	}
 	body, err := json.Marshal(msg)
 	if err != nil {
@@ -276,7 +304,7 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		req.Header.Set("Mcp-Method", msg.Method)
 		req.Header.Set("MCP-Protocol-Version", mcp.ProtocolVersion20260728)
 		if target != "" {
-			req.Header.Set("Mcp-Name", target)
+			req.Header.Set("Mcp-Name", mcp.RoutingValue(target))
 		}
 	}
 	resp, err := c.http.Do(req)
@@ -297,11 +325,20 @@ func (c *Client) send(ctx context.Context, msg *mcp.Message) (*mcp.Message, erro
 		return nil, ErrSessionExpired
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		if modern && resp.StatusCode == 400 {
+		var snippet []byte
+		if modern && (resp.StatusCode == 400 || resp.StatusCode == 404) {
+			snippet, err = readBounded(resp.Body)
+			if err != nil {
+				return nil, err
+			}
 			if reply, err := mcp.Decode(snippet); err == nil && reply.Error != nil && reply.ID.String() == msg.ID.String() {
 				return reply, nil
 			}
+			if len(snippet) > 512 {
+				snippet = snippet[:512]
+			}
+		} else {
+			snippet, _ = io.ReadAll(io.LimitReader(resp.Body, 512))
 		}
 		return nil, &httpStatusError{resp.StatusCode, fmt.Sprintf("upstream %s returned %d: %s", msg.Method, resp.StatusCode, strings.TrimSpace(string(snippet)))}
 	}

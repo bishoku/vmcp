@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -46,11 +47,15 @@ func PrepareInvocation(ctx context.Context, conn Conn, url string, generation [3
 		}
 		if ok && time.Now().Before(entry.expires) {
 			preferences.Unlock()
+			c.preference, c.preferenceExpiry = key, entry.expires
 			if entry.modern {
 				c.protocolVersion = mcp.ProtocolVersion20260728
 				return nil
 			}
 			_, err := c.initializeLegacy(ctx)
+			if err != nil {
+				c.forgetPreference()
+			}
 			return err
 		}
 		if len(preferences.entries) >= 4096 {
@@ -61,6 +66,11 @@ func PrepareInvocation(ctx context.Context, conn Conn, url string, generation [3
 				}
 			}
 		}
+		if len(preferences.entries) >= 4096 {
+			preferences.Unlock()
+			return errors.New("upstream discovery capacity exhausted")
+		}
+
 		pending := make(chan struct{})
 		preferences.entries[key] = preference{pending: pending}
 		preferences.Unlock()
@@ -73,10 +83,28 @@ func PrepareInvocation(ctx context.Context, conn Conn, url string, generation [3
 		if err != nil {
 			delete(preferences.entries, key)
 		} else {
-			preferences.entries[key] = preference{modern: modern, expires: time.Now().Add(5 * time.Minute)}
+			c.preference, c.preferenceExpiry = key, time.Now().Add(5*time.Minute)
+			preferences.entries[key] = preference{modern: modern, expires: c.preferenceExpiry}
 		}
 		close(pending)
 		preferences.Unlock()
 		return err
 	}
 }
+
+// A failed dispatch may have executed. Only retire the discovery hint for the
+// next independent connection. Never resend the failed operation here.
+func (c *Client) forgetPreference() {
+	if c.preferenceExpiry.IsZero() {
+		return
+	}
+	c.retired.Store(true)
+	preferences.Lock()
+	defer preferences.Unlock()
+	if preferences.entries[c.preference].expires.Equal(c.preferenceExpiry) {
+		delete(preferences.entries, c.preference)
+	}
+}
+
+// NeedsDiscovery signals a connection fault or explicit revision rejection.
+func (c *Client) NeedsDiscovery() bool { return c.retired.Load() }
