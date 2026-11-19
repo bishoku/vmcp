@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
+FROM --platform=$BUILDPLATFORM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY scripts/install-hooks.mjs ./scripts/install-hooks.mjs
@@ -8,7 +8,7 @@ ARG VITE_PUBLIC_GATEWAY_URL
 ENV VITE_PUBLIC_GATEWAY_URL=$VITE_PUBLIC_GATEWAY_URL
 RUN npm run build
 
-FROM nginx:1.30.7-alpine-slim@sha256:8c950211a641ec5b23f265450517001f6bcca533666120ebe36cb4cff3d00a55
+FROM nginx:1.31.0-alpine-slim@sha256:241b0d0fe06250e026e7a35a008d022c9a1d3bec19442d65cc33b84d0b5dd64d
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 ENV VMCP_CONTROL_PLANE_URL=http://control-plane:8081
 ENV NGINX_ENVSUBST_FILTER=^VMCP_CONTROL_PLANE_URL$
