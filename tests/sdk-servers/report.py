@@ -37,6 +37,7 @@ for sdk, releases in versions.items():
         success &= status.get(prefix) == "pass" and all(r == "pass" for r in results)
         version = "2025-06-18" if profile == "legacy" else "2026-07-28"
         success &= control.get(prefix) == version and data.get(prefix) == {version}
-        print("|", " | ".join([f"{sdk} {release}", profile, control.get(prefix, "missing"),
+        label = "modern-only (ASGI policy)" if (sdk, profile) == ("fastmcp", "modern") else profile
+        print("|", " | ".join([f"{sdk} {release}", label, control.get(prefix, "missing"),
                               ", ".join(sorted(data.get(prefix, {"missing"}))), *results]), "|")
 raise SystemExit(0 if success else 1)

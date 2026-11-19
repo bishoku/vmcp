@@ -93,7 +93,11 @@ func startSDK(t *testing.T, sdk, profile string) sdkProcess {
 	}
 }
 
-type wireEvent struct{ method, version, routing, name, sid, value, metadataVersion string }
+type wireEvent struct {
+	method, version, routing, name, sid, value, metadataVersion string
+	received                                                    time.Time
+	injectedStatus                                              int32
+}
 type observedSDK struct {
 	mu        sync.Mutex
 	events    []wireEvent
@@ -117,7 +121,9 @@ func (o *observedSDK) serve(t *testing.T, target string) *httptest.Server {
 	o.target.Store(u)
 	proxy := &httputil.ReverseProxy{ModifyResponse: func(r *http.Response) error {
 		if r.Request.Header.Get("Mcp-Method") == mcp.MethodToolsCall && o.dropReply.CompareAndSwap(true, false) {
-			return fmt.Errorf("injected lost reply after dispatch")
+			// Abort the HTTP/1 connection before the proxy writes response headers.
+			_ = r.Body.Close()
+			panic(http.ErrAbortHandler)
 		}
 		return nil
 	}, Rewrite: func(p *httputil.ProxyRequest) {
@@ -147,7 +153,7 @@ func (o *observedSDK) serve(t *testing.T, target string) *httptest.Server {
 		if r.Method == "DELETE" {
 			method = "DELETE"
 		}
-		e := wireEvent{method: method, version: r.Header.Get("MCP-Protocol-Version"), routing: r.Header.Get("Mcp-Method"), name: r.Header.Get("Mcp-Name"), sid: r.Header.Get("Mcp-Session-Id"), value: rpc.Params.Arguments.Value}
+		e := wireEvent{received: time.Now(), injectedStatus: o.fault.Load(), method: method, version: r.Header.Get("MCP-Protocol-Version"), routing: r.Header.Get("Mcp-Method"), name: r.Header.Get("Mcp-Name"), sid: r.Header.Get("Mcp-Session-Id"), value: rpc.Params.Arguments.Value}
 		e.metadataVersion, _ = rpc.Params.Meta["io.modelcontextprotocol/protocolVersion"].(string)
 		if rpc.Method == "tools/call" && rpc.Params.Name != "echo" {
 			t.Errorf("wrong tool %q", rpc.Params.Name)
@@ -155,7 +161,7 @@ func (o *observedSDK) serve(t *testing.T, target string) *httptest.Server {
 		o.mu.Lock()
 		o.events = append(o.events, e)
 		o.mu.Unlock()
-		if code := o.fault.Load(); code != 0 {
+		if code := e.injectedStatus; code != 0 {
 			if code == -1 {
 				<-r.Context().Done()
 				return
@@ -183,7 +189,7 @@ func checkSDKProfile(t *testing.T, sdk, profile string) {
 	a := setup(t)
 	target := startSDK(t, sdk, profile)
 	ctxProbe, cancelProbe := context.WithTimeout(context.Background(), 15*time.Second)
-	output, err := exec.CommandContext(ctxProbe, "node", "../../../web/scripts/upstream-sdk-profile.mjs", target.url, profile).CombinedOutput()
+	output, err := exec.CommandContext(ctxProbe, "node", "../../../web/scripts/upstream-sdk-profile.mjs", target.url, profile, sdk).CombinedOutput()
 	cancelProbe()
 	if err != nil {
 		t.Fatalf("direct profile validation: %v %s", err, output)
@@ -470,7 +476,7 @@ func TestRealUpstreamTransitions(t *testing.T) {
 		t.Fatal("legacy virtual session not established")
 	}
 	post(virtualURL, sid, "notifications/initialized", map[string]any{}, false, true)
-	invoke := func(omni bool, name, value string, wire *observedSDK, version string, fail bool) {
+	invoke := func(omni bool, name, value string, wire *observedSDK, version string, fail bool) time.Time {
 		t.Helper()
 		wire.take()
 		params := map[string]any{"name": name, "arguments": map[string]string{"value": value}}
@@ -484,9 +490,11 @@ func TestRealUpstreamTransitions(t *testing.T) {
 			t.Fatalf("invocation %s failed: %+v", value, m)
 		}
 		var n int
+		var dispatched time.Time
 		for _, e := range wire.take() {
 			if e.method == "tools/call" {
 				n++
+				dispatched = e.received
 				if e.version != version || e.value != value {
 					t.Fatalf("wire: %+v", e)
 				}
@@ -495,6 +503,7 @@ func TestRealUpstreamTransitions(t *testing.T) {
 		if n != 1 {
 			t.Fatalf("tool transmissions %d", n)
 		}
+		return dispatched
 	}
 	legacy, modern := mcp.ProtocolVersion20250618, mcp.ProtocolVersion20260728
 	invoke(false, "say", "a-before", upgradeWire, legacy, false)
@@ -522,11 +531,14 @@ func TestRealUpstreamTransitions(t *testing.T) {
 	invoke(true, "say", "b-upgraded", upgradeWire, modern, false)
 	outageWire.take()
 	outageWire.fault.Store(503)
-	invoke(false, "write", "fallback-once", backupWire, legacy, false)
-	for _, e := range outageWire.take() {
-		if e.method != "server/discover" {
-			t.Fatalf("unexpected dispatch to unavailable primary: %v", e)
-		}
+	fallbackDispatch := invoke(false, "write", "fallback-once", backupWire, legacy, false)
+	primary := outageWire.take()
+	if len(primary) != 1 {
+		t.Fatalf("primary received %d requests; expected one rediscovery", len(primary))
+	}
+	probe := primary[0]
+	if probe.method != mcp.MethodDiscover || probe.injectedStatus != http.StatusServiceUnavailable || !probe.received.Before(fallbackDispatch) {
+		t.Fatalf("expected primary discovery with 503 before fallback dispatch; got method=%s status=%d", probe.method, probe.injectedStatus)
 	}
 	if fallback.count(t, "fallback-once") != 1 || dual.count(t, "fallback-once") != 0 {
 		t.Fatal("failover execution count")
@@ -534,6 +546,9 @@ func TestRealUpstreamTransitions(t *testing.T) {
 	outageWire.fault.Store(0)
 	outageWire.dropReply.Store(true)
 	invoke(true, "write", "ambiguous-write", outageWire, modern, true)
+	if outageWire.dropReply.Load() {
+		t.Fatal("connection loss was not injected")
+	}
 	if dual.count(t, "ambiguous-write") != 1 || fallback.count(t, "ambiguous-write") != 0 {
 		t.Fatal("ambiguous write callback count")
 	}

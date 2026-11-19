@@ -16,6 +16,8 @@ const transport = new HTTP(new URL(url), {
 })
 try {
   await client.connect(transport)
+  if (!modern)
+    assert.equal(transport.protocolVersion, '2025-06-18', 'negotiated downstream revision')
   const tools = await client.listTools()
   const omni = endpoint === 'omni'
   assert.ok(tools.tools.some((t) => t.name === (omni ? 'invoke_tool' : 'say')))
