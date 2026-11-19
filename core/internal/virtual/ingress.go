@@ -30,7 +30,12 @@ func ingress(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		versions := r.Header.Values("MCP-Protocol-Version")
-		if len(versions) > 1 || (len(versions) == 1 && !mcp.SupportsVersion(versions[0])) {
+		modern := len(versions) == 1 && versions[0] == mcp.ProtocolVersion20260728 && mcp.ModernEnabled()
+		if modern && r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		if len(versions) > 1 || (len(versions) == 1 && !modern && !mcp.SupportsVersion(versions[0])) {
 			http.Error(w, "unsupported MCP-Protocol-Version", 400)
 			return
 		}
