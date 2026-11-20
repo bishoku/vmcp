@@ -66,15 +66,15 @@ export default function AuditConversations({
   }, [query, refresh])
   return (
     <div className="page-layout">
-      <header className="flex flex-wrap justify-between gap-3">
-        <div>
+      <header className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+        <div className="min-w-0">
           <h1 className="page-title">Audit conversations</h1>
           <p className="page-description">
             Client-supplied conversation IDs, isolated by credential. Counts cover authorized
             records matching the filters, not just loaded event pages.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button className={btn} onClick={back}>
             Back to operations
           </button>
@@ -91,7 +91,7 @@ export default function AuditConversations({
           </button>
         </div>
       </header>
-      <div className="surface rounded-xl border border-line p-4 space-y-3">
+      <section aria-label="Conversation filters" className="surface-card panel-body space-y-3">
         <p className="text-xs text-ink-muted">
           Existing activity, identity, time and outcome filters are retained. Missing conversation
           IDs remain available in Operations / Raw events. Root operation counts exclude linked
@@ -120,7 +120,7 @@ export default function AuditConversations({
               </label>
             ))}
         </div>
-      </div>
+      </section>
       {error && <ErrorBox>{error}</ErrorBox>}
       {busy && <p role="status">Loading conversations…</p>}
       <div className="space-y-3">

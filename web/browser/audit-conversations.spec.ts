@@ -47,6 +47,18 @@ for (const width of [390, 1440])
         exact: true,
       }),
     ).toBeVisible()
+    const filters = page.getByRole('region', { name: 'Conversation filters' })
+    await expect(filters.getByLabel('Conversation ID', { exact: true })).toBeVisible()
+    await expect(filters).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+    const header = page
+      .locator('header')
+      .filter({ has: page.getByRole('heading', { name: 'Audit conversations' }) })
+    for (const name of ['Back to operations', 'Refresh']) {
+      await expect(header.getByRole('button', { name, exact: true })).toHaveCSS(
+        'height',
+        width < 640 ? '44px' : '40px',
+      )
+    }
     expect(queries.at(-1)?.get('activity')).toBe('omni')
     expect(queries.at(-1)?.get('groupBy')).toBe('conversation')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
