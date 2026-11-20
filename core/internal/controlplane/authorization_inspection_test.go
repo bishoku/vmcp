@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -431,4 +432,39 @@ func TestAuthorizationStatusDiagnosticsAndLegacyNoBackfill(t *testing.T) {
 	if err := a.pool.QueryRow(ctx, `SELECT count(*) FROM audit_access_contexts WHERE event_id=$1`, legacy).Scan(&contexts); err != nil || contexts != 0 {
 		t.Fatal("legacy context backfilled", contexts, err)
 	}
+}
+
+func TestAuthorizationMappingDisplayMetadata(t *testing.T) {
+	a, idp := mappingAPI(t)
+	in := mappingInput(idp.URL(), true)
+	// Legacy clients can still omit display metadata.
+	before := assignmentCall(t, a, 201, "POST", "/api/v1/identity-mappings", in, "")
+	if before["name"] != "" || before["description"] != "" {
+		t.Fatal(before)
+	}
+	id := before["id"].(string)
+	in["name"] = "  Security reviewers  "
+	in["description"] = "  Reviews audit events  "
+	after := assignmentCall(t, a, 200, "PUT", "/api/v1/identity-mappings/"+id, in, "\"1\"")
+	if after["id"] != id || after["name"] != "Security reviewers" || after["description"] != "Reviews audit events" || after["version"] != float64(2) {
+		t.Fatal(after)
+	}
+	if !reflect.DeepEqual(before["conditions"], after["conditions"]) || before["issuer"] != after["issuer"] || before["enabled"] != after["enabled"] {
+		t.Fatal("display metadata changed matching", before, after)
+	}
+	read := assignmentCall(t, a, 200, "GET", "/api/v1/identity-mappings/"+id, nil, "")
+	if read["name"] != after["name"] {
+		t.Fatal(read)
+	}
+	page := assignmentCall(t, a, 200, "GET", "/api/v1/identity-mappings", nil, "")
+	items := page["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["name"] != after["name"] {
+		t.Fatal(page)
+	}
+	assignmentCall(t, a, 412, "PUT", "/api/v1/identity-mappings/"+id, in, "\"1\"")
+	in["name"] = strings.Repeat("x", 201)
+	assignmentCall(t, a, 422, "POST", "/api/v1/identity-mappings", in, "")
+	in["name"] = "Valid name"
+	in["description"] = strings.Repeat("x", 4001)
+	assignmentCall(t, a, 422, "POST", "/api/v1/identity-mappings", in, "")
 }

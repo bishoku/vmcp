@@ -49,3 +49,15 @@ Every `VMCP_HEALTH_INTERVAL` (default 30s) each node probes every enabled upstre
 
 Breaker state and local rate-limit counters are per node. That is deliberate: it keeps the core free of extra
 dependencies. A Redis-shared breaker is a possible future addition.
+
+### Dual-revision MCP rollout
+
+Deploy the dual-revision binaries to every control-plane, data-plane and Omni replica before enabling `VMCP_MCP_20260728=1`. Enable upstream negotiation on the control plane and data plane, then enable modern ingress on all public replicas before routing modern clients to them. The default retains legacy behavior. The switch covers synchronous Streamable HTTP tool workflows. Legacy SSE and REST retain their existing transports.
+
+With modern ingress the replica handling each tool call owns its execution context. If the target requires an MCP session, that replica opens a private upstream session and closes it after the call. Independent calls can reach different replicas without sharing credentials, client capabilities or upstream application state. Legacy Virtual clients keep their existing PostgreSQL-backed logical sessions. No schema change is needed.
+
+Drain traffic before shutdown. Abrupt replica loss can leave a legacy upstream session until its idle timeout and can leave a dispatched write with unknown outcome. Configure the load balancer to avoid replaying those POST requests. Client callbacks, subscriptions and cross-call application state require the legacy path in this release.
+
+Each data-plane replica keeps its own five-minute upstream revision cache. The next call on an active Virtual session rechecks an expired preference using a separate discovery request. If the upstream still speaks the same revision, the replica keeps the existing session. On a revision change, new calls use the new connection and leased calls finish before the old upstream session closes. Modern synchronous invocations skip upstream logging setup on both cold and warm connections.
+
+For a native tool configured with `retry=once`, the invocation loop owns the replay budget. An expired upstream session is retired and an unauthorized OAuth token is invalidated before a permitted retry. These recovery steps share the same limit of two tool dispatches per invocation.

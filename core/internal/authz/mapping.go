@@ -8,6 +8,8 @@ type Condition struct {
 	Value    string `json:"value"`
 }
 type Mapping struct {
+	Name          string      `json:"name"`
+	Description   string      `json:"description"`
 	ID            string      `json:"id"`
 	Issuer        string      `json:"issuer"`
 	PrincipalKind string      `json:"principalKind"`

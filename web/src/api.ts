@@ -90,6 +90,7 @@ export interface RESTImportOperation {
   summary: string
   tags: string[]
   operation?: RESTOperation
+  repairDraft?: RESTOperation
   warnings: string[]
   errors: string[]
 }
@@ -589,7 +590,7 @@ async function request<T>(
 ): Promise<T> {
   const identityRevision = configurationIdentityRevision
   const protectedConfiguration =
-    !/^\/(me|configuration-access|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(
+    !/^\/(me|configuration-access|rest-schema-checks|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(
       path,
     )
   if (protectedConfiguration) {
@@ -919,6 +920,8 @@ export const api = {
     request<ApplyResult>('POST', `/apply?dryRun=${dryRun}&prune=${prune}`, document, revision),
   testStoredConnection: (slug: string) =>
     request<ConnectionTestResult>('POST', `/upstreams/${encodeURIComponent(slug)}/connection-test`),
+  validateRESTSchemas: (checks: { schema: unknown; sample?: unknown }[]) =>
+    request<{ issues: string[][] }>('POST', '/rest-schema-checks', { checks }),
   importREST: (document: string) =>
     request<RESTImportResult>('POST', '/rest-imports', { document }),
   restOperation: (

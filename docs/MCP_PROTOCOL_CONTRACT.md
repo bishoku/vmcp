@@ -1,15 +1,44 @@
 # MCP protocol contract
 
-The advertised protocol revision is **2025-06-18**. Support is capability-negotiated
-and bounded as described below; this is not independent conformance certification.
+vMCP uses **2025-06-18** by default. Starting with v2.3.0, set
+`VMCP_MCP_20260728=1` on the control plane, every data-plane replica and
+Omni MCP to enable **2026-07-28** for synchronous tool discovery and invocation.
 
 ## Versions and transports
 
 | Hop | Supported scope |
 |---|---|
-| Client → vMCP | Streamable HTTP: POST JSON/SSE, GET SSE, DELETE sessions; June messages |
-| vMCP → upstream | Streamable HTTP JSON/SSE; legacy HTTP+SSE carrying June messages |
-| Other revisions | March, strict November 2024 and later revisions are not advertised |
+| Client → Virtual or Omni | Legacy Streamable HTTP or opt-in modern requests |
+| vMCP → native upstream | Independent revision selection on Streamable HTTP. The legacy HTTP+SSE transport continues to use the legacy handshake. |
+
+## Tool calls across revisions
+
+| Client | Legacy-only upstream | Modern or dual upstream with modern support enabled |
+|---|---|---|
+| Legacy Virtual | An open Virtual session can reuse its upstream session on the same replica. | vMCP prefers modern and sends the tool call without an upstream handshake. |
+| Modern Virtual | Each tool invocation opens its own legacy upstream session. | Each tool invocation uses modern requests. |
+| Omni, either client revision | Each `invoke_tool` opens its own legacy upstream session. | Each `invoke_tool` uses modern requests. |
+
+On first use, a data-plane replica probes the upstream with `server/discover`.
+It caches the revision preference for five minutes. A warm modern call can go
+directly to `tools/call`. A fresh legacy session still requires `initialize`
+and `notifications/initialized` before the tool runs.
+
+**Multi-step tools.** Suppose `open_browser()` creates a browser on a legacy
+upstream. To continue through Omni or modern Virtual, the upstream must keep
+the browser alive after the first MCP session closes and make it accessible
+from a new authorized session. For example, return a `browser_id` from
+`open_browser()` and accept it in `navigate(browser_id, url)`. If the upstream
+keeps only a “current browser” inside the first session, the second call cannot
+resume it. Returning an ID alone cannot preserve a browser destroyed at session
+close.
+
+Legacy Virtual session records are shared through PostgreSQL. Upstream
+connections and revision preferences are local to each replica. Moving a
+legacy Virtual client to another replica can therefore establish a new
+upstream session even when its downstream session ID stays the same.
+
+## Legacy handshake
 
 Unknown initialize versions receive the supported June version; clients decide
 whether to continue. Unsupported upstream negotiated versions are rejected.
@@ -19,7 +48,7 @@ explicit unsupported or mismatched versions are rejected. Origin, Accept, media
 and bounded-body checks apply to virtual gateway HTTP methods. See
 [network boundaries](MCP_NETWORK_SECURITY.md).
 
-## Framing and lifecycle
+## Legacy framing and lifecycle
 
 - A body contains one JSON-RPC object. Batches and mixed request/response envelopes are rejected.
 - Request IDs are strings or integer JSON tokens, never null/fractional; replies preserve their representation.
@@ -29,7 +58,7 @@ and bounded-body checks apply to virtual gateway HTTP methods. See
 - Mapped upstream IDs and progress tokens prevent response confusion across calls. GET/POST SSE events and pending replies have shared leases/fences and bounded encrypted storage.
 - Last-Event-ID recovery is session/stream scoped. Disconnecting the gateway HTTP stream does not by itself cancel the operation. Cancellation cannot undo an external side effect, and lost workers do not imply safe automatic replay.
 
-## Implemented feature families
+## Legacy feature families
 
 | Family | Scope / limits |
 |---|---|

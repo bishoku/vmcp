@@ -11,6 +11,7 @@ Set on the **control plane**:
 | `VMCP_OIDC_ISSUER` | Issuer URL (must serve `/.well-known/openid-configuration`); enables SSO |
 | `VMCP_OIDC_CLIENT_ID`, `VMCP_OIDC_CLIENT_SECRET` | Client registered at the provider |
 | `VMCP_OIDC_REDIRECT_URL` | Public URL of `/auth/callback`, e.g. `https://vmcp.example.com/auth/callback` |
+| `VMCP_OIDC_CLAIM_TTL_SECONDS` | Maximum verified claim age from sign-in in seconds (default 900). For one hour set this to 3600, or set Helm value `runtime.oidc.claimTTLSeconds=3600`. Takes effect at the next sign-in after deployment. |
 | `VMCP_OIDC_GROUPS_CLAIM` | ID-token claim with groups (default `groups`) |
 | `VMCP_OIDC_ADMIN_GROUPS`, `VMCP_OIDC_EDITOR_GROUPS`, `VMCP_OIDC_VIEWER_GROUPS` | Comma-separated group names per role |
 
@@ -62,7 +63,7 @@ An `admin` token is a platform administrator. Token identity scope and granular 
 - Session cookies are valid for **8 hours** and contain only a signed reference (`vmcp_session_v2`). Identity and the
   required verified ID-token claim subset are encrypted in shared PostgreSQL session records. Migration 39 requires
   existing browser users to sign in again; old session data is not given an inferred issuer or claims.
-- Mapping-derived permissions last at most **15 minutes**, capped by the verified ID token expiry. A newly required claim
+- Mapping-derived permissions use the configured claim lifetime (default **15 minutes**), capped by the verified ID token expiry. A newly required claim
   path needs a new sign-in. Direct subject assignments remain usable within the valid session lifetime. Platform role
   changes require sign-in; mapping/assignment edits affect the next protected request.
 - Logout revokes access across replicas. Subject revocation is scoped to an exact issuer; the API defaults to the configured

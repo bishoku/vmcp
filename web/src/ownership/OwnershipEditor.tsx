@@ -34,16 +34,36 @@ export default function OwnershipEditor({
   const isNew = selection.value.version === 0,
     kind = draft.kind,
     value = draft.value
-  const access = useConfigurationChecks([
-    { method: 'POST', path: kind === 'team' ? '/teams' : '/projects', body: value },
-    {
-      method: 'POST',
-      path: '/teams',
-      body: { ...value, issuer: 'urn:configuration-capability-mapping-change' },
-    },
-  ])
-  const canSave = access.allowed[0] === true
+  // Check the record being edited. The server authorizes the submitted slug and
+  // payload again on save. Only a project owner selection changes the target scope.
+  const access = useConfigurationChecks(
+    baseline.kind === 'team'
+      ? [
+          { method: 'POST', path: '/teams', body: baseline.value },
+          {
+            method: 'POST',
+            path: '/teams',
+            body: { ...baseline.value, issuer: baseline.value.issuer + '#mapping-change' },
+          },
+        ]
+      : [
+          {
+            method: 'POST',
+            path: '/projects',
+            body: {
+              ...baseline.value,
+              ownerTeam:
+                draft.kind === 'project' ? draft.value.ownerTeam : baseline.value.ownerTeam,
+            },
+          },
+        ],
+  )
   const canMap = access.allowed[1] === true
+  const mappingChanged =
+    draft.kind === 'team' &&
+    baseline.kind === 'team' &&
+    (draft.value.issuer !== baseline.value.issuer || draft.value.group !== baseline.value.group)
+  const canSave = access.allowed[0] === true && (!mappingChanged || canMap)
   const close = () => unsaved.guard(onClose)
   const name = kind === 'team' ? 'team' : 'project'
   const save = () =>

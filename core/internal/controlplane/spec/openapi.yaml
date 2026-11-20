@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: vMCP Control Plane API
-  version: 2.2.0
+  version: 2.3.0
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -2270,6 +2270,54 @@ paths:
           $ref: "#/components/responses/Unprocessable"
         "503":
           $ref: "#/components/responses/AuditUnavailable"
+  /api/v1/rest-schema-checks:
+    post:
+      tags: [Upstreams]
+      operationId: validateRESTSchemas
+      summary: Check caller-supplied inline schemas and optional example values
+      description: Authenticated preview. Returns per-check messages in request order. Checks do not access stored upstreams, persist drafts or contact a service.
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [checks]
+              properties:
+                checks:
+                  type: array
+                  minItems: 1
+                  maxItems: 102
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [schema]
+                    properties:
+                      schema: {description: Inline JSON Schema up to 64 KiB}
+                      sample: {description: Optional JSON instance including null}
+      responses:
+        "200":
+          description: Empty message lists indicate success.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [issues]
+                properties:
+                  issues:
+                    type: array
+                    items: {type: array, items: {type: string}}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "503":
+          $ref: "#/components/responses/AuditUnavailable"
   /api/v1/rest-imports:
     post:
       tags:
@@ -3315,6 +3363,14 @@ components:
         - principalKind
         - conditions
       properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Display name only; empty legacy names use a condition-based UI label.
+        description:
+          type: string
+          maxLength: 4000
+          description: Human-readable purpose; never used for identity matching.
         issuer:
           type: string
           minLength: 1
@@ -3343,6 +3399,14 @@ components:
         - enabled
         - version
       properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Display name only; empty legacy names use a condition-based UI label.
+        description:
+          type: string
+          maxLength: 4000
+          description: Human-readable purpose; never used for identity matching.
         issuer:
           type: string
           minLength: 1
@@ -5867,7 +5931,7 @@ components:
           maxItems: 200
           items:
             $ref: "#/components/schemas/RESTOperation"
-      description: REST configuration (max 512 KiB). When supplied this block replaces configuration, preserving omitted secrets and per-operation headers. Omit the entire block to retain it. Agent identity is derived only from authenticated sessions; requireIdentity also requires forwardIdentity. No redirects, fallbacks or automatic operation retries.
+      description: REST configuration (max 12 MiB, or 512 KiB for mock upstreams). When supplied this block replaces configuration, preserving omitted secrets and per-operation headers. Omit the entire block to retain it. Agent identity is derived only from authenticated sessions; requireIdentity also requires forwardIdentity. No redirects, fallbacks or automatic operation retries.
     RESTOperationRequest:
       type: object
       additionalProperties: false
@@ -5915,7 +5979,9 @@ components:
           $ref: "#/components/schemas/RESTOperation"
         warnings: *a3
         errors: *a3
-      description: Unsupported operations remain visible with errors and no operation. Import never selects or publishes operations.
+        repairDraft:
+          $ref: "#/components/schemas/RESTOperation"
+      description: Repairable candidates include an incomplete session-only repairDraft. Unsupported operations remain visible with errors and no operation. Import never selects or publishes operations.
     RESTImportResult:
       type: object
       additionalProperties: false
@@ -5948,8 +6014,8 @@ components:
         document:
           type: string
           minLength: 1
-          maxLength: 2097152
-          description: Complete UTF-8 JSON/YAML document, at most 2 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams.
+          maxLength: 5242880
+          description: Complete UTF-8 JSON/YAML document, at most 5 MiB (byte limit). Swagger 2.0 or OpenAPI 3.0/3.1. No URL fetching, YAML aliases or multi-document streams.
 
     RequestHeaderMapping:
       type: object

@@ -21,7 +21,8 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 	parts := strings.Split(path, "/")
 	family := parts[0]
 	switch family {
-	case "configuration-access":
+	// Schema checks evaluate only caller-supplied data and access no saved resource.
+	case "configuration-access", "rest-schema-checks":
 		op.Family = "self"
 		return op, method == "POST"
 	case "me":
@@ -261,9 +262,9 @@ func (s *Server) prepareConfiguration(r *http.Request, p *principal) (*http.Requ
 		decision = apierror.Forbidden("configuration route has no registered permission")
 	}
 	if decision == nil && r.Method != "GET" && r.Method != "HEAD" && r.Method != "DELETE" {
-		raw, readErr := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
+		raw, readErr := io.ReadAll(io.LimitReader(r.Body, requestBodyLimit(r)+1))
 		r.Body = io.NopCloser(bytes.NewReader(raw))
-		if readErr != nil || len(raw) > maxBodyBytes {
+		if readErr != nil || int64(len(raw)) > requestBodyLimit(r) {
 			decision = apierror.Validation([]apierror.FieldError{{Message: "configuration body exceeds limit"}})
 		} else {
 			op.Body, err = configurationBody(raw)

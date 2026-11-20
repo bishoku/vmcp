@@ -238,7 +238,10 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		return nil, err
 	}
 	raw, _ := json.Marshal(c)
-	if len(raw) > 512<<10 {
+	if c.Mock == nil && len(raw) > 12<<20 {
+		return nil, errors.New("REST configuration exceeds 12 MiB")
+	}
+	if c.Mock != nil && len(raw) > 512<<10 {
 		return nil, errors.New("REST configuration exceeds 512 KiB")
 	}
 	if c.RequireIdentity && !c.ForwardIdentity {

@@ -1,4 +1,4 @@
-import type { ErrorObject } from 'ajv'
+import { api } from '../api'
 
 export const schemaBytes = (schema: unknown) =>
   schema === undefined ? 0 : new TextEncoder().encode(JSON.stringify(schema)).length
@@ -20,26 +20,30 @@ export function schemaLimitError(value: unknown): string {
   if (references(value)) return 'Schema references are not supported. Use expanded inline schemas.'
   return ''
 }
-const describe = (errors: ErrorObject[] | null | undefined) =>
-  (errors ?? [])
-    .slice(0, 8)
-    .map(
-      (error) =>
-        `${error.instancePath || '/'}: ${error.message}${error.keyword === 'required' ? ` (${error.params.missingProperty})` : ''}`,
-    )
-/** Loaded on explicit validation only. Server validation remains authoritative. */
-export async function checkSchema(value: unknown, sample?: { value: unknown }): Promise<string[]> {
-  const limit = schemaLimitError(value)
-  if (limit) return [limit]
-  if (value === undefined) return []
+
+type Check = { label: string; schema: unknown; sample?: unknown }
+
+export async function checkSchemas(checks: Check[]): Promise<string[]> {
+  const applicable = checks.filter((c) => c.schema !== undefined)
+  const local = applicable.flatMap((c) => {
+    const issue = schemaLimitError(c.schema)
+    return issue ? [c.label + issue] : []
+  })
+  if (local.length || !applicable.length) return local
   try {
-    const { default: Ajv } = await import('ajv/dist/2020.js')
-    const ajv = new Ajv({ strict: false, allErrors: true, validateFormats: false })
-    if (!ajv.validateSchema(value as object | boolean)) return describe(ajv.errors)
-    const validate = ajv.compile(value as object | boolean)
-    if (sample && !validate(sample.value)) return describe(validate.errors)
-    return []
+    const { issues } = await api.validateRESTSchemas(
+      applicable.map(({ schema, sample }) => ({ schema, sample })),
+    )
+    if (issues.length !== applicable.length) throw Error('Incomplete validation response.')
+    return issues.flatMap((messages, i) => messages.map((message) => applicable[i].label + message))
   } catch (error) {
-    return [error instanceof Error ? error.message : 'Unable to validate this schema.']
+    return [
+      'Schema checks could not be completed. Retry validation. ' +
+        (error instanceof Error ? error.message : ''),
+    ]
   }
+}
+
+export function checkSchema(schema: unknown, sample?: { value: unknown }): Promise<string[]> {
+  return checkSchemas([{ label: '', schema, sample: sample?.value }])
 }

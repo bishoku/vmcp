@@ -4,6 +4,8 @@ import Button from '../Button'
 import Select from '../Select'
 import { Checkbox } from '../SelectionControls'
 import { Modal } from '../ui'
+import { input } from '../styles'
+import { mappingName } from './presentation'
 import type { IdentityMapping, MappingInput, MappingCondition } from './client'
 import { AccessError, AccessSection, Field, TextInput } from './common'
 import { useEditor, type AccessData } from './state'
@@ -17,13 +19,15 @@ export default function MappingEditor({
   mapping?: IdentityMapping
   data: AccessData
   onClose: () => void
-  onSaved: () => void
+  onSaved: (mapping: IdentityMapping) => void
   onDenied: () => void
 }) {
   const [base, setBase] = useState(mapping),
     formId = useId()
   const e = useEditor<MappingInput>(
     {
+      name: mapping?.name ?? '',
+      description: mapping?.description ?? '',
       issuer: mapping?.issuer ?? data.status.trustedIssuer,
       principalKind: 'oidc',
       conditions: mapping?.conditions.map((c) => ({ ...c })) ?? [
@@ -42,6 +46,7 @@ export default function MappingEditor({
   const save = () => {
     if (e.stale) return
     if (
+      !e.draft.name?.trim() ||
       !e.draft.issuer.trim() ||
       !e.draft.conditions.length ||
       e.draft.conditions.some(
@@ -52,7 +57,7 @@ export default function MappingEditor({
       )
     ) {
       e.setError(
-        'Enter an issuer and complete every condition. Scope conditions require one exact scope token.',
+        'Enter a mapping name, an issuer and complete every condition. Scope conditions require one exact scope token.',
       )
       return
     }
@@ -64,6 +69,8 @@ export default function MappingEditor({
     }
     void e.execute(async (signal) => {
       const body: MappingInput = {
+        name: e.draft.name?.trim(),
+        description: e.draft.description?.trim(),
         issuer: e.draft.issuer,
         principalKind: 'oidc',
         enabled: e.draft.enabled,
@@ -73,11 +80,12 @@ export default function MappingEditor({
           value: c.value,
         })),
       }
-      if (base) await api.updateAccessMapping(base, body, signal)
-      else await api.createAccessMapping(body, signal)
+      const saved = base
+        ? await api.updateAccessMapping(base, body, signal)
+        : await api.createAccessMapping(body, signal)
       if (!signal.aborted) {
         e.unsaved.clean()
-        onSaved()
+        onSaved(saved)
       }
     })
   }
@@ -90,6 +98,8 @@ export default function MappingEditor({
           if (signal.aborted) return
           setBase(latest)
           const fresh = {
+            name: latest.name ?? '',
+            description: latest.description ?? '',
             issuer: latest.issuer,
             principalKind: latest.principalKind,
             conditions: latest.conditions,
@@ -135,6 +145,37 @@ export default function MappingEditor({
             Version {base.version} · {base.id}
           </p>
         )}
+        <AccessSection
+          title="Mapping details"
+          description="Give this matching rule a recognizable name. Names do not change who matches."
+        >
+          <Field label="Mapping name">
+            <TextInput
+              required
+              maxLength={200}
+              value={e.draft.name ?? ''}
+              onChange={(name) => e.setDraft({ ...e.draft, name })}
+              placeholder="Support team"
+            />
+          </Field>
+          <Field label="Description">
+            <textarea
+              className={input}
+              maxLength={4000}
+              rows={2}
+              value={e.draft.description ?? ''}
+              onChange={(event) => e.setDraft({ ...e.draft, description: event.target.value })}
+            />
+          </Field>
+          {base && (
+            <p className="supporting-copy">
+              Changes to {mappingName(base)} affect{' '}
+              {data.assignments.filter((a) => a.mappingId === base.id).length} linked assignments.
+              Changing conditions changes who qualifies; disabling stops grants through this
+              mapping. Renaming only changes its label.
+            </p>
+          )}
+        </AccessSection>
         <AccessSection
           title="Identity provider"
           description="Use the configured OIDC issuer. A mapping matches identities; access is granted separately through an assignment."

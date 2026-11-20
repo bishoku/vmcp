@@ -90,3 +90,20 @@ func (s *Server) importREST(w http.ResponseWriter, r *http.Request) error {
 	}
 	return writeJSON(w, http.StatusOK, result)
 }
+
+func (s *Server) validateRESTSchemas(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Checks []restapi.SchemaCheck `json:"checks"`
+	}
+	if err := decode(r, &body); err != nil {
+		return err
+	}
+	if len(body.Checks) == 0 || len(body.Checks) > 102 {
+		return apierror.Validation([]apierror.FieldError{storeRestError("Provide between 1 and 102 schema checks")})
+	}
+	issues := make([][]string, len(body.Checks))
+	for i, check := range body.Checks {
+		issues[i] = check.Issues()
+	}
+	return writeJSON(w, http.StatusOK, map[string]any{"issues": issues})
+}

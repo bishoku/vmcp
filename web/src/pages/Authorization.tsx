@@ -18,8 +18,8 @@ import Inventory, { type AccessEditor } from '../authorization/Inventory'
 import { SummaryTile } from '../connections/ServerPanels'
 import { btn } from '../styles'
 const sections = [
-  ['roles', 'Roles'],
   ['assignments', 'Assignments'],
+  ['roles', 'Roles'],
   ['mappings', 'Claim mappings'],
   ['simulate', 'Simulation'],
   ['migration', 'Access status'],
@@ -51,12 +51,13 @@ function Workspace({ onDenied }: { onDenied: () => void }) {
   const [params, setParams] = useSearchParams(),
     section = sections.some((s) => s[0] === params.get('section'))
       ? params.get('section')!
-      : 'roles'
+      : 'assignments'
   const [data, setData] = useState<AccessData>(),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
     [editor, setEditor] = useState<AccessEditor>(),
     [message, setMessage] = useState(''),
+    [simulation, setSimulation] = useState<RoleAssignment>(),
     [generation, setGeneration] = useState(0)
   const pending = useRef<AbortController | null>(null),
     confirm = useConfirm(),
@@ -187,11 +188,22 @@ function Workspace({ onDenied }: { onDenied: () => void }) {
               {section === 'roles'
                 ? 'Create role'
                 : section === 'assignments'
-                  ? 'Create assignment'
+                  ? 'Grant access'
                   : 'Create mapping'}
             </Button>
           )}
         </div>
+      </div>
+      <div className="surface-card panel-body space-y-2">
+        <h2 className="panel-title">Who can do what, and where?</h2>
+        <p className="supporting-copy">
+          An assignment connects an identity to a role and a resource scope. Start with Grant
+          access; choose an existing role or create one in Roles. Claim mappings are reusable rules
+          for matching verified identities, not access grants.
+        </p>
+        <p className="supporting-copy">
+          1. Choose who → 2. Choose a role → 3. Limit the scope → 4. Review and save
+        </p>
       </div>
       {data && (
         <p className="supporting-copy">
@@ -245,6 +257,7 @@ function Workspace({ onDenied }: { onDenied: () => void }) {
             disabled={action.busy}
             onClick={() => {
               setMessage('')
+              setSimulation(undefined)
               setParams({ section: id })
             }}
           >
@@ -266,12 +279,22 @@ function Workspace({ onDenied }: { onDenied: () => void }) {
                     loading={loading}
                     error={error || action.error}
                     onEdit={setEditor}
+                    onDenied={onDenied}
+                    onSimulate={(assignment) => {
+                      setSimulation(assignment)
+                      setParams({ section: 'simulate' })
+                    }}
                     onDelete={(kind, item) => void remove(kind, item)}
                   />
                 ),
             )}
             {section === 'simulate' && (
-              <Simulator key={generation} data={data} onDenied={onDenied} />
+              <Simulator
+                key={`${generation}:${simulation?.id ?? 'manual'}`}
+                data={data}
+                assignment={data.assignments.find((a) => a.id === simulation?.id)}
+                onDenied={onDenied}
+              />
             )}
             {section === 'migration' && <MigrationPanel status={data.status} />}
           </fieldset>
@@ -288,8 +311,12 @@ function Workspace({ onDenied }: { onDenied: () => void }) {
           {editor?.kind === 'assignment' && (
             <AssignmentEditor
               assignment={editor.value}
+              initial={editor.initial}
               data={data}
-              onClose={() => setEditor(undefined)}
+              onClose={() => {
+                setEditor(undefined)
+                void load()
+              }}
               onSaved={saved}
               onDenied={onDenied}
             />

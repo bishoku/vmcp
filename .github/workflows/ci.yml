@@ -11,6 +11,56 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  upstream-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: vmcp
+          POSTGRES_PASSWORD: vmcp
+          POSTGRES_DB: vmcp_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vmcp -d vmcp_test" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      VMCP_TEST_DATABASE_URL: postgres://vmcp:vmcp@localhost:5432/vmcp_test?sslmode=disable
+      VMCP_REQUIRE_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: |
+            core/go.sum
+            tests/sdk-servers/go/go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: npm ci --prefix web
+      - run: python -m pip install uv==0.11.19
+      - run: |
+          uv sync --locked --project tests/sdk-servers/python
+          uv sync --locked --project tests/sdk-servers/python-legacy
+      - working-directory: tests/sdk-servers/go
+        run: go build -mod=readonly -o "$RUNNER_TEMP/upstream-go" .
+      - working-directory: core
+        run: VMCP_GO_SDK_SERVER="$RUNNER_TEMP/upstream-go" go test -race -count=1 -tags sdkinterop -run '^TestRealUpstream' -json ./internal/controlplane > ../sdk-results.jsonl
+      - if: always() && hashFiles('sdk-results.jsonl') != ''
+        run: python tests/sdk-servers/report.py sdk-results.jsonl >> "$GITHUB_STEP_SUMMARY"
+      - if: always() && hashFiles('sdk-results.jsonl') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: upstream-sdk-results
+          path: sdk-results.jsonl
+          retention-days: 7
+
   core:
     runs-on: ubuntu-latest
     services:
@@ -167,6 +217,13 @@ jobs:
           helm template test deploy/helm/vmcp -f deploy/helm/vmcp/examples/production.yaml > /tmp/vmcp-rendered.yaml
           helm template test deploy/helm/vmcp -f deploy/helm/vmcp/examples/production.yaml --is-upgrade > /tmp/vmcp-upgrade.yaml
           helm template test deploy/helm/vmcp -f deploy/helm/vmcp/examples/production.yaml -f deploy/helm/vmcp/examples/bundled.yaml > /tmp/vmcp-bundled.yaml
+      - name: Build and inspect the Kustomize release bundle
+        run: |
+          python3 -m venv "$RUNNER_TEMP/kustomize-env"
+          "$RUNNER_TEMP/kustomize-env/bin/pip" install PyYAML==6.0.3
+          "$RUNNER_TEMP/kustomize-env/bin/python" scripts/package-kustomize.py deploy/helm/vmcp v0.0.0-ci /tmp deploy/helm/vmcp/examples/production.yaml
+          tar -xzf /tmp/vmcp-kustomize-v0.0.0-ci.tar.gz -C /tmp
+          kubectl kustomize /tmp/vmcp-kustomize-v0.0.0-ci/prod > /tmp/vmcp-kustomize.yaml
       - name: Build local validation images
         run: |
           for service in control-plane data-plane omni-mcp migrate fixture-mcp; do
@@ -184,7 +241,8 @@ jobs:
           kind load docker-image --name vmcp-helm-test vmcp/control-plane:helm-test vmcp/data-plane:helm-test vmcp/omni-mcp:helm-test vmcp/migrate:helm-test vmcp/fixture-mcp:helm-test vmcp/web:helm-test
       - name: Validate Kubernetes schemas against the API server
         run: |
-          for manifest in /tmp/vmcp-rendered.yaml /tmp/vmcp-upgrade.yaml /tmp/vmcp-bundled.yaml; do
+          kubectl --context kind-vmcp-helm-test create namespace vmcp
+          for manifest in /tmp/vmcp-rendered.yaml /tmp/vmcp-upgrade.yaml /tmp/vmcp-bundled.yaml /tmp/vmcp-kustomize.yaml; do
             kubectl --context kind-vmcp-helm-test apply --dry-run=server -f "$manifest"
           done
       - name: Verify real Helm installation and upgrade

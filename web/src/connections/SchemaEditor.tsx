@@ -533,7 +533,8 @@ function SchemaWorkspace({
           <div className="layout-stack">
             <p className="text-sm text-ink-muted">
               Paste the raw REST response or request body. MCP output wraps the raw REST response in
-              result; do not paste that wrapper. One example cannot describe every valid response.
+              result. The control plane checks the example when you generate, check or apply the
+              schema.
             </p>
             <label className="text-xs">
               Example JSON

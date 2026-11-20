@@ -16,6 +16,8 @@ import (
 // A mapping can select assignments, but cannot establish an issuer trust root.
 // Disabled drafts are allowed before configuring SSO; enabling always rechecks it.
 type MappingInput struct {
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
 	Issuer        string            `json:"issuer"`
 	PrincipalKind string            `json:"principalKind"`
 	Conditions    []authz.Condition `json:"conditions"`
@@ -23,6 +25,9 @@ type MappingInput struct {
 }
 
 func validateMapping(in MappingInput, trustedIssuer string) error {
+	if len(in.Name) > 200 || len(in.Description) > 4000 {
+		return roleValidation("/name", "mapping name and description must not exceed 200 and 4000 bytes")
+	}
 	if strings.TrimSpace(in.Issuer) == "" || len(in.Issuer) > 2048 || in.PrincipalKind != "oidc" {
 		return roleValidation("/issuer", "OIDC kind and a nonempty issuer (maximum 2048 bytes) are required")
 	}
@@ -59,7 +64,7 @@ func (t *Tx) AuthorizationMapping(ctx context.Context, id string) (authz.Mapping
 		return m, roleValidation("/id", "mapping UUID required")
 	}
 	var raw []byte
-	err := t.q.QueryRow(ctx, `SELECT id::text,issuer,principal_kind,conditions,enabled,version FROM authorization_mappings WHERE id=$1::uuid`, id).Scan(&m.ID, &m.Issuer, &m.PrincipalKind, &raw, &m.Enabled, &m.Version)
+	err := t.q.QueryRow(ctx, `SELECT id::text,issuer,principal_kind,conditions,enabled,version,name,description FROM authorization_mappings WHERE id=$1::uuid`, id).Scan(&m.ID, &m.Issuer, &m.PrincipalKind, &raw, &m.Enabled, &m.Version, &m.Name, &m.Description)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return m, apierror.NotFound("mapping", id)
 	}
@@ -102,9 +107,9 @@ func (t *Tx) SaveAuthorizationMapping(ctx context.Context, id string, in Mapping
 		return out, err
 	}
 	if id == "" {
-		err = t.q.QueryRow(ctx, `INSERT INTO authorization_mappings(issuer,principal_kind,conditions,enabled) VALUES($1,$2,$3,$4) RETURNING id::text`, in.Issuer, in.PrincipalKind, raw, in.Enabled).Scan(&id)
+		err = t.q.QueryRow(ctx, `INSERT INTO authorization_mappings(issuer,principal_kind,conditions,enabled,name,description) VALUES($1,$2,$3,$4,$5,$6) RETURNING id::text`, in.Issuer, in.PrincipalKind, raw, in.Enabled, strings.TrimSpace(in.Name), strings.TrimSpace(in.Description)).Scan(&id)
 	} else {
-		_, err = t.q.Exec(ctx, `UPDATE authorization_mappings SET issuer=$2,principal_kind=$3,conditions=$4,enabled=$5,version=version+1 WHERE id=$1::uuid`, id, in.Issuer, in.PrincipalKind, raw, in.Enabled)
+		_, err = t.q.Exec(ctx, `UPDATE authorization_mappings SET issuer=$2,principal_kind=$3,conditions=$4,enabled=$5,name=$6,description=$7,version=version+1 WHERE id=$1::uuid`, id, in.Issuer, in.PrincipalKind, raw, in.Enabled, strings.TrimSpace(in.Name), strings.TrimSpace(in.Description))
 	}
 	if err != nil {
 		return out, err

@@ -11,9 +11,11 @@ import { useOperation, useUnsaved } from '../interaction'
 import { discardConfirmation, useConfirm } from '../confirmation'
 import { btn, input, primary } from '../styles'
 
-const maxBytes = 2 * 1024 * 1024
+const maxBytes = 5 * 1024 * 1024
 const size = (text: string) => new TextEncoder().encode(text).length
 /** Appends only selected operations; the enclosing upstream draft owns persistence. */
+import RESTOperationEditor from './RESTOperationEditor'
+
 export default function RESTImportDialog({
   existing,
   onApply,
@@ -29,6 +31,8 @@ export default function RESTImportDialog({
 }) {
   const [document, setDocument] = useState(''),
     [result, setResult] = useState<RESTImportResult | null>(null)
+  const [repair, setRepair] = useState<{ id: string; op: RESTOperation } | null>(null)
+  const [repairInvalid, setRepairInvalid] = useState(false)
   const [filter, setFilter] = useState('all')
   const [selected, setSelected] = useState<string[]>([]),
     [query, setQuery] = useState(''),
@@ -41,6 +45,7 @@ export default function RESTImportDialog({
     if (!busy && (!document || (await confirm(discardConfirmation)))) onClose()
   }
   const editDocument = (value: string) => {
+    setRepair(null)
     setDocument(value)
     setResult(null)
     setSelected([])
@@ -55,7 +60,7 @@ export default function RESTImportDialog({
       setSelected([])
       onPreview?.(undefined)
       try {
-        if (size(document) > maxBytes) throw Error('Use a document of 2 MiB or less.')
+        if (size(document) > maxBytes) throw Error('Use a document of 5 MiB or less.')
         setResult(await api.importREST(document))
       } catch (e) {
         setError(
@@ -126,7 +131,7 @@ export default function RESTImportDialog({
           </button>
           <button
             className={primary}
-            disabled={busy || !selected.length || selected.length > capacity}
+            disabled={busy || !!repair || !selected.length || selected.length > capacity}
             onClick={apply}
           >
             Add {selected.length} to draft
@@ -136,7 +141,7 @@ export default function RESTImportDialog({
     >
       <div className="layout-stack">
         <p className="text-xs leading-relaxed text-ink-muted">
-          JSON or YAML · OpenAPI 3.0/3.1 or Swagger 2.0 · up to 2 MiB. Local references are
+          JSON or YAML · OpenAPI 3.0/3.1 or Swagger 2.0 · up to 5 MiB. Local references are
           expanded. URLs and external references are never fetched.
         </p>
         <details open={!result || undefined}>
@@ -160,7 +165,7 @@ export default function RESTImportDialog({
                     setResult(null)
                     setSelected([])
                     try {
-                      if (file.size > maxBytes) throw Error('Use a file of 2 MiB or less.')
+                      if (file.size > maxBytes) throw Error('Use a file of 5 MiB or less.')
                       editDocument(
                         new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()),
                       )
@@ -342,6 +347,67 @@ export default function RESTImportDialog({
                         Already configured. Edit the existing operation to change it.
                       </p>
                     )}
+                    {candidate.repairDraft &&
+                      !candidate.already &&
+                      (repair?.id === candidate.id ? (
+                        <div className="layout-stack">
+                          <RESTOperationEditor
+                            index={existing.length}
+                            operation={repair.op}
+                            names={[...existing.map((o) => o.name), repair.op.name]}
+                            onInvalidChange={setRepairInvalid}
+                            onChange={(op) => setRepair({ ...repair, op })}
+                          />
+                          <button
+                            className={primary}
+                            disabled={
+                              repairInvalid || !repair.op.name || !repair.op.path.startsWith('/')
+                            }
+                            onClick={() => {
+                              setResult(
+                                (previous) =>
+                                  previous && {
+                                    ...previous,
+                                    operations: previous.operations.map((item) =>
+                                      item.id === repair.id
+                                        ? {
+                                            ...item,
+                                            operation: repair.op,
+                                            repairDraft: undefined,
+                                            errors: [],
+                                            warnings: [
+                                              ...item.warnings,
+                                              'Manually reviewed. Save validates this definition.',
+                                            ],
+                                          }
+                                        : item,
+                                    ),
+                                  },
+                              )
+                              setRepair(null)
+                            }}
+                          >
+                            Accept reviewed definition
+                          </button>
+                          <button className={btn} onClick={() => setRepair(null)}>
+                            Cancel repair
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className={btn}
+                          disabled={!!repair}
+                          onClick={() => {
+                            setRepairInvalid(false)
+                            setRepair({
+                              id: candidate.id,
+                              op: structuredClone(candidate.repairDraft!),
+                            })
+                          }}
+                        >
+                          Repair operation
+                        </button>
+                      ))}
                     {candidate.errors.map((reason, i) => (
                       <div
                         key={i}

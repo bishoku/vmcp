@@ -1,11 +1,15 @@
 package e2e
 
 import (
+	"encoding/json"
+	"github.com/bishoku/vmcp/core/internal/mcp"
+	"github.com/bishoku/vmcp/core/internal/omni"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -223,5 +227,175 @@ func TestOAuthSessionOwnershipAcrossNodes(t *testing.T) {
 	})
 	if replacement == credential {
 		t.Fatal("binding ID was not replaced")
+	}
+}
+
+func TestModernInvocationAcrossReplicas(t *testing.T) {
+	t.Setenv("VMCP_MCP_20260728", "1")
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	e := setup(t)
+	var writes atomic.Int32
+	// Drop the connection after recording the tool execution. Its outcome is
+	// ambiguous to the gateway, just as when a reply is lost during failover.
+	lost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg mcp.Message
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+			t.Error(err)
+			return
+		}
+		switch msg.Method {
+		case mcp.MethodDiscover:
+			reply, _ := mcp.NewResult(msg.ID, mcp.DiscoverServer("lost-response", "", mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{}}))
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(reply)
+		case mcp.MethodToolsCall:
+			writes.Add(1)
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_ = conn.Close()
+		default:
+			t.Errorf("unexpected method %s", msg.Method)
+		}
+	}))
+	defer lost.Close()
+	e.exec(t, `UPDATE upstreams SET url=$1 WHERE slug='beta'`, lost.URL)
+	a, _, ma := consistencyNode(t, e, nil)
+	b, _, mb := consistencyNode(t, e, nil)
+	defer ma.Close()
+	defer mb.Close()
+	invoke := func(target, method, name string, wantError bool) {
+		t.Helper()
+		params := map[string]any{"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": map[string]string{"name": "cross-node", "version": "1"}, "io.modelcontextprotocol/clientCapabilities": map[string]any{}}}
+		if method == "tools/call" {
+			params["name"] = name
+			params["arguments"] = map[string]string{"message": "cross-node-echo"}
+		}
+		msg, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 5, "method": method, "params": params})
+		req, _ := http.NewRequest("POST", target, strings.NewReader(string(msg)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		req.Header.Set("MCP-Protocol-Version", "2026-07-28")
+		req.Header.Set("Mcp-Method", method)
+		if method == "tools/call" {
+			req.Header.Set("Mcp-Name", name)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		if wantError {
+			if !strings.Contains(string(data), `"error"`) {
+				t.Fatalf("missing upstream failure: %s", data)
+			}
+			return
+		}
+		if resp.StatusCode != 200 || resp.Header.Get("Mcp-Session-Id") != "" || !strings.Contains(string(data), `"resultType":"complete"`) {
+			t.Fatalf("%s %s", resp.Status, data)
+		}
+		if method == "tools/call" && !strings.Contains(string(data), "cross-node-echo") {
+			t.Fatalf("echo: %s", data)
+		}
+	}
+	invoke(a, "server/discover", "", false)
+	invoke(a, "tools/call", "beta__echo", true)
+	if writes.Load() != 1 {
+		t.Fatalf("ambiguous write executed %d times", writes.Load())
+	}
+	invoke(b, "tools/call", "say", false)
+	invoke(a, "tools/call", "say", false)
+	var rows int
+	if err := e.pool.QueryRow(e.ctx, "SELECT count(*) FROM sessions").Scan(&rows); err != nil || rows != 0 || ma.Len() != 0 || mb.Len() != 0 {
+		t.Fatalf("modern call registered a session: %d %v", rows, err)
+	}
+	start, body := consistencyRequest(t, a, "POST", "", "", consistencyInit)
+	sid := start.Header.Get("Mcp-Session-Id")
+	if sid == "" {
+		t.Fatalf("missing legacy session: %s", body)
+	}
+	if response, _ := consistencyRequest(t, b, "POST", sid, "", `{"jsonrpc":"2.0","method":"notifications/initialized"}`); response.StatusCode != 202 {
+		t.Fatal(response.Status)
+	}
+	for _, node := range []string{a, b} {
+		resp, body := consistencyRequest(t, node, "POST", sid, "", consistencyCall)
+		if resp.StatusCode != 200 || !strings.Contains(body, "Bearer fixture-secret") {
+			t.Fatalf("legacy call: %s %s", resp.Status, body)
+		}
+	}
+	if resp, _ := consistencyRequest(t, b, "DELETE", sid, "", ""); resp.StatusCode != 204 {
+		t.Fatal(resp.Status)
+	}
+	if resp, _ := consistencyRequest(t, a, "POST", sid, "", consistencyCall); resp.StatusCode != 404 {
+		t.Fatal("terminated legacy session accepted on A")
+	}
+
+}
+
+func TestModernOmniDiscoveryAndInvocationAcrossReplicas(t *testing.T) {
+	t.Setenv("VMCP_MCP_20260728", "1")
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	e := setup(t)
+	e.exec(t, `UPDATE virtual_servers SET omni_enabled=true WHERE slug='agent'`)
+	e.exec(t, `INSERT INTO agent_keys(tenant_id,slug,key_hash,key_prefix) SELECT id,'matrix',$1,'matrix' FROM tenants WHERE slug='default'`, store.HashKey("matrix-key"))
+	e.exec(t, `INSERT INTO agent_key_servers SELECT k.id,v.id FROM agent_keys k,virtual_servers v WHERE k.slug='matrix' AND v.slug='agent'`)
+	node := func() string {
+		_, syncer, manager := consistencyNode(t, e, nil)
+		t.Cleanup(manager.Close)
+		mux := http.NewServeMux()
+		(&virtual.Handler{Snap: syncer, Sessions: manager, Log: syncer.Log}).RegisterOmni(mux, strings.Repeat("s", 32))
+		dp := httptest.NewServer(mux)
+		t.Cleanup(dp.Close)
+		backend, err := omni.NewBackend(dp.URL, strings.Repeat("s", 32))
+		if err != nil {
+			t.Fatal(err)
+		}
+		index := omni.NewIndex(nil)
+		index.Refresh(e.ctx, backend)
+		api := httptest.NewServer((&omni.Server{Backend: backend, Index: index}).Handler())
+		t.Cleanup(api.Close)
+		return api.URL + "/mcp/v1/omni"
+	}
+	a, b := node(), node()
+	rpc := func(url, method, name string, args map[string]any) string {
+		p := map[string]any{"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": map[string]any{}}}
+		if name != "" {
+			p["name"] = name
+			p["arguments"] = args
+		}
+		msg, _ := mcp.NewRequest(mcp.NewIntID(1), method, p)
+		raw, _ := json.Marshal(msg)
+		req, _ := http.NewRequest("POST", url, strings.NewReader(string(raw)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer matrix-key")
+		req.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+		req.Header.Set("Mcp-Method", method)
+		if name != "" {
+			req.Header.Set("Mcp-Name", name)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 || resp.Header.Get("Mcp-Session-Id") != "" || !strings.Contains(string(body), `"resultType":"complete"`) {
+			t.Fatalf("%s: %s %s", name, resp.Status, body)
+		}
+		return string(body)
+	}
+	rpc(a, mcp.MethodDiscover, "", nil)
+	if body := rpc(a, mcp.MethodToolsCall, "discover_tools", map[string]any{"query": "say"}); !strings.Contains(body, "agent/say") {
+		t.Fatal(body)
+	}
+	if body := rpc(b, mcp.MethodToolsCall, "invoke_tool", map[string]any{"tool_ref": "agent/say", "arguments": map[string]any{"message": "cross-omni"}}); !strings.Contains(body, "cross-omni") {
+		t.Fatal(body)
+	}
+	var rows int
+	if err := e.pool.QueryRow(e.ctx, "SELECT count(*) FROM sessions").Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("Omni session rows=%d err=%v", rows, err)
 	}
 }

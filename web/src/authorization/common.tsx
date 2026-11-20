@@ -39,10 +39,12 @@ export function ModeSelect({
   label,
   value,
   options,
+  labels,
   onChange,
 }: {
   label: string
   value: string
+  labels?: Record<string, string>
   options: readonly string[]
   onChange: (value: string) => void
 }) {
@@ -51,7 +53,7 @@ export function ModeSelect({
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((v) => (
           <option key={v} value={v}>
-            {v.replaceAll('_', ' ')}
+            {labels?.[v] ?? v.replaceAll('_', ' ')}
           </option>
         ))}
       </Select>

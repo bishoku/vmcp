@@ -1,3 +1,4 @@
+import { schemaCheckFixture } from '../test-fixtures/schema-checks'
 import type { Route } from '@playwright/test'
 
 // Explicit capability responses for presentation fixtures. This is a mock
@@ -11,6 +12,8 @@ export function configurationFixture(
   // Settings presentation fixtures need a valid singleton response, not the
   // generic collection fallback. Explicit write and denial fixtures stay in each test.
   const path = new URL(route.request().url()).pathname
+  if (path === '/api/v1/rest-schema-checks')
+    return route.fulfill({ json: schemaCheckFixture(route.request().postDataJSON().checks) })
   if (path === '/api/v1/admission-settings' && route.request().method() === 'GET')
     return route.fulfill({ json: { revision: 1, total: 1024, perServer: 128, perPrincipal: 16 } })
   if (path !== '/api/v1/configuration-access') return undefined

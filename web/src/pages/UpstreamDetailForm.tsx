@@ -1350,8 +1350,8 @@ export default function UpstreamDetailForm({
             >
               <div className="space-y-2 panel-body text-xs leading-relaxed text-ink-muted">
                 <p>
-                  Save the connection settings, test stored credentials, then refresh discovery from
-                  the upstream list.
+                  Save the connection settings, test stored credentials, then discover capabilities
+                  on the saved upstream.
                 </p>
                 <p>
                   Capability selections and aliases are configured separately in a virtual server.
@@ -1365,6 +1365,29 @@ export default function UpstreamDetailForm({
               catalog={catalog}
               loading={discoveryLoading}
               error={discoveryError}
+              discover={
+                !editing && access.can('catalog.refresh')
+                  ? () =>
+                      run(async () => {
+                        try {
+                          setErr('')
+                          const result = await api.refreshTools(upstream.slug)
+                          await loadDiscovery()
+                          notify({ title: 'Discovery refreshed', description: upstream.name })
+                          if (result.orphanedSelections?.length)
+                            setErr(
+                              'Removed capabilities are still selected by: ' +
+                                result.orphanedSelections
+                                  .map((item) => item.virtualServer + ':' + item.tool)
+                                  .join(', '),
+                            )
+                        } catch (error) {
+                          setErr(errMsg(error))
+                        }
+                      })
+                  : undefined
+              }
+              busy={busy}
               reload={loadDiscovery}
             />
           )}
