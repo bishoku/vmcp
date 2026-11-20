@@ -2,7 +2,7 @@
 
 The workflow `.github/workflows/docker-publish.yml` publishes application images
 under the Docker Hub namespace **barishoku** when you push a version tag such as
-`v1.2.0`. It first calls the existing CI workflow against the tagged commit.
+`v1.2.0`. It first checks the main push CI evidence for the tagged commit.
 No image is published unless all verification jobs succeed.
 
 ## Images
@@ -78,9 +78,15 @@ git tag -a v1.2.0 -m "vMCP v1.2.0"
 git push origin v1.2.0
 ```
 
-Open **Actions → publish-docker-hub**. The run validates the tag, reruns core,
-frontend and Helm CI for that commit, then builds/pushes the ten images with a
-maximum of three concurrent publishing jobs. Multi-platform Go binaries are
+Open **Actions → publish-docker-hub**. The tag verification summary links to the matching main push of `ci.yml` for the
+exact commit. An active run is awaited; an unsuccessful run blocks publication.
+Missing or incomplete evidence triggers the full CI suite. With complete successful
+evidence, the tag reuses the results. Evidence at least 24 hours old (from the start
+of the main run) also requires fresh npm and Go vulnerability checks. A GitHub
+API error stops the gate and can be retried.
+
+After verification, the workflow builds/pushes the ten images with a
+maximum of five concurrent publishing jobs. Multi-platform Go binaries are
 cross-compiled on the native builder; the web assets also build natively.
 The workflow attaches build provenance, SBOMs and source/version labels.
 
