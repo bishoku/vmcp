@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
@@ -72,14 +73,18 @@ func (c *Compiled) Build(base, name string, args json.RawMessage, common map[str
 			v, ok = op.ParameterDefaults[p.Name]
 		}
 		if !ok {
+			if p.PathMode == "relative" {
+				path = strings.TrimSuffix(path, "/{"+p.Name+"}")
+			}
 			continue
 		}
 		value := fmt.Sprint(v)
 		if p.In == "path" {
-			if unsafePathValue(value) {
-				return nil, errors.New("unsafe path parameter")
+			escaped, err := p.escapePath(value)
+			if err != nil {
+				return nil, err
 			}
-			path = strings.ReplaceAll(path, "{"+p.Name+"}", url.PathEscape(value))
+			path = strings.ReplaceAll(path, "{"+p.Name+"}", escaped)
 		} else {
 			q.Set(p.Name, value)
 		}
@@ -264,6 +269,26 @@ func decodeJSON(raw []byte, into any) error {
 		return errors.New("expected one JSON value")
 	}
 	return nil
+}
+
+func (p Parameter) escapePath(value string) (string, error) {
+	if p.PathMode != "relative" {
+		if unsafePathValue(value) {
+			return "", errors.New("unsafe path parameter")
+		}
+		return url.PathEscape(value), nil
+	}
+	if strings.HasPrefix(value, "/") {
+		return "", errors.New("expected a repository-relative path; omit the leading slash, for example src/main")
+	}
+	segments := strings.Split(value, "/")
+	for i, segment := range segments {
+		if segment == "" || unsafePathValue(segment) || strings.IndexFunc(segment, unicode.IsControl) >= 0 {
+			return "", errors.New("invalid repository-relative path segment")
+		}
+		segments[i] = url.PathEscape(segment)
+	}
+	return strings.Join(segments, "/"), nil
 }
 
 // Keep validation identical for configured and caller-provided path values.

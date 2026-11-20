@@ -172,3 +172,50 @@ func TestConfiguredFalsyDefaultsAreNotOmitted(t *testing.T) {
 		}
 	}
 }
+
+func TestRelativePathConfiguration(t *testing.T) {
+	const base = "https://example.com"
+	cfg := baseConfig()
+	op := &cfg.Operations[0]
+	p := &op.Parameters[0]
+	p.Schema = json.RawMessage(`{"type":"string","description":"Directory"}`)
+	p.PathMode = "relative"
+	p.Required = true
+	built := compile(t, base, cfg)
+	if _, err := built.Preview(base, "lookup", json.RawMessage(`{}`), nil); err == nil {
+		t.Fatal("missing required path")
+	}
+	if !strings.Contains(string(built.Tools[0].InputSchema), "Directory Repository-relative") {
+		t.Fatalf("schema %s", built.Tools[0].InputSchema)
+	}
+	p.DefaultValue = json.RawMessage(`"src/main"`)
+	built = compile(t, base, cfg)
+	preview, err := built.Preview(base, "lookup", json.RawMessage(`{}`), nil)
+	if err != nil || preview.URL != base+"/items/src/main" {
+		t.Fatal(preview, err)
+	}
+	for _, args := range []string{`{"id":""}`, `{"id":null}`} {
+		if _, err := built.Preview(base, "lookup", json.RawMessage(args), nil); err == nil {
+			t.Fatalf("invalid value replaced with default: %s", args)
+		}
+	}
+	for _, tc := range []struct{ mode, location, schema, path, fallback string }{
+		{"unknown", "path", "string", "/items/{id}", "src"},
+		{"relative", "query", "string", "/items", "src"},
+		{"relative", "path", "integer", "/items/{id}", "1"},
+		{"relative", "path", "string", "/items/{id}/children", "src"},
+		{"relative", "path", "string", "/items/pre-{id}", "src"},
+		{"relative", "path", "string", "/items/{id}", "../src"},
+	} {
+		op.Path = tc.path
+		p.PathMode, p.In = tc.mode, tc.location
+		p.Schema, _ = json.Marshal(map[string]string{"type": tc.schema})
+		p.DefaultValue = nil
+		if tc.schema == "string" {
+			p.DefaultValue, _ = json.Marshal(tc.fallback)
+		}
+		if _, err := Compile(base, cfg, nil); err == nil {
+			t.Errorf("accepted %+v", tc)
+		}
+	}
+}

@@ -312,3 +312,95 @@ func TestFixedAndDefaultParametersThroughVirtualMCP(t *testing.T) {
 		t.Fatalf("fixed value override was accepted: %+v", called)
 	}
 }
+
+func TestRelativePathVirtualDirectoryBrowsing(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	requests := make(chan string, 16)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.Method + " " + r.RequestURI
+		_, _ = io.WriteString(w, `{"children":{"values":[{"path":{"name":"java"}}]}}`)
+	}))
+	defer srv.Close()
+	params := []restapi.Parameter{}
+	for _, name := range []string{"project", "repo", "path"} {
+		p := restapi.Parameter{Name: name, In: "path", Schema: json.RawMessage(`{"type":"string"}`)}
+		if name == "path" {
+			p.PathMode = "relative"
+		}
+		params = append(params, p)
+	}
+	op := restapi.Operation{Name: "browse", Enabled: true, ReadOnly: true, Method: "GET", Path: "/projects/{project}/repos/{repo}/browse/{path}", Parameters: params}
+	compiled, err := restapi.Compile(srv.URL, restapi.Config{Auth: restapi.Auth{Type: "none"}, AllowInsecureHTTP: true, TimeoutSeconds: 3, Operations: []restapi.Operation{op}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRig(t)
+	snap := r.handler.Snap.(staticSnap).s
+	snap.Upstreams["bb"] = config.Upstream{ID: "bb", Slug: "bb", URL: srv.URL, REST: compiled}
+	tool := compiled.Tools[0]
+	tool.Name = "bb__browse"
+	snap.VirtualServers["support"] = config.VirtualServer{Slug: "support", Tools: []config.VirtualTool{{UpstreamID: "bb", UpstreamName: "browse", Tool: tool}}}
+	sid := r.initialize(t)
+	args := map[string]string{"project": "PAY", "repo": "backend"}
+	call := func(wantTarget, wantError string) string {
+		t.Helper()
+		raw, _ := json.Marshal(args)
+		preview, previewErr := compiled.Preview(srv.URL, "browse", raw, nil)
+		_, res := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: raw})
+		content := callText(t, res)
+		if wantError != "" {
+			if previewErr == nil || !strings.Contains(string(res.Result), `"isError":true`) || content != wantError {
+				t.Fatalf("preview=%v result=%s", previewErr, res.Result)
+			}
+		} else {
+			if previewErr != nil || preview.URL != srv.URL+wantTarget {
+				t.Fatal(preview, previewErr)
+			}
+			select {
+			case got := <-requests:
+				if got != "GET "+wantTarget {
+					t.Fatal(got)
+				}
+			default:
+				t.Fatal("missing request")
+			}
+			if strings.Contains(string(res.Result), `"isError":true`) {
+				t.Fatal(content)
+			}
+		}
+		if len(requests) != 0 {
+			t.Fatal("unexpected additional request")
+		}
+		return content
+	}
+	const prefix = "/projects/PAY/repos/backend/browse"
+	call(prefix, "")
+	args["path"] = "/private-directory"
+	call("", "expected a repository-relative path; omit the leading slash, for example src/main")
+	args["path"] = "src/main"
+	var directory struct {
+		Result struct {
+			Children struct {
+				Values []struct{ Path struct{ Name string } }
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(call(prefix+"/src/main", "")), &directory); err != nil || len(directory.Result.Children.Values) != 1 {
+		t.Fatal(directory, err)
+	}
+	args["path"] += "/" + directory.Result.Children.Values[0].Path.Name
+	call(prefix+"/src/main/java", "")
+	args["path"] = ".github/API Notes?#"
+	call(prefix+"/.github/API%20Notes%3F%23", "")
+	for _, bad := range []string{"", "src/", "src//main", ".", "src/../x", "%2f", "x\\y", "x\x00y", "x\u0085y"} {
+		args["path"] = bad
+		call("", "invalid repository-relative path segment")
+	}
+	delete(args, "path")
+	for _, key := range []string{"project", "repo"} {
+		old := args[key]
+		args[key] = "two/parts"
+		call("", "unsafe path parameter")
+		args[key] = old
+	}
+}

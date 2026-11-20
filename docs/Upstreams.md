@@ -780,3 +780,9 @@ A runtime response-schema mismatch identifies the configured schema location and
 failed keyword. It does not include actual response values or dynamic object keys.
 The error still warns that the operation may have completed; test execution and
 normal REST calls are never automatically replayed to repair a schema mismatch.
+
+### Browsing repository directories with a REST tool
+
+For Bitbucket Data Center, configure one GET operation at `/rest/api/latest/projects/{projectKey}/repos/{repositorySlug}/browse/{path}`. In **Parameters**, enable **repository-relative path** on the final string parameter and clear **required**. An agent can omit `path` for the root or pass `src/main` to list the immediate contents of that directory. Use the returned child names for subsequent calls.
+
+The API representation uses `"pathMode": "relative"` on that parameter. Send plain path segments. Leading or trailing slashes, empty or dot segments, backslashes, percent escapes and control characters are rejected. Other path parameters retain single-segment validation. An explicit default is used when the argument is omitted.

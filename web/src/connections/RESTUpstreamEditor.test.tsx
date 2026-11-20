@@ -392,3 +392,23 @@ test('validation failure keeps the operation modal and original draft for retry'
     '/orders/{id}',
   )
 })
+
+test('optional repository-relative path survives applying and reopening the operation', async () => {
+  render(<Draft />)
+  const editor = edit()
+  fireEvent.change(editor.getByLabelText('Operation path'), { target: { value: '/browse/{path}' } })
+  fireEvent.click(editor.getByRole('button', { name: 'Parameters (1)' }))
+  fireEvent.click(editor.getByLabelText('Parameter 1 repository-relative path'))
+  fireEvent.click(editor.getByLabelText('Parameter 1 required'))
+  const schema = JSON.parse(editor.getByLabelText('MCP tool definition').textContent!).inputSchema
+  expect(schema.required).toEqual([])
+  expect(schema.properties.path.description).toContain('src/main')
+  await apply()
+  const reopened = edit()
+  fireEvent.click(reopened.getByRole('button', { name: 'Parameters (1)' }))
+  expect(reopened.getByLabelText('Parameter 1 repository-relative path')).toHaveProperty(
+    'checked',
+    true,
+  )
+  expect(reopened.getByLabelText('Parameter 1 required')).toHaveProperty('checked', false)
+})

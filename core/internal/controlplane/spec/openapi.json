@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "vMCP Control Plane API",
-    "version": "2.3.1",
+    "version": "2.3.2",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -10042,6 +10042,13 @@
           },
           "required": {
             "type": "boolean"
+          },
+          "pathMode": {
+            "type": "string",
+            "enum": [
+              "relative"
+            ],
+            "description": "Enable repository-relative segments for a final string path placeholder. Omit an optional value to address its parent. The default behavior treats path parameters as single segments."
           },
           "exposeToMcp": {
             "type": "boolean",
