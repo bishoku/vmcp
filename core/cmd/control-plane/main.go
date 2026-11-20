@@ -26,7 +26,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const version = "1.0.2"
+// Release builds set gatewayVersion to the Git tag via -ldflags.
+var gatewayVersion = "dev"
 
 func main() {
 	log, err := telemetry.NewLogger("control-plane")
@@ -120,7 +121,7 @@ func run(log *slog.Logger) error {
 		OIDC:           provider,
 		Store:          &store.Store{Pool: pool, Box: box, WireMockURL: strings.TrimSuffix(os.Getenv("VMCP_WIREMOCK_URL"), "/")},
 		AdminToken:     adminToken,
-		Version:        version,
+		Version:        gatewayVersion,
 		Log:            log,
 		TrustedProxies: trusted,
 	}

@@ -52,7 +52,9 @@ jobs:
             buildArgs: ""
           - service: control-plane
             context: core
-            buildArgs: SERVICE=control-plane
+            buildArgs: |
+              SERVICE=control-plane
+              GATEWAY_VERSION=${{ needs.validate.outputs.version }}
           - service: data-plane
             context: core
             buildArgs: SERVICE=data-plane
