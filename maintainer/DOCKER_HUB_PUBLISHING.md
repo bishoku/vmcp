@@ -86,7 +86,7 @@ of the main run) also requires fresh npm and Go vulnerability checks. A GitHub
 API error stops the gate and can be retried.
 
 After verification, the workflow builds/pushes the ten images with a
-maximum of three concurrent publishing jobs. Multi-platform Go binaries are
+maximum of five concurrent publishing jobs. Multi-platform Go binaries are
 cross-compiled on the native builder; the web assets also build natively.
 The workflow attaches build provenance, SBOMs and source/version labels.
 
