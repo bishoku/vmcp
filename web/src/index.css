@@ -1248,11 +1248,9 @@ body:has(dialog[open]) #main-content {
 }
 @keyframes motion-dialog-enter {
   from {
-    opacity: 0;
     transform: scale(0.99);
   }
   to {
-    opacity: 1;
     transform: scale(1);
   }
 }

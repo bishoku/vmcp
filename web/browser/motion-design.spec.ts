@@ -39,11 +39,31 @@ test('shared motion animates overlays locally and dismissal restores focus witho
   const writes = await setup(page)
   await page.goto('/settings')
   const open = page.getByRole('button', { name: 'New token', exact: true })
+  // Hold the real entrance animation so even slow runners can sample its first frame.
+  const pauseEntry = await page.addStyleTag({
+    content: '.motion-modal[open] .surface-dialog { animation-play-state: paused; }',
+  })
   await open.click()
   const dialog = page.getByRole('dialog', { name: 'New admin token', exact: true }),
     frame = dialog.locator('.surface-dialog')
   await expect(frame).toHaveCSS('animation-name', 'motion-dialog-enter')
   await expect(frame).toHaveCSS('animation-duration', '0.2s')
+  const opacity = await frame.evaluate((element) => {
+    const entry = element
+      .getAnimations()
+      .find(
+        (animation) =>
+          animation instanceof CSSAnimation && animation.animationName === 'motion-dialog-enter',
+      )
+    if (!entry?.effect) throw new Error('Dialog entry animation missing')
+    const duration = Number(entry.effect.getTiming().duration)
+    return [0, 0.5, 0.99].map((fraction) => {
+      entry.currentTime = fraction * duration
+      return getComputedStyle(element).opacity
+    })
+  })
+  expect(opacity).toEqual(['1', '1', '1'])
+  await pauseEntry.evaluate((style) => style.remove())
   await expect(open).toHaveCSS('transition-duration', '0.14s')
   await page.keyboard.press('Escape')
   await expect(dialog).not.toBeVisible()

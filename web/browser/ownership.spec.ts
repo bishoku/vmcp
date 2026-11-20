@@ -192,7 +192,6 @@ for (const width of [390, 1440])
     // Newly created teams appear without a page reload.
     await project.getByLabel('Owner team', { exact: true }).selectOption('chat-owners')
     await page.screenshot({
-      animations: 'disabled',
       path: test.info().outputPath(`project-editor-${width}.png`),
       fullPage: true,
     })
@@ -220,7 +219,6 @@ for (const width of [390, 1440])
     await expectCenteredModal(page, 'Tool access request')
     await expect(page.getByRole('dialog').locator('.surface-card textarea')).toBeVisible()
     await page.screenshot({
-      animations: 'disabled',
       path: test.info().outputPath(`access-review-${width}.png`),
       fullPage: true,
     })
@@ -437,7 +435,6 @@ for (const width of [390, 1440])
     await expect(dialog.getByRole('button', { name: 'Approve access (2)' })).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({
-      animations: 'disabled',
       path: test.info().outputPath(`bulk-review-${width}.png`),
       fullPage: true,
     })
