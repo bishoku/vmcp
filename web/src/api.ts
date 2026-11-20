@@ -146,6 +146,7 @@ export interface RESTOperation {
     name: string
     in: 'path' | 'query'
     required: boolean
+    pathMode?: 'relative'
     exposeToMcp?: boolean
     defaultValue?: string | number | boolean
     schema: Record<string, unknown>
