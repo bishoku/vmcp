@@ -773,7 +773,7 @@ export default function Ownership() {
           }
         >
           {canEdit && (
-            <label className="block mb-4 text-sm">
+            <label className="surface-card panel-body block mb-4 text-sm">
               Decision reason (required for rejection or revocation)
               <textarea
                 className={input}
@@ -790,7 +790,7 @@ export default function Ownership() {
               request.
             </ErrorBox>
           )}
-          <dl className="divide-y divide-line">
+          <dl className="surface-card panel-body divide-y divide-line">
             <DetailRow label="Status">
               <Badge tone={grantTone[review.status]}>{review.status}</Badge>
             </DetailRow>

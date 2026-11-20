@@ -85,7 +85,7 @@ export default function BulkGrantDialog({
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="surface-card panel-body space-y-4">
         {error && <ErrorBox>{error}</ErrorBox>}
         {result && (
           <div role="status" className="surface-inset rounded-xl p-4">

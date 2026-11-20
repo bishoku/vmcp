@@ -132,7 +132,7 @@ export default function AccessRequest({
             event.preventDefault()
             void save()
           }}
-          className="space-y-6"
+          className="surface-card panel-body space-y-6"
         >
           <FormErrors validation={validation} />
           <FormField
