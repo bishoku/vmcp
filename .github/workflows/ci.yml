@@ -200,8 +200,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci --prefix web
-      - name: Test Docker release manifest generation
-        run: python3 -m unittest discover -s scripts -p 'test_prepare*release.py'
+      - name: Test release CI evidence and manifest generation
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_release_ci.py'
+          python3 -m unittest discover -s scripts -p 'test_prepare*release.py'
       - name: Test benchmark reporting and archive retention
         run: python3 -m unittest discover -s benchmark/kubernetes -p 'test_*.py'
       - name: Test trial installer
