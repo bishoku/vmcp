@@ -16,6 +16,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/bishoku/vmcp/core/internal/masking"
 )
 
 // Config is the per-virtual-server masking policy.
@@ -36,8 +38,7 @@ type Rule struct {
 }
 
 const (
-	maxRules      = 20
-	maxPatternLen = 500
+	maxRules = 20
 )
 
 type detector struct {
@@ -84,16 +85,8 @@ func Validate(c Config) map[string]string {
 			errs[p+"/name"] = "duplicate rule name"
 		}
 		seen[r.Name] = true
-		switch {
-		case r.Pattern == "" || len(r.Pattern) > maxPatternLen:
-			errs[p+"/pattern"] = fmt.Sprintf("must be 1-%d characters", maxPatternLen)
-		default:
-			re, err := regexp.Compile(r.Pattern)
-			if err != nil {
-				errs[p+"/pattern"] = "invalid regular expression: " + err.Error()
-			} else if re.MatchString("") {
-				errs[p+"/pattern"] = "must not match the empty string"
-			}
+		if _, err := masking.Compile(r.Pattern); err != nil {
+			errs[p+"/pattern"] = err.Error()
 		}
 	}
 	return errs

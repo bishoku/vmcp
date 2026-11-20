@@ -108,3 +108,38 @@ test('Omni capture and bounded discovery details save independently of model pay
   expect(draft.scopes.omni_embedding?.response ?? false).toBe(false)
   expect(draft.omni).toEqual({ candidates: true, includeDenied: true, maxCandidates: 50 })
 })
+
+test('regex editor applies a tested zero-match draft only to the pattern field', async () => {
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true
+  }
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false
+  }
+  try {
+    const preview = vi
+      .spyOn(api, 'previewRegex')
+      .mockResolvedValue({ parts: [], count: 0, masked: '' })
+    const save = vi.spyOn(api, 'saveAuditSettings')
+    render(<AuditSettingsPanel />)
+    const field = (await screen.findByLabelText('Audit rule 1 regex')) as HTMLInputElement
+    const open = screen.getByRole('button', { name: 'Edit and test' })
+    fireEvent.click(open)
+    fireEvent.change(screen.getByLabelText('RE2 pattern'), { target: { value: 'TEST' } })
+    fireEvent.click(screen.getByText('Cancel', { selector: 'button' }))
+    expect(field.value).toBe('example')
+    fireEvent.click(open)
+    fireEvent.change(screen.getByLabelText('RE2 pattern'), { target: { value: 'TEST' } })
+    fireEvent.click(screen.getByText('Test pattern'))
+    await screen.findByText('0 matches')
+    expect(preview).toHaveBeenCalledWith('audit', 'email', 'TEST', '', expect.any(AbortSignal))
+    expect(field.value).toBe('example')
+    fireEvent.click(screen.getByText('Use pattern'))
+    expect(field.value).toBe('TEST')
+    expect(save).not.toHaveBeenCalled()
+  } finally {
+    cleanup()
+    Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal')
+    Reflect.deleteProperty(HTMLDialogElement.prototype, 'close')
+  }
+})

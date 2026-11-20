@@ -4146,6 +4146,111 @@
         }
       }
     },
+    "/api/v1/regex-preview": {
+      "post": {
+        "tags": [
+          "Audit"
+        ],
+        "operationId": "previewRegex",
+        "summary": "Test one draft masking expression against caller-supplied text",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CSRF"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "pattern"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "audit",
+                      "pii"
+                    ]
+                  },
+                  "pattern": {
+                    "type": "string",
+                    "description": "Go RE2 expression of 1–500 UTF-8 bytes"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "PII replacement label (defaults to rule)"
+                  },
+                  "sample": {
+                    "type": "string",
+                    "description": "Plain text up to 8192 UTF-8 bytes"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Highlight segments and masked text for this rule alone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "parts",
+                    "masked",
+                    "count"
+                  ],
+                  "properties": {
+                    "parts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "match"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "match": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "masked": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "503": {
+            "$ref": "#/components/responses/AuditUnavailable"
+          }
+        }
+      }
+    },
     "/api/v1/rest-schema-checks": {
       "post": {
         "tags": [

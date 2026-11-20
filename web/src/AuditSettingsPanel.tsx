@@ -1,3 +1,4 @@
+import RegexEditor from './RegexEditor'
 import { Checkbox } from './SelectionControls'
 import Select from './Select'
 import LocalAuditSettingsPanel from './LocalAuditSettingsPanel'
@@ -429,17 +430,27 @@ function AuditEditor({
                       setRules(rules.map((r, j) => (i === j ? { ...r, name: e.target.value } : r)))
                     }
                   />
-                  <input
-                    aria-label={`Audit rule ${i + 1} regex`}
-                    className={`${input} font-mono`}
-                    value={rule.pattern}
-                    placeholder="RE2 regex"
-                    onChange={(e) =>
-                      setRules(
-                        rules.map((r, j) => (i === j ? { ...r, pattern: e.target.value } : r)),
-                      )
-                    }
-                  />
+                  <div className="flex min-w-0 gap-2">
+                    <input
+                      aria-label={`Audit rule ${i + 1} regex`}
+                      className={`${input} font-mono`}
+                      value={rule.pattern}
+                      placeholder="RE2 regex"
+                      onChange={(e) =>
+                        setRules(
+                          rules.map((r, j) => (i === j ? { ...r, pattern: e.target.value } : r)),
+                        )
+                      }
+                    />
+                    <RegexEditor
+                      kind="audit"
+                      name={rule.name}
+                      pattern={rule.pattern}
+                      onApply={(pattern) =>
+                        setRules(rules.map((r, j) => (j === i ? { ...r, pattern } : r)))
+                      }
+                    />
+                  </div>
                   <button className={btn} onClick={() => setRules(rules.filter((_, j) => j !== i))}>
                     Remove rule {i + 1}
                   </button>

@@ -1,3 +1,4 @@
+import RegexEditor from './RegexEditor'
 import ConfigurationGroup from './connections/ConfigurationGroup'
 import { useConfirm } from './confirmation'
 import { useUpstreamSection } from './pages/upstream-edit-session'
@@ -200,18 +201,28 @@ function LocalEditor({
                         )
                       }
                     />
-                    <input
-                      aria-label={`Audit rule ${index + 1} regex`}
-                      className={input}
-                      value={rule.pattern}
-                      onChange={(event) =>
-                        change(
-                          rules.map((r, i) =>
-                            i === index ? { ...r, pattern: event.target.value } : r,
-                          ),
-                        )
-                      }
-                    />
+                    <div className="flex min-w-0 gap-2">
+                      <input
+                        aria-label={`Audit rule ${index + 1} regex`}
+                        className={input}
+                        value={rule.pattern}
+                        onChange={(event) =>
+                          change(
+                            rules.map((r, i) =>
+                              i === index ? { ...r, pattern: event.target.value } : r,
+                            ),
+                          )
+                        }
+                      />
+                      <RegexEditor
+                        kind="audit"
+                        name={rule.name}
+                        pattern={rule.pattern}
+                        onApply={(pattern) =>
+                          change(rules.map((r, i) => (i === index ? { ...r, pattern } : r)))
+                        }
+                      />
+                    </div>
                     <button
                       className={btn}
                       onClick={() => change(rules.filter((_, i) => i !== index))}
