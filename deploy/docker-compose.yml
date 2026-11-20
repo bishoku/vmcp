@@ -56,7 +56,7 @@ services:
   # Optional: only for rate limits shared between data-plane nodes.
   # Start with `docker compose --profile redis up` and set VMCP_REDIS_URL=redis://redis:6379/0.
   redis:
-    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    image: redis:8-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
     profiles: [redis]
 
   data-plane:
