@@ -188,7 +188,7 @@ export default function OwnershipEditor({
               event.preventDefault()
               void save()
             }}
-            className="space-y-6"
+            className="surface-card panel-body space-y-6"
           >
             <FormErrors validation={validation} />
             <StaleRecovery
@@ -319,7 +319,7 @@ export default function OwnershipEditor({
           </form>
         </FormScope>
       ) : (
-        <dl className="divide-y divide-line">
+        <dl className="surface-card panel-body divide-y divide-line">
           <DetailRow label="Identifier">{value.slug}</DetailRow>
           <DetailRow label="Name">{value.name}</DetailRow>
           {draft.kind === 'team' ? (
