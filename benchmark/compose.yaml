@@ -59,7 +59,7 @@ services:
     networks: [demo]
 
   redis:
-    image: redis:7-alpine@sha256:57e4255cc971b1c8d6f8a6ca283ac01bc3ecdd914273ef6bfaede87aaecd6541
+    image: redis:8-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
     command: [redis-server, --appendonly, "yes"]
     ports: ["127.0.0.1:56379:6379"]
     volumes: [redisdata:/data]
