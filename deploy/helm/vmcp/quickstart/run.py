@@ -65,12 +65,18 @@ def parser():
     p.add_argument('--timeout', default='15m', help='Helm timeout, e.g. 15m')
     p.add_argument('--chart', type=Path, help='Local application chart directory/archive; requires --images-file')
     p.add_argument('--images-file', type=Path, help='Local published images.json; requires --chart (offline/local validation)')
+    p.add_argument('--dry-run', action='store_true', help='Render a fresh-install preview without Kubernetes access; credentials are placeholders')
+    p.add_argument('--output-dir', type=Path, help='New directory for --dry-run output (default: a temporary directory)')
     p.add_argument('--uninstall', action='store_true', help='Uninstall the two quickstart releases; keep Secrets/PVCs')
     p.add_argument('--purge', action='store_true', help='With --uninstall, delete quickstart Secrets/PVCs, including stored data')
     return p
 
 
 def validate(a):
+    if a.output_dir and not a.dry_run:
+        raise ValueError('--output-dir requires --dry-run')
+    if a.dry_run and (a.uninstall or a.purge):
+        raise ValueError('--dry-run previews installation and cannot be combined with --uninstall or --purge')
     for value, maximum in [(a.namespace, 63), (a.release, 30)]:
         if len(value) > maximum or not re.fullmatch(r'[a-z][a-z0-9]*(?:-[a-z0-9]+)*', value):
             raise ValueError('namespace/release must be lowercase DNS names within their length limits')
@@ -271,10 +277,11 @@ class Installer:
     def apply(self, resource):
         self.run(self.k + ['apply', '-f', '-'], json.dumps(resource))
 
-    def secret(self):
+    def secret(self, preview=False):
         a = self.a
         name = a.release + '-quickstart'
-        raw = self.run(self.k + ['get', 'secret', name, '--ignore-not-found', '-o', 'json'], capture=True)
+        raw = '' if preview else self.run(self.k + ['get', 'secret', name, '--ignore-not-found', '-o', 'json'], capture=True)
+        token_hex = (lambda size: '0' * (size * 2)) if preview else secrets.token_hex
         if raw.strip():
             stored = json.loads(raw)
             if stored['metadata'].get('labels', {}).get('vmcp.quickstart') != a.release:
@@ -283,16 +290,16 @@ class Installer:
             for key in ['master-key', 'admin-token', 'postgres-password', 'owner-password', 'control-password', 'data-password', 'export-password', 'redis-password', 'rabbit-password']:
                 if not data.get(key): raise ValueError('existing quickstart Secret is incomplete; refusing to rotate credentials')
         else:
-            data = {key: secrets.token_hex(24) for key in ['admin-token', 'postgres-password', 'owner-password', 'control-password', 'data-password', 'export-password', 'redis-password', 'rabbit-password']}
-            data['master-key'] = base64.b64encode(secrets.token_bytes(32)).decode()
+            data = {key: token_hex(24) for key in ['admin-token', 'postgres-password', 'owner-password', 'control-password', 'data-password', 'export-password', 'redis-password', 'rabbit-password']}
+            data['master-key'] = base64.b64encode(bytes(32) if preview else secrets.token_bytes(32)).decode()
         if a.keycloak:
             for key in ['keycloak-db-password', 'keycloak-admin-password', 'keycloak-client-secret', 'keycloak-demo-password']:
-                if key not in data: data[key] = secrets.token_hex(24)
+                if key not in data: data[key] = token_hex(24)
                 if not re.fullmatch(r'[a-f0-9]{48}', data[key]):
                     raise ValueError('retained Keycloak trial credential has an invalid format; refusing to rotate it')
         if a.omni:
             if 'omni-secret' not in data:
-                data['omni-secret'] = secrets.token_hex(32)
+                data['omni-secret'] = token_hex(32)
             if len(data['omni-secret']) < 32:
                 raise ValueError('retained Omni bridge secret must contain at least 32 characters')
         if len(base64.b64decode(data['master-key'], validate=True)) != 32:
@@ -301,13 +308,16 @@ class Installer:
             data[field + '-url'] = f'postgres://{user}:{data[pw + "-password"]}@{a.release}-trial-postgres:5432/vmcp?sslmode=disable'
         data['redis-url'] = f'redis://:{data["redis-password"]}@{a.release}-trial-redis:6379/0'
         data['rabbit-url'] = f'amqp://audit:{data["rabbit-password"]}@{a.release}-trial-rabbitmq:5672/'
-        if a.http_export_url: data['http-export-url'] = a.http_export_url
+        if a.http_export_url: data['http-export-url'] = 'https://preview.invalid/audit' if preview else a.http_export_url
         resource = obj('Secret', name, type='Opaque', stringData=data)
         resource['metadata']['labels'] = {'vmcp.quickstart': a.release}
         # Replace using stdin: avoid persisting credentials in kubectl's last-applied annotation.
         resource.pop('stringData')
         resource['data'] = {k: base64.b64encode(v.encode()).decode() for k, v in data.items()}
-        if raw.strip():
+        if preview:
+            resource['metadata']['annotations'] = {'vmcp.quickstart/preview': 'Placeholder credentials; do not apply'}
+            self.apply(resource)
+        elif raw.strip():
             resource['metadata']['resourceVersion'] = stored['metadata']['resourceVersion']
             self.run(self.k + ['replace', '-f', '-'], json.dumps(resource))
         else: self.run(self.k + ['create', '-f', '-'], json.dumps(resource))
@@ -424,9 +434,91 @@ def download_release(a, directory):
     return directory / charts[0], directory / 'images.json'
 
 
+class PreviewInstaller(Installer):
+    """Capture direct resources and SQL using the same builders as installation."""
+    def __init__(self, a, directory):
+        super().__init__(a)
+        self.directory = directory
+        self.after_migration = False
+
+    def run(self, cmd, data=None, capture=False):
+        # Bootstrap's wait is recorded, never executed. Fail closed for any other
+        # command if the installation workflow gains new side effects later.
+        if cmd[:len(self.k) + 2] != self.k + ['wait', '--for=condition=complete']:
+            raise ValueError('unexpected command in offline preview')
+
+    def apply(self, resource):
+        names = {'Namespace': '00-namespace.yaml', 'Secret': '01-secret.yaml', 'Job': '03-bootstrap.yaml'}
+        kind = resource['kind']
+        if kind != 'Namespace': resource['metadata']['namespace'] = self.a.namespace
+        if kind == 'Job': self.after_migration = True
+        # JSON documents are valid YAML 1.2; no third-party YAML dependency.
+        (self.directory / names[kind]).write_text('# PREVIEW ONLY; do not apply.\n' + json.dumps(resource, indent=2) + '\n')
+
+    def sql(self, sql):
+        name = '04-grants.sql' if self.after_migration else '02-roles.sql'
+        with (self.directory / name).open('a') as output:
+            output.write(sql)
+
+
+def preview(a):
+    """Render locally without kubectl, kubeconfig discovery, or live credentials."""
+    if not shutil.which('helm'): raise ValueError('helm is required')
+    directory = a.output_dir.expanduser().absolute() if a.output_dir else Path(tempfile.mkdtemp(prefix='vmcp-preview-'))
+    if a.output_dir:
+        # Never overwrite another preview or follow an existing output symlink.
+        try:
+            directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+        except FileExistsError:
+            raise ValueError('--output-dir already exists; choose a new directory') from None
+    chart, manifest = (a.chart.resolve(), a.images_file.resolve()) if a.chart else download_release(a, directory)
+    refs = image_values(json.loads(manifest.read_text()), a.version)
+    cfg = values(a, refs)
+    for release, selected_chart, config, filename in [
+        (a.release + '-infra', HERE / 'infra', {'resources': infrastructure(a)}, '02-infra.yaml'),
+        (a.release, chart, cfg, '05-vmcp.yaml'),
+    ]:
+        values_file = directory / (release + '-values.json')
+        values_file.write_text(json.dumps(config, indent=2) + '\n')
+        command = ['helm', 'template', release, str(selected_chart), '--namespace', a.namespace,
+                   '-f', str(values_file), '--kube-version', '1.32.0']
+        if a.monitoring:
+            for kind in ['ServiceMonitor', 'PrometheusRule']:
+                command += ['--api-versions', 'monitoring.coreos.com/v1/' + kind]
+        rendered = subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE).stdout
+        (directory / filename).write_text('# PREVIEW ONLY; do not apply.\n' + rendered)
+    installer = PreviewInstaller(a, directory)
+    installer.apply(obj('Namespace', a.namespace))
+    credentials = installer.secret(preview=True)
+    installer.bootstrap(credentials, refs['migrate'])
+    notes = [
+        'Fresh-install preview only; do not apply these files as an installation bundle.',
+        'No Kubernetes connection, credential lookup, SQL execution or port-forward was performed.',
+        'Secret and SQL credentials are public zero-filled placeholders, not usable deployment credentials.',
+        'HTTP exporter URLs in the Secret are replaced with https://preview.invalid/audit.',
+        'Normal installation generates/reuses credentials and waits between the following steps:',
+        '1. Create namespace and quickstart Secret (00-namespace.yaml, 01-secret.yaml).',
+        '2. Install infrastructure Helm release and wait (02-infra.yaml).',
+        '3. Run role SQL, bootstrap migration Job, then grants (02-roles.sql, 03-bootstrap.yaml, 04-grants.sql).',
+        '4. Install application Helm release and wait (05-vmcp.yaml).',
+        'Bootstrap Job names are generated per run; Helm revision and upgrade hooks differ on upgrades.',
+        'Rendering assumes Kubernetes 1.32.0 and, with --monitoring, installed monitoring CRDs.',
+        'This does not validate SCC/admission, StorageClasses, CRDs, TLS Secrets, image pulls or scheduling.',
+        'Use the same quickstart options without --dry-run/--output-dir for actual installation.',
+    ]
+    if a.keycloak: notes.append('Keycloak realm/client/user seeding runs after infrastructure readiness, before bootstrap; it is not YAML and was skipped.')
+    if a.kafka or a.rabbitmq: notes.append('Kafka topic / RabbitMQ queue provisioning runs after bootstrap, before the application release; it was skipped.')
+    if a.mock or a.keycloak: notes.append('Console/playground seeding and optional Omni reindex run after application readiness; API calls were skipped.')
+    (directory / 'README.txt').write_text('\n'.join(notes) + '\n')
+    print(f'Dry-run preview: {directory}\nNo cluster access. Placeholder credentials; do not apply. See README.txt for execution order and skipped steps.')
+
+
 def main(argv=None):
     a = parser().parse_args(argv)
     validate(a)
+    if a.dry_run:
+        preview(a)
+        return
     for command in ['kubectl', 'helm']:
         if not shutil.which(command): raise ValueError(f'{command} is required')
     if not a.context:
@@ -507,5 +599,8 @@ if __name__ == '__main__':
         elif isinstance(exc, urllib.error.URLError):
             detail = 'Cannot download release assets; check network access and trusted CA certificates.'
         print(f'Quickstart failed: {type(exc).__name__}. {detail}', file=sys.stderr)
-        print('Inspect namespace pods, jobs and events with kubectl; no automatic cleanup was performed.', file=sys.stderr)
+        if '--dry-run' in sys.argv[1:]:
+            print('Dry-run did not access Kubernetes. Any partial preview files were retained.', file=sys.stderr)
+        else:
+            print('Inspect namespace pods, jobs and events with kubectl; no automatic cleanup was performed.', file=sys.stderr)
         sys.exit(1)
