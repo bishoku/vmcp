@@ -32,6 +32,9 @@ generate HTTPS public URLs and Keycloak client settings without ingress TLS.
 Use `--tls-secret` instead when TLS terminates at the Kubernetes ingress.
 `./deploy/helm/vmcp/demo.sh` lists users, teams and servers and prints the demo
 credentials. See the [full quickstart guide](../../../docs/HELM_QUICKSTART.md).
+Add `--dry-run --output-dir /tmp/vmcp-preview` to inspect fresh-install manifests
+without Kubernetes access. The output includes placeholder Secrets and bootstrap
+SQL; it is a review preview, not a directly applicable installation bundle.
 This configuration is for isolated trials; production installation follows below.
 
 ## Installation with external infrastructure
