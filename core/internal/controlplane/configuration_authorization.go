@@ -22,7 +22,7 @@ func configurationOperation(r *http.Request) (store.ConfigurationOperation, bool
 	family := parts[0]
 	switch family {
 	// Schema checks evaluate only caller-supplied data and access no saved resource.
-	case "configuration-access", "rest-schema-checks":
+	case "configuration-access", "rest-schema-checks", "regex-preview":
 		op.Family = "self"
 		return op, method == "POST"
 	case "me":

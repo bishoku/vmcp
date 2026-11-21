@@ -1,3 +1,4 @@
+import RegexEditor from '../RegexEditor'
 import {
   useConfigurationPermissions,
   useConfigurationField,
@@ -986,7 +987,27 @@ export default function VirtualServerEditor({
                                       label={`Custom rule ${i + 1} pattern`}
                                       className="w-full"
                                       required
-                                      hint="Use an RE2 regular expression. Pattern validity is checked on Save."
+                                      renderControl={(control) => (
+                                        <div className="flex gap-2">
+                                          {control}
+                                          <RegexEditor
+                                            kind="pii"
+                                            name={r.name}
+                                            pattern={r.pattern}
+                                            disabled={
+                                              (control.props as { disabled?: boolean }).disabled
+                                            }
+                                            onApply={(pattern) => {
+                                              validation.clear(`pii.customRules.${i}.pattern`)
+                                              setPii({
+                                                customRules: draft.pii.customRules.map((x, j) =>
+                                                  j === i ? { ...x, pattern } : x,
+                                                ),
+                                              })
+                                            }}
+                                          />
+                                        </div>
+                                      )}
                                     >
                                       <input
                                         aria-label={`Custom rule ${i + 1} pattern`}

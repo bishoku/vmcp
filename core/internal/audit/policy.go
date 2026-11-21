@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/bishoku/vmcp/core/internal/masking"
 )
 
 // Settings is immutable once attached to an operation. Local rules add protection;
@@ -130,15 +132,8 @@ func (s Settings) Validate() error {
 				return errors.New("rule names must be unique identifiers of 1-40 characters")
 			}
 			seen[r.Name] = true
-			if len(r.Pattern) == 0 || len(r.Pattern) > 500 {
-				return errors.New("regex must be 1-500 characters")
-			}
-			re, err := compiledRegex(r.Pattern)
-			if err != nil {
-				return fmt.Errorf("rule %s: invalid RE2 regex", r.Name)
-			}
-			if re.MatchString("") {
-				return fmt.Errorf("rule %s must not match empty strings", r.Name)
+			if _, err := masking.Compile(r.Pattern); err != nil {
+				return fmt.Errorf("rule %s: %w", r.Name, err)
 			}
 		}
 	}
@@ -245,25 +240,7 @@ func PreviewPayload(s Settings, scope, direction, vs, up string, raw json.RawMes
 				spans = append(spans, [2]int{m[0], m[1]})
 			}
 		}
-		if len(spans) == 0 {
-			return text
-		}
-		sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
-		var out strings.Builder
-		cursor := 0
-		for i := 0; i < len(spans); {
-			start, end := spans[i][0], spans[i][1]
-			i++
-			for i < len(spans) && spans[i][0] <= end {
-				end = max(end, spans[i][1])
-				i++
-			}
-			out.WriteString(text[cursor:start])
-			out.WriteString("[REDACTED]")
-			cursor = end
-		}
-		out.WriteString(text[cursor:])
-		return out.String()
+		return MaskSpans(text, spans)
 	}
 	var walk func(any, int) (any, error)
 	walk = func(v any, depth int) (any, error) {
@@ -389,4 +366,27 @@ func (s Settings) ForOmni() Settings {
 	}
 	s.Rules = rules
 	return s
+}
+
+// MaskSpans combines touching and overlapping audit matches before redaction.
+func MaskSpans(text string, spans [][2]int) string {
+	if len(spans) == 0 {
+		return text
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
+	var out strings.Builder
+	cursor := 0
+	for i := 0; i < len(spans); {
+		start, end := spans[i][0], spans[i][1]
+		i++
+		for i < len(spans) && spans[i][0] <= end {
+			end = max(end, spans[i][1])
+			i++
+		}
+		out.WriteString(text[cursor:start])
+		out.WriteString("[REDACTED]")
+		cursor = end
+	}
+	out.WriteString(text[cursor:])
+	return out.String()
 }

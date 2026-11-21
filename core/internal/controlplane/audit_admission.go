@@ -209,7 +209,7 @@ func (s *Server) audited(h handlerFunc, w http.ResponseWriter, r *http.Request, 
 	if strings.HasPrefix(r.URL.Path, "/api/v1/virtual-servers/") {
 		e.VirtualServer = r.PathValue("slug")
 	}
-	excluded := r.URL.Path == "/api/v1/rest-schema-checks" || strings.Contains(r.Pattern, "/{slug}/audit-settings") || r.URL.Path == "/api/v1/configuration-access" || authorizationManagementRoute(r) || r.URL.Path == "/api/v1/audit-preview" || strings.HasPrefix(r.URL.Path, "/api/v1/audit-events") || r.URL.Path == "/api/v1/audit-settings"
+	excluded := r.Pattern == "POST /api/v1/regex-preview" || r.URL.Path == "/api/v1/rest-schema-checks" || strings.Contains(r.Pattern, "/{slug}/audit-settings") || r.URL.Path == "/api/v1/configuration-access" || authorizationManagementRoute(r) || r.URL.Path == "/api/v1/audit-preview" || strings.HasPrefix(r.URL.Path, "/api/v1/audit-events") || r.URL.Path == "/api/v1/audit-settings"
 	if excluded {
 		e.Scope = ""
 	}

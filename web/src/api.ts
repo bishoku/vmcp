@@ -591,7 +591,7 @@ async function request<T>(
 ): Promise<T> {
   const identityRevision = configurationIdentityRevision
   const protectedConfiguration =
-    !/^\/(me|configuration-access|rest-schema-checks|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(
+    !/^\/(me|configuration-access|regex-preview|rest-schema-checks|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(
       path,
     )
   if (protectedConfiguration) {
@@ -835,7 +835,26 @@ export interface UpstreamInvocationSecurity extends UpstreamInvocationUpdate {
   tools: string[]
   callerContextFields: string[]
 }
+export interface RegexPreview {
+  parts: { text: string; match: boolean }[]
+  masked: string
+  count: number
+}
 export const api = {
+  previewRegex: (
+    kind: 'audit' | 'pii',
+    name: string,
+    pattern: string,
+    sample: string,
+    signal?: AbortSignal,
+  ) =>
+    request<RegexPreview>(
+      'POST',
+      '/regex-preview',
+      { kind, name, pattern, sample },
+      undefined,
+      signal,
+    ),
   sharedInvocationServices: (signal?: AbortSignal) =>
     request<SharedInvocationServices>(
       'GET',
