@@ -107,7 +107,7 @@ func (i *importer) operation(path, method string, pathItem, source map[string]an
 			}
 			out.BodySchema = raw(schema)
 			if !flag(p["required"]) {
-				*warnings = append(*warnings, "The optional request body becomes a required body tool argument in this REST adapter.")
+				*warnings = append(*warnings, "This REST adapter sends a JSON body on every call to this operation.")
 			}
 			continue
 		}
@@ -157,7 +157,7 @@ func (i *importer) operation(path, method string, pathItem, source map[string]an
 		}
 		out.BodySchema = raw(schema)
 		if !flag(body["required"]) {
-			*warnings = append(*warnings, "The optional request body becomes a required body tool argument in this REST adapter.")
+			*warnings = append(*warnings, "This REST adapter sends a JSON body on every call to this operation.")
 		}
 	}
 	schemas := []any{}

@@ -49,10 +49,7 @@ type acceptancePhase struct {
 func (a *acceptanceTracker) call(ctx context.Context, c *acceptanceClient, tool int) (acceptanceResponse, bool) {
 	id := a.seq.Add(1)
 	nonce := fmt.Sprintf("accept-%d", id)
-	var args any = map[string]string{"call_id": nonce, "message": "agent@example.com"}
-	if c.rest {
-		args = map[string]any{"body": args}
-	}
+	args := map[string]string{"call_id": nonce, "message": "agent@example.com"}
 	params := map[string]any{"name": fmt.Sprintf("tool-%03d", tool), "arguments": args}
 	if c.omni {
 		params = map[string]any{"name": "invoke_tool", "arguments": map[string]any{"tool_ref": omni.Ref(fmt.Sprintf("accept-vs-%04d", c.server), fmt.Sprintf("tool-%03d", tool)), "arguments": args}}

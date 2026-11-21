@@ -117,7 +117,7 @@ func TestRealWireMockScopedDynamicRESTExecution(t *testing.T) {
 	for _, tc := range []struct {
 		compiled         *restapi.Compiled
 		name, args, want string
-	}{{compiled, "sample", `{}`, `"source":"one"`}, {other, "sample", `{}`, `"source":"two"`}, {compiled, "create", `{"body":{"order":{"items":[{"productId":"SKU-42"}]}}}`, `"sku":"SKU-42"`}, {compiled, "fail", `{}`, `HTTP 503`}} {
+	}{{compiled, "sample", `{}`, `"source":"one"`}, {other, "sample", `{}`, `"source":"two"`}, {compiled, "create", `{"order":{"items":[{"productId":"SKU-42"}]}}`, `"sku":"SKU-42"`}, {compiled, "fail", `{}`, `HTTP 503`}} {
 		result, err := tc.compiled.Execute(ctx, base, tc.name, raw(tc.args), nil, tlsconf.Settings{}, restapi.Identity{}, nil)
 		if err != nil || !strings.Contains(string(result), tc.want) || strings.Contains(string(result), `"hidden"`) {
 			t.Fatalf("%s: %s %v", tc.name, result, err)

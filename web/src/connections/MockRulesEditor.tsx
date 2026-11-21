@@ -524,9 +524,9 @@ function ConditionEditor({
       )}
       {draft.source === 'bodyPatterns' && (
         <p className="text-xs text-ink-muted">
-          Paths refer to the REST body, without MCP’s body wrapper. Select a schema field or enter
-          JSONPath. For any array item, use a filter such as $.order.items[?(@.productId == "SKU")]
-          with Is present. Presence requires a non-null scalar or nonempty selection.
+          Paths refer to the HTTP request body. Select a schema field or enter JSONPath. For any
+          array item, use a filter such as $.order.items[?(@.productId == "SKU")] with Is present.
+          Presence requires a non-null scalar or nonempty selection.
         </p>
       )}
       <div className="flex flex-wrap gap-2">

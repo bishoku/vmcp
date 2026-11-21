@@ -42,7 +42,7 @@ func TestRESTLifecycleSecretsAndExplicitExecution(t *testing.T) {
 	}
 	request := map[string]any{"operation": "lookup", "arguments": map[string]any{}}
 	a.expect(200, "POST", "/api/v1/upstreams/rest/rest/preview", request)
-	a.expect(422, "POST", "/api/v1/upstreams/rest/refresh-tools", nil)
+	a.expect(200, "POST", "/api/v1/upstreams/rest/refresh-tools", nil)
 	a.expect(422, "POST", "/api/v1/upstreams/rest/connection-test", nil)
 	a.expect(412, "POST", "/api/v1/upstreams/rest/rest/test", request)
 	if calls.Load() != 0 {
@@ -246,4 +246,59 @@ func TestTextResponseManagementRoundTrip(t *testing.T) {
 		}
 	}
 	t.Fatal("saved upstream missing from snapshot")
+}
+
+func TestRefreshRESTRebuildsStoredCatalogAndPreservesVirtualSelection(t *testing.T) {
+	a := setup(t)
+	ctx := context.Background()
+	cfg := restapi.Config{Auth: restapi.Auth{Type: "none"}, TimeoutSeconds: 30, Operations: []restapi.Operation{{Name: "write", Enabled: true, Method: "POST", Path: "/items", BodySchema: json.RawMessage(`{"type":"object","properties":{"count":{"type":"integer"}}}`)}}}
+	a.expect(201, "POST", "/api/v1/upstreams", map[string]any{"slug": "catalog", "name": "Catalog", "kind": "rest", "url": "https://example.invalid", "rest": cfg})
+	a.expect(201, "POST", "/api/v1/virtual-servers", map[string]any{"slug": "vs", "name": "VS", "tools": []map[string]string{{"upstream": "catalog", "tool": "write", "alias": "save"}}})
+	var id string
+	if err := a.pool.QueryRow(ctx, `SELECT id::text FROM upstreams WHERE slug='catalog'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate the catalog cached before upgrade.
+	if _, err := a.pool.Exec(ctx, `UPDATE upstream_tools SET input_schema='{"properties":{"body":{}}}' WHERE upstream_id=$1::uuid`, id); err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "/api/v1/upstreams/catalog/refresh-tools"
+	_, reader := a.expect(201, "POST", "/api/v1/admin-tokens", map[string]any{"slug": "reader", "scope": "read"})
+	if code, _, _ := a.do("POST", endpoint, nil, map[string]string{"Authorization": "Bearer " + reader["token"].(string)}); code != 403 {
+		t.Fatalf("reader refresh: %d", code)
+	}
+	h, refreshed := a.expect(200, "POST", endpoint, nil)
+	if h.Get("X-VMCP-Config-Revision") == "" || len(refreshed["changed"].([]any)) != 1 {
+		t.Fatal(h, refreshed)
+	}
+	snap, err := store.LoadSnapshot(ctx, a.pool, a.control.Store.Box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := snap.VirtualServers["vs"].Tools
+	if len(tools) != 1 || tools[0].Tool.Name != "save" || !strings.Contains(string(tools[0].Tool.InputSchema), `"count"`) || strings.Contains(string(tools[0].Tool.InputSchema), `"body"`) {
+		t.Fatalf("stale or unbound: %+v", tools)
+	}
+	_, unchanged := a.expect(200, "POST", endpoint, nil)
+	if len(unchanged["changed"].([]any)) != 0 {
+		t.Fatal(unchanged)
+	}
+	// A pre-upgrade definition can contain a collision newly rejected by the compiler.
+	cfg.Operations[0].Parameters = []restapi.Parameter{{Name: "count", In: "query", Schema: json.RawMessage(`{"type":"integer"}`)}}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := a.control.Store.Box.SealBound(raw, id, "upstream.rest_config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.pool.Exec(ctx, `UPDATE upstreams SET encrypted_rest_config=$2 WHERE id=$1::uuid`, id, ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	a.expect(422, "POST", endpoint, nil)
+	var stillFlat bool
+	if err := a.pool.QueryRow(ctx, `SELECT input_schema->'properties' ? 'count' FROM upstream_tools WHERE upstream_id=$1::uuid AND name='write'`, id).Scan(&stillFlat); err != nil || !stillFlat {
+		t.Fatal(stillFlat, err)
+	}
 }

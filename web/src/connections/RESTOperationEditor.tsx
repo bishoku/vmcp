@@ -79,7 +79,9 @@ export default function RESTOperationEditor({
   }, [invalid, onInvalidChange])
   const set = (patch: Partial<RESTOperation>) => {
     if (patch.parameters) setParametersJSON(json(patch.parameters))
-    onChange?.({ ...operation, ...patch })
+    const next = { ...operation, ...patch }
+    if (schemaObject(next.bodySchema).type !== 'array') delete next.bodyArgumentName
+    onChange?.(next)
   }
   const field = (name: string) => `rest.operations.${index}.${name}`
   const parse = (key: 'bodySchema' | 'responseSchema' | 'headers', text: string) => {
@@ -338,8 +340,8 @@ export default function RESTOperationEditor({
                       value.in === 'path' ? 'Path · edit the name in the URL.' : 'Query parameter'
                     }
                     error={
-                      !validName.test(value.name) || value.name === 'body'
-                        ? 'Use a valid name other than “body”.'
+                      !validName.test(value.name)
+                        ? 'Use a valid parameter name.'
                         : operation.parameters.filter((other) => other.name === value.name).length >
                             1
                           ? 'Parameter names must be unique.'
@@ -554,6 +556,20 @@ export default function RESTOperationEditor({
               }}
             />
           )}
+          {schemaObject(operation.bodySchema).type === 'array' && (
+            <FormField
+              name={field('bodyArgumentName')}
+              label="Array argument name"
+              hint="The value of this argument becomes the complete JSON request body. Defaults to body."
+            >
+              <input
+                className={input}
+                placeholder="body"
+                value={operation.bodyArgumentName ?? ''}
+                onChange={(event) => set({ bodyArgumentName: event.target.value || undefined })}
+              />
+            </FormField>
+          )}
           <FormField
             name={field('responseFormat')}
             label="Response format"
@@ -679,7 +695,7 @@ export default function RESTOperationEditor({
               hint={
                 operation.method === 'GET'
                   ? 'GET requests cannot have a body. Clear any existing body before saving.'
-                  : 'An inline JSON Schema adds a required “body” argument.'
+                  : 'Object properties become top-level tool arguments. A root array uses one named argument.'
               }
             >
               <textarea

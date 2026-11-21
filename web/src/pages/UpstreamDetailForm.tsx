@@ -1283,6 +1283,25 @@ export default function UpstreamDetailForm({
               description={`${rest.operations.length} operations · Define requests and preview their MCP tools`}
               defaultOpen
             >
+              {upstream && !editing && access.can('catalog.refresh') && (
+                <button
+                  className={btn}
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      try {
+                        setErr('')
+                        await api.refreshTools(upstream.slug)
+                        notify({ title: 'REST tools refreshed', description: upstream.name })
+                      } catch (error) {
+                        setErr(errMsg(error))
+                      }
+                    })
+                  }
+                >
+                  Refresh Tools
+                </button>
+              )}
               <RESTUpstreamEditor
                 value={rest}
                 onChange={

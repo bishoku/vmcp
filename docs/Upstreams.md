@@ -119,8 +119,8 @@ MCP POST does not imply a successful tool call; inspect its JSON-RPC result/erro
   redirects or fallback URLs are supported.
 - Named path/query parameters have scalar JSON schemas (`string`, `integer`, `number`,
   `boolean`). Path parameters are always required. Values are validated and URL encoded.
-- An optional request-body schema adds a required tool argument named `body` and sends
-  it as JSON. GET bodies are unsupported. Other input fields are rejected.
+- An object request-body schema contributes its top-level properties to the tool arguments.
+  An array uses one named argument for the entire HTTP body. GET bodies are unsupported.
 - Responses are limited to 1 MiB. By default they use JSON (204 maps to `null`) and must match any configured
   response schema. Operations can also return [plain text](#plain-text-rest-responses). Optional response-field selection keeps declared object fields, including nested fields and array item properties.
   MCP output is an object `{ "result": ... }`, returned as structured content and JSON text.
@@ -181,8 +181,9 @@ confirmation because the operation may change service data. Administrative tests
 impersonate an agent; identity-required operations must be tested through an authenticated
 MCP client. Both endpoints accept `{ "operation": "lookup", "arguments": { "id": "42" } }`.
 
-REST endpoints are never automatically contacted by discovery or health probes. MCP
-connection-test/refresh endpoints reject REST upstreams. The recorded health indicator
+**Refresh Tools** regenerates the REST catalog from the saved operations and updates
+existing virtual tool selections. It requires catalog refresh permission and performs
+no network request. REST endpoints are never automatically contacted by discovery or health probes. The recorded health indicator
 therefore does not imply REST availability. Runtime calls use the common circuit breaker,
 metrics and audit pipeline.
 
@@ -263,7 +264,7 @@ and success responses without JSON content (except 204). JSON bodies use
 `application/json`. Only explicit 2xx statuses are imported; `default` and range
 responses alone require manual configuration. Multiple success schemas become an
 `anyOf`. Optional request bodies receive an explicit warning because this REST
-adapter exposes its body argument as required. OpenAPI 3.0 nullable types and boolean
+adapter sends a JSON body on every call. OpenAPI 3.0 nullable types and boolean
 exclusive bounds are converted to inline JSON Schema; advanced reference siblings,
 schema identifiers and discriminators require manual review.
 
@@ -305,37 +306,33 @@ still requires administrator access and explicit confirmation.
 
 ### Diagnose REST request-body mapping
 
-The request-body schema describes the **HTTP body**, not the complete MCP
-arguments object. The tool exposes that schema under a required `body` argument.
-For example, if the order service expects this JSON:
+For an object body, each top-level JSON property is a tool argument alongside the
+path and query parameters. For example, an agent can call an order update with:
+
+```json
+{"name":"orders__update","arguments":{"id":"ORD-42","notify":false,"order":{"items":[{"productId":"SKU-1","quantity":2}]}}}
+```
+
+With `id` in the path and `notify` in the query, vMCP sends
+`PUT /orders/ORD-42?notify=false` and the following JSON body:
 
 ```json
 {"order":{"items":[{"productId":"SKU-1","quantity":2}]}}
 ```
 
-the MCP call uses:
+Only the top level is flattened. Nested objects, arrays, nulls, numeric
+precision and field names are preserved. Additional fields follow the body
+schema. A property literally named `body` is an ordinary field. When all body
+properties are optional, omitting them sends `{}`. Path and query names,
+including fixed parameters, must be distinct from body fields.
 
-```json
-{
-  "name": "orders__create_order",
-  "arguments": {
-    "body": {"order":{"items":[{"productId":"SKU-1","quantity":2}]}}
-  }
-}
-```
-
-Use the actual exposed tool name from `tools/list`. vMCP validates the arguments,
-takes `arguments.body`, and JSON-encodes that value as the HTTP request body.
-It does not send the outer `body` wrapper, flatten nested objects, rename keys,
-convert strings into numbers, or insert schema defaults. Objects, arrays, null,
-false, zero, and empty arrays retain their JSON types. If the service expects
-`{"items":[...]}` instead, omit the `order` level from both the example schema
-and `arguments.body`. A body that is itself an array is also supported.
-
-Path and query parameters are separate top-level MCP arguments. For example,
-`{"id":"ORD-42","notify":false,"body":{"order":{"items":[]}}}` can become
-`PUT /orders/ORD-42?notify=false` with only `{"order":{"items":[]}}` in the body.
-Path/query parameters support scalar types; JSON body fields support nested types.
+For a root array, set **Array argument name** under **Request & response schemas**
+(default `body`). For example, naming it `items` maps `{"items":[1,2]}` to HTTP
+body `[1,2]`. Scalar bodies use the required argument `body`. Declare the root
+type explicitly. Scalar unions are supported. When an object body has path or
+query parameters, put complex constraints on its properties. Whole-object
+constraints that cannot be applied to the combined tool arguments are rejected
+when configuring the operation.
 
 Virtual-server **PII argument masking** is a separate step before REST validation
 and dispatch: when enabled, it intentionally replaces matching argument values.
@@ -345,7 +342,7 @@ changes recorded evidence and does not change the request sent upstream.
 
 | Observation | Interpretation |
 | --- | --- |
-| `arguments do not match the operation input schema` | Rejected before HTTP dispatch. Check the required `body` wrapper, exact field names, types, and nested `required` constraints against `tools/list`. The current message does not identify the failing field. |
+| `arguments do not match the operation input schema` | Rejected before HTTP dispatch. Check exact field names, types, and nested `required` constraints against `tools/list`. The current message does not identify the failing field. |
 | `REST service returned HTTP 400/422` | The request reached the service, which rejected it. Example-inferred fields are optional until marked required; missing business fields can pass the gateway's schema. |
 | `REST service returned HTTP 201` | The endpoint responded with 201, but the configured success-status list excluded it. An empty list accepts all 2xx responses. The operation may already have succeeded. |
 | `REST response does not match the configured schema` | The request was sent; response validation failed. Configure the schema for the raw service response, not the MCP result envelope. A 204 response is validated as null. |
@@ -397,14 +394,14 @@ In the web UI:
 4. Apply the operation and save the upstream. The publication panel shows
    **pending**, **active**, **unavailable**, or **disabled**. Wait for active before
    testing. Admins can choose **Apply mock definitions now** with version checking.
-5. Bind the configured tools to a virtual server as usual. REST input `body` and
-   output `result` envelopes, headers/caller context, defaults, output projection,
+5. Bind the configured tools to a virtual server as usual. REST argument mapping and
+   the output `result` envelope, headers/caller context, defaults, output projection,
    authentication, audit capture, and timeouts keep their existing behavior.
 
 The visual condition builder supports equals, contains, regex, present and absent
 (header/query) matches. Conditions are ANDed. Body fields come from the request
 schema, including nested objects and array items; paths address the actual REST
-body, without the MCP `body` wrapper. For an array field, choose **Any array item
+body. For an array field, choose **Any array item
 equals**. The builder generates a JSONPath filter such as
 `$.order.items[?(@.productId == "SKU-42")]`. Plain input is treated as text;
 JSON numbers, booleans and null are typed values (quote numeric text to keep it

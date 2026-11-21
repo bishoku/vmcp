@@ -33,9 +33,25 @@ export function restToolPreview(operation: RESTOperation) {
         (parameter.required || (parameter.in === 'path' && !parameter.pathMode)),
     )
     .map((parameter) => parameter.name)
-  if (operation.bodySchema !== undefined) {
-    properties.body = operation.bodySchema as Record<string, unknown>
-    required.push('body')
+  const body = schemaObject(operation.bodySchema)
+  const flat = body.type === 'object'
+  const hidden = operation.parameters.filter((p) => p.exposeToMcp === false).map((p) => p.name)
+  const bodyArgument = operation.bodyArgumentName || 'body'
+  const bodyFields = flat
+    ? schemaObject(body.properties)
+    : operation.bodySchema === undefined
+      ? {}
+      : { [bodyArgument]: operation.bodySchema }
+  if (flat && Array.isArray(body.required))
+    required.push(...body.required.filter((key): key is string => typeof key === 'string'))
+  if (!flat && operation.bodySchema !== undefined) required.push(bodyArgument)
+  const inputSchema = {
+    ...(flat ? body : {}),
+    type: 'object',
+    properties: { ...properties, ...bodyFields },
+    required,
+    ...(!flat && { additionalProperties: false }),
+    ...(flat && hidden.length ? { propertyNames: { not: { enum: hidden } } } : {}),
   }
   let result: unknown =
     operation.responseFormat === 'text' ? { type: 'string' } : (operation.responseSchema ?? {})
@@ -50,7 +66,7 @@ export function restToolPreview(operation: RESTOperation) {
   return {
     name: operation.name,
     description: operation.description,
-    inputSchema: { type: 'object', properties, required, additionalProperties: false },
+    inputSchema,
     outputSchema: {
       type: 'object',
       properties: { result },

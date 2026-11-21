@@ -185,3 +185,23 @@ func (t *Tx) putUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 	result, err = t.GetUpstream(ctx, slug)
 	return result, outcome, err
 }
+
+// RefreshRESTTools serializes regeneration with edits to the same upstream.
+func (t *Tx) RefreshRESTTools(ctx context.Context, slug string, now time.Time) (*RefreshResult, error) {
+	current, err := t.getUpstream(ctx, slug, true)
+	if err != nil {
+		return nil, err
+	}
+	if current.Kind != "rest" || current.rest == nil {
+		return nil, apierror.Validation([]apierror.FieldError{vf("/rest", "expected a saved REST upstream")})
+	}
+	compiled, err := restapi.Compile(current.URL, *current.rest, current.headers)
+	if err != nil {
+		return nil, apierror.Validation([]apierror.FieldError{vf("/rest", err.Error())})
+	}
+	result, err := t.ReplaceTools(ctx, slug, compiled.Tools, now)
+	if err != nil {
+		return nil, err
+	}
+	return result, t.SetRefreshStatus(ctx, slug, now, nil)
+}

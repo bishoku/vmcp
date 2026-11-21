@@ -68,8 +68,7 @@ func TestVisualEditorMatchersAgainstWireMock(t *testing.T) {
 	for _, fixture := range fixtures {
 		for i, tc := range fixture.Cases {
 			t.Run(fmt.Sprintf("%s/%d", fixture.Name, i), func(t *testing.T) {
-				args := raw(`{"body":` + string(tc.Body) + `}`)
-				result, err := compiled.Execute(ctx, base, fixture.Name, args, nil, tlsconf.Settings{}, restapi.Identity{}, nil)
+				result, err := compiled.Execute(ctx, base, fixture.Name, tc.Body, nil, tlsconf.Settings{}, restapi.Identity{}, nil)
 				if err != nil || !strings.Contains(string(result), fmt.Sprintf(`"matched":%t`, tc.Matched)) {
 					t.Fatalf("matched=%t: %s (%v)", tc.Matched, result, err)
 				}
