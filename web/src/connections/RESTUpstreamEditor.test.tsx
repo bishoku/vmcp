@@ -62,7 +62,9 @@ function edit() {
   return within(operation())
 }
 async function apply() {
-  fireEvent.click(within(operation()).getByRole('button', { name: 'Apply operation' }))
+  fireEvent.click(
+    within(operation()).getByRole('button', { name: 'Apply operation to upstream draft' }),
+  )
   await waitFor(() =>
     expect(screen.queryByRole('dialog', { name: 'Edit REST operation' })).toBeNull(),
   )
@@ -128,7 +130,10 @@ test('invalid advanced schema blocks Apply without changing the upstream draft',
   const editor = edit()
   fireEvent.click(editor.getByRole('button', { name: 'Advanced settings' }))
   fireEvent.change(editor.getByLabelText('Response schema'), { target: { value: '{' } })
-  expect(editor.getByRole('button', { name: 'Apply operation' })).toHaveProperty('disabled', true)
+  expect(editor.getByRole('button', { name: 'Apply operation to upstream draft' })).toHaveProperty(
+    'disabled',
+    true,
+  )
   expect(
     JSON.parse(screen.getByTestId('rest-draft').textContent!).operations[0].responseSchema,
   ).toBeUndefined()
@@ -249,7 +254,7 @@ test('combined request schema size is checked before the upstream draft is chang
       ),
     },
   })
-  fireEvent.click(editor.getByRole('button', { name: 'Apply operation' }))
+  fireEvent.click(editor.getByRole('button', { name: 'Apply operation to upstream draft' }))
   await editor.findByText(
     'Combined request: Schema exceeds 64 KiB. Remove unused fields or split this operation.',
   )
@@ -298,7 +303,10 @@ test('numeric default editing retains decimal keystrokes and rejects invalid tex
   fireEvent.change(input, { target: { value: '1.5' } })
   expect(input).toHaveProperty('value', '1.5')
   fireEvent.change(input, { target: { value: '-' } })
-  expect(editor.getByRole('button', { name: 'Apply operation' })).toHaveProperty('disabled', true)
+  expect(editor.getByRole('button', { name: 'Apply operation to upstream draft' })).toHaveProperty(
+    'disabled',
+    true,
+  )
   fireEvent.change(input, { target: { value: '-0.5' } })
   await apply()
   expect(
@@ -381,7 +389,7 @@ test('validation failure keeps the operation modal and original draft for retry'
   render(<Draft />)
   const editor = edit()
   fireEvent.change(editor.getByLabelText('Operation path'), { target: { value: '/orders/{id}' } })
-  fireEvent.click(editor.getByRole('button', { name: 'Apply operation' }))
+  fireEvent.click(editor.getByRole('button', { name: 'Apply operation to upstream draft' }))
   await editor.findByText(/Retry validation.*Offline/)
   expect(JSON.parse(screen.getByTestId('rest-draft').textContent!).operations[0].path).toBe(
     '/orders',
@@ -398,7 +406,7 @@ test('optional repository-relative path survives applying and reopening the oper
   const editor = edit()
   fireEvent.change(editor.getByLabelText('Operation path'), { target: { value: '/browse/{path}' } })
   fireEvent.click(editor.getByRole('button', { name: 'Parameters (1)' }))
-  fireEvent.click(editor.getByLabelText('Parameter 1 repository-relative path'))
+  fireEvent.change(editor.getByLabelText('Path mode for path'), { target: { value: 'relative' } })
   fireEvent.click(editor.getByLabelText('Parameter 1 required'))
   const schema = JSON.parse(editor.getByLabelText('MCP tool definition').textContent!).inputSchema
   expect(schema.required).toEqual([])
@@ -406,10 +414,7 @@ test('optional repository-relative path survives applying and reopening the oper
   await apply()
   const reopened = edit()
   fireEvent.click(reopened.getByRole('button', { name: 'Parameters (1)' }))
-  expect(reopened.getByLabelText('Parameter 1 repository-relative path')).toHaveProperty(
-    'checked',
-    true,
-  )
+  expect(reopened.getByLabelText('Path mode for path')).toHaveProperty('value', 'relative')
   expect(reopened.getByLabelText('Parameter 1 required')).toHaveProperty('checked', false)
 })
 
@@ -423,4 +428,37 @@ test('plain text format survives Apply and advertises one string result', async 
   expect(editor.queryByRole('button', { name: 'Edit response schema' })).toBeNull()
   await apply()
   expect(edit().getByLabelText('Response format')).toHaveProperty('value', 'text')
+})
+
+test('creates a POST with a JSON body and a text response and reopens its definition', async () => {
+  render(<Draft />)
+  fireEvent.click(screen.getByRole('button', { name: 'Add operation' }))
+  const editor = within(operation())
+  fireEvent.change(editor.getByLabelText('HTTP method'), { target: { value: 'POST' } })
+  fireEvent.change(editor.getByLabelText('Operation path'), { target: { value: '/report/{id}' } })
+  fireEvent.change(editor.getByLabelText('Tool name'), { target: { value: 'report' } })
+  fireEvent.change(editor.getByLabelText('Tool description'), { target: { value: 'Run report' } })
+  fireEvent.click(editor.getByRole('button', { name: 'Edit path parameter id' }))
+  fireEvent.change(editor.getByLabelText('Parameter 1 description'), {
+    target: { value: 'Report ID' },
+  })
+  fireEvent.click(editor.getByRole('button', { name: 'Request & response schemas' }))
+  fireEvent.click(editor.getByRole('button', { name: 'Edit request body schema' }))
+  const body = within(screen.getByRole('dialog', { name: 'Request body schema' }))
+  fireEvent.change(body.getByLabelText('Request body example JSON'), {
+    target: { value: '{"count":1}' },
+  })
+  fireEvent.click(body.getByRole('button', { name: 'Generate request body schema' }))
+  fireEvent.click(await body.findByRole('button', { name: 'Apply schema' }))
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog', { name: 'Request body schema' })).toBeNull(),
+  )
+  fireEvent.change(editor.getByLabelText('Response format'), { target: { value: 'text' } })
+  await apply()
+  fireEvent.click(screen.getByRole('button', { name: 'Edit operation report' }))
+  const reopened = within(operation())
+  const tool = JSON.parse(reopened.getByLabelText('MCP tool definition').textContent!)
+  expect(tool.inputSchema.required).toContain('body')
+  expect(tool.inputSchema.properties.body.properties).toHaveProperty('count')
+  expect(tool.outputSchema.properties.result).toEqual({ type: 'string' })
 })

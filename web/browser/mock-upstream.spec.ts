@@ -82,7 +82,7 @@ for (const width of [390, 1440])
     await operation.getByLabel('Response delay', { exact: true }).fill('25')
     await operation.getByRole('button', { name: 'Add response header', exact: true }).click()
     await expect(
-      operation.getByRole('button', { name: 'Apply operation', exact: true }),
+      operation.getByRole('button', { name: 'Apply operation to upstream draft', exact: true }),
     ).toBeDisabled()
     await operation.getByLabel('Response header 1 name', { exact: true }).fill('X-Mock')
     await operation.getByLabel('Response header 1 value', { exact: true }).fill('yes')
@@ -93,11 +93,11 @@ for (const width of [390, 1440])
     await operation.getByLabel('Condition operator', { exact: true }).selectOption('anyEqualTo')
     await operation.getByLabel('Condition value', { exact: true }).fill('SKU-42')
     await expect(
-      operation.getByRole('button', { name: 'Apply operation', exact: true }),
+      operation.getByRole('button', { name: 'Apply operation to upstream draft', exact: true }),
     ).toBeDisabled()
     await operation.getByRole('button', { name: 'Add condition', exact: true }).click()
     await expect(
-      operation.getByRole('button', { name: 'Apply operation', exact: true }),
+      operation.getByRole('button', { name: 'Apply operation to upstream draft', exact: true }),
     ).toBeEnabled()
     await operation.getByLabel('Response body', { exact: true }).fill('[')
     await expect(
@@ -140,7 +140,7 @@ for (const width of [390, 1440])
       .getByLabel('Mock response rules JSON', { exact: true })
       .fill(JSON.stringify([{ ...rules[0], request: { urlPattern: '.*' } }]))
     await expect(
-      operation.getByRole('button', { name: 'Apply operation', exact: true }),
+      operation.getByRole('button', { name: 'Apply operation to upstream draft', exact: true }),
     ).toBeDisabled()
     await operation
       .getByLabel('Mock response rules JSON', { exact: true })
@@ -148,7 +148,9 @@ for (const width of [390, 1440])
     await page.screenshot({ path: test.info().outputPath(`mock-rules-${width}.png`) })
     expect(await operation.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
     expect(writes).toHaveLength(0)
-    await operation.getByRole('button', { name: 'Apply operation', exact: true }).click()
+    await operation
+      .getByRole('button', { name: 'Apply operation to upstream draft', exact: true })
+      .click()
     await expect(operation).not.toBeVisible()
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect.poll(() => writes.length).toBe(1)

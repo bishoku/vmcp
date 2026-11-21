@@ -1,12 +1,13 @@
 import { ToolInvocationPolicy } from '../invocation/UpstreamSecurity'
 import { useConfigurationPermissions } from '../configuration-access'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { parameterValueError, hasParameterDefault } from './rest-parameters'
 import { checkSchemas, schemaLimitError } from './schema-validation'
 import { responseSelectionError, restToolPreview } from './rest-tool-preview'
 import { inferSchema, mergeExample, objectSchema } from './schema-editor'
 import RESTDefinitionTransfer from './RESTDefinitionTransfer'
 import RESTImportDialog from './RESTImportDialog'
+import RESTOperationDetails, { formatLabel, inputCounts } from './RESTOperationDetails'
 import RESTOperationEditor from './RESTOperationEditor'
 import QuickMockOperation from './QuickMockOperation'
 import MockUpstreamStatus from './MockUpstreamStatus'
@@ -62,6 +63,17 @@ export default function RESTUpstreamEditor({
     onInvalidChange?.(!!draft || importing || quick)
     return () => onInvalidChange?.(false)
   }, [draft, importing, quick, onInvalidChange])
+  const changedNames = useMemo(() => {
+    const savedOperations = new Map(upstream?.rest?.operations.map((op) => [op.name, op]))
+    const names = new Set<string>()
+    for (const op of value.operations) {
+      const saved = savedOperations.get(op.name)
+      if (saved !== op && JSON.stringify(saved) !== JSON.stringify(op)) names.add(op.name)
+      savedOperations.delete(op.name)
+    }
+    for (const name of savedOperations.keys()) names.add(name)
+    return names
+  }, [value.operations, upstream?.rest?.operations])
   const openOperation = (index: number | null, operation: RESTOperation) => {
     setDraftIndex(index)
     setDraft(structuredClone(operation))
@@ -270,18 +282,21 @@ export default function RESTUpstreamEditor({
                       {op.method} {op.path}
                     </span>
                     <span className="block text-xs text-ink-muted">
-                      {op.description} · {op.parameters.length} parameters
+                      {op.description} · {inputCounts(op)} · {formatLabel(op)}
                       {op.bodySchema !== undefined ? ' · JSON body' : ''}
                     </span>
                   </button>
                   <span className="text-xs text-ink-muted">
+                    {onChange && changedNames.has(op.name) && (
+                      <strong className="block">Unsaved change</strong>
+                    )}
                     {op.enabled ? 'In catalog' : 'Disabled by configuration'}
                     {value.mock ? ` · ${op.mockRules?.length ?? 0} responses` : ''}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button className={btn} onClick={() => setPreview(op)}>
-                    Preview {op.name}
+                    Details {op.name}
                   </button>
                   {onChange && (
                     <button className={btn} onClick={() => openOperation(i, op)}>
@@ -331,13 +346,10 @@ export default function RESTUpstreamEditor({
         </section>
         {preview && (
           <Modal
-            title={`Preview REST operation · ${preview.name}`}
+            title={`REST operation details · ${preview.name}`}
             onClose={() => setPreview(null)}
           >
-            <p className="font-mono">
-              {preview.method} {preview.path}
-            </p>
-            <RESTToolPreview operation={preview} />
+            <RESTOperationDetails operation={preview} />
           </Modal>
         )}
       </div>
@@ -398,7 +410,7 @@ export default function RESTUpstreamEditor({
                   disabled={invalid || checking}
                   onClick={() => void apply()}
                 >
-                  {checking ? 'Checking…' : 'Apply operation'}
+                  {checking ? 'Checking…' : 'Apply operation to upstream draft'}
                 </button>
               )}
             </div>
@@ -453,6 +465,7 @@ export default function RESTUpstreamEditor({
                 }
               : undefined
           }
+          changedNames={changedNames}
           draftNames={value.operations
             .filter((op) => op.responseFormat !== 'text')
             .map((op) => op.name)}
@@ -663,15 +676,19 @@ function RESTTest({
   upstream,
   onUseResponse,
   draftNames,
+  changedNames,
 }: {
   upstream: Upstream
   onUseResponse?: (name: string, value: unknown) => void
+  changedNames: Set<string>
   draftNames: string[]
 }) {
   const [operation, setOperation] = useState(
     upstream.rest?.operations.find((o) => o.enabled)?.name ?? '',
   )
   const [sample, setSample] = useState<{ operation: string; value: unknown }>()
+  const [agentResult, setAgentResult] = useState<string>()
+  const savedOperation = upstream.rest?.operations.find((op) => op.name === operation)
   const [args, setArgs] = useState('{}'),
     [result, setResult] = useState(''),
     [error, setError] = useState('')
@@ -686,6 +703,7 @@ function RESTTest({
   const perform = (action: 'preview' | 'test') =>
     run(async () => {
       setError('')
+      setAgentResult(undefined)
       setResult('')
       setSample(undefined)
       try {
@@ -711,6 +729,13 @@ function RESTTest({
         setResult(json(response))
         const envelope = objectSchema(response),
           structured = objectSchema(envelope.structuredContent)
+        if (action === 'test' && !envelope.isError && Object.hasOwn(structured, 'result')) {
+          setAgentResult(
+            savedOperation?.responseFormat === 'text' && typeof structured.result === 'string'
+              ? structured.result
+              : json(structured.result),
+          )
+        }
         if (envelope.isError) {
           const content = Array.isArray(envelope.content) ? envelope.content : []
           const message = content
@@ -740,10 +765,13 @@ function RESTTest({
       <div className="panel-body layout-stack">
         <FormField name="rest.test.operation" label="Operation">
           <Select
+            disabled={busy}
             className={input}
             value={operation}
             onChange={(e) => {
               setOperation(e.target.value)
+              setError('')
+              setAgentResult(undefined)
               setResult('')
               setSample(undefined)
             }}
@@ -755,6 +783,12 @@ function RESTTest({
               ))}
           </Select>
         </FormField>
+        {savedOperation && (
+          <p role="status" className="text-sm">
+            {changedNames.has(operation) && 'This operation has unsaved changes. '}Preview and test
+            use the saved {formatLabel(savedOperation)} operation.
+          </p>
+        )}
         <FormField name="rest.test.arguments" label="Tool arguments (JSON)">
           <textarea
             className={`${input} font-mono`}
@@ -809,14 +843,36 @@ function RESTTest({
           </>
         )}
         {error && <ErrorBox>{error}</ErrorBox>}
-        {result && (
-          <pre
-            className="surface-inset whitespace-pre-wrap break-all p-3 text-xs"
-            aria-label="REST operation result"
-          >
-            {result}
-          </pre>
+        {agentResult !== undefined && (
+          <section>
+            <h3>Agent result</h3>
+            <pre
+              aria-label="Agent result"
+              className="surface-inset whitespace-pre-wrap break-all p-3 text-xs"
+            >
+              {agentResult}
+            </pre>
+          </section>
         )}
+        {result &&
+          (agentResult !== undefined || error ? (
+            <details>
+              <summary>Full MCP response</summary>
+              <pre
+                className="surface-inset whitespace-pre-wrap break-all p-3 text-xs"
+                aria-label="REST operation result"
+              >
+                {result}
+              </pre>
+            </details>
+          ) : (
+            <pre
+              className="surface-inset whitespace-pre-wrap break-all p-3 text-xs"
+              aria-label="REST operation result"
+            >
+              {result}
+            </pre>
+          ))}
       </div>
     </ServerPanel>
   )
