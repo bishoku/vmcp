@@ -140,7 +140,7 @@ export default function RESTUpstreamEditor({
     setChecking(true)
     try {
       for (const parameter of draft.parameters) {
-        const issue = parameterValueError(parameter)
+        const issue = parameterValueError(parameter, draft.path)
         if (issue) problems.push(`Parameter ${parameter.name}: ${issue}`)
       }
       if (!problems.length)

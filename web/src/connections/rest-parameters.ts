@@ -18,7 +18,15 @@ export function parseParameterDefault(text: string, type: unknown): string | num
     ? value
     : text
 }
-export function parameterValueError(parameter: RESTParameter): string {
+export function parameterValueError(parameter: RESTParameter, path?: string): string {
+  if (
+    parameter.pathMode !== undefined &&
+    (parameter.pathMode !== 'relative' ||
+      parameter.in !== 'path' ||
+      parameter.schema.type !== 'string' ||
+      (path !== undefined && !path.endsWith('/{' + parameter.name + '}')))
+  )
+    return 'Relative path mode requires a final string path parameter.'
   if (parameter.exposeToMcp !== undefined && typeof parameter.exposeToMcp !== 'boolean')
     return 'Expose to MCP must be a boolean.'
   if (parameter.exposeToMcp === false && !hasParameterDefault(parameter))
@@ -36,6 +44,17 @@ export function parameterValueError(parameter: RESTParameter): string {
           Number.isFinite(value) &&
           (type !== 'integer' || Number.isInteger(value))
   if (!valid) return 'The configured value must match the parameter type; null is not supported.'
+  if (parameter.pathMode === 'relative') {
+    const invalid = String(value)
+      .split('/')
+      .some(
+        (segment) =>
+          !segment || segment === '.' || segment === '..' || /[\\%\p{Cc}]/u.test(segment),
+      )
+    return invalid
+      ? 'Use a repository-relative path with valid segments, for example src/main.'
+      : ''
+  }
   if (
     parameter.in === 'path' &&
     (value === '.' ||

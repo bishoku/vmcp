@@ -36,6 +36,7 @@ type Auth struct {
 	HasClientSecret bool     `json:"hasClientSecret,omitempty"`
 }
 type Parameter struct {
+	PathMode     string          `json:"pathMode,omitempty"`
 	Name         string          `json:"name"`
 	In           string          `json:"in"`
 	Required     bool            `json:"required"`
@@ -321,6 +322,13 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 				return nil, errors.New("path/query parameters must have scalar types")
 			}
 
+			if p.PathMode != "" {
+				if p.PathMode != "relative" || p.In != "path" || typ != "string" || !strings.HasSuffix(op.Path, "/{"+p.Name+"}") {
+					return nil, fmt.Errorf("%s parameter %s: relative path mode requires a final string path segment", op.Name, p.Name)
+				}
+				description, _ := schema["description"].(string)
+				schema["description"] = strings.TrimSpace(description + " Repository-relative path without a leading slash, for example src/main.")
+			}
 			hasDefault := len(p.DefaultValue) > 0
 			exposed := p.ExposeToMCP == nil || *p.ExposeToMCP
 			if !exposed && !hasDefault {
@@ -338,8 +346,10 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 				if err := validator.Validate(value); err != nil {
 					return nil, fmt.Errorf("%s parameter %s: default value does not match parameter schema", op.Name, p.Name)
 				}
-				if p.In == "path" && unsafePathValue(fmt.Sprint(value)) {
-					return nil, fmt.Errorf("%s parameter %s: unsafe default path value", op.Name, p.Name)
+				if p.In == "path" {
+					if _, err := p.escapePath(fmt.Sprint(value)); err != nil {
+						return nil, fmt.Errorf("%s parameter %s: unsafe default path value: %w", op.Name, p.Name, err)
+					}
 				}
 				defaults[p.Name] = value
 				// This annotation describes the runtime fallback; schema.default alone
@@ -348,7 +358,7 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 			}
 			if exposed {
 				properties[p.Name] = schema
-				if !hasDefault && (p.Required || p.In == "path") {
+				if !hasDefault && (p.Required || (p.In == "path" && p.PathMode == "")) {
 					required = append(required, p.Name)
 				}
 			}

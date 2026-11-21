@@ -8,6 +8,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/bishoku/vmcp/core/internal/restapi"
+	"github.com/bishoku/vmcp/core/internal/store"
 )
 
 func TestRESTLifecycleSecretsAndExplicitExecution(t *testing.T) {
@@ -144,4 +147,42 @@ func TestRESTParameterValueConfigurationRoundtrip(t *testing.T) {
 	parameters[0].(map[string]any)["defaultValue"] = 3
 	a.expect(422, "PATCH", "/api/v1/upstreams/defaults", map[string]any{"rest": rest})
 	check(2)
+}
+
+func TestRelativePathSnapshotMatchesManagementPreview(t *testing.T) {
+	a := setup(t)
+	cfg := restapi.Config{Auth: restapi.Auth{Type: "none"}, TimeoutSeconds: 30, Operations: []restapi.Operation{{Name: "browse", Enabled: true, Method: "GET", Path: "/browse/{path}", Parameters: []restapi.Parameter{{Name: "path", In: "path", PathMode: "relative", Schema: json.RawMessage(`{"type":"string"}`)}}}}}
+	const base = "https://example.com"
+	a.expect(201, "POST", "/api/v1/upstreams", map[string]any{"slug": "bitbucket", "name": "Bitbucket", "kind": "rest", "url": base, "rest": cfg})
+	_, saved := a.expect(200, "GET", "/api/v1/upstreams/bitbucket", nil)
+	raw, _ := json.Marshal(saved["rest"])
+	var read restapi.Config
+	if err := json.Unmarshal(raw, &read); err != nil || read.Operations[0].Parameters[0].PathMode != "relative" {
+		t.Fatal(string(raw), err)
+	}
+	snap, err := store.LoadSnapshot(context.Background(), a.pool, a.control.Store.Box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runtime *restapi.Compiled
+	for _, u := range snap.Upstreams {
+		if u.Slug == "bitbucket" {
+			runtime = u.REST
+		}
+	}
+	if runtime == nil {
+		t.Fatal("bitbucket REST upstream missing from snapshot")
+	}
+	for _, path := range []string{"", "src/main"} {
+		args := map[string]string{}
+		if path != "" {
+			args["path"] = path
+		}
+		_, preview := a.expect(200, "POST", "/api/v1/upstreams/bitbucket/rest/preview", map[string]any{"operation": "browse", "arguments": args})
+		raw, _ := json.Marshal(args)
+		request, err := runtime.Build(base, "browse", raw, nil, restapi.Identity{})
+		if err != nil || request.URL.String() != preview["url"] {
+			t.Fatal(preview, request, err)
+		}
+	}
 }

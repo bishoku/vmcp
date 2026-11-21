@@ -12,15 +12,25 @@ export function restToolPreview(operation: RESTOperation) {
   const properties = Object.fromEntries(
     exposed.map((parameter) => [
       parameter.name,
-      parameter.defaultValue === undefined
-        ? parameter.schema
-        : { ...parameter.schema, default: parameter.defaultValue },
+      {
+        ...parameter.schema,
+        ...(parameter.pathMode === 'relative'
+          ? {
+              description: (
+                (parameter.schema.description ?? '') +
+                ' Repository-relative path without a leading slash, for example src/main.'
+              ).trim(),
+            }
+          : {}),
+        ...(parameter.defaultValue === undefined ? {} : { default: parameter.defaultValue }),
+      },
     ]),
   )
   const required = exposed
     .filter(
       (parameter) =>
-        parameter.defaultValue === undefined && (parameter.required || parameter.in === 'path'),
+        parameter.defaultValue === undefined &&
+        (parameter.required || (parameter.in === 'path' && !parameter.pathMode)),
     )
     .map((parameter) => parameter.name)
   if (operation.bodySchema !== undefined) {

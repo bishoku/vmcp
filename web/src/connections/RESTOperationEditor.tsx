@@ -53,7 +53,7 @@ export default function RESTOperationEditor({
     [],
   )
   const invalid =
-    operation.parameters.some((parameter) => !!parameterValueError(parameter)) ||
+    operation.parameters.some((parameter) => !!parameterValueError(parameter, operation.path)) ||
     Object.values(errors).some(Boolean) ||
     !!responseSelectionError(
       operation.responseSchema,
@@ -352,10 +352,29 @@ export default function RESTOperationEditor({
                       })
                     }
                   />
+                  {(value.pathMode ||
+                    (value.in === 'path' &&
+                      value.schema.type === 'string' &&
+                      operation.path.endsWith('/{' + value.name + '}'))) && (
+                    <Switch
+                      label={`Parameter ${position + 1} repository-relative path`}
+                      checked={value.pathMode === 'relative'}
+                      onChange={(event) =>
+                        parameter(position, {
+                          pathMode: event.target.checked ? 'relative' : undefined,
+                        })
+                      }
+                    />
+                  )}
                   <Switch
                     label={`Parameter ${position + 1} required`}
-                    disabled={value.in === 'path' || hasParameterDefault(value)}
-                    checked={!hasParameterDefault(value) && (value.in === 'path' || value.required)}
+                    disabled={
+                      (value.in === 'path' && !value.pathMode) || hasParameterDefault(value)
+                    }
+                    checked={
+                      !hasParameterDefault(value) &&
+                      ((value.in === 'path' && !value.pathMode) || value.required)
+                    }
                     onChange={(event) => parameter(position, { required: event.target.checked })}
                   />
                   {value.in === 'query' && onChange && (
@@ -385,7 +404,7 @@ export default function RESTOperationEditor({
                   <FormField
                     name={field(`parameters.${position}.defaultValue`)}
                     label={`Parameter ${position + 1} ${value.exposeToMcp === false ? 'fixed' : 'default'} value`}
-                    error={parameterValueError(value)}
+                    error={parameterValueError(value, operation.path)}
                     hint={
                       value.exposeToMcp === false
                         ? 'Always sent to REST. Hidden from MCP; callers cannot override it.'
@@ -420,9 +439,9 @@ export default function RESTOperationEditor({
                     )}
                   </FormField>
                 )}
-                {!hasParameterDefault(value) && parameterValueError(value) && (
+                {!hasParameterDefault(value) && parameterValueError(value, operation.path) && (
                   <p role="alert" className="text-xs text-red-700">
-                    {parameterValueError(value)}
+                    {parameterValueError(value, operation.path)}
                   </p>
                 )}
                 {Object.keys(value.schema).some(
