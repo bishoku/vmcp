@@ -13,6 +13,7 @@ function portable(op: RESTOperation) {
     path,
     parameters,
     bodySchema,
+    responseFormat,
     responseSchema,
     responseFields,
     responseFieldPaths,
@@ -27,6 +28,7 @@ function portable(op: RESTOperation) {
     path,
     parameters,
     bodySchema,
+    responseFormat,
     responseSchema,
     responseFields,
     responseFieldPaths,
@@ -66,6 +68,11 @@ function readOperations(source: string): RESTOperation[] {
           p.schema &&
           typeof p.schema === 'object',
       ) ||
+      (op.responseFormat !== undefined && !['json', 'text'].includes(op.responseFormat)) ||
+      (op.responseFormat === 'text' &&
+        (op.responseSchema !== undefined ||
+          op.responseFields?.length ||
+          op.responseFieldPaths?.length)) ||
       (op.responseFields !== undefined && !strings(op.responseFields)) ||
       (op.responseFieldPaths !== undefined &&
         !(Array.isArray(op.responseFieldPaths) && op.responseFieldPaths.every(strings))) ||

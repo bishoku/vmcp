@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "vMCP Control Plane API",
-    "version": "2.3.2",
+    "version": "2.3.3",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -10334,6 +10334,15 @@
           },
           "bodySchema": {
             "description": "Optional inline JSON Schema. Adds required body argument; forbidden for GET."
+          },
+          "responseFormat": {
+            "type": "string",
+            "enum": [
+              "json",
+              "text"
+            ],
+            "default": "json",
+            "description": "Selects the Accept header and successful response decoding for this operation. Text returns a UTF-8 string in result, including an empty string for HTTP 204. JSON response schemas and field selections apply only in JSON mode."
           },
           "responseSchema": {
             "description": "Optional inline JSON Schema validated before response field projection. No schema references supported."

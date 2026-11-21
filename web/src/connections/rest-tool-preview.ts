@@ -37,7 +37,8 @@ export function restToolPreview(operation: RESTOperation) {
     properties.body = operation.bodySchema as Record<string, unknown>
     required.push('body')
   }
-  let result: unknown = operation.responseSchema ?? {}
+  let result: unknown =
+    operation.responseFormat === 'text' ? { type: 'string' } : (operation.responseSchema ?? {})
   if (operation.responseFields?.length || operation.responseFieldPaths?.length) {
     result = responseProjection(
       result,

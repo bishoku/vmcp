@@ -52,6 +52,12 @@ export default function RESTOperationEditor({
       }),
     [],
   )
+  const textResponse = operation.responseFormat === 'text'
+  const hasResponseRules =
+    operation.responseSchema !== undefined ||
+    !!operation.responseFields?.length ||
+    !!operation.responseFieldPaths?.length ||
+    !!errors.responseSchema
   const invalid =
     operation.parameters.some((parameter) => !!parameterValueError(parameter, operation.path)) ||
     Object.values(errors).some(Boolean) ||
@@ -152,6 +158,28 @@ export default function RESTOperationEditor({
       </nav>
       <fieldset disabled={!onChange} className="panel-body layout-stack min-w-0">
         <div hidden={view !== 'tool'} className="layout-stack">
+          <FormField
+            name={field('responseFormat')}
+            label="Response format"
+            hint={
+              hasResponseRules
+                ? 'Clear the JSON response schema and field selections before choosing Plain text.'
+                : 'Plain text requests text/plain and returns the UTF-8 response in result.'
+            }
+          >
+            <Select
+              className={input}
+              value={operation.responseFormat ?? 'json'}
+              onChange={(event) =>
+                set({ responseFormat: event.target.value as RESTOperation['responseFormat'] })
+              }
+            >
+              <option value="json">JSON</option>
+              <option value="text" disabled={hasResponseRules}>
+                Plain text
+              </option>
+            </Select>
+          </FormField>
           <div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
             <FormField name={field('method')} label="HTTP method">
               <Select
@@ -489,21 +517,23 @@ export default function RESTOperationEditor({
               }}
             />
           )}
-          <SchemaEditor
-            label="Response"
-            responseFields={operation.responseFields ?? []}
-            responseFieldPaths={operation.responseFieldPaths}
-            onFieldsChange={(responseFields, responseSchema, responseFieldPaths) => {
-              setResponse(json(responseSchema))
-              set({ responseFields, responseSchema, responseFieldPaths })
-            }}
-            value={operation.responseSchema}
-            disabled={!!errors.responseSchema}
-            onChange={(schema) => {
-              setResponse(json(schema))
-              set({ responseSchema: schema })
-            }}
-          />
+          {!textResponse && (
+            <SchemaEditor
+              label="Response"
+              responseFields={operation.responseFields ?? []}
+              responseFieldPaths={operation.responseFieldPaths}
+              onFieldsChange={(responseFields, responseSchema, responseFieldPaths) => {
+                setResponse(json(responseSchema))
+                set({ responseFields, responseSchema, responseFieldPaths })
+              }}
+              value={operation.responseSchema}
+              disabled={!!errors.responseSchema}
+              onChange={(schema) => {
+                setResponse(json(schema))
+                set({ responseSchema: schema })
+              }}
+            />
+          )}
         </div>
         {mockMode && (
           <div hidden={view !== 'mock'}>
@@ -585,22 +615,24 @@ export default function RESTOperationEditor({
                 }}
               />
             </FormField>
-            <FormField
-              name={field('responseSchema')}
-              label="Response schema"
-              error={errors.responseSchema}
-              hint="Optional inline JSON Schema. Existing complex schemas are preserved."
-            >
-              <textarea
-                className={`${input} font-mono text-xs`}
-                rows={5}
-                value={response}
-                onChange={(event) => {
-                  setResponse(event.target.value)
-                  parse('responseSchema', event.target.value)
-                }}
-              />
-            </FormField>
+            {!textResponse && (
+              <FormField
+                name={field('responseSchema')}
+                label="Response schema"
+                error={errors.responseSchema}
+                hint="Optional inline JSON Schema. Existing complex schemas are preserved."
+              >
+                <textarea
+                  className={`${input} font-mono text-xs`}
+                  rows={5}
+                  value={response}
+                  onChange={(event) => {
+                    setResponse(event.target.value)
+                    parse('responseSchema', event.target.value)
+                  }}
+                />
+              </FormField>
+            )}
             <FormField
               name={field('successStatuses')}
               label="Success statuses"

@@ -121,8 +121,8 @@ MCP POST does not imply a successful tool call; inspect its JSON-RPC result/erro
   `boolean`). Path parameters are always required. Values are validated and URL encoded.
 - An optional request-body schema adds a required tool argument named `body` and sends
   it as JSON. GET bodies are unsupported. Other input fields are rejected.
-- Responses must be JSON (204 maps to `null`), at most 1 MiB, and match the configured
-  response schema. Optional response-field selection keeps declared object fields, including nested fields and array item properties.
+- Responses are limited to 1 MiB. By default they use JSON (204 maps to `null`) and must match any configured
+  response schema. Operations can also return [plain text](#plain-text-rest-responses). Optional response-field selection keeps declared object fields, including nested fields and array item properties.
   MCP output is an object `{ "result": ... }`, returned as structured content and JSON text.
 - Schemas are inline JSON Schema 2020-12; schema references, multipart uploads, binary
   responses, streaming and pagination orchestration are outside this version.
@@ -786,3 +786,9 @@ normal REST calls are never automatically replayed to repair a schema mismatch.
 For Bitbucket Data Center, configure one GET operation at `/rest/api/latest/projects/{projectKey}/repos/{repositorySlug}/browse/{path}`. In **Parameters**, enable **repository-relative path** on the final string parameter and clear **required**. An agent can omit `path` for the root or pass `src/main` to list the immediate contents of that directory. Use the returned child names for subsequent calls.
 
 The API representation uses `"pathMode": "relative"` on that parameter. Send plain path segments. Leading or trailing slashes, empty or dot segments, backslashes, percent escapes and control characters are rejected. Other path parameters retain single-segment validation. An explicit default is used when the argument is omitted.
+
+### Plain text REST responses
+
+In **Edit REST operation → Request & tool → Response format**, choose **Plain text** for endpoints that return diffs, logs or other UTF-8 text. For example, set a GET operation at `/reports/{id}/diff` to `"responseFormat": "text"` and leave the operation at `/reports/{id}` as JSON on the same upstream. Clear any JSON response schema and selected response fields before switching.
+
+vMCP sends `Accept: text/plain` for the text operation and returns the full successful response in `structuredContent.result` as a single string. JSON-looking text and line endings are preserved. An empty 200 or 204 response yields an empty string. Invalid UTF-8 and responses larger than 1 MiB return a tool error. The default response format is JSON.

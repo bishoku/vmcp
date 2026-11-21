@@ -404,3 +404,82 @@ func TestRelativePathVirtualDirectoryBrowsing(t *testing.T) {
 		args[key] = old
 	}
 }
+
+func TestRESTResponseFormatsOnSameVirtualUpstream(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	const diff = "  +çağrı \"α\"\r\n-removed\r\n"
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != "GET" {
+			t.Error(r.Method)
+		}
+		if r.URL.Path == "/info" {
+			if r.Header.Get("Accept") != "application/json" {
+				t.Error(r.Header)
+			}
+			io.WriteString(w, `{"id":42}`)
+			return
+		}
+		if r.URL.Path != "/diff" || r.Header.Get("Accept") != "text/plain" {
+			t.Error(r.URL, r.Header)
+		}
+		io.WriteString(w, diff)
+	}))
+	defer srv.Close()
+	cfg := restapi.Config{Auth: restapi.Auth{Type: "none"}, AllowInsecureHTTP: true, TimeoutSeconds: 5, Operations: []restapi.Operation{
+		{Name: "info", Enabled: true, Method: "GET", Path: "/info", ResponseSchema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "diff", Enabled: true, Method: "GET", Path: "/diff", ResponseFormat: "text"},
+	}}
+	compiled, err := restapi.Compile(srv.URL, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRig(t)
+	snap := r.handler.Snap.(staticSnap).s
+	snap.Upstreams["reports"] = config.Upstream{ID: "reports", Slug: "reports", URL: srv.URL, REST: compiled}
+	vs := config.VirtualServer{Slug: "support"}
+	for _, tool := range compiled.Tools {
+		name := tool.Name
+		tool.Name = "reports__" + name
+		vs.Tools = append(vs.Tools, config.VirtualTool{UpstreamID: "reports", UpstreamName: name, Tool: tool})
+	}
+	snap.VirtualServers["support"] = vs
+	sid := r.initialize(t)
+	_, listed := r.rpc(t, "support", sid, mcp.MethodToolsList, nil)
+	var list mcp.ListToolsResult
+	if err := json.Unmarshal(listed.Result, &list); err != nil || len(list.Tools) != 2 {
+		t.Fatal(err, list)
+	}
+	types := map[string]string{"reports__diff": "string", "reports__info": "object"}
+	for _, tool := range list.Tools {
+		var schema struct {
+			Properties map[string]struct{ Type string }
+		}
+		if err := json.Unmarshal(tool.OutputSchema, &schema); err != nil || schema.Properties["result"].Type != types[tool.Name] {
+			t.Fatal(tool, err)
+		}
+	}
+	for _, name := range []string{"info", "diff", "info"} {
+		_, reply := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: "reports__" + name, Arguments: json.RawMessage(`{}`)})
+		fallback := callText(t, reply)
+		var envelope struct{ StructuredContent struct{ Result any } }
+		if err := json.Unmarshal(reply.Result, &envelope); err != nil {
+			t.Fatal(err)
+		}
+		var fromText struct{ Result any }
+		if err := json.Unmarshal([]byte(fallback), &fromText); err != nil || !reflect.DeepEqual(fromText, envelope.StructuredContent) {
+			t.Fatal(fallback, err)
+		}
+		var want any = map[string]any{"id": float64(42)}
+		if name == "diff" {
+			want = diff
+		}
+		if !reflect.DeepEqual(want, fromText.Result) {
+			t.Fatal(fromText)
+		}
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("upstream calls: %d", calls.Load())
+	}
+}

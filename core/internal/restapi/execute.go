@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
@@ -110,7 +111,11 @@ func (c *Compiled) Build(base, name string, args json.RawMessage, common map[str
 	req.Body = io.NopCloser(bytes.NewReader(body))
 	req.GetBody = nil
 	req.Header = Headers(common, op.Definition.Headers)
-	req.Header.Set("Accept", "application/json")
+	accept := "application/json"
+	if op.Definition.ResponseFormat == "text" {
+		accept = "text/plain"
+	}
+	req.Header.Set("Accept", accept)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -133,6 +138,7 @@ func (c *Compiled) Preview(base, name string, args json.RawMessage, common map[s
 	for k := range req.Header {
 		result.Headers[k] = "[configured]"
 	}
+	result.Headers["Accept"] = req.Header.Get("Accept")
 	if c.Config.Auth.Type != "none" {
 		result.Headers["Authorization"] = "[managed secret]"
 	}
@@ -170,6 +176,7 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	if startErr != nil {
 		return nil, startErr
 	}
+	op := c.Operations[name].Definition
 	var observedResponse json.RawMessage
 	var observedStatus int
 	defer func() {
@@ -179,7 +186,7 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 		content := auditResult
 		if observedStatus != 0 {
 			var body any = string(observedResponse)
-			if json.Valid(observedResponse) {
+			if op.ResponseFormat != "text" && json.Valid(observedResponse) {
 				body = observedResponse
 			}
 			content, _ = json.Marshal(map[string]any{"statusCode": observedStatus, "body": body})
@@ -225,7 +232,6 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	if resp.StatusCode == 401 && tokenSource != nil {
 		tokenSource.Invalidate(token)
 	} // Never replay an operation, including after token renewal.
-	op := c.Operations[name].Definition
 	if resp.StatusCode < 200 || resp.StatusCode > 299 || (len(op.SuccessStatuses) > 0 && !slices.Contains(op.SuccessStatuses, resp.StatusCode)) {
 		if observing {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
@@ -239,7 +245,12 @@ func (c *Compiled) Execute(ctx context.Context, base, name string, args json.Raw
 	}
 	observedResponse = raw
 	var value any
-	if resp.StatusCode != 204 {
+	if op.ResponseFormat == "text" {
+		if !utf8.Valid(raw) {
+			return failure("REST service returned invalid UTF-8 text"), nil
+		}
+		value = string(raw)
+	} else if resp.StatusCode != 204 {
 		if decodeJSON(raw, &value) != nil {
 			return failure("REST service returned invalid JSON"), nil
 		}
