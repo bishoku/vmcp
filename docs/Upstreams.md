@@ -740,7 +740,7 @@ the draft, **Cancel** discards modal edits, and **Save** persists the upstream.
 The REST operations list opens each operation in a modal. Use the operation's
 Request & tool, Parameters, Request & response schemas, and Advanced settings
 sections to work on one part at a time. Parameter search helps with large input
-lists. **Apply operation** updates the upstream draft; **Save** persists it.
+lists. **Apply operation to upstream draft** updates the upstream draft; **Save** persists it.
 Canceling an operation window discards changes made within that window.
 
 Request and response schema buttons open a larger schema workspace. It has:
@@ -783,12 +783,12 @@ normal REST calls are never automatically replayed to repair a schema mismatch.
 
 ### Browsing repository directories with a REST tool
 
-For Bitbucket Data Center, configure one GET operation at `/rest/api/latest/projects/{projectKey}/repos/{repositorySlug}/browse/{path}`. In **Parameters**, enable **repository-relative path** on the final string parameter and clear **required**. An agent can omit `path` for the root or pass `src/main` to list the immediate contents of that directory. Use the returned child names for subsequent calls.
+For Bitbucket Data Center, configure one GET operation at `/rest/api/latest/projects/{projectKey}/repos/{repositorySlug}/browse/{path}`. In **Parameters**, set **Path mode** to **Relative path** on the final string parameter and clear **required**. An agent can omit `path` for the root or pass `src/main` to list the immediate contents of that directory. Use the returned child names for subsequent calls.
 
 The API representation uses `"pathMode": "relative"` on that parameter. Send plain path segments. Leading or trailing slashes, empty or dot segments, backslashes, percent escapes and control characters are rejected. Other path parameters retain single-segment validation. An explicit default is used when the argument is omitted.
 
 ### Plain text REST responses
 
-In **Edit REST operation → Request & tool → Response format**, choose **Plain text** for endpoints that return diffs, logs or other UTF-8 text. For example, set a GET operation at `/reports/{id}/diff` to `"responseFormat": "text"` and leave the operation at `/reports/{id}` as JSON on the same upstream. Clear any JSON response schema and selected response fields before switching.
+In **Edit REST operation → Request & response schemas → Response format**, choose **Plain text** for endpoints that return diffs, logs or other UTF-8 text. For example, set a GET operation at `/reports/{id}/diff` to `"responseFormat": "text"` and leave the operation at `/reports/{id}` as JSON on the same upstream. Confirm the removal of any JSON response schema and selected fields when switching. The draft takes effect after saving the upstream.
 
 vMCP sends `Accept: text/plain` for the text operation and returns the full successful response in `structuredContent.result` as a single string. JSON-looking text and line endings are preserved. An empty 200 or 204 response yields an empty string. Invalid UTF-8 and responses larger than 1 MiB return a tool error. The default response format is JSON.

@@ -39,10 +39,13 @@ test('mock operation drafts support dynamic rules without leaking them into MCP 
   fireEvent.change(rules, { target: { value: '[' } })
   fireEvent.click(editor.getByRole('button', { name: 'WireMock JSON' }))
   expect(rules.value).toBe('[')
-  expect(editor.getByRole('button', { name: 'Apply operation' })).toHaveProperty('disabled', true)
+  expect(editor.getByRole('button', { name: 'Apply operation to upstream draft' })).toHaveProperty(
+    'disabled',
+    true,
+  )
   expect(JSON.parse(screen.getByTestId('draft').textContent!).operations).toHaveLength(0)
   fireEvent.change(rules, { target: { value: valid } })
-  fireEvent.click(editor.getByRole('button', { name: 'Apply operation' }))
+  fireEvent.click(editor.getByRole('button', { name: 'Apply operation to upstream draft' }))
   await waitFor(() =>
     expect(screen.queryByRole('dialog', { name: 'Edit REST operation' })).toBeNull(),
   )
@@ -135,7 +138,7 @@ test('quick mock generates nested request schema and opens a review without appl
   expect(JSON.parse(screen.getByTestId('draft').textContent!).operations).toHaveLength(0)
   const editor = within(screen.getByRole('dialog', { name: 'Edit REST operation' }))
   expect(editor.getByLabelText('Tool name')).toHaveProperty('value', 'createOrder')
-  fireEvent.click(editor.getByRole('button', { name: 'Apply operation' }))
+  fireEvent.click(editor.getByRole('button', { name: 'Apply operation to upstream draft' }))
   await waitFor(() =>
     expect(JSON.parse(screen.getByTestId('draft').textContent!).operations).toHaveLength(1),
   )

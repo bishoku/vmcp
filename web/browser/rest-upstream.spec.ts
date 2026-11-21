@@ -60,7 +60,7 @@ for (const width of [1280, 390])
     await operation.getByRole('button', { name: 'Advanced settings', exact: true }).click()
     await operation.getByLabel('Response schema', { exact: true }).fill('{')
     await expect(
-      operation.getByRole('button', { name: 'Apply operation', exact: true }),
+      operation.getByRole('button', { name: 'Apply operation to upstream draft', exact: true }),
     ).toBeDisabled()
     await operation.getByLabel('Response schema', { exact: true }).fill('')
     await operation.getByRole('button', { name: 'Request & response schemas', exact: true }).click()
@@ -85,7 +85,9 @@ for (const width of [1280, 390])
     await schema.getByRole('button', { name: 'Apply schema', exact: true }).click()
     await expect(schema).not.toBeVisible()
     await expect(operation.getByLabel('MCP tool definition')).not.toContainText('"internal"')
-    await operation.getByRole('button', { name: 'Apply operation', exact: true }).click()
+    await operation
+      .getByRole('button', { name: 'Apply operation to upstream draft', exact: true })
+      .click()
     await expect(operation).not.toBeVisible()
     expect(writes).toHaveLength(0)
     await expect(page.getByRole('textbox', { name: 'Tool name', exact: true })).toHaveCount(0)

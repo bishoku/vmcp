@@ -65,3 +65,10 @@ export function parameterValueError(parameter: RESTParameter, path?: string): st
     return 'The configured path value contains unsafe characters.'
   return ''
 }
+
+export function parameterBehavior(p: RESTParameter): string {
+  if (p.exposeToMcp === false) return 'Fixed by upstream'
+  if (hasParameterDefault(p)) return `Optional · default ${JSON.stringify(p.defaultValue)}`
+  if (p.required || (p.in === 'path' && !p.pathMode)) return 'Required'
+  return p.pathMode === 'relative' ? 'Optional · omit to request the parent path' : 'Optional'
+}

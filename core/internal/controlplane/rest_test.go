@@ -190,29 +190,46 @@ func TestRelativePathSnapshotMatchesManagementPreview(t *testing.T) {
 func TestTextResponseManagementRoundTrip(t *testing.T) {
 	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
 	a := setup(t)
+	received := make(chan string, 3)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Accept") != "text/plain" {
-			t.Error(r.Header)
+		accept := r.Header.Get("Accept")
+		received <- accept
+		if accept == "application/json" {
+			w.Write([]byte(`{"id":1}`))
+			return
 		}
 		w.Write([]byte("report\n"))
 	}))
 	defer srv.Close()
-	cfg := restapi.Config{Auth: restapi.Auth{Type: "none"}, TimeoutSeconds: 5, AllowInsecureHTTP: true, Operations: []restapi.Operation{{Name: "report", Enabled: true, Method: "GET", Path: "/report", ResponseFormat: "text"}}}
+	cfg := restapi.Config{Auth: restapi.Auth{Type: "none"}, TimeoutSeconds: 5, AllowInsecureHTTP: true, Operations: []restapi.Operation{{Name: "report", Enabled: true, Method: "GET", Path: "/report", ResponseSchema: json.RawMessage(`{"type":"object"}`)}}}
 	const up = "/api/v1/upstreams"
 	a.expect(201, "POST", up, map[string]any{"slug": "reports", "name": "reports", "kind": "rest", "url": srv.URL, "rest": cfg})
+	args := map[string]any{"operation": "report", "arguments": map[string]any{}}
+	before, _ := a.expect(200, "GET", up+"/reports", nil)
+	cfg.Operations[0].ResponseSchema = nil
+	cfg.Operations[0].ResponseFormat = "text"
+	_, original := a.expect(200, "POST", up+"/reports/rest/preview", args)
+	if original["headers"].(map[string]any)["Accept"] != "application/json" || len(received) != 0 {
+		t.Fatal(original)
+	}
+	code, _, result := a.do("POST", up+"/reports/rest/test", args, map[string]string{"If-Match": before.Get("ETag")})
+	if code != 200 || result["isError"] == true || len(received) != 1 || <-received != "application/json" {
+		t.Fatal(code, result)
+	}
+	a.expect(200, "PATCH", up+"/reports", map[string]any{"rest": cfg})
 	headers, saved := a.expect(200, "GET", up+"/reports", nil)
 	raw, _ := json.Marshal(saved["rest"])
 	var read restapi.Config
 	if err := json.Unmarshal(raw, &read); err != nil || read.Operations[0].ResponseFormat != "text" {
 		t.Fatal(read, err)
 	}
-	args := map[string]any{"operation": "report", "arguments": map[string]any{}}
+
 	_, preview := a.expect(200, "POST", up+"/reports/rest/preview", args)
 	if preview["headers"].(map[string]any)["Accept"] != "text/plain" {
 		t.Fatal(preview)
 	}
-	code, _, result := a.do("POST", up+"/reports/rest/test", args, map[string]string{"If-Match": headers.Get("ETag")})
-	if code != 200 || result["structuredContent"].(map[string]any)["result"] != "report\n" {
+	code, _, result = a.do("POST", up+"/reports/rest/test", args, map[string]string{"If-Match": headers.Get("ETag")})
+	if len(received) != 1 || <-received != "text/plain" || code != 200 || result["structuredContent"].(map[string]any)["result"] != "report\n" {
 		t.Fatal(result)
 	}
 	snap, err := store.LoadSnapshot(context.Background(), a.pool, a.control.Store.Box)

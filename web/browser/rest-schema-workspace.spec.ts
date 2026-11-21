@@ -102,7 +102,9 @@ for (const width of [390, 1440])
     await expect(
       operation.getByRole('button', { name: 'Edit response schema', exact: true }),
     ).toBeFocused()
-    await operation.getByRole('button', { name: 'Apply operation', exact: true }).click()
+    await operation
+      .getByRole('button', { name: 'Apply operation to upstream draft', exact: true })
+      .click()
     await expect(operation).not.toBeVisible()
     expect(writes).toHaveLength(0)
     await page.getByRole('button', { name: 'Save', exact: true }).click()

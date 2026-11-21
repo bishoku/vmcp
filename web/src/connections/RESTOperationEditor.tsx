@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback, type InputHTMLAttributes } from 'react'
 import {
+  parameterBehavior,
   hasParameterDefault,
   initialParameterDefault,
   parseParameterDefault,
   parameterValueError,
 } from './rest-parameters'
+import { flushSync } from 'react-dom'
+import { useConfirm } from '../confirmation'
 import MockRulesEditor from './MockRulesEditor'
 import SchemaEditor from './SchemaEditor'
 import { Wrench } from 'lucide-react'
@@ -52,6 +55,7 @@ export default function RESTOperationEditor({
       }),
     [],
   )
+  const confirm = useConfirm()
   const textResponse = operation.responseFormat === 'text'
   const hasResponseRules =
     operation.responseSchema !== undefined ||
@@ -158,28 +162,6 @@ export default function RESTOperationEditor({
       </nav>
       <fieldset disabled={!onChange} className="panel-body layout-stack min-w-0">
         <div hidden={view !== 'tool'} className="layout-stack">
-          <FormField
-            name={field('responseFormat')}
-            label="Response format"
-            hint={
-              hasResponseRules
-                ? 'Clear the JSON response schema and field selections before choosing Plain text.'
-                : 'Plain text requests text/plain and returns the UTF-8 response in result.'
-            }
-          >
-            <Select
-              className={input}
-              value={operation.responseFormat ?? 'json'}
-              onChange={(event) =>
-                set({ responseFormat: event.target.value as RESTOperation['responseFormat'] })
-              }
-            >
-              <option value="json">JSON</option>
-              <option value="text" disabled={hasResponseRules}>
-                Plain text
-              </option>
-            </Select>
-          </FormField>
           <div className="grid gap-3 sm:grid-cols-[7rem_minmax(0,1fr)]">
             <FormField name={field('method')} label="HTTP method">
               <Select
@@ -214,6 +196,36 @@ export default function RESTOperationEditor({
               />
             </FormField>
           </div>
+          {operation.parameters.some((p) => p.in === 'path') && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <span>Path parameters</span>
+              {operation.parameters.map(
+                (p, i) =>
+                  p.in === 'path' && (
+                    <button
+                      key={p.name}
+                      className={btn}
+                      aria-label={`Edit path parameter ${p.name}`}
+                      onClick={() => {
+                        flushSync(() => {
+                          setParameterQuery('')
+                          setView('parameters')
+                        })
+                        const row = document.getElementById(
+                          field('row.' + i),
+                        ) as HTMLDetailsElement | null
+                        if (row) {
+                          row.open = true
+                          row.querySelector('summary')?.focus()
+                        }
+                      }}
+                    >
+                      {'{' + p.name + '}'}
+                    </button>
+                  ),
+              )}
+            </div>
+          )}
           <FormField
             name={field('name')}
             label="Tool name"
@@ -299,7 +311,9 @@ export default function RESTOperationEditor({
               />
             </label>
             {operation.parameters.map((value, position) => (
-              <div
+              <details
+                open={operation.parameters.length <= 2}
+                id={field('row.' + position)}
                 key={position}
                 hidden={
                   !!parameterQuery &&
@@ -311,6 +325,11 @@ export default function RESTOperationEditor({
                 aria-label={`Parameter ${position + 1}`}
                 className="surface-inset p-3 layout-stack"
               >
+                <summary className="cursor-pointer break-words">
+                  <strong>{value.name || 'New parameter'}</strong> · {value.in} ·{' '}
+                  {String(value.schema.type ?? 'string')} · {parameterBehavior(value)}
+                  {value.pathMode === 'relative' ? ' · Relative path' : ''}
+                </summary>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormField
                     name={field(`parameters.${position}.name`)}
@@ -384,15 +403,24 @@ export default function RESTOperationEditor({
                     (value.in === 'path' &&
                       value.schema.type === 'string' &&
                       operation.path.endsWith('/{' + value.name + '}'))) && (
-                    <Switch
-                      label={`Parameter ${position + 1} repository-relative path`}
-                      checked={value.pathMode === 'relative'}
-                      onChange={(event) =>
-                        parameter(position, {
-                          pathMode: event.target.checked ? 'relative' : undefined,
-                        })
-                      }
-                    />
+                    <FormField
+                      name={field(`parameters.${position}.pathMode`)}
+                      label={`Path mode for ${value.name}`}
+                      hint="Use a relative path for values such as README.md or src/main."
+                    >
+                      <Select
+                        className={input}
+                        value={value.pathMode ?? 'segment'}
+                        onChange={(event) =>
+                          parameter(position, {
+                            pathMode: event.target.value === 'relative' ? 'relative' : undefined,
+                          })
+                        }
+                      >
+                        <option value="segment">Single segment</option>
+                        <option value="relative">Relative path</option>
+                      </Select>
+                    </FormField>
                   )}
                   <Switch
                     label={`Parameter ${position + 1} required`}
@@ -484,20 +512,29 @@ export default function RESTOperationEditor({
                     </pre>
                   </details>
                 )}
-              </div>
+              </details>
             ))}
             {onChange && (
               <button
                 className={`${btn} self-start`}
                 disabled={operation.parameters.length >= 100}
                 onClick={() => {
-                  setParameterQuery('')
-                  set({
-                    parameters: [
-                      ...operation.parameters,
-                      { name: '', in: 'query', required: false, schema: { type: 'string' } },
-                    ],
+                  flushSync(() => {
+                    setParameterQuery('')
+                    set({
+                      parameters: [
+                        ...operation.parameters,
+                        { name: '', in: 'query', required: false, schema: { type: 'string' } },
+                      ],
+                    })
                   })
+                  const row = document.getElementById(
+                    field('row.' + operation.parameters.length),
+                  ) as HTMLDetailsElement | null
+                  if (row) {
+                    row.open = true
+                    row.querySelector('input')?.focus()
+                  }
                 }}
               >
                 Add query parameter
@@ -517,6 +554,46 @@ export default function RESTOperationEditor({
               }}
             />
           )}
+          <FormField
+            name={field('responseFormat')}
+            label="Response format"
+            hint="Plain text requests text/plain and returns UTF-8 text in result."
+          >
+            <Select
+              className={input}
+              value={operation.responseFormat ?? 'json'}
+              onChange={async (event) => {
+                const responseFormat = event.target.value as RESTOperation['responseFormat']
+                if (responseFormat !== 'text' || !hasResponseRules) {
+                  set({ responseFormat })
+                  return
+                }
+                const count =
+                  (operation.responseFields?.length ?? 0) +
+                  (operation.responseFieldPaths?.length ?? 0)
+                if (
+                  !(await confirm({
+                    title: 'Switch to plain text?',
+                    description: `Remove the JSON response schema and ${count} selected response fields from this operation draft? Request settings are preserved.`,
+                    confirmLabel: 'Switch to plain text',
+                    tone: 'warning',
+                  }))
+                )
+                  return
+                setResponse('')
+                setErrors((previous) => ({ ...previous, responseSchema: '' }))
+                set({
+                  responseFormat,
+                  responseSchema: undefined,
+                  responseFields: undefined,
+                  responseFieldPaths: undefined,
+                })
+              }}
+            >
+              <option value="json">JSON</option>
+              <option value="text">Plain text</option>
+            </Select>
+          </FormField>
           {!textResponse && (
             <SchemaEditor
               label="Response"
