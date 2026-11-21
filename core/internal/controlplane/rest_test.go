@@ -186,3 +186,47 @@ func TestRelativePathSnapshotMatchesManagementPreview(t *testing.T) {
 		}
 	}
 }
+
+func TestTextResponseManagementRoundTrip(t *testing.T) {
+	t.Setenv("VMCP_EGRESS_ALLOW_CIDRS", "127.0.0.0/8")
+	a := setup(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "text/plain" {
+			t.Error(r.Header)
+		}
+		w.Write([]byte("report\n"))
+	}))
+	defer srv.Close()
+	cfg := restapi.Config{Auth: restapi.Auth{Type: "none"}, TimeoutSeconds: 5, AllowInsecureHTTP: true, Operations: []restapi.Operation{{Name: "report", Enabled: true, Method: "GET", Path: "/report", ResponseFormat: "text"}}}
+	const up = "/api/v1/upstreams"
+	a.expect(201, "POST", up, map[string]any{"slug": "reports", "name": "reports", "kind": "rest", "url": srv.URL, "rest": cfg})
+	headers, saved := a.expect(200, "GET", up+"/reports", nil)
+	raw, _ := json.Marshal(saved["rest"])
+	var read restapi.Config
+	if err := json.Unmarshal(raw, &read); err != nil || read.Operations[0].ResponseFormat != "text" {
+		t.Fatal(read, err)
+	}
+	args := map[string]any{"operation": "report", "arguments": map[string]any{}}
+	_, preview := a.expect(200, "POST", up+"/reports/rest/preview", args)
+	if preview["headers"].(map[string]any)["Accept"] != "text/plain" {
+		t.Fatal(preview)
+	}
+	code, _, result := a.do("POST", up+"/reports/rest/test", args, map[string]string{"If-Match": headers.Get("ETag")})
+	if code != 200 || result["structuredContent"].(map[string]any)["result"] != "report\n" {
+		t.Fatal(result)
+	}
+	snap, err := store.LoadSnapshot(context.Background(), a.pool, a.control.Store.Box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range snap.Upstreams {
+		if u.Slug == "reports" {
+			req, err := u.REST.Build(srv.URL, "report", json.RawMessage(`{}`), nil, restapi.Identity{})
+			if err != nil || req.Header.Get("Accept") != "text/plain" {
+				t.Fatal(req, err)
+			}
+			return
+		}
+	}
+	t.Fatal("saved upstream missing from snapshot")
+}

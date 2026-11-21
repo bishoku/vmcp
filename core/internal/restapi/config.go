@@ -45,6 +45,7 @@ type Parameter struct {
 	DefaultValue json.RawMessage `json:"defaultValue,omitempty"`
 }
 type Operation struct {
+	ResponseFormat     string              `json:"responseFormat,omitempty"`
 	MockRules          []mockupstream.Rule `json:"mockRules,omitempty"`
 	Name               string              `json:"name"`
 	Description        string              `json:"description"`
@@ -391,13 +392,24 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		if err != nil {
 			return nil, fmt.Errorf("%s input schema: %w", op.Name, err)
 		}
-		output, err := compileSchema(op.ResponseSchema)
+		responseSchema := op.ResponseSchema
+		switch op.ResponseFormat {
+		case "", "json":
+		case "text":
+			if len(responseSchema) > 0 || len(op.ResponseFields) > 0 || len(op.ResponseFieldPaths) > 0 {
+				return nil, fmt.Errorf("%s: plain text responses cannot configure a JSON response schema or select response fields", op.Name)
+			}
+			responseSchema = json.RawMessage(`{"type":"string"}`)
+		default:
+			return nil, fmt.Errorf("%s: response format must be json or text", op.Name)
+		}
+		output, err := compileSchema(responseSchema)
 		if err != nil {
 			return nil, fmt.Errorf("%s response schema: %w", op.Name, err)
 		}
 		var outputShape any = map[string]any{}
-		if len(op.ResponseSchema) > 0 {
-			_ = decodeJSON(op.ResponseSchema, &outputShape)
+		if len(responseSchema) > 0 {
+			_ = decodeJSON(responseSchema, &outputShape)
 		}
 		projection, projected, err := prepareProjection(outputShape, op.ResponseFields, op.ResponseFieldPaths)
 		if err != nil {

@@ -453,7 +453,9 @@ export default function RESTUpstreamEditor({
                 }
               : undefined
           }
-          draftNames={value.operations.map((op) => op.name)}
+          draftNames={value.operations
+            .filter((op) => op.responseFormat !== 'text')
+            .map((op) => op.name)}
         />
       )}
     </section>
@@ -717,7 +719,13 @@ function RESTTest({
             .join(' ')
           setError(message || 'The saved REST operation returned an error.')
         }
-        if (action === 'test' && !envelope.isError && Object.hasOwn(structured, 'result'))
+        if (
+          action === 'test' &&
+          upstream.rest?.operations.find((op) => op.name === operation)?.responseFormat !==
+            'text' &&
+          !envelope.isError &&
+          Object.hasOwn(structured, 'result')
+        )
           setSample({ operation, value: structured.result })
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Request failed')

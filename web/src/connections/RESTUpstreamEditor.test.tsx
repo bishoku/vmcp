@@ -412,3 +412,15 @@ test('optional repository-relative path survives applying and reopening the oper
   )
   expect(reopened.getByLabelText('Parameter 1 required')).toHaveProperty('checked', false)
 })
+
+test('plain text format survives Apply and advertises one string result', async () => {
+  render(<Draft />)
+  const editor = edit()
+  fireEvent.change(editor.getByLabelText('Response format'), { target: { value: 'text' } })
+  const definition = JSON.parse(editor.getByLabelText('MCP tool definition').textContent!)
+  expect(definition.outputSchema.properties.result).toEqual({ type: 'string' })
+  fireEvent.click(editor.getByRole('button', { name: 'Request & response schemas' }))
+  expect(editor.queryByRole('button', { name: 'Edit response schema' })).toBeNull()
+  await apply()
+  expect(edit().getByLabelText('Response format')).toHaveProperty('value', 'text')
+})

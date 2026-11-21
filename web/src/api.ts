@@ -152,6 +152,7 @@ export interface RESTOperation {
     schema: Record<string, unknown>
   }[]
   bodySchema?: unknown
+  responseFormat?: 'json' | 'text'
   responseSchema?: unknown
   responseFields?: string[]
   responseFieldPaths?: string[][]
