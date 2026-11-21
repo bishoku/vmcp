@@ -9,12 +9,18 @@ export function formatLabel(op: RESTOperation) {
 
 export function inputCounts(op: RESTOperation) {
   const fixed = op.parameters.filter((p) => p.exposeToMcp === false).length
-  const visible = op.parameters.length - fixed + Number(op.bodySchema !== undefined)
+  const body = schemaObject(op.bodySchema)
+  const bodyFields =
+    body.type === 'object'
+      ? Object.keys(schemaObject(body.properties)).length
+      : Number(op.bodySchema !== undefined)
+  const visible = op.parameters.length - fixed + bodyFields
   return `${visible} agent input${visible === 1 ? '' : 's'} · ${fixed} fixed`
 }
 
 export default function RESTOperationDetails({ operation: op }: { operation: RESTOperation }) {
-  const shape = schemaObject(restToolPreview(op).outputSchema.properties.result)
+  const tool = restToolPreview(op)
+  const shape = schemaObject(tool.outputSchema.properties.result)
   const selected = op.responseFieldPaths?.map((path) => path.join(' → '))
   const fields = selected?.length ? selected : op.responseFields
   return (
@@ -29,11 +35,14 @@ export default function RESTOperationDetails({ operation: op }: { operation: RES
               <code>{p.name}</code> · {p.in} · {String(p.schema.type)} · {parameterBehavior(p)}
             </li>
           ))}
-          {op.bodySchema !== undefined && (
-            <li>
-              <code>body</code> · JSON request body · Required
-            </li>
-          )}
+          {Object.keys(tool.inputSchema.properties)
+            .filter((name) => !op.parameters.some((p) => p.name === name))
+            .map((name) => (
+              <li key={name}>
+                <code>{name}</code> · JSON request body ·{' '}
+                {tool.inputSchema.required.includes(name) ? 'Required' : 'Optional'}
+              </li>
+            ))}
         </ul>
       </section>
       <section className="surface-inset p-3 layout-stack">

@@ -37,9 +37,8 @@ test('MCP preview matches the runtime body, projected result wrapper and annotat
   const tool = restToolPreview(operation)
   expect(tool.inputSchema).toEqual({
     type: 'object',
-    properties: { id: operation.parameters[0].schema, body: operation.bodySchema },
-    required: ['id', 'body'],
-    additionalProperties: false,
+    properties: { id: operation.parameters[0].schema, quantity: { type: 'integer', minimum: 1 } },
+    required: ['id', 'quantity'],
   })
   expect(tool.outputSchema).toEqual({
     type: 'object',
@@ -87,9 +86,8 @@ test('nested order example produces the body schema exercised by the virtual MCP
   const tool = restToolPreview({ ...operation, path: '/orders', parameters: [], bodySchema })
   expect(tool.inputSchema).toEqual({
     type: 'object',
-    properties: { body: orderFixture.bodySchema },
-    required: ['body'],
-    additionalProperties: false,
+    properties: orderFixture.bodySchema.properties,
+    required: [],
   })
   // Inferring types does not infer the upstream's business-required fields.
   expect(orderFixture.bodySchema.properties.order.properties.items.items).not.toHaveProperty(

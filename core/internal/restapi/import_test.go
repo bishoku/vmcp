@@ -80,10 +80,10 @@ func TestImportOpenAPILocalReferencesAndSchemaConversion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compiled.Build("https://example.com", "updateOrder", json.RawMessage(`{"id":1,"body":{"name":null,"total":2}}`), nil, Identity{}); err != nil {
+	if _, err := compiled.Build("https://example.com", "updateOrder", json.RawMessage(`{"id":1,"name":null,"total":2}`), nil, Identity{}); err != nil {
 		t.Fatal("read-only request property was required", err)
 	}
-	if _, err := compiled.Build("https://example.com", "updateOrder", json.RawMessage(`{"id":1,"body":{"name":"a","total":0}}`), nil, Identity{}); err == nil {
+	if _, err := compiled.Build("https://example.com", "updateOrder", json.RawMessage(`{"id":1,"name":"a","total":0}`), nil, Identity{}); err == nil {
 		t.Fatal("exclusiveMinimum lost")
 	}
 	encoded, _ := json.Marshal(result)

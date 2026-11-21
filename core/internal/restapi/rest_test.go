@@ -204,7 +204,7 @@ func TestBodySchemaAndNoContent(t *testing.T) {
 	c := baseConfig()
 	c.Operations = []Operation{{Name: "write", Enabled: true, Method: "POST", Path: "/write", BodySchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"integer"}},"required":["id"]}`), ResponseSchema: json.RawMessage(`{"type":"null"}`)}}
 	compiled := compile(t, srv.URL, c)
-	out, err := compiled.Execute(context.Background(), srv.URL, "write", json.RawMessage(`{"body":{"id":9007199254740993}}`), nil, tlsconf.Settings{}, Identity{}, nil)
+	out, err := compiled.Execute(context.Background(), srv.URL, "write", json.RawMessage(`{"id":9007199254740993}`), nil, tlsconf.Settings{}, Identity{}, nil)
 	if err != nil || strings.Contains(string(out), "isError") || !strings.Contains(string(out), `"result":null`) {
 		t.Fatalf("%s %v", out, err)
 	}

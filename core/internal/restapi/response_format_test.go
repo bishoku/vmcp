@@ -42,7 +42,7 @@ func TestTextResponseBoundaries(t *testing.T) {
 			cfg := baseConfig()
 			cfg.Operations = []Operation{{Name: "report", Enabled: true, Method: "POST", Path: "/report", ResponseFormat: "text", BodySchema: json.RawMessage(`{"type":"object"}`)}}
 			compiled := compile(t, srv.URL, cfg)
-			out, err := compiled.Execute(context.Background(), srv.URL, "report", json.RawMessage(`{"body":{}}`), nil, tlsconf.Settings{}, Identity{}, nil)
+			out, err := compiled.Execute(context.Background(), srv.URL, "report", json.RawMessage(`{}`), nil, tlsconf.Settings{}, Identity{}, nil)
 			if err != nil || calls.Load() != 1 {
 				t.Fatal(err, calls.Load())
 			}

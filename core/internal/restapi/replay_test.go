@@ -64,7 +64,7 @@ func TestLostResponseNeverReplays(t *testing.T) {
 					args := json.RawMessage(`{}`)
 					if method == "POST" || method == "PUT" || method == "PATCH" {
 						cfg.Operations[1].BodySchema = json.RawMessage(`{"type":"object"}`)
-						args = json.RawMessage(`{"body":{"value":1}}`)
+						args = json.RawMessage(`{"value":1}`)
 					}
 					headers := map[string]string{}
 					if header != "" {

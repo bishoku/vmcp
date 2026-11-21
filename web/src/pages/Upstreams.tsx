@@ -147,7 +147,10 @@ export default function Upstreams() {
         setError('')
         setOrphanedWarning('')
         const res = await api.refreshTools(u.slug)
-        notify({ title: 'Discovery refreshed', description: u.name })
+        notify({
+          title: u.kind === 'rest' ? 'REST tools refreshed' : 'Discovery refreshed',
+          description: u.name,
+        })
         if (res.orphanedSelections && res.orphanedSelections.length > 0) {
           const list = res.orphanedSelections.map((o) => `${o.virtualServer}:${o.tool}`).join(', ')
           setOrphanedWarning(
@@ -455,9 +458,8 @@ export default function Upstreams() {
                   <button
                     disabled={!rowCan(u.slug, 'catalog.refresh') || busy}
                     className={`${btn} action-icon`}
-                    hidden={u.kind === 'rest'}
-                    data-tooltip="Refresh capabilities"
-                    aria-label={`Refresh capabilities for ${u.name}`}
+                    data-tooltip={u.kind === 'rest' ? 'Refresh Tools' : 'Refresh capabilities'}
+                    aria-label={`${u.kind === 'rest' ? 'Refresh tools' : 'Refresh capabilities'} for ${u.name}`}
                     onClick={() => void refresh(u)}
                   >
                     <RefreshCw aria-hidden="true" className="icon-inline" />

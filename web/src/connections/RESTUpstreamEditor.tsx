@@ -3,7 +3,7 @@ import { useConfigurationPermissions } from '../configuration-access'
 import { useEffect, useMemo, useState } from 'react'
 import { parameterValueError, hasParameterDefault } from './rest-parameters'
 import { checkSchemas, schemaLimitError } from './schema-validation'
-import { responseSelectionError, restToolPreview } from './rest-tool-preview'
+import { responseSelectionError, restToolPreview, schemaObject } from './rest-tool-preview'
 import { inferSchema, mergeExample, objectSchema } from './schema-editor'
 import RESTDefinitionTransfer from './RESTDefinitionTransfer'
 import RESTImportDialog from './RESTImportDialog'
@@ -125,15 +125,37 @@ export default function RESTUpstreamEditor({
       )
     const parameterNames = new Set<string>()
     for (const parameter of draft.parameters) {
-      if (
-        !/^[A-Za-z0-9_.-]{1,128}$/.test(parameter.name) ||
-        parameter.name === 'body' ||
-        parameterNames.has(parameter.name)
-      )
-        problems.push(
-          `Parameter name must be valid, unique and different from body: ${parameter.name || '(empty)'}`,
-        )
+      if (!/^[A-Za-z0-9_.-]{1,128}$/.test(parameter.name) || parameterNames.has(parameter.name))
+        problems.push(`Parameter name must be valid and unique: ${parameter.name || '(empty)'}`)
       parameterNames.add(parameter.name)
+    }
+    if (draft.bodySchema !== undefined) {
+      const body = schemaObject(draft.bodySchema)
+      const scalarTypes = ['string', 'number', 'integer', 'boolean', 'null']
+      const scalarUnion =
+        Array.isArray(body.type) &&
+        body.type.length > 0 &&
+        body.type.every((type) => scalarTypes.includes(type))
+      if (!scalarUnion && !['object', 'array', ...scalarTypes].includes(String(body.type)))
+        problems.push('Request body schema must declare an unambiguous root type.')
+      const name = draft.bodyArgumentName || 'body'
+      if (
+        draft.bodyArgumentName &&
+        (body.type !== 'array' || !/^[A-Za-z0-9_.-]{1,128}$/.test(name))
+      )
+        problems.push('Choose a valid root array argument name.')
+      const fields =
+        body.type === 'object'
+          ? new Set([
+              ...Object.keys(schemaObject(body.properties)),
+              ...(Array.isArray(body.required) ? body.required : []),
+            ])
+          : new Set([name])
+      for (const p of draft.parameters)
+        if (fields.has(p.name))
+          problems.push(
+            `${draft.name}: argument "${p.name}" conflicts between ${p.in} and request body.`,
+          )
     }
     const tool = restToolPreview(draft)
     for (const [label, schema] of [

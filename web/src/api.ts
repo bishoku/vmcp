@@ -151,6 +151,7 @@ export interface RESTOperation {
     defaultValue?: string | number | boolean
     schema: Record<string, unknown>
   }[]
+  bodyArgumentName?: string
   bodySchema?: unknown
   responseFormat?: 'json' | 'text'
   responseSchema?: unknown

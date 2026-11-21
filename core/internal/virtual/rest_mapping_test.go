@@ -33,7 +33,7 @@ func TestRESTOrderMappingThroughVirtualMCP(t *testing.T) {
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}
-	wrapped := `{"body":` + string(fixture.Body) + `}`
+	legacy := `{"body":` + string(fixture.Body) + `}`
 	for _, tc := range []struct {
 		name, method, path, args, wantBody, wantError, response string
 		status, calls                                           int
@@ -41,20 +41,20 @@ func TestRESTOrderMappingThroughVirtualMCP(t *testing.T) {
 		audit                                                   bool
 		maskArguments                                           bool
 	}{
-		{name: "create nested order", args: wrapped, calls: 1},
-		{name: "create with audit capture", args: wrapped, calls: 1, audit: true},
-		{name: "PII argument masking intentionally changes upstream values", args: wrapped, calls: 1, maskArguments: true, wantBody: strings.ReplaceAll(string(fixture.Body), "CUST-42", "[REDACTED:customer]")},
-		{name: "update separates path query and body", method: "PUT", path: "/orders/{id}", args: `{"id":"ORD-42","notify":false,"body":` + string(fixture.Body) + `}`, calls: 1},
-		{name: "missing body wrapper rejected before dispatch", args: string(fixture.Body), wantError: "arguments do not match", calls: 0},
-		{name: "stringified body rejected before dispatch", args: `{"body":"{\"order\":{}}"}`, wantError: "arguments do not match", calls: 0},
-		{name: "stringified items rejected before dispatch", args: `{"body":{"order":{"items":"[]"}}}`, wantError: "arguments do not match", calls: 0},
-		{name: "quantity string is not coerced", args: `{"body":{"order":{"items":[{"productId":"SKU-1","quantity":"2"}]}}}`, wantError: "arguments do not match", calls: 0},
-		{name: "optional inferred fields can reach upstream incomplete", args: `{"body":{"order":{"items":[{"quantity":2}]}}}`, wantBody: `{"order":{"items":[{"quantity":2}]}}`, status: 422, response: `{"error":"productId is required"}`, wantError: "REST service returned HTTP 422", calls: 1},
-		{name: "field names are not renamed", args: `{"body":{"order":{"items":[{"productid":"SKU-1","quantity":2}]}}}`, wantBody: `{"order":{"items":[{"productid":"SKU-1","quantity":2}]}}`, status: 422, wantError: "REST service returned HTTP 422", calls: 1},
-		{name: "unexpected success status after dispatch", args: wrapped, statuses: []int{200}, wantError: "REST service returned HTTP 201", calls: 1},
-		{name: "invalid response schema after dispatch", args: wrapped, response: `{"id":42}`, wantError: "response does not match", calls: 1},
-		{name: "empty created response after dispatch", args: wrapped, response: " ", wantError: "invalid JSON", calls: 1},
-		{name: "no content conflicts with object response schema", args: wrapped, status: 204, wantError: "response does not match", calls: 1},
+		{name: "create nested order", args: string(fixture.Body), calls: 1},
+		{name: "create with audit capture", args: string(fixture.Body), calls: 1, audit: true},
+		{name: "PII argument masking intentionally changes upstream values", args: string(fixture.Body), calls: 1, maskArguments: true, wantBody: strings.ReplaceAll(string(fixture.Body), "CUST-42", "[REDACTED:customer]")},
+		{name: "update separates path query and body", method: "PUT", path: "/orders/{id}", args: `{"id":"ORD-42","notify":false,` + strings.TrimPrefix(strings.TrimSpace(string(fixture.Body)), "{"), calls: 1},
+		{name: "legacy wrapper is literal in an open schema", args: legacy, wantBody: legacy, calls: 1},
+		{name: "stringified body rejected before dispatch", args: `{"order":"{}"}`, wantError: "arguments do not match", calls: 0},
+		{name: "stringified items rejected before dispatch", args: `{"order":{"items":"[]"}}`, wantError: "arguments do not match", calls: 0},
+		{name: "quantity string is not coerced", args: `{"order":{"items":[{"productId":"SKU-1","quantity":"2"}]}}`, wantError: "arguments do not match", calls: 0},
+		{name: "optional inferred fields can reach upstream incomplete", args: `{"order":{"items":[{"quantity":2}]}}`, wantBody: `{"order":{"items":[{"quantity":2}]}}`, status: 422, response: `{"error":"productId is required"}`, wantError: "REST service returned HTTP 422", calls: 1},
+		{name: "field names are not renamed", args: `{"order":{"items":[{"productid":"SKU-1","quantity":2}]}}`, wantBody: `{"order":{"items":[{"productid":"SKU-1","quantity":2}]}}`, status: 422, wantError: "REST service returned HTTP 422", calls: 1},
+		{name: "unexpected success status after dispatch", args: string(fixture.Body), statuses: []int{200}, wantError: "REST service returned HTTP 201", calls: 1},
+		{name: "invalid response schema after dispatch", args: string(fixture.Body), response: `{"id":42}`, wantError: "response does not match", calls: 1},
+		{name: "empty created response after dispatch", args: string(fixture.Body), response: " ", wantError: "invalid JSON", calls: 1},
+		{name: "no content conflicts with object response schema", args: string(fixture.Body), status: 204, wantError: "response does not match", calls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.method == "" {

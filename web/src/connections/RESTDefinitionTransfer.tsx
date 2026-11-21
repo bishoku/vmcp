@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { RESTOperation } from '../api'
 import { btn, primary } from '../styles'
 import { Modal } from '../ui'
+import { schemaObject } from './rest-tool-preview'
 
 const format = 'vmcp.rest-operations.v1'
 
@@ -13,6 +14,7 @@ function portable(op: RESTOperation) {
     path,
     parameters,
     bodySchema,
+    bodyArgumentName,
     responseFormat,
     responseSchema,
     responseFields,
@@ -28,6 +30,7 @@ function portable(op: RESTOperation) {
     path,
     parameters,
     bodySchema,
+    bodyArgumentName,
     responseFormat,
     responseSchema,
     responseFields,
@@ -68,6 +71,10 @@ function readOperations(source: string): RESTOperation[] {
           p.schema &&
           typeof p.schema === 'object',
       ) ||
+      (op.bodyArgumentName !== undefined &&
+        (typeof op.bodyArgumentName !== 'string' ||
+          !/^[A-Za-z0-9_.-]{1,128}$/.test(op.bodyArgumentName) ||
+          schemaObject(op.bodySchema).type !== 'array')) ||
       (op.responseFormat !== undefined && !['json', 'text'].includes(op.responseFormat)) ||
       (op.responseFormat === 'text' &&
         (op.responseSchema !== undefined ||

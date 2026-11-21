@@ -84,7 +84,16 @@ func (s *Server) refreshTools(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if conn.Kind == "rest" {
-		return apierror.Validation([]apierror.FieldError{storeRestError("REST tools are published from saved operations; discovery is not applicable")})
+		var result *store.RefreshResult
+		if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
+			var err error
+			result, err = tx.RefreshRESTTools(r.Context(), slug, time.Now().UTC())
+			return err
+		}); err != nil {
+			return err
+		}
+		s.setRevision(w, r)
+		return writeJSON(w, http.StatusOK, result)
 	}
 	now := time.Now().UTC()
 	res, err := probeAny(r.Context(), append([]string{conn.URL}, conn.FallbackURLs...), conn.Transport, conn.Headers, conn.TLS, conn.OAuth)

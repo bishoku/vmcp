@@ -70,6 +70,9 @@ func (c *Compiled) Build(base, name string, args json.RawMessage, common map[str
 	q := url.Values{}
 	for _, p := range op.Definition.Parameters {
 		v, ok := values[p.Name]
+		if ok && p.ExposeToMCP != nil && !*p.ExposeToMCP {
+			return nil, errors.New("arguments do not match the operation input schema")
+		}
 		if !ok {
 			v, ok = op.ParameterDefaults[p.Name]
 		}
@@ -98,8 +101,20 @@ func (c *Compiled) Build(base, name string, args json.RawMessage, common map[str
 		target += "?" + query
 	}
 	var body []byte
-	if b, ok := values["body"]; ok {
-		body, _ = json.Marshal(b)
+	if op.Body != nil {
+		var payload any
+		if op.BodyArgument == "" {
+			for _, parameter := range op.Definition.Parameters {
+				delete(values, parameter.Name)
+			}
+			payload = values
+		} else {
+			payload = values[op.BodyArgument]
+		}
+		if err := op.Body.Validate(payload); err != nil {
+			return nil, errors.New("arguments do not match the request body schema")
+		}
+		body, _ = json.Marshal(payload)
 	}
 	req, err := http.NewRequest(op.Definition.Method, target, bytes.NewReader(body))
 	if err != nil {

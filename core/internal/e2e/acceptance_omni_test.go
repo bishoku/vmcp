@@ -311,7 +311,7 @@ func TestOmniAcceptance(t *testing.T) {
 				return
 			}
 			for n := 0; n < 20; n++ {
-				r := rpc(routed[0], "invoke_tool", map[string]any{"tool_ref": reference, "arguments": map[string]any{"body": map[string]string{"call_id": fmt.Sprintf("denied-%s-%d", label, n), "message": "must not execute"}}})
+				r := rpc(routed[0], "invoke_tool", map[string]any{"tool_ref": reference, "arguments": map[string]string{"call_id": fmt.Sprintf("denied-%s-%d", label, n), "message": "must not execute"}})
 				if r.status != 404 {
 					t.Errorf("%s invoke after effective revocation returned %d", label, r.status)
 				}

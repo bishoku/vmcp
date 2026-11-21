@@ -458,7 +458,33 @@ test('creates a POST with a JSON body and a text response and reopens its defini
   fireEvent.click(screen.getByRole('button', { name: 'Edit operation report' }))
   const reopened = within(operation())
   const tool = JSON.parse(reopened.getByLabelText('MCP tool definition').textContent!)
-  expect(tool.inputSchema.required).toContain('body')
-  expect(tool.inputSchema.properties.body.properties).toHaveProperty('count')
+  expect(tool.inputSchema.required).toEqual(['id'])
+  expect(tool.inputSchema.properties).toHaveProperty('count')
   expect(tool.outputSchema.properties.result).toEqual({ type: 'string' })
+})
+
+test('root array argument is editable and must not shadow a path parameter', async () => {
+  render(<Draft />)
+  const editor = edit()
+  fireEvent.change(editor.getByLabelText('HTTP method'), { target: { value: 'POST' } })
+  fireEvent.change(editor.getByLabelText('Operation path'), { target: { value: '/orders/{id}' } })
+  fireEvent.click(editor.getByRole('button', { name: 'Advanced settings' }))
+  fireEvent.change(editor.getByLabelText('Request body schema'), {
+    target: { value: '{"type":"array","items":{"type":"integer"}}' },
+  })
+  fireEvent.click(editor.getByRole('button', { name: 'Request & response schemas' }))
+  const field = editor.getByLabelText('Array argument name')
+  fireEvent.change(field, { target: { value: 'id' } })
+  fireEvent.click(editor.getByRole('button', { name: 'Apply operation to upstream draft' }))
+  expect(
+    await editor.findByText(/argument "id" conflicts between path and request body/),
+  ).toBeTruthy()
+  fireEvent.change(field, { target: { value: 'items' } })
+  const schema = JSON.parse(editor.getByLabelText('MCP tool definition').textContent!).inputSchema
+  expect(schema.required).toEqual(['id', 'items'])
+  expect(schema.properties.items).toEqual({ type: 'array', items: { type: 'integer' } })
+  await apply()
+  expect(
+    JSON.parse(screen.getByTestId('rest-draft').textContent!).operations[0].bodyArgumentName,
+  ).toBe('items')
 })

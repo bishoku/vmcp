@@ -54,7 +54,7 @@ func TestMockUpstreamThroughVirtualMCP(t *testing.T) {
 	if listed == nil || listed.Error != nil || strings.Contains(string(listed.Result), "response-template") {
 		t.Fatalf("tools/list: %+v", listed)
 	}
-	_, called := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: json.RawMessage(`{"body":{"order":{"id":"ORD-42"}}}`)})
+	_, called := r.rpc(t, "support", sid, mcp.MethodToolsCall, mcp.CallToolParams{Name: tool.Name, Arguments: json.RawMessage(`{"order":{"id":"ORD-42"}}`)})
 	if called == nil || called.Error != nil || strings.Contains(string(called.Result), `"isError":true`) || !strings.Contains(string(called.Result), "ORD-42") || strings.Contains(string(called.Result), "not-for-agent") {
 		t.Fatalf("virtual mock result: %+v", called)
 	}

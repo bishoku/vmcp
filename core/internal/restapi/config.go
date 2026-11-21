@@ -53,6 +53,7 @@ type Operation struct {
 	Method             string              `json:"method"`
 	Path               string              `json:"path"`
 	Parameters         []Parameter         `json:"parameters"`
+	BodyArgumentName   string              `json:"bodyArgumentName,omitempty"`
 	BodySchema         json.RawMessage     `json:"bodySchema,omitempty"`
 	ResponseSchema     json.RawMessage     `json:"responseSchema,omitempty"`
 	ResponseFieldPaths [][]string          `json:"responseFieldPaths,omitempty"`
@@ -78,6 +79,8 @@ type Compiled struct {
 }
 type PreparedOperation struct {
 	Definition        Operation
+	Body              *jsonschema.Schema
+	BodyArgument      string // Empty for flat objects.
 	Input             *jsonschema.Schema
 	Output            *jsonschema.Schema
 	ParameterDefaults map[string]any
@@ -304,16 +307,19 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		properties := map[string]any{}
 		required := []string{}
 		paths := map[string]bool{}
-		parameterNames := map[string]bool{}
+		parameterNames := map[string]string{}
 		defaults := map[string]any{}
 		if len(op.Parameters) > 100 {
 			return nil, errors.New("at most 100 parameters")
 		}
 		for _, p := range op.Parameters {
-			if !nameRE.MatchString(p.Name) || p.Name == "body" || parameterNames[p.Name] || !slices.Contains([]string{"path", "query"}, p.In) {
+			if previous, exists := parameterNames[p.Name]; exists {
+				return nil, fmt.Errorf("%s: argument %q conflicts between %s and %s", op.Name, p.Name, previous, p.In)
+			}
+			if !nameRE.MatchString(p.Name) || !slices.Contains([]string{"path", "query"}, p.In) {
 				return nil, errors.New("invalid or duplicate parameter")
 			}
-			parameterNames[p.Name] = true
+			parameterNames[p.Name] = p.In
 			var schema map[string]any
 			if decodeJSON(p.Schema, &schema) != nil {
 				return nil, errors.New("invalid parameter schema")
@@ -376,18 +382,11 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		if len(paths) > 0 || strings.ContainsAny(placeholderRE.ReplaceAllString(op.Path, ""), "{}") {
 			return nil, errors.New("unmatched path parameters")
 		}
-		if len(op.BodySchema) > 0 {
-			if op.Method == "GET" {
-				return nil, errors.New("GET request bodies are not supported")
-			}
-			var body any
-			if decodeJSON(op.BodySchema, &body) != nil {
-				return nil, errors.New("invalid body schema")
-			}
-			properties["body"] = body
-			required = append(required, "body")
+		inputShape, bodyValidator, bodyArgument, err := requestInput(op, properties, required, parameterNames)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", op.Name, err)
 		}
-		inputRaw, _ := json.Marshal(map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false})
+		inputRaw, _ := json.Marshal(inputShape)
 		input, err := compileSchema(inputRaw)
 		if err != nil {
 			return nil, fmt.Errorf("%s input schema: %w", op.Name, err)
@@ -431,7 +430,7 @@ func Compile(base string, c Config, headers map[string]string) (*Compiled, error
 		}
 		annotations, _ := json.Marshal(map[string]bool{"readOnlyHint": op.ReadOnly, "destructiveHint": !op.ReadOnly, "idempotentHint": false, "openWorldHint": true})
 		result.Tools = append(result.Tools, mcp.Tool{Name: op.Name, Description: op.Description, InputSchema: inputRaw, OutputSchema: outputRaw, Annotations: annotations})
-		result.Operations[op.Name] = PreparedOperation{Definition: op, Input: input, Output: output, ParameterDefaults: defaults, Projection: projection}
+		result.Operations[op.Name] = PreparedOperation{Definition: op, Body: bodyValidator, BodyArgument: bodyArgument, Input: input, Output: output, ParameterDefaults: defaults, Projection: projection}
 	}
 	return result, nil
 }

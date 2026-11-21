@@ -1068,8 +1068,9 @@ paths:
     post:
       tags: [ Upstreams ]
       operationId: refreshUpstreamTools
-      summary: Connect to the upstream and re-fetch its tool schemas
+      summary: Refresh the saved tool catalog
       description: |
+        MCP upstreams use remote discovery. REST upstreams regenerate tools locally from saved operations.
         Safe to call repeatedly. Tools that disappeared upstream but are still selected by a
         virtual server are reported in `orphanedSelections`. They are kept in the configuration
         but not served until the tool reappears.
@@ -5912,7 +5913,11 @@ components:
           items:
             $ref: "#/components/schemas/RESTParameter"
         bodySchema:
-          description: Optional inline JSON Schema. Adds required body argument; forbidden for GET.
+          description: Inline HTTP body schema with an explicit, unambiguous root type. Object properties become flat MCP arguments. Arrays and scalars use one required argument. Forbidden for GET.
+        bodyArgumentName:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]{1,128}$"
+          description: Optional argument name for the entire root JSON array. Defaults to body.
         responseFormat:
           type: string
           enum: [json, text]
