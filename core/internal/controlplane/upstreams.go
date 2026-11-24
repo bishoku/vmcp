@@ -5,6 +5,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
+	"github.com/bishoku/vmcp/core/internal/localtools"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 	"github.com/bishoku/vmcp/core/internal/store"
@@ -18,6 +19,7 @@ type upstreamWire struct {
 	CallerContext         *callercontext.Config         `json:"callerContext"`
 	Kind                  string                        `json:"kind"`
 	REST                  *restapi.Config               `json:"rest"`
+	Local                 *localtools.Config            `json:"local"`
 	Slug                  string                        `json:"slug"`
 	Name                  *string                       `json:"name"`
 	Description           *string                       `json:"description"`
@@ -96,16 +98,16 @@ func required(field string) apierror.FieldError {
 
 // input applies the API defaults and reports missing required fields.
 func (w *upstreamWire) input() (store.UpstreamInput, []apierror.FieldError) {
-	in := store.UpstreamInput{OwnerTeam: w.OwnerTeam, RequestHeaderMappings: w.RequestHeaderMappings, CallerContext: w.CallerContext, Kind: w.Kind, REST: w.REST, Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
+	in := store.UpstreamInput{OwnerTeam: w.OwnerTeam, RequestHeaderMappings: w.RequestHeaderMappings, CallerContext: w.CallerContext, Kind: w.Kind, Local: w.Local, REST: w.REST, Transport: "streamable_http", Enabled: true, Headers: w.Headers, FallbackURLs: w.FallbackURLs, TLS: w.TLS.settings(), OAuth: w.Auth.config()}
 	var errs []apierror.FieldError
 	if w.Name == nil {
 		errs = append(errs, required("/name"))
 	} else {
 		in.Name = *w.Name
 	}
-	if w.URL == nil {
+	if w.URL == nil && w.Kind != "local" {
 		errs = append(errs, required("/url"))
-	} else {
+	} else if w.URL != nil {
 		in.URL = *w.URL
 	}
 	if w.Description != nil {
@@ -126,6 +128,7 @@ type upstreamPatchWire struct {
 	CallerContext         *callercontext.Config         `json:"callerContext"`
 	Kind                  *string                       `json:"kind"`
 	REST                  *restapi.Config               `json:"rest"`
+	Local                 *localtools.Config            `json:"local"`
 	Name                  *string                       `json:"name"`
 	Description           *string                       `json:"description"`
 	URL                   *string                       `json:"url"`
@@ -246,7 +249,7 @@ func (s *Server) patchUpstream(w http.ResponseWriter, r *http.Request) error {
 	)
 	err = s.Store.Do(r.Context(), func(tx *store.Tx) error {
 		var err error
-		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{OwnerTeam: body.OwnerTeam, RequestHeaderMappings: body.RequestHeaderMappings, CallerContext: body.CallerContext, Kind: body.Kind, REST: body.REST,
+		u, err = tx.PatchUpstream(r.Context(), slug, store.UpstreamPatch{OwnerTeam: body.OwnerTeam, RequestHeaderMappings: body.RequestHeaderMappings, CallerContext: body.CallerContext, Kind: body.Kind, Local: body.Local, REST: body.REST,
 			Name: body.Name, Description: body.Description, URL: body.URL, FallbackURLs: body.FallbackURLs, Transport: body.Transport,
 			Enabled: body.Enabled, Headers: body.Headers, TLS: body.TLS.patch(), OAuth: body.Auth.patch(),
 		}, ifMatch)

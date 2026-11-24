@@ -184,11 +184,25 @@ export interface CallerContextConfig {
   fields: { name: string; header?: string; bearer?: boolean; required?: boolean }[]
 }
 
+export interface LocalParameter {
+  name: string
+  type: 'string' | 'boolean' | 'string[]'
+  required?: boolean
+  choices?: string[]
+  default?: string | boolean | string[]
+}
+export interface LocalTool {
+  name: string
+  description: string
+  parameters: LocalParameter[]
+  response: string
+}
 export interface Upstream {
   ownerTeam?: string
   requestHeaderMappings?: RequestHeaderMapping[]
   callerContext?: CallerContextConfig
-  kind?: 'mcp' | 'rest'
+  kind?: 'mcp' | 'rest' | 'local'
+  local?: { tools: LocalTool[] }
   rest?: RESTConfig
   version: number
   slug: string
@@ -211,7 +225,8 @@ export interface UpstreamInput {
   ownerTeam?: string
   requestHeaderMappings?: RequestHeaderMapping[]
   callerContext?: CallerContextConfig
-  kind?: 'mcp' | 'rest'
+  kind?: 'mcp' | 'rest' | 'local'
+  local?: { tools: LocalTool[] }
   rest?: RESTConfig
   name: string
   description?: string
@@ -593,6 +608,7 @@ async function request<T>(
 ): Promise<T> {
   const identityRevision = configurationIdentityRevision
   const protectedConfiguration =
+    !(method === 'POST' && path === '/local-tool-preview') &&
     !/^\/(me|configuration-access|regex-preview|rest-schema-checks|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(
       path,
     )
@@ -843,6 +859,8 @@ export interface RegexPreview {
   count: number
 }
 export const api = {
+  previewLocalTool: (tool: LocalTool, args?: Record<string, unknown>) =>
+    request<{ text: string }>('POST', '/local-tool-preview', { tool, arguments: args }),
   previewRegex: (
     kind: 'audit' | 'pii',
     name: string,

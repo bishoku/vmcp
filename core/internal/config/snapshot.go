@@ -11,6 +11,7 @@ import (
 
 	"github.com/bishoku/vmcp/core/internal/audit"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
+	"github.com/bishoku/vmcp/core/internal/localtools"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
@@ -73,6 +74,7 @@ type Upstream struct {
 	Kind                  string
 	Tenant                string
 	REST                  *restapi.Compiled
+	Local                 *localtools.Compiled
 	// RESTSourceHash identifies decrypted source bytes for immutable schema reuse.
 	RESTSourceHash [32]byte `json:"-"`
 	Instructions   string

@@ -83,6 +83,9 @@ func (s *Server) refreshTools(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	if conn.Kind == "local" {
+		return apierror.Validation([]apierror.FieldError{{Field: "/kind", Message: "local tools have no remote endpoint"}})
+	}
 	if conn.Kind == "rest" {
 		var result *store.RefreshResult
 		if err := s.Store.Do(r.Context(), func(tx *store.Tx) error {
@@ -177,6 +180,9 @@ func (s *Server) storedConnectionTest(w http.ResponseWriter, r *http.Request) er
 	conn, err := s.Store.Reader().UpstreamConnInfo(r.Context(), r.PathValue("slug"))
 	if err != nil {
 		return err
+	}
+	if conn.Kind == "local" {
+		return apierror.Validation([]apierror.FieldError{{Field: "/kind", Message: "local tools have no remote endpoint"}})
 	}
 	if conn.Kind == "rest" {
 		return apierror.Validation([]apierror.FieldError{storeRestError("Use an explicit saved REST operation test")})

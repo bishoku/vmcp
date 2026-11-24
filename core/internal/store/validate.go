@@ -60,7 +60,7 @@ func ValidateUpstreamInput(in UpstreamInput) []apierror.FieldError {
 	if len(in.Description) > 1000 {
 		errs = append(errs, vf("/description", "must be at most 1000 characters"))
 	}
-	if err := netpolicy.ValidateURL(in.URL); err != nil {
+	if err := netpolicy.ValidateURL(in.URL); in.Kind != "local" && err != nil {
 		errs = append(errs, vf("/url", "must be an absolute http(s) URL without credentials or fragments"))
 	}
 	if len(in.FallbackURLs) > 5 {

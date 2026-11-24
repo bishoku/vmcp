@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
+	"github.com/bishoku/vmcp/core/internal/localtools"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/restapi"
@@ -27,6 +28,7 @@ type Upstream struct {
 	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                  string                        `json:"kind"`
 	REST                  *restapi.Config               `json:"rest,omitempty"`
+	Local                 *localtools.Config            `json:"local,omitempty"`
 	Slug                  string                        `json:"slug"`
 	Name                  string                        `json:"name"`
 	Description           string                        `json:"description"`
@@ -53,6 +55,7 @@ type UpstreamInput struct {
 	CallerContext         *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                  string
 	REST                  *restapi.Config
+	Local                 *localtools.Config
 	Name                  string
 	Description           string
 	URL                   string
@@ -88,6 +91,7 @@ type UpstreamPatch struct {
 	CallerContext                     *callercontext.Config         `json:"callerContext,omitempty"`
 	Kind                              *string
 	REST                              *restapi.Config
+	Local                             *localtools.Config
 	Name, Description, URL, Transport *string
 	FallbackURLs                      *[]string
 	Enabled                           *bool
@@ -104,6 +108,7 @@ type UpstreamConn struct {
 	Enabled               bool
 	Kind                  string
 	REST                  *restapi.Config
+	Local                 *localtools.Config
 	URL                   string
 	FallbackURLs          []string
 	Transport             string
@@ -130,7 +135,7 @@ const upstreamSelect = `
 	       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret,
 	       (SELECT COALESCE(jsonb_agg(jsonb_build_object('node', h.node, 'state', h.state, 'breaker', h.breaker,
 	           'url', h.url, 'latencyMs', h.latency_ms, 'error', h.error, 'checkedAt', h.checked_at)), '[]'::jsonb)
-	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.kind,u.encrypted_rest_config,u.caller_context,u.request_header_mappings,COALESCE((SELECT slug FROM teams WHERE id=u.owner_team_id),'')
+	        FROM upstream_health h WHERE h.upstream_id = u.id AND h.checked_at > now() - interval '2 minutes'),u.local_config,u.kind,u.encrypted_rest_config,u.caller_context,u.request_header_mappings,COALESCE((SELECT slug FROM teams WHERE id=u.owner_team_id),'')
 	FROM upstreams u LEFT JOIN upstream_status s ON s.upstream_id = u.id
 	WHERE u.tenant_id = ` + tenantSQL
 
@@ -144,7 +149,7 @@ func (t *Tx) scanUpstream(row scanner) (*upstreamRow, error) {
 	if err := row.Scan(&r.id, &r.Slug, &r.Name, &r.Description, &r.URL, &r.Transport, &r.Enabled, &enc,
 		&r.Version, &r.CreatedAt, &r.UpdatedAt, &count, &r.LastRefreshAt, &r.LastRefreshError, &r.FallbackURLs,
 		&r.tls.CAPEM, &r.tls.ServerName, &r.tls.ClientCertPEM, &encKey,
-		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Kind, &encREST, &r.CallerContext, &r.RequestHeaderMappings, &r.OwnerTeam); err != nil {
+		&r.oauth.TokenURL, &r.oauth.ClientID, &r.oauth.Scopes, &r.oauth.Audience, &encOAuth, &nodes, &r.Local, &r.Kind, &encREST, &r.CallerContext, &r.RequestHeaderMappings, &r.OwnerTeam); err != nil {
 		return nil, err
 	}
 	if len(encKey) > 0 {
@@ -471,7 +476,7 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	if err != nil {
 		return nil, err
 	}
-	in := UpstreamInput{OwnerTeam: p.OwnerTeam, RequestHeaderMappings: cur.RequestHeaderMappings, CallerContext: cur.CallerContext, Kind: cur.Kind, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
+	in := UpstreamInput{OwnerTeam: p.OwnerTeam, RequestHeaderMappings: cur.RequestHeaderMappings, CallerContext: cur.CallerContext, Kind: cur.Kind, Local: cur.Local, REST: cur.rest, Name: cur.Name, Description: cur.Description, URL: cur.URL, FallbackURLs: cur.FallbackURLs, Transport: cur.Transport, Enabled: cur.Enabled}
 	if p.FallbackURLs != nil {
 		in.FallbackURLs = *p.FallbackURLs
 	}
@@ -492,6 +497,9 @@ func (t *Tx) PatchUpstream(ctx context.Context, slug string, p UpstreamPatch, if
 	}
 	if p.CallerContext != nil {
 		in.CallerContext = p.CallerContext
+	}
+	if p.Local != nil {
+		in.Local = p.Local
 	}
 	if p.REST != nil {
 		in.REST = p.REST

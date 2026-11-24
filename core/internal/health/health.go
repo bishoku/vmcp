@@ -56,7 +56,7 @@ func (c *Checker) CheckOnce(ctx context.Context) {
 	var wg sync.WaitGroup
 	slots := make(chan struct{}, 16)
 	for _, up := range c.Snap.Snapshot().Upstreams {
-		if up.REST != nil {
+		if up.Kind == "local" || up.REST != nil {
 			continue
 		}
 		select {
@@ -109,6 +109,9 @@ func (c *Checker) check(ctx context.Context, up config.Upstream) {
 
 // Probe connects to the upstream (trying its URLs in order) and returns the URL that answered.
 func Probe(ctx context.Context, up config.Upstream) (url string, took time.Duration, err error) {
+	if up.Kind == "local" {
+		return "", 0, errors.New("local tools run inside VMCP")
+	}
 	if up.Kind == "rest" || up.REST != nil {
 		return up.URL, 0, errors.New("REST upstreams require explicit operation tests")
 	}

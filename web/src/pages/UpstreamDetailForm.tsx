@@ -17,6 +17,7 @@ import { TagBadge } from '../Badge'
 import { Switch } from '../SelectionControls'
 import Select from '../Select'
 import { FormField, FormScope, FormErrors } from '../FormField'
+import LocalToolsEditor from '../connections/LocalToolsEditor'
 import { useFormValidation, slugError, requiredText, urlError } from '../form-validation'
 import { useNotifications } from '../notifications'
 import { EmptyState } from '../Feedback'
@@ -125,7 +126,8 @@ export default function UpstreamDetailForm({
             ))
 
   const [slug, setSlug] = useState(upstream?.slug ?? '')
-  const [kind, setKind] = useState<'mcp' | 'rest'>(upstream?.kind ?? 'mcp')
+  const [kind, setKind] = useState<'mcp' | 'rest' | 'local'>(upstream?.kind ?? 'mcp')
+  const [local, setLocal] = useState(upstream?.local ?? { tools: [] })
   const [rest, setRest] = useState(upstream?.rest ?? emptyREST())
   const [mockProvider, setMockProvider] = useState({ enabled: false, url: '' })
   useEffect(() => {
@@ -214,6 +216,7 @@ export default function UpstreamDetailForm({
     kind,
     rest,
     restBlocked,
+    local,
     slug,
     name,
     url,
@@ -288,7 +291,7 @@ export default function UpstreamDetailForm({
             : name.length > 120
               ? 'Use 120 characters or fewer.'
               : undefined,
-          url: urlError(url),
+          url: kind === 'local' ? undefined : urlError(url),
           fallbackUrls:
             kind === 'rest'
               ? undefined
@@ -320,19 +323,21 @@ export default function UpstreamDetailForm({
             : await api.patchUpstream(
                 upstream.slug,
                 configurationPatch(
-                  {
-                    ownerTeam,
-                    requestHeaderMappings,
-                    callerContext,
-                    name,
-                    url,
-                    fallbackUrls: kind === 'rest' ? [] : fallbackUrls(),
-                    transport,
-                    enabled,
-                    tls: !access.can('credentials.update') ? { caPem, serverName } : tlsInput(),
-                    ...(kind === 'rest' ? { kind, rest } : { kind, auth: authInput() }),
-                    ...(Object.keys(headers).length && { headers }),
-                  },
+                  kind === 'local'
+                    ? { ownerTeam, name, enabled, kind, local }
+                    : {
+                        ownerTeam,
+                        requestHeaderMappings,
+                        callerContext,
+                        name,
+                        url,
+                        fallbackUrls: kind === 'rest' ? [] : fallbackUrls(),
+                        transport,
+                        enabled,
+                        tls: !access.can('credentials.update') ? { caPem, serverName } : tlsInput(),
+                        ...(kind === 'rest' ? { kind, rest } : { kind, auth: authInput() }),
+                        ...(Object.keys(headers).length && { headers }),
+                      },
                   {
                     ownerTeam: upstream.ownerTeam ?? '',
                     requestHeaderMappings: upstream.requestHeaderMappings ?? [],
@@ -353,6 +358,7 @@ export default function UpstreamDetailForm({
                     },
                     kind: upstream.kind ?? 'mcp',
                     rest: upstream.rest,
+                    local: upstream.local,
                     auth:
                       upstream.auth?.type === 'oauth_client_credentials'
                         ? {
@@ -368,19 +374,22 @@ export default function UpstreamDetailForm({
                 upstream.version,
               )
         } else {
-          const body = {
-            ownerTeam,
-            requestHeaderMappings,
-            callerContext,
-            name: name || slug,
-            url,
-            fallbackUrls: kind === 'rest' ? [] : fallbackUrls(),
-            transport,
-            enabled,
-            headers: replaced,
-            tls: !access.can('credentials.update') ? { caPem, serverName } : tlsInput(),
-            ...(kind === 'rest' ? { kind, rest } : { kind, auth: authInput() }),
-          }
+          const body =
+            kind === 'local'
+              ? { ownerTeam, name: name || slug, enabled, kind, local, url: '', transport }
+              : {
+                  ownerTeam,
+                  requestHeaderMappings,
+                  callerContext,
+                  name: name || slug,
+                  url,
+                  fallbackUrls: kind === 'rest' ? [] : fallbackUrls(),
+                  transport,
+                  enabled,
+                  headers: replaced,
+                  tls: !access.can('credentials.update') ? { caPem, serverName } : tlsInput(),
+                  ...(kind === 'rest' ? { kind, rest } : { kind, auth: authInput() }),
+                }
           saved = await api.createUpstream(
             slug,
             configurationCreate(
@@ -496,7 +505,7 @@ export default function UpstreamDetailForm({
                   ? 'Finish or cancel the import, and resolve editor errors before saving.'
                   : newName || newValue
                     ? 'Add or clear the pending header before saving.'
-                    : !url || (!upstream && !slug)
+                    : (!url && kind !== 'local') || (!upstream && !slug)
                       ? 'Enter an identifier and connection URL before saving.'
                       : session?.blocked
                         ? 'Invocation security or audit masking needs attention. Open these sections to resolve loading errors or policy conflicts before saving.'
@@ -537,71 +546,77 @@ export default function UpstreamDetailForm({
               onReload(latest)
             }}
           />
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryTile
-              label="Transport"
-              value={
-                rest.mock
-                  ? 'Mock / WireMock'
-                  : kind === 'rest'
-                    ? 'REST API'
-                    : transport === 'sse'
-                      ? 'Legacy SSE'
-                      : 'Streamable HTTP'
-              }
-              detail={editing ? 'Current draft transport' : 'Saved endpoint transport'}
-              icon={Cable}
-            />
-            <SummaryTile
-              label="Authentication"
-              value={
-                kind === 'rest'
-                  ? { none: 'None', basic: 'Basic', bearer: 'Bearer token', oauth2: 'OAuth 2.0' }[
-                      rest.auth.type
-                    ] || 'None'
-                  : authType === 'none'
-                    ? existing.some((h) => !removed.includes(h))
-                      ? 'Headers'
-                      : 'None'
-                    : 'OAuth 2.0'
-              }
-              detail={
-                kind === 'rest'
-                  ? 'Service authentication'
-                  : authType === 'none'
-                    ? `${existing.filter((h) => !removed.includes(h)).length} configured headers`
-                    : 'Client credentials grant'
-              }
-              icon={KeyRound}
-            />
-            <SummaryTile
-              label={kind === 'rest' ? 'Defined tools' : 'Discovered tools'}
-              value={
-                kind === 'rest'
-                  ? rest.operations.filter((op) => op.enabled).length
-                  : (upstream?.toolCount ?? '—')
-              }
-              detail={
-                kind === 'rest'
-                  ? 'Enabled REST operations'
-                  : upstream
-                    ? 'Last saved discovery count'
-                    : 'Available after saving & discovery'
-              }
-              icon={Wrench}
-            />
-            <SummaryTile
-              label="Recorded health"
-              value={
-                upstream?.enabled === false ? 'Disabled' : (upstream?.health?.state ?? 'Unknown')
-              }
-              detail="Stored observation · not a live check"
-              icon={Activity}
-            />
-          </div>
+          {kind !== 'local' && (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryTile
+                label="Transport"
+                value={
+                  rest.mock
+                    ? 'Mock / WireMock'
+                    : kind === 'rest'
+                      ? 'REST API'
+                      : transport === 'sse'
+                        ? 'Legacy SSE'
+                        : 'Streamable HTTP'
+                }
+                detail={editing ? 'Current draft transport' : 'Saved endpoint transport'}
+                icon={Cable}
+              />
+              <SummaryTile
+                label="Authentication"
+                value={
+                  kind === 'rest'
+                    ? { none: 'None', basic: 'Basic', bearer: 'Bearer token', oauth2: 'OAuth 2.0' }[
+                        rest.auth.type
+                      ] || 'None'
+                    : authType === 'none'
+                      ? existing.some((h) => !removed.includes(h))
+                        ? 'Headers'
+                        : 'None'
+                      : 'OAuth 2.0'
+                }
+                detail={
+                  kind === 'rest'
+                    ? 'Service authentication'
+                    : authType === 'none'
+                      ? `${existing.filter((h) => !removed.includes(h)).length} configured headers`
+                      : 'Client credentials grant'
+                }
+                icon={KeyRound}
+              />
+              <SummaryTile
+                label={kind === 'rest' ? 'Defined tools' : 'Discovered tools'}
+                value={
+                  kind === 'rest'
+                    ? rest.operations.filter((op) => op.enabled).length
+                    : (upstream?.toolCount ?? '—')
+                }
+                detail={
+                  kind === 'rest'
+                    ? 'Enabled REST operations'
+                    : upstream
+                      ? 'Last saved discovery count'
+                      : 'Available after saving & discovery'
+                }
+                icon={Wrench}
+              />
+              <SummaryTile
+                label="Recorded health"
+                value={
+                  upstream?.enabled === false ? 'Disabled' : (upstream?.health?.state ?? 'Unknown')
+                }
+                detail="Stored observation · not a live check"
+                icon={Activity}
+              />
+            </div>
+          )}
           <ConfigurationGroup
             title="Connection & identity"
-            description={url || 'Start with a name, type and endpoint URL'}
+            description={
+              kind === 'local'
+                ? 'Tools hosted by VMCP'
+                : url || 'Start with a name, type and endpoint URL'
+            }
             defaultOpen
           >
             <div className="layout-stack mt-4">
@@ -656,7 +671,7 @@ export default function UpstreamDetailForm({
                         value={kind === 'rest' && rest.mock ? 'mock' : kind}
                         onChange={(e) => {
                           const type = e.target.value
-                          setKind(type === 'mock' ? 'rest' : (type as 'mcp' | 'rest'))
+                          setKind(type === 'mock' ? 'rest' : (type as 'mcp' | 'rest' | 'local'))
                           if (type === 'mock') {
                             setRest({
                               ...emptyREST(),
@@ -672,6 +687,7 @@ export default function UpstreamDetailForm({
                       >
                         <option value="mcp">MCP server</option>
                         <option value="rest">REST API</option>
+                        <option value="local">Local tools</option>
                         <option value="mock" disabled={!mockProvider.enabled}>
                           Mock upstream (WireMock){!mockProvider.enabled ? ' · not configured' : ''}
                         </option>
@@ -688,28 +704,30 @@ export default function UpstreamDetailForm({
                         onChange={(e) => setName(e.target.value)}
                       />
                     </FormField>
-                    <FormField
-                      name="url"
-                      label="URL"
-                      required
-                      hint={
-                        rest.mock
-                          ? 'Shared WireMock endpoint configured by the operator. Each mock upstream gets its own namespace.'
-                          : kind === 'rest'
-                            ? 'Base URL of your REST service. Operation paths are appended to it.'
-                            : 'Absolute HTTP or HTTPS endpoint, without credentials or a fragment.'
-                      }
-                    >
-                      <input
-                        className={clsx(input, 'mt-1')}
-                        readOnly={!!rest.mock}
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder={
-                          kind === 'rest' ? 'https://api.example.com/v1' : 'https://host/mcp'
+                    {kind !== 'local' && (
+                      <FormField
+                        name="url"
+                        label="URL"
+                        required
+                        hint={
+                          rest.mock
+                            ? 'Shared WireMock endpoint configured by the operator. Each mock upstream gets its own namespace.'
+                            : kind === 'rest'
+                              ? 'Base URL of your REST service. Operation paths are appended to it.'
+                              : 'Absolute HTTP or HTTPS endpoint, without credentials or a fragment.'
                         }
-                      />
-                    </FormField>
+                      >
+                        <input
+                          className={clsx(input, 'mt-1')}
+                          readOnly={!!rest.mock}
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          placeholder={
+                            kind === 'rest' ? 'https://api.example.com/v1' : 'https://host/mcp'
+                          }
+                        />
+                      </FormField>
+                    )}
                     {kind === 'mcp' && (
                       <>
                         <FormField
@@ -909,374 +927,394 @@ export default function UpstreamDetailForm({
               </div>
             </div>
           </ConfigurationGroup>
-          <ConfigurationGroup
-            title="Authentication, TLS & headers"
-            description="Authentication, TLS certificates and static request headers"
-          >
-            <div className="layout-stack mt-4">
-              {kind === 'rest' && (
-                <RESTConnectionSettings
-                  value={rest}
-                  onChange={
-                    editable &&
-                    !busy &&
-                    access.can('rest.manage') &&
-                    access.can('credentials.update')
-                      ? setRest
-                      : undefined
-                  }
-                />
-              )}
-              <div>
-                <h2 className="section-title">Security & credentials</h2>
-                <p className="section-description mt-1 text-sm text-ink-muted">
-                  Transport trust, upstream authentication and write-only secrets.
-                </p>
-              </div>
-              <div className="grid items-start layout-grid xl:grid-cols-2">
-                <ServerPanel
-                  title="Transport security"
-                  description="Custom trust and mutual TLS settings"
-                  icon={ShieldCheck}
-                >
-                  <fieldset
-                    disabled={!editable || busy || !access.can('tls.update')}
-                    className="min-w-0 border-0 panel-body m-0"
-                  >
-                    <>
-                      {!editing && !(caPem || serverName || clientCert) && (
-                        <p className="mb-3 text-xs leading-relaxed text-ink-muted">
-                          Uses system trust. No custom CA, server name or client certificate is
-                          configured.
-                        </p>
-                      )}
-                      <details className="min-w-0" open={!!(caPem || serverName || clientCert)}>
-                        <summary className="cursor-pointer text-sm font-medium">
-                          TLS (custom CA, server name, mTLS)
-                        </summary>
-                        <div className="mt-3 space-y-3">
-                          <FormField
-                            name="tls.caPem"
-                            label="CA certificate(s)"
-                            hint="Optional. PEM certificates trusted only for this upstream."
-                          >
-                            <textarea
-                              className={clsx(input, 'mt-1 font-mono text-xs')}
-                              rows={4}
-                              value={caPem}
-                              onChange={(e) => setCaPem(e.target.value)}
-                              placeholder="-----BEGIN CERTIFICATE-----"
-                            />
-                          </FormField>
-                          <input
-                            type="file"
-                            accept=".pem,.crt,.cer"
-                            onChange={readFile(setCaPem)}
-                            className="max-w-full text-xs"
-                            aria-label="Upload CA PEM"
-                          />
-                          {upstream &&
-                            (upstream.tls?.caCerts?.length ?? 0) > 0 &&
-                            caPem === upstream.tls.caPem && (
-                              <ul className="text-xs text-ink-muted">
-                                {upstream.tls.caCerts.map((c, i) => (
-                                  <li key={i} className="truncate" data-tooltip={c.subject}>
-                                    {c.subject} · expires{' '}
-                                    {new Date(c.notAfter).toLocaleDateString()}
-                                    {Date.parse(c.notAfter) < openedAt && (
-                                      <span className="ml-1 text-red-700">expired</span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          <FormField
-                            name="tls.serverName"
-                            label="Server name"
-                            hint="Optional. Override the TLS server name."
-                          >
-                            <input
-                              className={clsx(input, 'mt-1')}
-                              value={serverName}
-                              onChange={(e) => setServerName(e.target.value)}
-                              placeholder="mcp.internal.example"
-                            />
-                          </FormField>
-                          <FormField
-                            name="tls.clientCertPem"
-                            label="Client certificate"
-                            hint="Optional. PEM certificate used for mutual TLS."
-                          >
-                            <textarea
-                              className={clsx(input, 'mt-1 font-mono text-xs')}
-                              rows={3}
-                              value={clientCert}
-                              onChange={(e) => setClientCert(e.target.value)}
-                            />
-                          </FormField>
-                          <input
-                            type="file"
-                            accept=".pem,.crt,.cer"
-                            disabled={!fieldAllowed('tls.clientCertPem')}
-                            onChange={readFile(setClientCert)}
-                            className="max-w-full text-xs"
-                            aria-label="Upload client certificate"
-                          />
-                          <FormField
-                            name="tls.clientKeyPem"
-                            label="Client key"
-                            hint="Write-only. Leave empty to keep the stored private key."
-                          >
-                            <textarea
-                              className={clsx(input, 'mt-1 font-mono text-xs')}
-                              rows={3}
-                              value={clientKey}
-                              onChange={(e) => setClientKey(e.target.value)}
-                              placeholder={
-                                upstream?.tls?.hasClientKey
-                                  ? '•••••••• stored — paste to replace'
-                                  : '-----BEGIN PRIVATE KEY-----'
-                              }
-                            />
-                          </FormField>
-                          <p className="text-xs text-ink-muted">
-                            Certificate verification can't be disabled. Using the self-signed server
-                            certificate as the CA is fine.
-                          </p>
-                        </div>
-                      </details>
-                    </>
-                  </fieldset>
-                </ServerPanel>
-                {kind === 'mcp' && (
-                  <ServerPanel
-                    title="OAuth authentication"
-                    description="Token endpoint and client credentials"
-                    icon={Fingerprint}
-                  >
-                    <fieldset
-                      disabled={!editable || busy || !access.can('credentials.update')}
-                      className="min-w-0 border-0 panel-body m-0"
+          {kind !== 'local' && (
+            <>
+              <ConfigurationGroup
+                title="Authentication, TLS & headers"
+                description="Authentication, TLS certificates and static request headers"
+              >
+                <div className="layout-stack mt-4">
+                  {kind === 'rest' && (
+                    <RESTConnectionSettings
+                      value={rest}
+                      onChange={
+                        editable &&
+                        !busy &&
+                        access.can('rest.manage') &&
+                        access.can('credentials.update')
+                          ? setRest
+                          : undefined
+                      }
+                    />
+                  )}
+                  <div>
+                    <h2 className="section-title">Security & credentials</h2>
+                    <p className="section-description mt-1 text-sm text-ink-muted">
+                      Transport trust, upstream authentication and write-only secrets.
+                    </p>
+                  </div>
+                  <div className="grid items-start layout-grid xl:grid-cols-2">
+                    <ServerPanel
+                      title="Transport security"
+                      description="Custom trust and mutual TLS settings"
+                      icon={ShieldCheck}
                     >
-                      <details className="min-w-0" open={authType === 'oauth_client_credentials'}>
-                        <summary className="cursor-pointer text-sm font-medium">
-                          OAuth 2.0 Client Credentials
-                        </summary>
-                        <div className="mt-3 space-y-3">
-                          <Switch
-                            label="Enable OAuth client credentials"
-                            field="auth.type"
-                            checked={authType === 'oauth_client_credentials'}
-                            onChange={(e) =>
-                              setAuthType(e.target.checked ? 'oauth_client_credentials' : 'none')
-                            }
-                          />
-                          {authType === 'oauth_client_credentials' && (
-                            <>
+                      <fieldset
+                        disabled={!editable || busy || !access.can('tls.update')}
+                        className="min-w-0 border-0 panel-body m-0"
+                      >
+                        <>
+                          {!editing && !(caPem || serverName || clientCert) && (
+                            <p className="mb-3 text-xs leading-relaxed text-ink-muted">
+                              Uses system trust. No custom CA, server name or client certificate is
+                              configured.
+                            </p>
+                          )}
+                          <details className="min-w-0" open={!!(caPem || serverName || clientCert)}>
+                            <summary className="cursor-pointer text-sm font-medium">
+                              TLS (custom CA, server name, mTLS)
+                            </summary>
+                            <div className="mt-3 space-y-3">
                               <FormField
-                                name="auth.tokenUrl"
-                                label="Token URL"
-                                required
-                                hint="OAuth token endpoint. Use an absolute HTTP or HTTPS URL."
+                                name="tls.caPem"
+                                label="CA certificate(s)"
+                                hint="Optional. PEM certificates trusted only for this upstream."
+                              >
+                                <textarea
+                                  className={clsx(input, 'mt-1 font-mono text-xs')}
+                                  rows={4}
+                                  value={caPem}
+                                  onChange={(e) => setCaPem(e.target.value)}
+                                  placeholder="-----BEGIN CERTIFICATE-----"
+                                />
+                              </FormField>
+                              <input
+                                type="file"
+                                accept=".pem,.crt,.cer"
+                                onChange={readFile(setCaPem)}
+                                className="max-w-full text-xs"
+                                aria-label="Upload CA PEM"
+                              />
+                              {upstream &&
+                                (upstream.tls?.caCerts?.length ?? 0) > 0 &&
+                                caPem === upstream.tls.caPem && (
+                                  <ul className="text-xs text-ink-muted">
+                                    {upstream.tls.caCerts.map((c, i) => (
+                                      <li key={i} className="truncate" data-tooltip={c.subject}>
+                                        {c.subject} · expires{' '}
+                                        {new Date(c.notAfter).toLocaleDateString()}
+                                        {Date.parse(c.notAfter) < openedAt && (
+                                          <span className="ml-1 text-red-700">expired</span>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              <FormField
+                                name="tls.serverName"
+                                label="Server name"
+                                hint="Optional. Override the TLS server name."
                               >
                                 <input
                                   className={clsx(input, 'mt-1')}
-                                  value={tokenUrl}
-                                  onChange={(e) => setTokenUrl(e.target.value)}
-                                  placeholder="https://idp.example.com/oauth/token"
+                                  value={serverName}
+                                  onChange={(e) => setServerName(e.target.value)}
+                                  placeholder="mcp.internal.example"
                                 />
                               </FormField>
                               <FormField
-                                name="auth.clientId"
-                                label="Client ID"
-                                required
-                                hint="Client identifier registered with the upstream identity provider."
+                                name="tls.clientCertPem"
+                                label="Client certificate"
+                                hint="Optional. PEM certificate used for mutual TLS."
                               >
-                                <input
-                                  className={clsx(input, 'mt-1')}
-                                  value={clientId}
-                                  onChange={(e) => setClientId(e.target.value)}
+                                <textarea
+                                  className={clsx(input, 'mt-1 font-mono text-xs')}
+                                  rows={3}
+                                  value={clientCert}
+                                  onChange={(e) => setClientCert(e.target.value)}
                                 />
                               </FormField>
+                              <input
+                                type="file"
+                                accept=".pem,.crt,.cer"
+                                disabled={!fieldAllowed('tls.clientCertPem')}
+                                onChange={readFile(setClientCert)}
+                                className="max-w-full text-xs"
+                                aria-label="Upload client certificate"
+                              />
                               <FormField
-                                name="auth.clientSecret"
-                                label="Client secret"
-                                hint="Write-only. Leave empty to keep a stored secret."
+                                name="tls.clientKeyPem"
+                                label="Client key"
+                                hint="Write-only. Leave empty to keep the stored private key."
                               >
-                                <input
-                                  type="password"
-                                  className={clsx(input, 'mt-1')}
-                                  value={clientSecret}
-                                  onChange={(e) => setClientSecret(e.target.value)}
+                                <textarea
+                                  className={clsx(input, 'mt-1 font-mono text-xs')}
+                                  rows={3}
+                                  value={clientKey}
+                                  onChange={(e) => setClientKey(e.target.value)}
                                   placeholder={
-                                    upstream?.auth?.hasClientSecret
-                                      ? '•••••••• stored — type to replace'
-                                      : 'Secret'
+                                    upstream?.tls?.hasClientKey
+                                      ? '•••••••• stored — paste to replace'
+                                      : '-----BEGIN PRIVATE KEY-----'
                                   }
                                 />
                               </FormField>
-                              <FormField
-                                name="auth.scopes"
-                                label="Scopes"
-                                hint="Optional. Separate OAuth scopes with spaces."
-                              >
-                                <input
-                                  className={clsx(input, 'mt-1 font-mono text-xs')}
-                                  value={scopes}
-                                  onChange={(e) => setScopes(e.target.value)}
-                                  placeholder="mcp.read mcp.tools"
-                                />
-                              </FormField>
-                              <FormField
-                                name="auth.audience"
-                                label="Audience"
-                                hint="Optional. Resource audience expected by the upstream."
-                              >
-                                <input
-                                  className={clsx(input, 'mt-1')}
-                                  value={audience}
-                                  onChange={(e) => setAudience(e.target.value)}
-                                  placeholder="fixture"
-                                />
-                              </FormField>
                               <p className="text-xs text-ink-muted">
-                                The gateway fetches and caches access tokens from the token endpoint
-                                and automatically retries once on 401. Cannot be combined with a
-                                static Authorization header.
+                                Certificate verification can't be disabled. Using the self-signed
+                                server certificate as the CA is fine.
                               </p>
-                            </>
-                          )}
-                        </div>
-                      </details>
-                    </fieldset>
-                  </ServerPanel>
-                )}
-              </div>
-
-              <ServerPanel
-                title="Request headers"
-                description="Stored values remain masked; only explicit changes are sent"
-                icon={Code2}
-                footer="Header values are write-only. Replacing or removing a header takes effect after Save."
-              >
-                {editing ? (
-                  <fieldset
-                    disabled={!editable || busy || !access.can('credentials.update')}
-                    className="min-w-0 border-0 panel-body m-0"
-                  >
-                    <div>
-                      <div className="space-y-2">
-                        {existing
-                          .filter((h) => !removed.includes(h))
-                          .map((h) => (
-                            <div
-                              key={h}
-                              className="flex min-w-0 flex-wrap items-center gap-2 text-sm"
-                            >
-                              <span className="min-w-0 flex-1 truncate surface-inset px-3 py-2">
-                                {h}{' '}
-                                <span className="text-ink-muted">
-                                  {replaced[h] !== undefined ? '(new value)' : '••••••••'}
-                                </span>
-                              </span>
-                              <button
-                                className={btn}
-                                onClick={() => {
-                                  setHeaderToReplace(h)
-                                  setHeaderReplacement('')
-                                }}
-                              >
-                                Replace
-                              </button>
-                              <button
-                                className={`${btn} action-danger-outline action-icon`}
-                                aria-label="Remove header"
-                                onClick={() => setRemoved((r) => [...r, h])}
-                              >
-                                <X aria-hidden="true" className="icon-inline" />
-                              </button>
                             </div>
-                          ))}
-                        <div className="flex flex-col items-start gap-3 sm:flex-row">
-                          <FormField
-                            name="headers"
-                            label="New header name"
-                            className="w-full sm:flex-1"
-                            hint="Optional. Add the header to this draft before saving."
-                          >
-                            <input
-                              className={input}
-                              aria-label="New header name"
-                              placeholder="Header"
-                              value={newName}
-                              onChange={(e) => setNewName(e.target.value)}
-                            />
-                          </FormField>
-                          <FormField
-                            name="headerValue"
-                            label="New header value"
-                            className="w-full sm:flex-1"
-                            hint="Write-only. Header values are never shown again."
-                          >
-                            <input
-                              className={input}
-                              type="password"
-                              aria-label="New header value"
-                              placeholder="Value"
-                              value={newValue}
-                              onChange={(e) => setNewValue(e.target.value)}
-                            />
-                          </FormField>
-                          <button className={btn} disabled={!newName.trim()} onClick={addHeader}>
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </fieldset>
-                ) : (
-                  <div className="divide-y divide-line panel-inset">
-                    {existing.length ? (
-                      existing.map((header) => (
-                        <div
-                          key={header}
-                          className="flex min-w-0 items-center justify-between gap-4 py-4"
+                          </details>
+                        </>
+                      </fieldset>
+                    </ServerPanel>
+                    {kind === 'mcp' && (
+                      <ServerPanel
+                        title="OAuth authentication"
+                        description="Token endpoint and client credentials"
+                        icon={Fingerprint}
+                      >
+                        <fieldset
+                          disabled={!editable || busy || !access.can('credentials.update')}
+                          className="min-w-0 border-0 panel-body m-0"
                         >
-                          <span className="min-w-0 break-all font-mono text-xs">{header}</span>
-                          <span className="shrink-0 text-xs text-ink-muted">
-                            Value stored · masked
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <EmptyState title="No request headers configured." compact />
+                          <details
+                            className="min-w-0"
+                            open={authType === 'oauth_client_credentials'}
+                          >
+                            <summary className="cursor-pointer text-sm font-medium">
+                              OAuth 2.0 Client Credentials
+                            </summary>
+                            <div className="mt-3 space-y-3">
+                              <Switch
+                                label="Enable OAuth client credentials"
+                                field="auth.type"
+                                checked={authType === 'oauth_client_credentials'}
+                                onChange={(e) =>
+                                  setAuthType(
+                                    e.target.checked ? 'oauth_client_credentials' : 'none',
+                                  )
+                                }
+                              />
+                              {authType === 'oauth_client_credentials' && (
+                                <>
+                                  <FormField
+                                    name="auth.tokenUrl"
+                                    label="Token URL"
+                                    required
+                                    hint="OAuth token endpoint. Use an absolute HTTP or HTTPS URL."
+                                  >
+                                    <input
+                                      className={clsx(input, 'mt-1')}
+                                      value={tokenUrl}
+                                      onChange={(e) => setTokenUrl(e.target.value)}
+                                      placeholder="https://idp.example.com/oauth/token"
+                                    />
+                                  </FormField>
+                                  <FormField
+                                    name="auth.clientId"
+                                    label="Client ID"
+                                    required
+                                    hint="Client identifier registered with the upstream identity provider."
+                                  >
+                                    <input
+                                      className={clsx(input, 'mt-1')}
+                                      value={clientId}
+                                      onChange={(e) => setClientId(e.target.value)}
+                                    />
+                                  </FormField>
+                                  <FormField
+                                    name="auth.clientSecret"
+                                    label="Client secret"
+                                    hint="Write-only. Leave empty to keep a stored secret."
+                                  >
+                                    <input
+                                      type="password"
+                                      className={clsx(input, 'mt-1')}
+                                      value={clientSecret}
+                                      onChange={(e) => setClientSecret(e.target.value)}
+                                      placeholder={
+                                        upstream?.auth?.hasClientSecret
+                                          ? '•••••••• stored — type to replace'
+                                          : 'Secret'
+                                      }
+                                    />
+                                  </FormField>
+                                  <FormField
+                                    name="auth.scopes"
+                                    label="Scopes"
+                                    hint="Optional. Separate OAuth scopes with spaces."
+                                  >
+                                    <input
+                                      className={clsx(input, 'mt-1 font-mono text-xs')}
+                                      value={scopes}
+                                      onChange={(e) => setScopes(e.target.value)}
+                                      placeholder="mcp.read mcp.tools"
+                                    />
+                                  </FormField>
+                                  <FormField
+                                    name="auth.audience"
+                                    label="Audience"
+                                    hint="Optional. Resource audience expected by the upstream."
+                                  >
+                                    <input
+                                      className={clsx(input, 'mt-1')}
+                                      value={audience}
+                                      onChange={(e) => setAudience(e.target.value)}
+                                      placeholder="fixture"
+                                    />
+                                  </FormField>
+                                  <p className="text-xs text-ink-muted">
+                                    The gateway fetches and caches access tokens from the token
+                                    endpoint and automatically retries once on 401. Cannot be
+                                    combined with a static Authorization header.
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          </details>
+                        </fieldset>
+                      </ServerPanel>
                     )}
                   </div>
-                )}
-              </ServerPanel>
-            </div>
-          </ConfigurationGroup>
-          <ConfigurationGroup
-            title="Per-call context"
-            description={`${requestHeaderMappings.length} HTTP header mappings · Caller metadata ${callerContext.enabled ? 'enabled' : 'disabled'}`}
-            defaultOpen={callerContext.enabled || requestHeaderMappings.length > 0}
-          >
-            <fieldset
-              id="upstream-call-context"
-              disabled={!editable || busy || !access.can('identity_forwarding.update')}
-              className="m-0 min-w-0 border-0 p-0"
-            >
-              <RequestHeaderMappings
-                value={requestHeaderMappings}
-                onChange={editable && !busy ? setRequestHeaderMappings : undefined}
-              />
-              <CallerContextEditor
-                value={callerContext}
-                kind={kind}
-                onChange={editable && !busy ? setCallerContext : undefined}
-              />
-            </fieldset>
-          </ConfigurationGroup>
+
+                  <ServerPanel
+                    title="Request headers"
+                    description="Stored values remain masked; only explicit changes are sent"
+                    icon={Code2}
+                    footer="Header values are write-only. Replacing or removing a header takes effect after Save."
+                  >
+                    {editing ? (
+                      <fieldset
+                        disabled={!editable || busy || !access.can('credentials.update')}
+                        className="min-w-0 border-0 panel-body m-0"
+                      >
+                        <div>
+                          <div className="space-y-2">
+                            {existing
+                              .filter((h) => !removed.includes(h))
+                              .map((h) => (
+                                <div
+                                  key={h}
+                                  className="flex min-w-0 flex-wrap items-center gap-2 text-sm"
+                                >
+                                  <span className="min-w-0 flex-1 truncate surface-inset px-3 py-2">
+                                    {h}{' '}
+                                    <span className="text-ink-muted">
+                                      {replaced[h] !== undefined ? '(new value)' : '••••••••'}
+                                    </span>
+                                  </span>
+                                  <button
+                                    className={btn}
+                                    onClick={() => {
+                                      setHeaderToReplace(h)
+                                      setHeaderReplacement('')
+                                    }}
+                                  >
+                                    Replace
+                                  </button>
+                                  <button
+                                    className={`${btn} action-danger-outline action-icon`}
+                                    aria-label="Remove header"
+                                    onClick={() => setRemoved((r) => [...r, h])}
+                                  >
+                                    <X aria-hidden="true" className="icon-inline" />
+                                  </button>
+                                </div>
+                              ))}
+                            <div className="flex flex-col items-start gap-3 sm:flex-row">
+                              <FormField
+                                name="headers"
+                                label="New header name"
+                                className="w-full sm:flex-1"
+                                hint="Optional. Add the header to this draft before saving."
+                              >
+                                <input
+                                  className={input}
+                                  aria-label="New header name"
+                                  placeholder="Header"
+                                  value={newName}
+                                  onChange={(e) => setNewName(e.target.value)}
+                                />
+                              </FormField>
+                              <FormField
+                                name="headerValue"
+                                label="New header value"
+                                className="w-full sm:flex-1"
+                                hint="Write-only. Header values are never shown again."
+                              >
+                                <input
+                                  className={input}
+                                  type="password"
+                                  aria-label="New header value"
+                                  placeholder="Value"
+                                  value={newValue}
+                                  onChange={(e) => setNewValue(e.target.value)}
+                                />
+                              </FormField>
+                              <button
+                                className={btn}
+                                disabled={!newName.trim()}
+                                onClick={addHeader}
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </fieldset>
+                    ) : (
+                      <div className="divide-y divide-line panel-inset">
+                        {existing.length ? (
+                          existing.map((header) => (
+                            <div
+                              key={header}
+                              className="flex min-w-0 items-center justify-between gap-4 py-4"
+                            >
+                              <span className="min-w-0 break-all font-mono text-xs">{header}</span>
+                              <span className="shrink-0 text-xs text-ink-muted">
+                                Value stored · masked
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <EmptyState title="No request headers configured." compact />
+                        )}
+                      </div>
+                    )}
+                  </ServerPanel>
+                </div>
+              </ConfigurationGroup>
+              <ConfigurationGroup
+                title="Per-call context"
+                description={`${requestHeaderMappings.length} HTTP header mappings · Caller metadata ${callerContext.enabled ? 'enabled' : 'disabled'}`}
+                defaultOpen={callerContext.enabled || requestHeaderMappings.length > 0}
+              >
+                <fieldset
+                  id="upstream-call-context"
+                  disabled={!editable || busy || !access.can('identity_forwarding.update')}
+                  className="m-0 min-w-0 border-0 p-0"
+                >
+                  <RequestHeaderMappings
+                    value={requestHeaderMappings}
+                    onChange={editable && !busy ? setRequestHeaderMappings : undefined}
+                  />
+                  <CallerContextEditor
+                    value={callerContext}
+                    kind={kind}
+                    onChange={editable && !busy ? setCallerContext : undefined}
+                  />
+                </fieldset>
+              </ConfigurationGroup>
+            </>
+          )}
+          {kind === 'local' && (
+            <LocalToolsEditor
+              value={local.tools}
+              disabled={!editable || busy || !access.can('connection.update')}
+              onChange={(tools) => setLocal({ tools })}
+            />
+          )}
           {kind === 'rest' && (
             <ConfigurationGroup
               title="REST operations"

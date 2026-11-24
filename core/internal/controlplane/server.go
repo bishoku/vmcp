@@ -181,6 +181,7 @@ func (s *Server) Handler() http.Handler {
 	api("POST /api/v1/upstreams/{slug}/refresh-tools", s.refreshTools)
 	api("POST /api/v1/connection-tests", s.connectionTest)
 	api("POST /api/v1/regex-preview", s.previewRegex)
+	api("POST /api/v1/local-tool-preview", s.previewLocalTool)
 	api("POST /api/v1/rest-schema-checks", s.validateRESTSchemas)
 	api("POST /api/v1/rest-imports", s.importREST)
 	api("POST /api/v1/upstreams/{slug}/connection-test", s.storedConnectionTest)

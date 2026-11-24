@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/localtools"
 	"github.com/bishoku/vmcp/core/internal/mcp"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/pii"
@@ -148,19 +149,20 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 	rows, err := tx.Query(ctx, `
 		SELECT u.id::text, u.slug, u.url, u.fallback_urls, u.transport, u.encrypted_headers,
 		       u.ca_pem, u.tls_server_name, u.client_cert_pem, u.encrypted_client_key,
-		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.discovered_instructions,u.kind,u.encrypted_rest_config,u.tenant_id::text,u.caller_context,u.request_header_mappings
+		       u.oauth_token_url, u.oauth_client_id, u.oauth_scopes, u.oauth_audience, u.encrypted_oauth_secret, u.local_config,u.discovered_instructions,u.kind,u.encrypted_rest_config,u.tenant_id::text,u.caller_context,u.request_header_mappings
 		FROM upstreams u JOIN tenants t ON t.id = u.tenant_id
 		WHERE t.slug = $1 AND u.enabled`, DefaultTenantSlug)
 	if err != nil {
 		return nil, fmt.Errorf("load upstreams: %w", err)
 	}
 	for rows.Next() {
+		var local *localtools.Config
 		var u config.Upstream
 		var enc, encKey, encOAuth, encREST []byte
 		var oc oauthtoken.Config
 		if err := rows.Scan(&u.ID, &u.Slug, &u.URL, &u.FallbackURLs, &u.Transport, &enc,
 			&u.TLS.CAPEM, &u.TLS.ServerName, &u.TLS.ClientCertPEM, &encKey,
-			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &u.Instructions, &u.Kind, &encREST, &u.Tenant, &u.CallerContext, &u.RequestHeaderMappings); err != nil {
+			&oc.TokenURL, &oc.ClientID, &oc.Scopes, &oc.Audience, &encOAuth, &local, &u.Instructions, &u.Kind, &encREST, &u.Tenant, &u.CallerContext, &u.RequestHeaderMappings); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -186,6 +188,17 @@ func LoadSnapshotWithPrevious(ctx context.Context, pool *pgxpool.Pool, box *secr
 				oc.ClientSecret = k
 			}
 			u.OAuth = &oc
+		}
+		if u.Kind == "local" {
+			if local == nil {
+				rows.Close()
+				return nil, fmt.Errorf("missing local tool definitions")
+			}
+			u.Local, err = localtools.Compile(*local)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
 		}
 		if u.Kind == "rest" {
 			raw, err := cachedOpenBound(box, boxTag, encREST, u.ID, "upstream.rest_config")
