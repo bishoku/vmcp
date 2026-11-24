@@ -418,6 +418,7 @@ test('authors and tries a local tool before saving its source', async () => {
   fireEvent.change(screen.getByLabelText('Response (text or Markdown)'), {
     target: { value: 'Button guide' },
   })
+  fireEvent.click(screen.getByRole('button', { name: 'Try draft' }))
   fireEvent.click(screen.getByRole('button', { name: 'Run preview' }))
   expect((await screen.findByLabelText('Tool response')).textContent).toBe('Button guide')
   expect(create).not.toHaveBeenCalled()

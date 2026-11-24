@@ -93,3 +93,25 @@ test('OpenAPI downloads preserve raw YAML and carry bearer credentials', async (
   expect(fetch.mock.calls[0][0]).toBe('/api/v1/openapi.yaml')
   expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer spec-token')
 })
+
+test('local draft validation and rendering authenticate directly against the transient endpoint', async () => {
+  const calls = vi.fn().mockImplementation(() => Promise.resolve(new Response('{"text":"Guide"}')))
+  vi.stubGlobal('fetch', calls)
+  const tool = { name: 'guide', description: 'UI guide', parameters: [], response: 'Guide' }
+  try {
+    setToken('local-test')
+    await api.previewLocalTool(tool)
+    await api.previewLocalTool(tool, {})
+    expect(calls.mock.calls.map(([path]) => path)).toEqual([
+      '/api/v1/local-tool-preview',
+      '/api/v1/local-tool-preview',
+    ])
+    for (const [, options] of calls.mock.calls)
+      expect(options.headers).toMatchObject({
+        Authorization: 'Bearer local-test',
+        'X-VMCP-CSRF': '1',
+      })
+  } finally {
+    setToken('')
+  }
+})

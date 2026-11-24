@@ -608,6 +608,7 @@ async function request<T>(
 ): Promise<T> {
   const identityRevision = configurationIdentityRevision
   const protectedConfiguration =
+    !(method === 'POST' && path === '/local-tool-preview') &&
     !/^\/(me|configuration-access|regex-preview|rest-schema-checks|audit-events|permissions|roles|role-assignments|identity-mappings|access)(?:[/?]|$)/.test(
       path,
     )

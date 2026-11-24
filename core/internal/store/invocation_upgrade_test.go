@@ -53,7 +53,7 @@ func TestInvocationUpgradeFromV200(t *testing.T) {
 	snapshot := func() string {
 		t.Helper()
 		var value string
-		err := pool.QueryRow(ctx, `SELECT jsonb_build_object('upstreams',(SELECT jsonb_agg(to_jsonb(u)-'invocation_security_revision') FROM upstreams u),
+		err := pool.QueryRow(ctx, `SELECT jsonb_build_object('upstreams',(SELECT jsonb_agg(('{"local_config":null}'::jsonb || to_jsonb(u))-'invocation_security_revision') FROM upstreams u),
    'assignments',(SELECT jsonb_agg(to_jsonb(a)) FROM authorization_assignments a),
    'customPermissions',(SELECT jsonb_agg(p.permission_id ORDER BY p.permission_id) FROM authorization_role_permissions p JOIN authorization_roles r ON r.id=p.role_id WHERE r.slug='custom-reader'))::text`).Scan(&value)
 		if err != nil {
