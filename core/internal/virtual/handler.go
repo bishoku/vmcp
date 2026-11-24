@@ -747,6 +747,16 @@ var errCircuitOpen = errors.New("circuit open")
 // Approval-bound calls and REST calls remain non-replayable.
 func (h *Handler) callResilient(ctx context.Context, sess *Session, up config.Upstream, vt config.VirtualTool, args json.RawMessage) (json.RawMessage, error) {
 	ctx = audit.WithProvider(ctx, up.Slug, up.AuditDomain)
+	if up.Kind == "local" {
+		if err := checkAuthorization(ctx); err != nil {
+			return nil, err
+		}
+		text, err := up.Local.Render(vt.UpstreamName, args)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	}
 	br := h.Breakers.Get(up.ID)
 	attempts := 1
 	if approved, _ := ctx.Value(approvedInvocationKey{}).(bool); !approved && up.REST == nil && ctx.Value(retryInvocationKey{}) == "once" {

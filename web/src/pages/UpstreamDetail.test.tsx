@@ -398,3 +398,40 @@ test('Cancel after a partial save discards pending configuration but keeps appli
   expect(api.saveUpstreamInvocationSecurity).toHaveBeenCalledOnce()
   expect(api.saveLocalAuditSettings).toHaveBeenCalledOnce()
 })
+
+test('authors and tries a local tool before saving its source', async () => {
+  const create = vi.spyOn(api, 'createUpstream').mockResolvedValue(upstream)
+  const preview = vi.spyOn(api, 'previewLocalTool').mockResolvedValue({ text: 'Button guide' })
+  render(
+    <MemoryRouter initialEntries={['/upstreams/new']}>
+      <Routes>
+        <Route path="/upstreams/new" element={<UpstreamDetail create />} />
+        <Route path="/upstreams/:slug" element={<UpstreamDetail />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'ui' } })
+  fireEvent.change(screen.getByLabelText('Upstream type'), { target: { value: 'local' } })
+  expect(screen.queryByLabelText('URL')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Add tool' }))
+  fireEvent.change(screen.getByLabelText('Tool name'), { target: { value: 'guide' } })
+  fireEvent.change(screen.getByLabelText('Response (text or Markdown)'), {
+    target: { value: 'Button guide' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Run preview' }))
+  expect((await screen.findByLabelText('Tool response')).textContent).toBe('Button guide')
+  expect(create).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Apply tool to draft' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() =>
+    expect(create).toHaveBeenCalledWith(
+      'ui',
+      expect.objectContaining({
+        kind: 'local',
+        local: { tools: [expect.objectContaining({ name: 'guide', response: 'Button guide' })] },
+      }),
+    ),
+  )
+  expect(preview).toHaveBeenCalledTimes(2)
+})

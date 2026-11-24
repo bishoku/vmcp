@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/bishoku/vmcp/core/internal/tlsconf"
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/apierror"
 	"github.com/bishoku/vmcp/core/internal/callercontext"
+	"github.com/bishoku/vmcp/core/internal/localtools"
 	"github.com/bishoku/vmcp/core/internal/mockupstream"
 	"github.com/bishoku/vmcp/core/internal/restapi"
 )
@@ -27,11 +29,27 @@ func (t *Tx) putUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 			kind = current.Kind
 		}
 	}
-	if kind != "mcp" && kind != "rest" {
-		return nil, "", apierror.Validation([]apierror.FieldError{vf("/kind", "must be mcp or rest")})
+	if kind != "mcp" && kind != "rest" && kind != "local" {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/kind", "must be mcp, rest or local")})
 	}
 	if current != nil && kind != current.Kind {
 		return nil, "", apierror.Validation([]apierror.FieldError{vf("/kind", "upstream kind is immutable; create a separate upstream")})
+	}
+	var local *localtools.Compiled
+	if kind == "local" {
+		in.Kind = kind
+		if in.Local == nil && current != nil {
+			in.Local = current.Local
+		}
+		if in.Local == nil || in.URL != "" || len(in.FallbackURLs) > 0 || len(in.Headers) > 0 || in.OAuth != nil && !in.OAuth.IsZero() || in.TLS != nil && *in.TLS != (tlsconf.Settings{}) || len(in.RequestHeaderMappings) > 0 || in.CallerContext != nil && in.CallerContext.Enabled {
+			return nil, "", apierror.Validation([]apierror.FieldError{vf("/local", "provide local tools without connection settings")})
+		}
+		local, err = localtools.Compile(*in.Local)
+		if err != nil {
+			return nil, "", apierror.Validation([]apierror.FieldError{vf("/local", err.Error())})
+		}
+	} else if in.Local != nil {
+		return nil, "", apierror.Validation([]apierror.FieldError{vf("/local", "requires a local source")})
 	}
 	var rest *restapi.Config
 	var compiled *restapi.Compiled
@@ -150,6 +168,28 @@ func (t *Tx) putUpstream(ctx context.Context, slug string, in UpstreamInput, ifM
 				return nil, "", err
 			}
 		}
+	}
+	if kind == "local" {
+		raw, _ := json.Marshal(in.Local)
+		if current != nil {
+			old, _ := json.Marshal(current.Local)
+			if jsonEqual(old, raw) {
+				return result, outcome, nil
+			}
+		}
+		bump := 0
+		if outcome == Unchanged {
+			outcome = Updated
+			bump = 1
+		}
+		if _, err = t.q.Exec(ctx, "UPDATE upstreams SET kind='local',local_config=$2,version=version+$3,updated_at=now() WHERE tenant_id="+tenantSQL+" AND slug=$1", slug, raw, bump); err != nil {
+			return nil, "", err
+		}
+		if _, err = t.ReplaceTools(ctx, slug, local.Tools, time.Now().UTC()); err != nil {
+			return nil, "", err
+		}
+		result, err = t.GetUpstream(ctx, slug)
+		return result, outcome, err
 	}
 	if kind != "rest" {
 		return result, outcome, nil

@@ -412,7 +412,7 @@ func (t *Tx) checkConfigurationResource(ctx context.Context, c configurationPoli
 	}
 	fields := map[string]string{}
 	if kind == "upstream" {
-		fields = map[string]string{"slug": "", "name": "", "description": "", "ownerteam": "", "url": "connection.update", "fallbackurls": "connection.update", "kind": "connection.update", "transport": "connection.update", "enabled": "activation.update", "headers": "credentials.update", "auth": "credentials.update", "tls": "tls.update", "requestheadermappings": "identity_forwarding.update", "callercontext": "identity_forwarding.update", "rest": "rest.manage"}
+		fields = map[string]string{"slug": "", "name": "", "description": "", "ownerteam": "", "url": "connection.update", "fallbackurls": "connection.update", "kind": "connection.update", "transport": "connection.update", "enabled": "activation.update", "headers": "credentials.update", "auth": "credentials.update", "tls": "tls.update", "requestheadermappings": "identity_forwarding.update", "callercontext": "identity_forwarding.update", "local": "connection.update", "rest": "rest.manage"}
 	} else {
 		fields = map[string]string{"slug": "", "name": "", "description": "", "guidance": "", "tools": "", "catalog": "", "project": "", "enabled": "publication.update", "omnienabled": "publication.update", "authrequired": "policy.update", "pii": "policy.update", "policy": "policy.update", "ratelimitperminute": "policy.update", "clientfeatures": "client_features.update"}
 	}

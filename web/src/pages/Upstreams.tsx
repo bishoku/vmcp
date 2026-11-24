@@ -44,11 +44,12 @@ function ago(iso: string | null) {
 }
 
 function discoveryOf(u: Upstream) {
-  if (u.kind === 'rest') return 'ready'
+  if (u.kind === 'rest' || u.kind === 'local') return 'ready'
   return u.lastRefreshError ? 'failed' : u.lastRefreshAt ? 'ready' : 'pending'
 }
 
 function DiscoveryStatus({ u }: { u: Upstream }) {
+  if (u.kind === 'local') return <span>Local tools</span>
   if (u.kind === 'rest')
     return (
       <StatusBadge
@@ -119,7 +120,13 @@ export default function Upstreams() {
             .includes(query.trim().toLowerCase()) &&
           (!status || (u.enabled ? 'enabled' : 'disabled') === status) &&
           (!transport ||
-            (u.rest?.mock ? 'mock' : u.kind === 'rest' ? 'rest' : u.transport) === transport) &&
+            (u.kind === 'local'
+              ? 'local'
+              : u.rest?.mock
+                ? 'mock'
+                : u.kind === 'rest'
+                  ? 'rest'
+                  : u.transport) === transport) &&
           (!discovery || discoveryOf(u) === discovery),
       ),
     [items, query, status, transport, discovery],
@@ -325,6 +332,7 @@ export default function Upstreams() {
           <option value="">All transports</option>
           <option value="streamable_http">Streamable HTTP</option>
           <option value="sse">SSE</option>
+          <option value="local">Local tools</option>
           <option value="rest">REST API</option>
           <option value="mock">Mock / WireMock</option>
         </ServerListSelect>
@@ -396,35 +404,41 @@ export default function Upstreams() {
                 <p className="line-clamp-2 min-h-10 text-xs leading-relaxed text-ink-muted">
                   {u.description || 'Upstream service supplying capabilities to virtual servers.'}
                 </p>
-                <div className="mt-4 surface-inset p-3">
-                  <p className="text-xs font-medium">Connection endpoint</p>
-                  <p className="mt-1 break-all font-mono text-xs leading-relaxed text-ink-muted">
-                    {u.url}
-                  </p>
-                </div>
-                <dl className="mt-2 divide-y divide-line">
-                  <DetailRow label="Transport">
-                    {u.rest?.mock
-                      ? 'Mock / WireMock'
-                      : u.kind === 'rest'
-                        ? 'REST API'
-                        : u.transport === 'sse'
-                          ? 'SSE'
-                          : 'Streamable HTTP'}
-                  </DetailRow>
-                  <DetailRow label="Discovered tools">{u.toolCount}</DetailRow>
-                  <DetailRow label="Last discovery refresh">
-                    <span
-                      tabIndex={u.lastRefreshAt ? 0 : undefined}
-                      data-tooltip={u.lastRefreshAt ?? undefined}
-                    >
-                      {ago(u.lastRefreshAt)}
-                    </span>
-                  </DetailRow>
-                  <DetailRow label="Recorded health">
-                    <Pill status={u.health?.state ?? 'unknown'} />
-                  </DetailRow>
-                </dl>
+                {u.kind === 'local' ? (
+                  <DetailRow label="Defined tools">{u.toolCount}</DetailRow>
+                ) : (
+                  <>
+                    <div className="mt-4 surface-inset p-3">
+                      <p className="text-xs font-medium">Connection endpoint</p>
+                      <p className="mt-1 break-all font-mono text-xs leading-relaxed text-ink-muted">
+                        {u.url}
+                      </p>
+                    </div>
+                    <dl className="mt-2 divide-y divide-line">
+                      <DetailRow label="Transport">
+                        {u.rest?.mock
+                          ? 'Mock / WireMock'
+                          : u.kind === 'rest'
+                            ? 'REST API'
+                            : u.transport === 'sse'
+                              ? 'SSE'
+                              : 'Streamable HTTP'}
+                      </DetailRow>
+                      <DetailRow label="Discovered tools">{u.toolCount}</DetailRow>
+                      <DetailRow label="Last discovery refresh">
+                        <span
+                          tabIndex={u.lastRefreshAt ? 0 : undefined}
+                          data-tooltip={u.lastRefreshAt ?? undefined}
+                        >
+                          {ago(u.lastRefreshAt)}
+                        </span>
+                      </DetailRow>
+                      <DetailRow label="Recorded health">
+                        <Pill status={u.health?.state ?? 'unknown'} />
+                      </DetailRow>
+                    </dl>
+                  </>
+                )}
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <DiscoveryStatus u={u} />
                   <span className="inline-flex items-center gap-1.5 text-xs text-ink-muted">
@@ -455,15 +469,17 @@ export default function Upstreams() {
                     View server
                     <ArrowUpRight aria-hidden="true" className="icon-inline" />
                   </Link>
-                  <button
-                    disabled={!rowCan(u.slug, 'catalog.refresh') || busy}
-                    className={`${btn} action-icon`}
-                    data-tooltip={u.kind === 'rest' ? 'Refresh Tools' : 'Refresh capabilities'}
-                    aria-label={`${u.kind === 'rest' ? 'Refresh tools' : 'Refresh capabilities'} for ${u.name}`}
-                    onClick={() => void refresh(u)}
-                  >
-                    <RefreshCw aria-hidden="true" className="icon-inline" />
-                  </button>
+                  {u.kind !== 'local' && (
+                    <button
+                      disabled={!rowCan(u.slug, 'catalog.refresh') || busy}
+                      className={`${btn} action-icon`}
+                      data-tooltip={u.kind === 'rest' ? 'Refresh Tools' : 'Refresh capabilities'}
+                      aria-label={`${u.kind === 'rest' ? 'Refresh tools' : 'Refresh capabilities'} for ${u.name}`}
+                      onClick={() => void refresh(u)}
+                    >
+                      <RefreshCw aria-hidden="true" className="icon-inline" />
+                    </button>
+                  )}
                   <button
                     disabled={!rowCan(u.slug, 'delete') || busy}
                     className={`${btn} action-danger-outline action-icon`}

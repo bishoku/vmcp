@@ -66,7 +66,7 @@ func (s *Server) discoverOne(parent context.Context) {
 		return
 	}
 	conn, connErr := s.Store.Reader().UpstreamConnInfo(ctx, slug)
-	if connErr == nil && conn.Kind == "rest" {
+	if connErr == nil && (conn.Kind == "rest" || conn.Kind == "local") {
 		_, _ = s.Store.Pool.Exec(ctx, `DELETE FROM mcp_discovery_requests WHERE upstream_id=$1::uuid`, id)
 		return
 	}

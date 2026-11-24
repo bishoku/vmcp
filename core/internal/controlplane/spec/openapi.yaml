@@ -2318,6 +2318,31 @@ paths:
           $ref: "#/components/responses/Unprocessable"
         "503":
           $ref: "#/components/responses/AuditUnavailable"
+  /api/v1/local-tool-preview:
+    post:
+      tags: [Upstreams]
+      operationId: previewLocalTool
+      summary: Validate a draft local tool and optionally render a sample invocation
+      parameters:
+        - $ref: "#/components/parameters/CSRF"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tool]
+              properties:
+                tool: { $ref: "#/components/schemas/LocalTool" }
+                arguments: { type: object }
+      responses:
+        "200":
+          description: Rendered MCP text content or empty text for validation only.
+          content:
+            application/json:
+              schema: { type: object, properties: { text: { type: string } } }
+        "422":
+          $ref: "#/components/responses/Unprocessable"
   /api/v1/rest-schema-checks:
     post:
       tags: [Upstreams]
@@ -4236,15 +4261,45 @@ components:
       pattern: "^[A-Za-z0-9_.-]+$"
 
     # ---- Upstreams ----
-    UpstreamInput:
+    LocalTool:
       type: object
-      required: [ name, url ]
+      required: [name, response]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: "^[A-Za-z0-9_.-]{1,128}$" }
+        description: { type: string }
+        response: { type: string, description: Text or Markdown with optional bounded Go template expressions. }
+        parameters:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            required: [name, type]
+            additionalProperties: false
+            properties:
+              name: { type: string }
+              type: { enum: [string, boolean, "string[]"] }
+              required: { type: boolean }
+              choices: { type: array, items: { type: string } }
+              default: {}
+    LocalTools:
+      type: object
+      required: [tools]
+      properties:
+        tools: { type: array, maxItems: 128, items: { $ref: "#/components/schemas/LocalTool" } }
+
+    UpstreamInput:
+      if: { properties: { kind: { const: local } }, required: [ kind ] }
+      then: { properties: { url: { const: "" } } }
+      else: { required: [ url ], properties: { url: { $ref: "#/components/schemas/UpstreamUrl" } } }
+      type: object
+      required: [ name ]
       additionalProperties: false
       properties:
         ownerTeam: { type: string, description: "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin." }
         name: { type: string, minLength: 1, maxLength: 120 }
         description: { type: string, maxLength: 1000, default: "" }
-        url: { $ref: "#/components/schemas/UpstreamUrl" }
+        url: { anyOf: [{ const: "" }, { $ref: "#/components/schemas/UpstreamUrl" }] }
         fallbackUrls:
           type: array
           maxItems: 5
@@ -4262,6 +4317,7 @@ components:
           enum:
             - mcp
             - rest
+            - local
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
         requestHeaderMappings:
           type: array
@@ -4271,10 +4327,15 @@ components:
             $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
+        local:
+          $ref: "#/components/schemas/LocalTools"
         rest:
           $ref: "#/components/schemas/RESTConfig"
 
     UpstreamCreate:
+      if: { properties: { kind: { const: local } }, required: [ kind ] }
+      then: { properties: { url: { const: "" } } }
+      else: { required: [ url ], properties: { url: { $ref: "#/components/schemas/UpstreamUrl" } } }
       type: object
       properties:
         ownerTeam: { type: string, description: "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin." }
@@ -4287,7 +4348,7 @@ components:
           maxLength: 1000
           default: ""
         url:
-          $ref: "#/components/schemas/UpstreamUrl"
+          anyOf: [{ const: "" }, { $ref: "#/components/schemas/UpstreamUrl" }]
         fallbackUrls:
           type: array
           maxItems: 5
@@ -4314,6 +4375,7 @@ components:
           enum:
             - mcp
             - rest
+            - local
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
         requestHeaderMappings:
           type: array
@@ -4323,11 +4385,12 @@ components:
             $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
+        local:
+          $ref: "#/components/schemas/LocalTools"
         rest:
           $ref: "#/components/schemas/RESTConfig"
       required:
         - name
-        - url
         - slug
       additionalProperties: false
 
@@ -4339,7 +4402,7 @@ components:
         ownerTeam: { type: string, description: "Owner team slug; empty means Default. Omission preserves existing ownership. Transfers require platform admin." }
         name: { type: string, minLength: 1, maxLength: 120 }
         description: { type: string, maxLength: 1000 }
-        url: { $ref: "#/components/schemas/UpstreamUrl" }
+        url: { anyOf: [{ const: "" }, { $ref: "#/components/schemas/UpstreamUrl" }] }
         fallbackUrls:
           type: array
           maxItems: 5
@@ -4368,6 +4431,7 @@ components:
           enum:
             - mcp
             - rest
+            - local
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
         requestHeaderMappings:
           type: array
@@ -4377,6 +4441,8 @@ components:
             $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
+        local:
+          $ref: "#/components/schemas/LocalTools"
         rest:
           $ref: "#/components/schemas/RESTConfig"
 
@@ -4518,7 +4584,7 @@ components:
         description:
           type: string
         url:
-          $ref: "#/components/schemas/UpstreamUrl"
+          anyOf: [{ const: "" }, { $ref: "#/components/schemas/UpstreamUrl" }]
         fallbackUrls:
           type: array
           items:
@@ -4565,6 +4631,7 @@ components:
           enum:
             - mcp
             - rest
+            - local
           description: Immutable upstream kind. Defaults to mcp on create; omission preserves existing kind on update.
         requestHeaderMappings:
           type: array
@@ -4574,6 +4641,8 @@ components:
             $ref: "#/components/schemas/RequestHeaderMapping"
         callerContext:
           $ref: "#/components/schemas/CallerContextConfig"
+        local:
+          $ref: "#/components/schemas/LocalTools"
         rest:
           $ref: "#/components/schemas/RESTConfig"
 
