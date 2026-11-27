@@ -17,8 +17,11 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
@@ -50,10 +53,10 @@ func Run(service, version string, serve func(*SDK) error) int {
 	return 0
 }
 
-// Start configures standard OTLP/HTTP exporters only for explicitly configured
+// Start configures OTLP exporters only for explicitly configured
 // destinations. The private Prometheus reader is always available.
 func Start(ctx context.Context, service, version string) (sdk *SDK, err error) {
-	enabled, err := signals()
+	protocols, err := signals()
 	if err != nil {
 		return nil, err
 	}
@@ -73,13 +76,13 @@ func Start(ctx context.Context, service, version string) (sdk *SDK, err error) {
 	}()
 	// Keep SDK diagnostics out of its own log exporter. Remote error messages
 	// and endpoint URLs can contain private data.
-	if len(enabled) > 0 {
+	if len(protocols) > 0 {
 		local := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 		otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { local.Warn("OpenTelemetry SDK error", "error_type", fmt.Sprintf("%T", err)) }))
 	}
 	var extra slog.Handler
-	if enabled["LOGS"] {
-		exp, e := otlploghttp.New(ctx)
+	if protocol, ok := protocols["LOGS"]; ok {
+		exp, e := protocol.logExporter(ctx)
 		if e != nil {
 			return nil, e
 		}
@@ -93,8 +96,8 @@ func Start(ctx context.Context, service, version string) (sdk *SDK, err error) {
 	}
 	r := &Registry{started: time.Now()}
 	var opts []sdkmetric.Option
-	if enabled["METRICS"] {
-		exp, e := otlpmetrichttp.New(ctx)
+	if protocol, ok := protocols["METRICS"]; ok {
+		exp, e := protocol.metricExporter(ctx)
 		if e != nil {
 			return nil, e
 		}
@@ -106,8 +109,8 @@ func Start(ctx context.Context, service, version string) (sdk *SDK, err error) {
 	}
 	s.Metrics = r
 	s.shutdown = append(s.shutdown, mp.Shutdown)
-	if enabled["TRACES"] {
-		tp, e := startTracing(ctx, res)
+	if protocol, ok := protocols["TRACES"]; ok {
+		tp, e := startTracing(ctx, res, protocol)
 		if e != nil {
 			return nil, e
 		}
@@ -117,18 +120,46 @@ func Start(ctx context.Context, service, version string) (sdk *SDK, err error) {
 	return s, nil
 }
 
-func signals() (map[string]bool, error) {
-	enabled := map[string]bool{}
+type transport string
+
+const (
+	httpProtobuf  transport = "http/protobuf"
+	grpcTransport transport = "grpc"
+)
+
+func (p transport) logExporter(ctx context.Context) (sdklog.Exporter, error) {
+	if p == grpcTransport {
+		return otlploggrpc.New(ctx)
+	}
+	return otlploghttp.New(ctx)
+}
+
+func (p transport) metricExporter(ctx context.Context) (sdkmetric.Exporter, error) {
+	if p == grpcTransport {
+		return otlpmetricgrpc.New(ctx)
+	}
+	return otlpmetrichttp.New(ctx)
+}
+
+func (p transport) traceExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
+	if p == grpcTransport {
+		return otlptracegrpc.New(ctx)
+	}
+	return otlptracehttp.New(ctx)
+}
+
+func signals() (map[string]transport, error) {
+	protocols := map[string]transport{}
 	legacy := os.Getenv("VMCP_OTEL_ENABLED")
 	switch legacy {
 	case "false":
-		return enabled, nil
+		return protocols, nil
 	case "", "true":
 	default:
 		return nil, errors.New("VMCP_OTEL_ENABLED must be true or false")
 	}
 	if strings.EqualFold(os.Getenv("OTEL_SDK_DISABLED"), "true") {
-		return enabled, nil
+		return protocols, nil
 	}
 	common := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	for _, signal := range []string{"TRACES", "LOGS", "METRICS"} {
@@ -147,18 +178,22 @@ func signals() (map[string]bool, error) {
 		if protocol == "" {
 			protocol = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
 		}
-		if protocol != "" && protocol != "http/protobuf" {
-			return nil, fmt.Errorf("%s requires OTLP http/protobuf", signal)
+		switch transport(protocol) {
+		case "", httpProtobuf:
+			protocols[signal] = httpProtobuf
+		case grpcTransport:
+			protocols[signal] = grpcTransport
+		default:
+			return nil, fmt.Errorf("%s requires OTLP grpc or http/protobuf", signal)
 		}
-		enabled[signal] = true
 	}
 	if legacy == "true" && common == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
 		return nil, errors.New("enabled legacy tracing requires an OTLP trace endpoint")
 	}
-	return enabled, nil
+	return protocols, nil
 }
 
-func startTracing(ctx context.Context, res *resource.Resource) (*sdktrace.TracerProvider, error) {
+func startTracing(ctx context.Context, res *resource.Resource, protocol transport) (*sdktrace.TracerProvider, error) {
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(res)}
 	if os.Getenv("OTEL_TRACES_SAMPLER") == "" {
 		ratio := 0.1
@@ -171,7 +206,7 @@ func startTracing(ctx context.Context, res *resource.Resource) (*sdktrace.Tracer
 		}
 		opts = append(opts, sdktrace.WithSampler(sdktrace.TraceIDRatioBased(ratio)))
 	}
-	exp, err := otlptracehttp.New(ctx)
+	exp, err := protocol.traceExporter(ctx)
 	if err != nil {
 		return nil, err
 	}

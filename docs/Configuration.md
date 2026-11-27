@@ -116,7 +116,9 @@ idempotency. Caller cancellation and IdP failures do not trip upstream breakers.
 | `VMCP_SKIP_MIGRATIONS` | `false` | Control plane checks the schema instead of migrating; run `cmd/migrate` first |
 | `VMCP_TENANT_ID` | `default` | Dedicated database deployment identity, consistent on planes and operational commands |
 | `VMCP_REDIS_FAILURE_POLICY` | `local` | Per-node fallback (`local`) or quota denial/readiness failure (`strict`) on Redis outage |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP/HTTP base URL for metrics, logs and traces |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | Collector endpoint URL for metrics, logs and traces |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Transport for all enabled signals. Use `grpc` for an OTLP/gRPC receiver |
+| `OTEL_EXPORTER_OTLP_{METRICS,LOGS,TRACES}_PROTOCOL` | common protocol | Override the transport for one signal |
 | `OTEL_EXPORTER_OTLP_{METRICS,LOGS,TRACES}_ENDPOINT` | unset | Full endpoint URL for the selected signal |
 | `VMCP_OTEL_ENABLED` | unset | Legacy trace enable flag. Explicit false disables remote telemetry |
 | `VMCP_OTEL_SAMPLE_RATIO` | `0.1` | Local trace sampling ratio, 0–1 |

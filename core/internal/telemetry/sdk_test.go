@@ -18,6 +18,16 @@ import (
 )
 
 func TestDirectOTLP(t *testing.T) {
+	for _, protocol := range []string{"", "http/protobuf"} {
+		name := protocol
+		if name == "" {
+			name = "default"
+		}
+		t.Run(name, func(t *testing.T) { t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", protocol); testHTTPExport(t) })
+	}
+}
+
+func testHTTPExport(t *testing.T) {
 	old := otel.GetTracerProvider()
 	defer otel.SetTracerProvider(old)
 	var lock sync.Mutex
@@ -98,14 +108,24 @@ func TestSignalSelection(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "https://example.invalid/v1/traces")
 	t.Setenv("VMCP_OTEL_ENABLED", "true")
 	selected, err := signals()
-	if err != nil || len(selected) != 1 || !selected["TRACES"] {
+	if err != nil || len(selected) != 1 || selected["TRACES"] != httpProtobuf {
 		t.Fatal(selected, err)
 	}
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://example.invalid")
 	t.Setenv("OTEL_LOGS_EXPORTER", "none")
 	selected, err = signals()
-	if err != nil || len(selected) != 2 || !selected["METRICS"] {
+	if err != nil || len(selected) != 2 || selected["METRICS"] != httpProtobuf {
 		t.Fatal(selected, err)
+	}
+	t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL", "http/protobuf")
+	selected, err = signals()
+	if err != nil || len(selected) != 2 || selected["METRICS"] != grpcTransport || selected["TRACES"] != httpProtobuf {
+		t.Fatal(selected, err)
+	}
+	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "unsupported")
+	if _, err = signals(); err == nil {
+		t.Fatal("accepted unsupported metrics protocol")
 	}
 	t.Setenv("VMCP_OTEL_ENABLED", "false")
 	selected, err = signals()
