@@ -21,33 +21,25 @@ func (w *blockedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 func TestSlowScrapeDoesNotBlockRequestsOrOperations(t *testing.T) {
-	for _, operationsOnly := range []bool{false, true} {
-		t.Run(fmt.Sprint(operationsOnly), func(t *testing.T) {
-			r := New()
-			w := &blockedWriter{entered: make(chan struct{}), release: make(chan struct{})}
-			scrapeDone := make(chan struct{})
-			go func() {
-				defer close(scrapeDone)
-				if operationsOnly {
-					r.serveOperations(w)
-				} else {
-					r.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
-				}
-			}()
-			<-w.entered
-			defer func() { close(w.release); <-scrapeDone }()
-			completed := make(chan struct{})
-			go func() {
-				r.BeginOperation(Operation{Family: "virtual_tool_calls", VirtualServer: "bench", Tool: "read"})("ok")
-				r.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/mcp/test", nil))
-				close(completed)
-			}()
-			select {
-			case <-completed:
-			case <-time.After(time.Second):
-				t.Fatal("slow metrics writer held the request lock")
-			}
-		})
+	r := New()
+	w := &blockedWriter{entered: make(chan struct{}), release: make(chan struct{})}
+	scrapeDone := make(chan struct{})
+	go func() {
+		defer close(scrapeDone)
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/metrics", nil))
+	}()
+	<-w.entered
+	defer func() { close(w.release); <-scrapeDone }()
+	completed := make(chan struct{})
+	go func() {
+		r.BeginOperation(Operation{Family: "virtual_tool_calls", VirtualServer: "bench", Tool: "read"})("ok")
+		r.Handler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/mcp/test", nil))
+		close(completed)
+	}()
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("slow metrics writer held the request lock")
 	}
 }
 func BenchmarkOperationsWithScrapes(b *testing.B) {

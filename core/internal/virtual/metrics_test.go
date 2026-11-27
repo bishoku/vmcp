@@ -36,12 +36,12 @@ func TestMetricsUseConfiguredAliasesAndOriginalUpstreamTool(t *testing.T) {
 	metrics.ServeHTTP(out, httptest.NewRequest("GET", "/metrics", nil))
 	body := out.Body.String()
 	for _, want := range []string{
-		`vmcp_virtual_tool_calls_total{virtual_server="support",tool="tables",outcome="ok"} 1`,
-		`vmcp_virtual_tool_calls_total{virtual_server="support",tool="blocked",outcome="denied"} 1`,
-		`vmcp_virtual_tool_calls_total{virtual_server="support",tool="tables",outcome="error"} 1`,
-		`vmcp_upstream_requests_total{upstream="postgres",method="tools/call",tool="list_tables",outcome="ok"} 1`,
-		`vmcp_upstream_requests_total{upstream="postgres",method="tools/call",tool="list_tables",outcome="error"} 1`,
-		`vmcp_virtual_requests_total{virtual_server="support",outcome="ok"}`,
+		`vmcp_virtual_tool_calls_total{outcome="ok",tool="tables",virtual_server="support"} 1`,
+		`vmcp_virtual_tool_calls_total{outcome="denied",tool="blocked",virtual_server="support"} 1`,
+		`vmcp_virtual_tool_calls_total{outcome="error",tool="tables",virtual_server="support"} 1`,
+		`vmcp_upstream_requests_total{method="tools/call",outcome="ok",tool="list_tables",upstream="postgres"} 1`,
+		`vmcp_upstream_requests_total{method="tools/call",outcome="error",tool="list_tables",upstream="postgres"} 1`,
+		`vmcp_virtual_requests_total{outcome="ok",virtual_server="support"}`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatal(want, body)
@@ -88,7 +88,7 @@ func TestMetricsCountGatewayRetriesSeparately(t *testing.T) {
 			out := httptest.NewRecorder()
 			metrics.ServeHTTP(out, httptest.NewRequest("GET", "/metrics", nil))
 			body := out.Body.String()
-			for _, want := range []string{fmt.Sprintf(`vmcp_upstream_requests_total{upstream="github",method="tools/call",tool="create_issue",outcome="error"} %d`, tc.attempts), `vmcp_virtual_tool_calls_total{virtual_server="support",tool="github__create_issue",outcome="error"} 1`} {
+			for _, want := range []string{fmt.Sprintf(`vmcp_upstream_requests_total{method="tools/call",outcome="error",tool="create_issue",upstream="github"} %d`, tc.attempts), `vmcp_virtual_tool_calls_total{outcome="error",tool="github__create_issue",virtual_server="support"} 1`} {
 				if !strings.Contains(body, want) {
 					t.Fatal(want, body)
 				}

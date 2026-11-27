@@ -75,7 +75,7 @@ func TestApprovalBoundCallNeverRetriesDespiteOperatorPreference(t *testing.T) {
 	}
 	out := httptest.NewRecorder()
 	metrics.ServeHTTP(out, httptest.NewRequest("GET", "/metrics", nil))
-	if !strings.Contains(out.Body.String(), `vmcp_upstream_requests_total{upstream="github",method="tools/call",tool="create_issue",outcome="error"} 1`) {
+	if !strings.Contains(out.Body.String(), `vmcp_upstream_requests_total{method="tools/call",outcome="error",tool="create_issue",upstream="github"} 1`) {
 		t.Fatal(out.Body.String())
 	}
 }

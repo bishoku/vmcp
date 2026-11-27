@@ -22,6 +22,7 @@ import (
 )
 
 type Server struct {
+	Metrics           *telemetry.Registry
 	Auditor           Auditor
 	AllowAnonymous    bool
 	SearchLimit       int
@@ -63,8 +64,11 @@ func (s *Server) Handler() http.Handler {
 		replyJSON(w, map[string]bool{"accepted": true})
 	}))
 	mux.HandleFunc("POST /internal/preview", s.admin(s.preview))
-	metrics := telemetry.New()
-	metrics.Gauges = func(context.Context) map[string]float64 {
+	metrics := s.Metrics
+	if metrics == nil {
+		metrics = telemetry.New()
+	}
+	metrics.SetGauges(func() map[string]float64 {
 		status := s.Index.Status()
 		ready := 0.0
 		if status.Ready {
@@ -75,7 +79,7 @@ func (s *Server) Handler() http.Handler {
 			rerankEnabled = 1
 		}
 		return map[string]float64{"vmcp_omni_reranker_enabled": rerankEnabled, "vmcp_omni_index_documents": float64(status.Documents), "vmcp_omni_index_ready": ready, "vmcp_omni_index_revision": float64(status.Revision), "vmcp_omni_index_embedded_documents": float64(status.EmbeddedDocuments), "vmcp_omni_index_dimensions": float64(status.Dimensions)}
-	}
+	})
 	mux.Handle("GET /metrics", metrics)
 	return metrics.Handler(mux)
 }

@@ -8,6 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/bishoku/vmcp/core/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestProviderRequiresEgressGrantAndAcceptsPrivateCA(t *testing.T) {
@@ -38,5 +43,30 @@ func TestProviderRequiresEgressGrantAndAcceptsPrivateCA(t *testing.T) {
 	}
 	if _, err = NewHTTPEmbedder(srv.URL, "model", "", true); err == nil {
 		t.Fatal("CA with verification bypass")
+	}
+}
+
+func TestGatewayTracePropagation(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	old := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer func() { otel.SetTracerProvider(old); _ = provider.Shutdown(context.Background()) }()
+	registry := telemetry.New()
+	dataPlane := httptest.NewServer(registry.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })))
+	defer dataPlane.Close()
+	b := Backend{URL: dataPlane.URL, Client: dataPlane.Client()}
+	ctx, root := provider.Tracer("test").Start(t.Context(), "omni")
+	if err := b.Request(ctx, "POST", "/internal/omni/invoke", "", "", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	root.End()
+	ended := recorder.Ended()
+	if len(ended) != 3 {
+		t.Fatalf("expected server, client and root spans, got %d", len(ended))
+	}
+	server, client := ended[0], ended[1]
+	if server.Parent().SpanID() != client.SpanContext().SpanID() || client.Parent().SpanID() != root.SpanContext().SpanID() || server.SpanContext().TraceID() != root.SpanContext().TraceID() {
+		t.Fatal("broken internal trace chain")
 	}
 }

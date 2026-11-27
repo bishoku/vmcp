@@ -24,14 +24,14 @@ func TestOperationMetricsConcurrentOutcomes(t *testing.T) {
 	workers.Wait()
 	done := r.BeginOperation(labels)
 	body := scrapeOperations(r)
-	for _, want := range []string{`vmcp_virtual_tool_calls_active{virtual_server="support",tool="lookup"} 1`, `vmcp_virtual_tool_calls_total{virtual_server="support",tool="lookup",outcome="ok"} 50`, `vmcp_virtual_tool_calls_duration_seconds_bucket{virtual_server="support",tool="lookup",le="+Inf"} 50`} {
+	for _, want := range []string{`vmcp_virtual_tool_calls_active{tool="lookup",virtual_server="support"} 1`, `vmcp_virtual_tool_calls_total{outcome="ok",tool="lookup",virtual_server="support"} 50`, `vmcp_virtual_tool_calls_duration_seconds_bucket{tool="lookup",virtual_server="support",le="+Inf"} 50`} {
 		if !strings.Contains(body, want) {
 			t.Fatal(want, body)
 		}
 	}
 	done("raw-secret-error")
 	body = scrapeOperations(r)
-	if strings.Contains(body, "raw-secret") || !strings.Contains(body, `outcome="error"} 1`) {
+	if strings.Contains(body, "raw-secret") || !strings.Contains(body, `outcome="error",tool="lookup",virtual_server="support"} 1`) {
 		t.Fatal(body)
 	}
 }

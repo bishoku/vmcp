@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bishoku/vmcp/core/internal/lifecycle"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +18,7 @@ import (
 	"github.com/bishoku/vmcp/core/internal/config"
 	"github.com/bishoku/vmcp/core/internal/delivery"
 	"github.com/bishoku/vmcp/core/internal/health"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"github.com/bishoku/vmcp/core/internal/netpolicy"
 	"github.com/bishoku/vmcp/core/internal/oauthtoken"
 	"github.com/bishoku/vmcp/core/internal/ratelimit"
@@ -33,20 +32,15 @@ import (
 
 const sessionIdleTTL = 30 * time.Minute
 
+var gatewayVersion = "dev"
+
 func main() {
-	log, err := telemetry.NewLogger("data-plane")
-	if err != nil {
-		slog.Error("invalid logging configuration")
-		os.Exit(1)
-	}
-	slog.SetDefault(log)
-	if err := run(log); err != nil {
-		log.Error("fatal", "err", err)
-		os.Exit(1)
-	}
+	os.Exit(telemetry.Run("data-plane", gatewayVersion, run))
 }
 
-func run(log *slog.Logger) error {
+func run(sdk *telemetry.SDK) error {
+	log := sdk.Log
+
 	if _, err := netpolicy.FromEnv(); err != nil {
 		return err
 	}
@@ -240,7 +234,7 @@ func run(log *slog.Logger) error {
 	if config.Env("VMCP_APPROVAL_URL", "") != "" {
 		return fmt.Errorf("VMCP_APPROVAL_URL was removed; configure invocation-security policies")
 	}
-	metrics := telemetry.New()
+	metrics := sdk.Metrics
 	virtualHandler := &virtual.Handler{Metrics: metrics, ReserveInvocation: func(ctx context.Context, id, binding string) error {
 		tag, err := pool.Exec(ctx, `INSERT INTO invocation_dispatches(operation_id,binding_hash) VALUES($1,$2) ON CONFLICT DO NOTHING`, id, binding)
 		if err != nil {
@@ -266,15 +260,14 @@ func run(log *slog.Logger) error {
 	virtualHandler.RegisterOmni(mux, omniSecret)
 	defer virtualHandler.StopWorkers()
 
-	metrics.Gauges = func(ctx context.Context) map[string]float64 {
+	pendingMetrics, stopRefresh := audit.StartPendingMetrics(ctx, pool)
+	defer stopRefresh()
+	metrics.SetGauges(func() map[string]float64 {
 		status := syncer.Status()
 		stats := pool.Stat()
 		a := auditor.Stats()
 		gauges := map[string]float64{"streams_active": float64(virtualHandler.ActiveStreams()), "sessions_active": float64(sessions.Len()), "snapshot_age_seconds": status.Age.Seconds(), "snapshot_revision": float64(status.Revision), "snapshot_refresh_seconds": syncer.RefreshDuration().Seconds(), "listener_reconnects_total": float64(syncer.ListenerReconnects()), "pool_acquired": float64(stats.AcquiredConns()), "pool_max": float64(stats.MaxConns()), "pool_acquire_seconds_total": stats.AcquireDuration().Seconds(), "pool_empty_acquires_total": float64(stats.EmptyAcquireCount()), "pool_cancelled_acquires_total": float64(stats.CanceledAcquireCount()), "audit_failed_writes_total": float64(a.FailedWrites), "audit_dropped_total": float64(a.Dropped), "audit_queue_pending": float64(a.Pending)}
-		if pending, err := audit.Pending(ctx, pool); err == nil {
-			gauges["audit_incomplete"] = float64(pending.Incomplete)
-			gauges["audit_oldest_incomplete_seconds"] = pending.OldestIncompleteAgeSeconds
-		}
+		pendingMetrics.AppendTo(gauges)
 		if redis, ok := limiter.(*ratelimit.FailOpen); ok {
 			gauges["redis_failures_total"] = float64(redis.Failures.Load())
 			if redis.Degraded.Load() {
@@ -292,16 +285,8 @@ func run(log *slog.Logger) error {
 		gauges["breakers_half_open"] = float64(states[resilience.HalfOpen])
 		gauges["breakers_closed"] = float64(states[resilience.Closed])
 		return gauges
-	}
-	shutdownTracing, err := telemetry.InitTracing(ctx, "vmcp-data-plane")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		traceCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = shutdownTracing(traceCtx)
-	}()
+	})
+
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_DP_ADDR", ":8080"),
 		Handler:           gate.Handler(metrics.Handler(mux)),

@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/bishoku/vmcp/core/internal/lifecycle"
-	"github.com/bishoku/vmcp/core/internal/telemetry"
 	"log/slog"
 	"math"
 	"net/http"
@@ -15,21 +13,18 @@ import (
 	"time"
 
 	"github.com/bishoku/vmcp/core/internal/config"
+	"github.com/bishoku/vmcp/core/internal/lifecycle"
 	"github.com/bishoku/vmcp/core/internal/omni"
+	"github.com/bishoku/vmcp/core/internal/telemetry"
 )
 
+var gatewayVersion = "dev"
+
 func main() {
-	if err := run(); err != nil {
-		slog.Error("omni stopped", "error", err)
-		os.Exit(1)
-	}
+	os.Exit(telemetry.Run("omni-mcp", gatewayVersion, run))
 }
-func run() error {
-	log, err := telemetry.NewLogger("omni")
-	if err != nil {
-		return err
-	}
-	slog.SetDefault(log)
+
+func run(sdk *telemetry.SDK) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	supervisor := lifecycle.NewSupervisor(slog.Default(), stop)
@@ -123,7 +118,7 @@ func run() error {
 	if err != nil {
 		return errors.New("VMCP_OMNI_ALLOW_ANONYMOUS must be a boolean")
 	}
-	app := &omni.Server{Auditor: &omni.GatewayAudit{Backend: backend}, AllowAnonymous: allowAnonymous, SearchLimit: limit, Backend: backend, Index: index, TrustedProxies: proxies, PublicURL: config.Env("VMCP_OMNI_PUBLIC_URL", ""), Issuer: config.Env("VMCP_AGENT_OIDC_ISSUER", "")}
+	app := &omni.Server{Metrics: sdk.Metrics, Auditor: &omni.GatewayAudit{Backend: backend}, AllowAnonymous: allowAnonymous, SearchLimit: limit, Backend: backend, Index: index, TrustedProxies: proxies, PublicURL: config.Env("VMCP_OMNI_PUBLIC_URL", ""), Issuer: config.Env("VMCP_AGENT_OIDC_ISSUER", "")}
 	server := &http.Server{Addr: config.Env("VMCP_LISTEN", ":8090"), Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 75 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	go func() {
 		<-ctx.Done()

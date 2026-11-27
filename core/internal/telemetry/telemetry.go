@@ -2,46 +2,42 @@
 package telemetry
 
 import (
-	"context"
-	"fmt"
-	"math"
+	"log/slog"
 	"net/http"
-	"os"
-	"slices"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var bounds = []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60, 90}
 
-type series struct {
-	count, active int64
-	sum           float64
-	buckets       []int64
-	errors        int64
-}
 type Registry struct {
-	background         map[string]uint64
 	operations         map[Operation]*operationSeries
 	operationOverflows uint64
 	operationsPruned   time.Time
 	mu                 sync.Mutex
-	requests           map[string]*series
-	Gauges             func(context.Context) map[string]float64
+	started            time.Time
+	gaugeMu            sync.RWMutex
+	gauges             func() map[string]float64
+	handler            http.Handler
+	httpActive         metric.Int64UpDownCounter
+	httpErrors         metric.Int64Counter
+	httpDuration       metric.Float64Histogram
+	background         metric.Int64Counter
 }
 
-func New() *Registry { return &Registry{requests: map[string]*series{}} }
+func (r *Registry) SetGauges(read func() map[string]float64) {
+	r.gaugeMu.Lock()
+	defer r.gaugeMu.Unlock()
+	r.gauges = read
+}
+
 func route(path string) string {
 	switch {
 	case strings.HasPrefix(path, "/mcp/"):
@@ -80,17 +76,11 @@ func (r *Registry) Handler(next http.Handler) http.Handler {
 			return
 		}
 		class := route(req.URL.Path)
-		r.mu.Lock()
-		s := r.requests[class]
-		if s == nil {
-			s = &series{buckets: make([]int64, len(bounds))}
-			r.requests[class] = s
-		}
-		s.active++
-		r.mu.Unlock()
+		attrs := metric.WithAttributes(attribute.String("route", class))
+		r.httpActive.Add(req.Context(), 1, attrs)
 		start := time.Now()
 		ctx := propagation.TraceContext{}.Extract(req.Context(), propagation.HeaderCarrier(req.Header))
-		ctx, span := otel.Tracer("vmcp/http").Start(ctx, class, trace.WithAttributes(attribute.String("vmcp.route_class", class)))
+		ctx, span := otel.Tracer("vmcp/http").Start(ctx, class, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attribute.String("vmcp.route_class", class)))
 		defer span.End()
 		rw := &writer{ResponseWriter: w}
 		defer func() {
@@ -100,19 +90,14 @@ func (r *Registry) Handler(next http.Handler) http.Handler {
 				code = 200
 			}
 			span.SetAttributes(attribute.Int("http.response.status_code", code))
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			s.active--
-			s.count++
-			s.sum += elapsed
+			r.httpActive.Add(ctx, -1, attrs)
+			var failed int64
 			if code >= 400 {
-				s.errors++
+				failed = 1
 			}
-			for i, b := range bounds {
-				if elapsed <= b {
-					s.buckets[i]++
-				}
-			}
+			r.httpErrors.Add(ctx, failed, attrs)
+			r.httpDuration.Record(ctx, elapsed, attrs)
+			slog.DebugContext(ctx, "HTTP request completed", "route", class, "status", code)
 		}()
 		traced := req.WithContext(ctx)
 		traced.Header = req.Header.Clone()
@@ -122,83 +107,7 @@ func (r *Registry) Handler(next http.Handler) http.Handler {
 	})
 }
 func (r *Registry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	runtimeMetrics(w)
-	r.backgroundMetrics(w)
-	r.mu.Lock()
-	requests := make(map[string]series, len(r.requests))
-	for label, value := range r.requests {
-		copy := *value
-		copy.buckets = slices.Clone(value.buckets)
-		requests[label] = copy
-	}
-	r.mu.Unlock()
-	fmt.Fprintln(w, "# HELP vmcp_http_active Number of in-flight HTTP requests by route class.")
-	fmt.Fprintln(w, "# TYPE vmcp_http_active gauge")
-	fmt.Fprintln(w, "# HELP vmcp_http_errors_total Total number of HTTP responses with status >= 400 by route class.")
-	fmt.Fprintln(w, "# TYPE vmcp_http_errors_total counter")
-	fmt.Fprintln(w, "# HELP vmcp_http_duration_seconds HTTP request duration histogram by route class.")
-	fmt.Fprintln(w, "# TYPE vmcp_http_duration_seconds histogram")
-	routes := make([]string, 0, len(requests))
-	for label := range requests {
-		routes = append(routes, label)
-	}
-	sort.Strings(routes)
-	for _, label := range routes {
-		s := requests[label]
-		fmt.Fprintf(w, "vmcp_http_active{route=%q} %d\nvmcp_http_errors_total{route=%q} %d\n", label, s.active, label, s.errors)
-		for i, b := range bounds {
-			fmt.Fprintf(w, "vmcp_http_duration_seconds_bucket{route=%q,le=%q} %d\n", label, strconv.FormatFloat(b, 'g', -1, 64), s.buckets[i])
-		}
-		fmt.Fprintf(w, "vmcp_http_duration_seconds_bucket{route=%q,le=\"+Inf\"} %d\nvmcp_http_duration_seconds_count{route=%q} %d\nvmcp_http_duration_seconds_sum{route=%q} %g\n", label, s.count, label, s.count, label, s.sum)
-	}
-	r.serveOperations(w)
-	if r.Gauges != nil {
-		ctx, cancel := context.WithTimeout(req.Context(), time.Second)
-		defer cancel()
-		gauges := r.Gauges(ctx)
-		names := make([]string, 0, len(gauges))
-		for name := range gauges {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			kind := "gauge"
-			if strings.HasSuffix(name, "_total") {
-				kind = "counter"
-			}
-			fmt.Fprintf(w, "# HELP vmcp_%s Runtime metric %s.\n# TYPE vmcp_%s %s\nvmcp_%s %g\n", name, name, name, kind, name, gauges[name])
-		}
-	}
-}
-
-// InitTracing is opt-in. SDK queues are bounded; collector outage does not block requests.
-func InitTracing(ctx context.Context, service string) (func(context.Context) error, error) {
-	enabled := os.Getenv("VMCP_OTEL_ENABLED")
-	if enabled == "" || enabled == "false" {
-		return func(context.Context) error { return nil }, nil
-	}
-	if enabled != "true" {
-		return nil, fmt.Errorf("VMCP_OTEL_ENABLED must be true or false")
-	}
-	if os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
-		return nil, fmt.Errorf("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is required")
-	}
-	ratio := .1
-	if raw := os.Getenv("VMCP_OTEL_SAMPLE_RATIO"); raw != "" {
-		var err error
-		ratio, err = strconv.ParseFloat(raw, 64)
-		if err != nil || math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0 || ratio > 1 {
-			return nil, fmt.Errorf("VMCP_OTEL_SAMPLE_RATIO must be between 0 and 1")
-		}
-	}
-	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithTimeout(2*time.Second))
-	if err != nil {
-		return nil, err
-	}
-	provider := sdktrace.NewTracerProvider(sdktrace.WithResource(resource.NewSchemaless(attribute.String("service.name", service))), sdktrace.WithSampler(sdktrace.TraceIDRatioBased(ratio)), sdktrace.WithBatcher(exporter, sdktrace.WithMaxQueueSize(2048), sdktrace.WithMaxExportBatchSize(256), sdktrace.WithExportTimeout(2*time.Second)))
-	otel.SetTracerProvider(provider)
-	return provider.Shutdown, nil
+	r.handler.ServeHTTP(w, req)
 }
 
 func (w *writer) Flush() {
