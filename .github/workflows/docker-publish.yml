@@ -93,10 +93,14 @@ jobs:
               GATEWAY_VERSION=${{ needs.validate.outputs.version }}
           - service: data-plane
             context: core
-            buildArgs: SERVICE=data-plane
+            buildArgs: |
+              SERVICE=data-plane
+              GATEWAY_VERSION=${{ needs.validate.outputs.version }}
           - service: omni-mcp
             context: core
-            buildArgs: SERVICE=omni-mcp
+            buildArgs: |
+              SERVICE=omni-mcp
+              GATEWAY_VERSION=${{ needs.validate.outputs.version }}
           - service: migrate
             context: core
             buildArgs: SERVICE=migrate
