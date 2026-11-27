@@ -142,3 +142,21 @@ func TestIndexLogsFallbackThrottleAndRecovery(t *testing.T) {
 		t.Fatal(log)
 	}
 }
+
+func TestOmniGaugeNames(t *testing.T) {
+	server := &Server{Index: NewIndex(nil)}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := response.Body.String()
+	for _, name := range []string{
+		"vmcp_omni_reranker_enabled", "vmcp_omni_index_documents", "vmcp_omni_index_ready",
+		"vmcp_omni_index_revision", "vmcp_omni_index_embedded_documents", "vmcp_omni_index_dimensions",
+	} {
+		if !strings.Contains(body, "\n"+name+" ") {
+			t.Errorf("missing metric %s", name)
+		}
+	}
+	if strings.Contains(body, "vmcp_vmcp_") {
+		t.Error("found metric with duplicated prefix")
+	}
+}
