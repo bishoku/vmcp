@@ -78,7 +78,14 @@ func (s *Server) Handler() http.Handler {
 		if status.RerankEnabled {
 			rerankEnabled = 1
 		}
-		return map[string]float64{"vmcp_omni_reranker_enabled": rerankEnabled, "vmcp_omni_index_documents": float64(status.Documents), "vmcp_omni_index_ready": ready, "vmcp_omni_index_revision": float64(status.Revision), "vmcp_omni_index_embedded_documents": float64(status.EmbeddedDocuments), "vmcp_omni_index_dimensions": float64(status.Dimensions)}
+		return map[string]float64{
+			"omni_reranker_enabled":         rerankEnabled,
+			"omni_index_documents":          float64(status.Documents),
+			"omni_index_ready":              ready,
+			"omni_index_revision":           float64(status.Revision),
+			"omni_index_embedded_documents": float64(status.EmbeddedDocuments),
+			"omni_index_dimensions":         float64(status.Dimensions),
+		}
 	})
 	mux.Handle("GET /metrics", metrics)
 	return metrics.Handler(mux)
