@@ -1,0 +1,941 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "vMCP metriklerini içeren Prometheus veri kaynağı",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "uid": "vmcp-fleet-overview",
+  "title": "vMCP · Genel durum",
+  "description": "API ve MCP trafiği, bağımlılık baskısı ve MCP iş yükü. Serilere tıklayarak ilgili servise veya operasyona geçin.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "tags": [
+    "vmcp",
+    "operations"
+  ],
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "job",
+        "label": "Servis / job",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": {
+          "query": "label_values({__name__=~\"vmcp_operation_label_overflows_total|vmcp_audit_export_metrics_available\"}, job)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values({__name__=~\"vmcp_operation_label_overflows_total|vmcp_audit_export_metrics_available\"}, job)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "options": [],
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0
+      },
+      {
+        "type": "query",
+        "name": "namespace",
+        "label": "Namespace",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": {
+          "query": "label_values({__name__=~\"vmcp_operation_label_overflows_total|vmcp_audit_export_metrics_available\",job=~\"$job\"}, namespace)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values({__name__=~\"vmcp_operation_label_overflows_total|vmcp_audit_export_metrics_available\",job=~\"$job\"}, namespace)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "options": [],
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "allValue": ".*"
+      },
+      {
+        "type": "query",
+        "name": "instance",
+        "label": "Instance",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": {
+          "query": "label_values({__name__=~\"vmcp_operation_label_overflows_total|vmcp_audit_export_metrics_available\",job=~\"$job\",namespace=~\"$namespace\"}, instance)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "definition": "label_values({__name__=~\"vmcp_operation_label_overflows_total|vmcp_audit_export_metrics_available\",job=~\"$job\",namespace=~\"$namespace\"}, instance)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "options": [],
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "links": [
+    {
+      "type": "link",
+      "title": "vMCP · Servis ve bağımlılıklar",
+      "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
+    },
+    {
+      "type": "link",
+      "title": "vMCP · MCP operasyonları",
+      "url": "/d/vmcp-operation-detail/vmcp-c2b7-mcp-operasyonlari",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "dashboard"
+    }
+  ],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Geçit · API ve MCP trafiği",
+      "id": 1,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "İstek hızı",
+      "description": "Tamamlanan API ve MCP HTTP istekleri. Probe ve other hariç.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(rate(vmcp_http_duration_seconds_count{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval]))",
+          "legendFormat": "İstek hızı",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "HTTP hata oranı",
+      "description": "HTTP 400 ve üzeri yanıtlar / tamamlanan istekler. Trafik yokken oran tanımsızdır.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "100 * sum(rate(vmcp_http_errors_total{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval])) / sum(rate(vmcp_http_duration_seconds_count{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval]))",
+          "legendFormat": "HTTP hata oranı",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "HTTP gecikmesi · p95",
+      "description": "Birleştirilmiş histogram. SSE bağlantı süresi bu ölçüme dahildir.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vmcp_http_duration_seconds_bucket{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval])))",
+          "legendFormat": "HTTP gecikmesi · p95",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Açık devre kesiciler",
+      "description": "Tek bir data-plane instance üzerinde görülen en yüksek açık devre sayısı.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(vmcp_breakers_open{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"})",
+          "legendFormat": "Açık devre kesiciler",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Servis karşılaştırması",
+      "id": 6,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Tamamlanan istekler",
+      "description": "Servise tıklayarak instance ve bağımlılık ayrıntılarına geçin.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu servisi incele",
+              "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar?from=${__from}&to=${__to}&${namespace:queryparam}&${instance:queryparam}&var-job=${__field.labels.job:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (job) (rate(vmcp_http_duration_seconds_count{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval]))",
+          "legendFormat": "{{job}}",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "HTTP gecikmesi · p95",
+      "description": "Replika histogramları servis bazında birleştirilir.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu servisi incele",
+              "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar?from=${__from}&to=${__to}&${namespace:queryparam}&${instance:queryparam}&var-job=${__field.labels.job:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le,job) (rate(vmcp_http_duration_seconds_bucket{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval])))",
+          "legendFormat": "{{job}}",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "HTTP hataları",
+      "description": "HTTP hata oranı. HTTP 200 içindeki MCP hataları operasyon dashboard’unda görünür.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu servisi incele",
+              "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar?from=${__from}&to=${__to}&${namespace:queryparam}&${instance:queryparam}&var-job=${__field.labels.job:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "100 * sum by (job) (rate(vmcp_http_errors_total{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval])) / sum by (job) (rate(vmcp_http_duration_seconds_count{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\",route=~\"api|mcp\"}[$__rate_interval]))",
+          "legendFormat": "{{job}}",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Prometheus scrape erişimi",
+      "description": "Keşfedilen hedeflerden başarılı scrape yüzdesi. Doğrudan scrape gerektirir. OTLP push kurulumlarında boş olabilir. Uygulama readiness ölçümü değildir.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 15,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu servisi incele",
+              "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar?from=${__from}&to=${__to}&${namespace:queryparam}&${instance:queryparam}&var-job=${__field.labels.job:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "avg by (job) (up{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"}) * 100",
+          "legendFormat": "{{job}}",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "MCP iş yükü · seriden detaya geçiş",
+      "id": 11,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "En yoğun sanal sunucular",
+      "description": "Güncel tool çağrı hızı. Bir sunucu seçerek tool ve sonuç dağılımına geçin.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu sanal sunucuyu incele",
+              "url": "/d/vmcp-operation-detail/vmcp-c2b7-mcp-operasyonlari?from=${__from}&to=${__to}&${job:queryparam}&${namespace:queryparam}&${instance:queryparam}&var-virtual_server=${__field.labels.virtual_server:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": false,
+        "namePlacement": "left"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "topk(8,sum by (virtual_server) (rate(vmcp_virtual_tool_calls_total{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"}[$__rate_interval])))",
+          "legendFormat": "{{virtual_server}}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "bargauge",
+      "title": "En yavaş upstream’ler · p95",
+      "description": "Güncel p95; sürede bağlantı kurulumu ve oturum kurtarma bulunabilir.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu upstream’i incele",
+              "url": "/d/vmcp-operation-detail/vmcp-c2b7-mcp-operasyonlari?from=${__from}&to=${__to}&${job:queryparam}&${namespace:queryparam}&${instance:queryparam}&var-upstream=${__field.labels.upstream:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false,
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": false,
+        "namePlacement": "left"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "topk(8,histogram_quantile(0.95, sum by (le,upstream) (rate(vmcp_upstream_requests_duration_seconds_bucket{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"}[$__rate_interval]))))",
+          "legendFormat": "{{upstream}}",
+          "instant": true,
+          "range": false,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Operasyonel riskler",
+      "id": 14,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "En eski tamamlanmamış audit",
+      "description": "Aynı DB durumu birden fazla replikadan okunabilir; maksimum yaş gösterilir. Örnek yoksa çizgi kesilir.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu servisi incele",
+              "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar?from=${__from}&to=${__to}&${namespace:queryparam}&${instance:queryparam}&var-job=${__field.labels.job:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (job) (vmcp_audit_oldest_incomplete_seconds{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"})",
+          "legendFormat": "{{job}}",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Snapshot doğrulama yaşı",
+      "description": "Servis bazında en eski yetkilendirme doğrulaması. Dağıtımın VMCP_AUTH_MAX_STALE eşiğiyle karşılaştırın.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 12,
+        "h": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "—",
+          "links": [
+            {
+              "title": "Bu servisi incele",
+              "url": "/d/vmcp-service-detail/vmcp-c2b7-servis-ve-bagimliliklar?from=${__from}&to=${__to}&${namespace:queryparam}&${instance:queryparam}&var-job=${__field.labels.job:percentencode}",
+              "targetBlank": false
+            }
+          ],
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max by (job) (vmcp_snapshot_age_seconds{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"})",
+          "legendFormat": "{{job}}",
+          "instant": false,
+          "range": true,
+          "format": "time_series",
+          "editorMode": "code"
+        }
+      ]
+    }
+  ]
+}
