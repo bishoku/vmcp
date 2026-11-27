@@ -31,10 +31,23 @@ OTLP/HTTP protobuf receiver and pipelines for all three signals.
 OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example:4318
 ```
 
-The SDK appends `/v1/metrics`, `/v1/logs` and `/v1/traces` to the common endpoint.
+With HTTP/protobuf (the default), the SDK appends `/v1/metrics`, `/v1/logs` and `/v1/traces` to the common endpoint.
 For a single signal, configure only its full URL, e.g.
 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://collector.example:4318/v1/traces`.
-Signal-specific endpoints take precedence. A signal with no destination stays
+
+For a Collector with an OTLP/gRPC receiver, set both variables on each service.
+
+```sh
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example:4317
+```
+
+Use the receiver address for gRPC. Signal-specific HTTP paths apply only to
+HTTP/protobuf. To mix transports, configure the protocol and matching endpoint
+for the individual signal, for example `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` and
+`OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`.
+
+Signal-specific protocols and endpoints take precedence over their common settings. A signal with no destination stays
 local. `OTEL_{TRACES,LOGS,METRICS}_EXPORTER=none` disables the corresponding
 remote output when a common endpoint is set. Keep one ingestion path per signal
 per backend to avoid double-counting scrapes or duplicating stdout logs.
