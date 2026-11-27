@@ -11,6 +11,10 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Backend is a private interface within the same logical gateway resource.
@@ -36,7 +40,7 @@ type challengeError struct {
 
 func (e *challengeError) Unwrap() error { return e.HTTPError }
 func (e *HTTPError) Error() string      { return fmt.Sprintf("gateway request failed (%d)", e.Status) }
-func (b *Backend) Request(ctx context.Context, method, path, token, ip, trace string, body any, out any) error {
+func (b *Backend) Request(ctx context.Context, method, path, token, ip, parent string, body any, out any) error {
 	var data []byte
 	var err error
 	if body != nil {
@@ -53,6 +57,8 @@ func (b *Backend) Request(ctx context.Context, method, path, token, ip, trace st
 		input["_audit_ticket"], _ = json.Marshal(ticket)
 		data, _ = json.Marshal(input)
 	}
+	ctx, span := otel.Tracer("vmcp/omni").Start(ctx, "gateway request", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
 	r, err := http.NewRequestWithContext(ctx, method, b.URL+path, bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -66,9 +72,10 @@ func (b *Backend) Request(ctx context.Context, method, path, token, ip, trace st
 	if ip != "" {
 		r.Header.Set("X-VMCP-Client-IP", ip)
 	}
-	if trace != "" {
-		r.Header.Set("traceparent", trace)
+	if parent != "" {
+		r.Header.Set("traceparent", parent)
 	}
+	propagation.TraceContext{}.Inject(ctx, propagation.HeaderCarrier(r.Header))
 	res, err := b.Client.Do(r)
 	if err != nil {
 		return errors.New("gateway unavailable")

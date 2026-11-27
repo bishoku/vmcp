@@ -30,19 +30,12 @@ import (
 var gatewayVersion = "dev"
 
 func main() {
-	log, err := telemetry.NewLogger("control-plane")
-	if err != nil {
-		slog.Error("invalid logging configuration")
-		os.Exit(1)
-	}
-	slog.SetDefault(log)
-	if err := run(log); err != nil {
-		log.Error("fatal", "err", err)
-		os.Exit(1)
-	}
+	os.Exit(telemetry.Run("control-plane", gatewayVersion, run))
 }
 
-func run(log *slog.Logger) error {
+func run(sdk *telemetry.SDK) error {
+	log := sdk.Log
+
 	if _, err := netpolicy.FromEnv(); err != nil {
 		return err
 	}
@@ -126,7 +119,7 @@ func run(log *slog.Logger) error {
 		TrustedProxies: trusted,
 	}
 	defer func() { cancelBg(); bgWg.Wait(); api.CloseAudit() }()
-	metrics := telemetry.New()
+	metrics := sdk.Metrics
 	api.Metrics = metrics
 	bgWg.Add(1)
 	go func() {
@@ -142,7 +135,9 @@ func run(log *slog.Logger) error {
 			api.RunMockUpstreams(ctx)
 		}()
 	}
-	metrics.Gauges = func(gctx context.Context) map[string]float64 {
+	pendingMetrics, stopRefresh := audit.StartPendingMetrics(ctx, pool)
+	defer stopRefresh()
+	metrics.SetGauges(func() map[string]float64 {
 		stats := pool.Stat()
 		gauges := map[string]float64{
 			"pool_acquired":                 float64(stats.AcquiredConns()),
@@ -151,21 +146,9 @@ func run(log *slog.Logger) error {
 			"pool_empty_acquires_total":     float64(stats.EmptyAcquireCount()),
 			"pool_cancelled_acquires_total": float64(stats.CanceledAcquireCount()),
 		}
-		if pending, err := audit.Pending(gctx, pool); err == nil {
-			gauges["audit_incomplete"] = float64(pending.Incomplete)
-			gauges["audit_oldest_incomplete_seconds"] = pending.OldestIncompleteAgeSeconds
-		}
+		pendingMetrics.AppendTo(gauges)
 		return gauges
-	}
-	shutdownTracing, err := telemetry.InitTracing(ctx, "vmcp-control-plane")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		traceCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = shutdownTracing(traceCtx)
-	}()
+	})
 
 	srv := &http.Server{
 		Addr:              config.Env("VMCP_CP_ADDR", ":8081"),

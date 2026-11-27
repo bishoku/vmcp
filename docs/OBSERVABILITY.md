@@ -1,6 +1,6 @@
 # Operations and measured baseline
 
-Both planes serve Prometheus text at `/metrics`. Restrict this endpoint to the
+Control-plane, data-plane and omni-mcp serve Prometheus text at `/metrics`. Restrict this endpoint to the
 monitoring network. HTTP histogram labels are one of `api`, `mcp`, `probe` or
 `other`; paths, query parameters, methods supplied by callers,
 subjects and credentials are never HTTP histogram labels. Separate operation
@@ -9,7 +9,7 @@ MCP calls; `streams_active` reports downstream SSE streams. Data-plane
 metrics include sessions, snapshot confirmation age/revision and last refresh
 latency, listener reconnects, aggregate breaker states, pool acquisition counts,
 cumulative wait time, audit failures/loss/queue and durable incomplete age.
-Audit incomplete queries have a one-second scrape budget. The separate HTTPS audit
+Each plane samples audit backlog on startup and every 30 seconds with a one-second query timeout. Prometheus scrapes and OTLP exports read the same snapshot. The two audit backlog gauges are absent until the first success and after a failed refresh. The separate HTTPS audit
 exporter logs delivery-state counts each minute; Prometheus export-lag/dead-letter
 metrics remain on the production roadmap. See [audit operations](AUDIT_OPERATIONS.md).
 
@@ -20,19 +20,46 @@ seconds includes successful acquisition overhead, not solely saturation delay;
 compare empty/cancelled acquire counts and utilization. A failed metrics scrape
 is itself an alert condition; missing audit samples do not mean zero backlog.
 
-## Tracing
+## OpenTelemetry
 
-Set `VMCP_OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to an operator
-controlled OTLP HTTP traces endpoint, and optionally `VMCP_OTEL_SAMPLE_RATIO`
-(default `0.1`, range 0–1). Official OTel SDK environment settings configure TLS
-and exporter authentication. Queues are bounded to 2,048 spans, exports to 256
-spans and two seconds, with a three-second shutdown allowance. Collector outages
-can drop telemetry and do not block audited operations. TraceContext is accepted;
-baggage is not. Sampling uses a local ratio rather than trusting an incoming
-sampled flag. Spans contain service name, a fixed route class and response status;
-no bodies, headers, SQL parameters or raw errors. Trace IDs correlate HTTP work
-with audit events. This phase instruments HTTP spans; upstream/database child
-spans remain a possible extension and are not advertised as present.
+The three services expose their existing metrics at the private `/metrics` endpoint
+and write JSON logs to stdout by default. Set one environment variable on each
+service to export metrics, logs and traces directly to a Collector with an
+OTLP/HTTP protobuf receiver and pipelines for all three signals.
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.example:4318
+```
+
+The SDK appends `/v1/metrics`, `/v1/logs` and `/v1/traces` to the common endpoint.
+For a single signal, configure only its full URL, e.g.
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://collector.example:4318/v1/traces`.
+Signal-specific endpoints take precedence. A signal with no destination stays
+local. `OTEL_{TRACES,LOGS,METRICS}_EXPORTER=none` disables the corresponding
+remote output when a common endpoint is set. Keep one ingestion path per signal
+per backend to avoid double-counting scrapes or duplicating stdout logs.
+
+Use standard SDK settings for exporter headers, TLS certificates, timeouts,
+`OTEL_METRIC_EXPORT_INTERVAL` (milliseconds), `OTEL_RESOURCE_ATTRIBUTES`
+and `OTEL_SERVICE_NAME`. Service names default to `vmcp-control-plane`,
+`vmcp-data-plane` and `vmcp-omni-mcp`. Send credentials through secret-backed
+environment variables. Helm accepts these settings through the service environment
+and requires collector egress when NetworkPolicy is enabled.
+
+Existing deployments using `VMCP_OTEL_ENABLED=true` and a traces endpoint
+continue exporting traces. Explicit `VMCP_OTEL_ENABLED=false` or
+`OTEL_SDK_DISABLED=true` disables remote exports and preserves local scrape
+and stdout output. Sampling defaults to the local trace-ID ratio of 0.1.
+`OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` select an SDK sampler
+and take precedence over the legacy `VMCP_OTEL_SAMPLE_RATIO`.
+
+HTTP spans report route class and response status. Trusted Omni gateway calls
+propagate W3C TraceContext and create a client span. Request-scoped logs carry
+trace and span IDs. Request bodies, credentials, baggage and raw errors stay
+outside the instrumentation. Enable `VMCP_LOG_LEVEL=DEBUG` to see HTTP completion
+logs. Bounded asynchronous log and trace batches can drop telemetry during
+outages. Collector availability is independent of readiness and durable audit.
+Each process allows up to three seconds for telemetry shutdown.
 
 ## Database and quota budgets
 

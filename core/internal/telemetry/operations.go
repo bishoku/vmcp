@@ -1,13 +1,7 @@
 package telemetry
 
 import (
-	"fmt"
-	"maps"
-	"net/http"
-	"slices"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -16,10 +10,11 @@ import (
 // arbitrary tool names, resource URIs, identities, credentials or error text.
 type Operation struct{ Family, VirtualServer, Upstream, Method, Tool string }
 type operationSeries struct {
+	start   time.Time
 	active  int64
 	count   map[string]int64
 	sum     float64
-	buckets []int64
+	buckets []uint64
 	last    time.Time
 }
 
@@ -68,7 +63,7 @@ func (r *Registry) BeginOperation(labels Operation) func(string) {
 			s = r.operations[labels]
 		}
 		if s == nil {
-			s = &operationSeries{count: make(map[string]int64), buckets: make([]int64, len(bounds))}
+			s = &operationSeries{start: started, count: make(map[string]int64), buckets: make([]uint64, len(bounds)+1)}
 			r.operations[labels] = s
 		}
 	}
@@ -90,11 +85,7 @@ func (r *Registry) BeginOperation(labels Operation) func(string) {
 			s.count[outcome]++
 			s.sum += elapsed
 			s.last = time.Now()
-			for i, b := range bounds {
-				if elapsed <= b {
-					s.buckets[i]++
-				}
-			}
+			s.buckets[sort.SearchFloat64s(bounds, elapsed)]++
 		})
 	}
 }
@@ -108,75 +99,4 @@ func (r *Registry) pruneOperations(now time.Time) {
 		}
 	}
 	r.operationsPruned = now
-}
-func (r *Registry) serveOperations(w http.ResponseWriter) {
-	r.mu.Lock()
-	r.pruneOperations(time.Now())
-	overflows := r.operationOverflows
-	operations := make(map[Operation]operationSeries, len(r.operations))
-	for key, value := range r.operations {
-		copy := *value
-		copy.count = maps.Clone(value.count)
-		copy.buckets = slices.Clone(value.buckets)
-		operations[key] = copy
-	}
-	r.mu.Unlock()
-	fmt.Fprintln(w, "# HELP vmcp_operation_label_overflows_total Total number of operations routed to the overflow label bucket.")
-	fmt.Fprintln(w, "# TYPE vmcp_operation_label_overflows_total counter")
-	fmt.Fprintf(w, "vmcp_operation_label_overflows_total %d\n", overflows)
-	for _, family := range []string{"virtual_requests", "virtual_tool_calls", "upstream_requests"} {
-		prefix := "vmcp_" + family
-		fmt.Fprintf(w, "# HELP %s_total Total operations for %s.\n# TYPE %s_total counter\n# HELP %s_active Active operations for %s.\n# TYPE %s_active gauge\n# HELP %s_duration_seconds Operation duration seconds for %s.\n# TYPE %s_duration_seconds histogram\n", prefix, family, prefix, prefix, family, prefix, prefix, family, prefix)
-		var keys []Operation
-		for key := range operations {
-			if key.Family == family {
-				keys = append(keys, key)
-			}
-		}
-		sort.Slice(keys, func(i, j int) bool {
-			a, b := keys[i], keys[j]
-			if a.VirtualServer != b.VirtualServer {
-				return a.VirtualServer < b.VirtualServer
-			}
-			if a.Upstream != b.Upstream {
-				return a.Upstream < b.Upstream
-			}
-			if a.Method != b.Method {
-				return a.Method < b.Method
-			}
-			return a.Tool < b.Tool
-		})
-		for _, key := range keys {
-			s := operations[key]
-			labels := ""
-			switch family {
-			case "virtual_requests":
-				labels = fmt.Sprintf("virtual_server=%s", metricLabel(key.VirtualServer))
-			case "virtual_tool_calls":
-				labels = fmt.Sprintf("virtual_server=%s,tool=%s", metricLabel(key.VirtualServer), metricLabel(key.Tool))
-			case "upstream_requests":
-				labels = fmt.Sprintf("upstream=%s,method=%s,tool=%s", metricLabel(key.Upstream), metricLabel(key.Method), metricLabel(key.Tool))
-			}
-			fmt.Fprintf(w, "%s_active{%s} %d\n", prefix, labels, s.active)
-			outcomes := make([]string, 0, len(s.count))
-			for outcome := range s.count {
-				outcomes = append(outcomes, outcome)
-			}
-			sort.Strings(outcomes)
-			var count int64
-			for _, outcome := range outcomes {
-				n := s.count[outcome]
-				count += n
-				fmt.Fprintf(w, "%s_total{%s,outcome=%q} %d\n", prefix, labels, outcome, n)
-			}
-			for i, b := range bounds {
-				fmt.Fprintf(w, "%s_duration_seconds_bucket{%s,le=%q} %d\n", prefix, labels, strconv.FormatFloat(b, 'g', -1, 64), s.buckets[i])
-			}
-			fmt.Fprintf(w, "%s_duration_seconds_bucket{%s,le=\"+Inf\"} %d\n%s_duration_seconds_count{%s} %d\n%s_duration_seconds_sum{%s} %g\n", prefix, labels, count, prefix, labels, count, prefix, labels, s.sum)
-		}
-	}
-}
-
-func metricLabel(value string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, "\n", `\n`, `"`, `\"`).Replace(value) + `"`
 }

@@ -278,7 +278,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, err := h.Sessions.Resolve(r.Context(), sid)
 	if err != nil {
-		h.Log.Error("session store unavailable", "err", err)
+		h.Log.ErrorContext(r.Context(), "session store unavailable", "err", err)
 		http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -401,7 +401,7 @@ func (h *Handler) initialize(ctx context.Context, w http.ResponseWriter, msg *mc
 	sess.owner = owner
 	if err := h.Sessions.Persist(ctx, sess); err != nil {
 		h.Sessions.Delete(sess.id)
-		h.Log.Error("cannot persist session", "err", err)
+		h.Log.ErrorContext(ctx, "cannot persist session", "err", err)
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "cannot create session"))
 		return
 	}
@@ -479,7 +479,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			defer cancel()
 			if err := durable.Complete(completion, ev); err != nil {
 				ev.Status = "error"
-				h.Log.Error("audit outcome unavailable; operation incomplete", "operation_id", ev.OperationID)
+				h.Log.ErrorContext(ctx, "audit outcome unavailable; operation incomplete", "operation_id", ev.OperationID)
 				return false
 			}
 		} else {
@@ -533,7 +533,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 			http.Error(w, "audit outcome unavailable; operation may have completed", 503)
 			return
 		}
-		h.Log.Error("tool references missing upstream", "tool", p.Name, "upstream_id", vt.UpstreamID)
+		h.Log.ErrorContext(ctx, "tool references missing upstream", "tool", p.Name, "upstream_id", vt.UpstreamID)
 		writeMessage(w, http.StatusOK, mcp.NewErrorResponse(msg.ID, mcp.CodeInternalError, "upstream unavailable"))
 		return
 	}
@@ -680,7 +680,7 @@ func (h *Handler) callTool(ctx context.Context, w http.ResponseWriter, msg *mcp.
 				reason, detail = "tls_configuration_invalid", "Check the upstream CA and client certificate configuration."
 			}
 		}
-		h.Log.Error("upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName,
+		h.Log.ErrorContext(ctx, "upstream call failed", "upstream", up.Slug, "tool", vt.UpstreamName,
 			"category", "transport_failure", "reason", reason, "detail", detail, "stage", stage,
 			"virtual_server", vs.Slug, "request_id", ev.RequestID, "trace_id", ev.TraceID,
 			"duration_ms", callDuration.Milliseconds())

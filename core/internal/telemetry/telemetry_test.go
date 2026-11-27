@@ -20,7 +20,7 @@ func TestMetricsCardinalityAndPrivacy(t *testing.T) {
 	out := httptest.NewRecorder()
 	registry.ServeHTTP(out, httptest.NewRequest("GET", "/metrics", nil))
 	body := out.Body.String()
-	if strings.Contains(body, "secret") || len(registry.requests) != 3 {
+	if strings.Contains(body, "secret") || strings.Count(body, "vmcp_http_active{") != 3 {
 		t.Fatalf("unbounded labels: %s", body)
 	}
 	if !strings.Contains(body, `vmcp_http_errors_total{route="mcp"} 1`) {
@@ -32,19 +32,19 @@ func TestMetricsCardinalityAndPrivacy(t *testing.T) {
 }
 func TestTracingConfiguration(t *testing.T) {
 	t.Setenv("VMCP_OTEL_ENABLED", "false")
-	stop, err := InitTracing(context.Background(), "test")
+	stop, err := Start(context.Background(), "test", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop(context.Background())
+	stop.Close()
 	t.Setenv("VMCP_OTEL_ENABLED", "true")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
-	if _, err := InitTracing(context.Background(), "test"); err == nil {
+	if _, err := Start(context.Background(), "test", ""); err == nil {
 		t.Fatal("enabled tracing without endpoint")
 	}
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://127.0.0.1:4318/v1/traces")
 	t.Setenv("VMCP_OTEL_SAMPLE_RATIO", "2")
-	if _, err := InitTracing(context.Background(), "test"); err == nil {
+	if _, err := Start(context.Background(), "test", ""); err == nil {
 		t.Fatal("invalid sampling accepted")
 	}
 }
