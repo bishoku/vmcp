@@ -1665,7 +1665,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max by (job,instance) (vmcp_vmcp_omni_index_ready{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"})",
+          "expr": "max by (job,instance) ((vmcp_omni_index_ready{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"} or vmcp_vmcp_omni_index_ready{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"}))",
           "legendFormat": "{{job}} · {{instance}}",
           "instant": false,
           "range": true,
@@ -1725,7 +1725,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "vmcp_vmcp_omni_index_documents{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"}",
+          "expr": "(vmcp_omni_index_documents{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"} or vmcp_vmcp_omni_index_documents{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"})",
           "legendFormat": "Belgeler · {{instance}}",
           "instant": false,
           "range": true,
@@ -1738,7 +1738,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "vmcp_vmcp_omni_index_embedded_documents{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"}",
+          "expr": "(vmcp_omni_index_embedded_documents{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"} or vmcp_vmcp_omni_index_embedded_documents{job=~\"$job\",namespace=~\"$namespace\",instance=~\"$instance\"})",
           "legendFormat": "Vektörlü belgeler · {{instance}}",
           "instant": false,
           "range": true,
